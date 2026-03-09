@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home (Global) Mock Layout</title>
+  <style>
+    :root {
+      --canvas-w: 1242px;
+      --canvas-h: 2440px;
+      --bg: #f2f5f8;
+      --panel: #ffffff;
+      --label: #2f4f60;
+      --button: #144e75;
+      --button-text: #ffffff;
+      --line: #c4d2dd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 20%, #e9eff4, var(--bg));
+      color: #10202c;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+    }
+    .wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+    .panel {
+      width: min(98vw, calc(var(--canvas-w) * 0.55));
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    }
+    .title { margin: 0 0 8px; font-size: 14px; color: #3f5565; }
+    .viewport {
+      width: 100%;
+      aspect-ratio: calc(var(--canvas-w) / var(--canvas-h));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #f9fbfd, #eef3f8);
+    }
+    .canvas { position: relative; width: var(--canvas-w); height: var(--canvas-h); transform-origin: top left; }
+    .item {
+      position: absolute;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.15);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 4px;
+      overflow: hidden;
+      line-height: 1.1;
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+    .item:hover { filter: brightness(1.05); transform: translateY(-1px); }
+    .item span { pointer-events: none; }
+    .label { background: rgba(20,78,117,0.08); color: var(--label); border-style: dashed; }
+    .button { background: linear-gradient(180deg, #1f678f, var(--button)); color: var(--button-text); border-color: rgba(255,255,255,0.3); }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 23, 33, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 1000;
+    }
+    .overlay.open { display: flex; }
+    .popup {
+      width: min(560px, 100%);
+      max-height: 85vh;
+      overflow: auto;
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #c3d1db;
+      box-shadow: 0 18px 36px rgba(0,0,0,0.2);
+      padding: 12px;
+    }
+    .popup h3 { margin: 0 0 8px; font-size: 14px; }
+    .muted { font-size: 12px; color: #5a6d7b; margin-bottom: 10px; }
+    .target-row { border: 1px solid #d5e0e8; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+    .target-name { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+    .actions { display: flex; gap: 6px; margin-bottom: 6px; }
+    .actions button {
+      border: 1px solid #b9c8d5;
+      background: #f7fbff;
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .actions button.active-pass { background: #daf2e3; border-color: #8cc49f; }
+    .actions button.active-fail { background: #f9dede; border-color: #d19292; }
+    .note { width: 100%; min-height: 56px; border: 1px solid #ccd8e2; border-radius: 6px; padding: 6px; font-size: 12px; }
+    .note[disabled] { background: #f5f7f9; color: #8a99a6; }
+    .popup-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+    .popup-footer button { border: 1px solid #b9c8d5; background: #f7fbff; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="panel">
+      <p class="title">Mock from coordinates + button identities: RTiPanel (iPhone X or newer) - Home (Global)</p>
+      <div class="viewport" id="viewport">
+        <div class="canvas" id="canvas">
+          <button class="item label" style="left:21px;top:1795px;width:1200px;height:40px" data-meta='{&quot;tag&quot;: &quot;Room is Off&quot;, &quot;text&quot;: &quot;Selected Source: $%TAG!DSPL - Selected Source Name%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="Selected Source: $%TAG!DSPL - Selected Source Name%$"><span>Selected Source: $%TAG!DSPL - Selected Source Name%$</span></button>
+          <button class="item label" style="left:0px;top:415px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Room: Room 1&quot;, &quot;text&quot;: &quot;$%TAG!Room: Room 1%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Room: Room 1%$"><span>$%TAG!Room: Room 1%$</span></button>
+          <button class="item label" style="left:0px;top:597px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Room: Room 2&quot;, &quot;text&quot;: &quot;$%TAG!Room: Room 2%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Room: Room 2%$"><span>$%TAG!Room: Room 2%$</span></button>
+          <button class="item label" style="left:0px;top:779px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Room: Room 3&quot;, &quot;text&quot;: &quot;$%TAG!Room: Room 3%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Room: Room 3%$"><span>$%TAG!Room: Room 3%$</span></button>
+          <button class="item label" style="left:0px;top:961px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Room: Room 4&quot;, &quot;text&quot;: &quot;$%TAG!Room: Room 4%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Room: Room 4%$"><span>$%TAG!Room: Room 4%$</span></button>
+          <button class="item label" style="left:0px;top:1143px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Room: Room 5&quot;, &quot;text&quot;: &quot;$%TAG!Room: Room 5%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Room: Room 5%$"><span>$%TAG!Room: Room 5%$</span></button>
+          <button class="item label" style="left:862px;top:597px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Activity: Audio Source&quot;, &quot;text&quot;: &quot;$%TAG!Activity: Audio Source%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Activity: Audio Source%$"><span>$%TAG!Activity: Audio Source%$</span></button>
+          <button class="item label" style="left:862px;top:779px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Activity: Video Source&quot;, &quot;text&quot;: &quot;$%TAG!Activity: Video Source%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Activity: Video Source%$"><span>$%TAG!Activity: Video Source%$</span></button>
+          <button class="item label" style="left:861px;top:415px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Activity: Home&quot;, &quot;text&quot;: &quot;$%TAG!Activity: Home%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Activity: Home%$"><span>$%TAG!Activity: Home%$</span></button>
+          <button class="item label" style="left:862px;top:961px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Activity: Other Source&quot;, &quot;text&quot;: &quot;$%TAG!Activity: Other Source%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Activity: Other Source%$"><span>$%TAG!Activity: Other Source%$</span></button>
+          <button class="item label" style="left:0px;top:255px;width:1242px;height:60px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room Name&quot;, &quot;text&quot;: &quot;Room Name: $%TAG!DSPL - Room Name%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="Room Name: $%TAG!DSPL - Room Name%$"><span>Room Name: $%TAG!DSPL - Room Name%$</span></button>
+          <button class="item button" style="left:0px;top:0px;width:224px;height:224px" data-meta='{&quot;tag&quot;: &quot;OFF - All Rooms&quot;, &quot;text&quot;: &quot;All&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="All"><span>All</span></button>
+          <button class="item button" style="left:3px;top:2063px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Activity Start&quot;, &quot;text&quot;: &quot;Activity Start&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Activity Start"><span>Activity Start</span></button>
+          <button class="item button" style="left:3px;top:2132px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Room ON&quot;, &quot;text&quot;: &quot;Room ON&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Room ON"><span>Room ON</span></button>
+          <button class="item button" style="left:3px;top:2201px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Audio ON&quot;, &quot;text&quot;: &quot;Audio ON&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Audio ON"><span>Audio ON</span></button>
+          <button class="item button" style="left:3px;top:2270px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Video ON&quot;, &quot;text&quot;: &quot;Video ON&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Video ON"><span>Video ON</span></button>
+          <button class="item button" style="left:312px;top:2063px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Power On Source (Audio)&quot;, &quot;text&quot;: &quot;Power On Source\r\n(Audio)&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Power On Source
+(Audio)"><span>Power On Source<br>(Audio)</span></button>
+          <button class="item button" style="left:312px;top:2201px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Activity Selected&quot;, &quot;text&quot;: &quot;Activity Selected&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Activity Selected"><span>Activity Selected</span></button>
+          <button class="item button" style="left:312px;top:2270px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Activity Ready&quot;, &quot;text&quot;: &quot;Activity Ready&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Activity Ready"><span>Activity Ready</span></button>
+          <button class="item button" style="left:621px;top:2063px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Room Off Start&quot;, &quot;text&quot;: &quot;Room Off Start&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Room Off Start"><span>Room Off Start</span></button>
+          <button class="item button" style="left:930px;top:2201px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Activity Deselected&quot;, &quot;text&quot;: &quot;Activity Deselected&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Activity Deselected"><span>Activity Deselected</span></button>
+          <button class="item button" style="left:930px;top:2063px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Power Off Source (Audio)&quot;, &quot;text&quot;: &quot;Power Off Source\r\n(Audio)&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Power Off Source
+(Audio)"><span>Power Off Source<br>(Audio)</span></button>
+          <button class="item button" style="left:621px;top:2132px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Audio OFF&quot;, &quot;text&quot;: &quot;Audio OFF&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Audio OFF"><span>Audio OFF</span></button>
+          <button class="item button" style="left:621px;top:2201px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Video OFF&quot;, &quot;text&quot;: &quot;Video OFF&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Video OFF"><span>Video OFF</span></button>
+          <button class="item button" style="left:621px;top:2270px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Room OFF&quot;, &quot;text&quot;: &quot;Room OFF&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Room OFF"><span>Room OFF</span></button>
+          <button class="item button" style="left:930px;top:2270px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Room Off Complete&quot;, &quot;text&quot;: &quot;Room Off Complete&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Room Off Complete"><span>Room Off Complete</span></button>
+          <button class="item button" style="left:726px;top:2350px;width:306px;height:90px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Clear All&quot;, &quot;text&quot;: &quot;Clear&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Clear"><span>Clear</span></button>
+          <button class="item button" style="left:210px;top:2349px;width:306px;height:90px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Set All&quot;, &quot;text&quot;: &quot;Set&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Set"><span>Set</span></button>
+          <button class="item button" style="left:312px;top:2132px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Power On Source (Video)&quot;, &quot;text&quot;: &quot;Power On Source\r\n(Video)&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Power On Source
+(Video)"><span>Power On Source<br>(Video)</span></button>
+          <button class="item button" style="left:930px;top:2132px;width:306px;height:64px" data-meta='{&quot;tag&quot;: &quot;FLAGS - Power Off Source (Video)&quot;, &quot;text&quot;: &quot;Power Off Source\r\n(Video)&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="Power Off Source
+(Video)"><span>Power Off Source<br>(Video)</span></button>
+          <button class="item button" style="left:440px;top:1952px;width:60px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 1 SHOW&quot;, &quot;text&quot;: &quot;1&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="1"><span>1</span></button>
+          <button class="item button" style="left:535px;top:1952px;width:60px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 2 SHOW&quot;, &quot;text&quot;: &quot;2&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="2"><span>2</span></button>
+          <button class="item button" style="left:630px;top:1952px;width:60px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 3 SHOW&quot;, &quot;text&quot;: &quot;3&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="3"><span>3</span></button>
+          <button class="item button" style="left:725px;top:1952px;width:60px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 4 SHOW&quot;, &quot;text&quot;: &quot;4&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="4"><span>4</span></button>
+          <button class="item button" style="left:820px;top:1952px;width:60px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 5 SHOW&quot;, &quot;text&quot;: &quot;5&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="5"><span>5</span></button>
+          <button class="item button" style="left:345px;top:1952px;width:60px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Global SHOW&quot;, &quot;text&quot;: &quot;G&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Variable:Visible&quot;]}' aria-label="G"><span>G</span></button>
+          <button class="item button" style="left:21px;top:1844px;width:1200px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room Name / State&quot;, &quot;text&quot;: &quot;Selected Room State: $%TAG!DSPL - Selected Room State%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="Selected Room State: $%TAG!DSPL - Selected Room State%$"><span>Selected Room State: $%TAG!DSPL - Selected Room State%$</span></button>
+          <button class="item button" style="left:0px;top:326px;width:1242px;height:60px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Page: Home (Global)&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Page: Home (Global)"><span>Page: Home (Global)</span></button>
+          <button class="item button" style="left:338px;top:0px;width:224px;height:224px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room SHOW&quot;, &quot;text&quot;: &quot;Rooms&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Rooms"><span>Rooms</span></button>
+          <button class="item button" style="left:676px;top:0px;width:224px;height:224px" data-meta='{&quot;tag&quot;: &quot;DSPL - Sources SHOW&quot;, &quot;text&quot;: &quot;Sources&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Sources"><span>Sources</span></button>
+          <button class="item button" style="left:862px;top:1143px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Activity: Audio Source (Global)&quot;, &quot;text&quot;: &quot;$%TAG!Activity: Audio Source (Global)%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Activity: Audio Source (Global)%$"><span>$%TAG!Activity: Audio Source (Global)%$</span></button>
+          <button class="item button" style="left:862px;top:1325px;width:380px;height:160px" data-meta='{&quot;tag&quot;: &quot;Activity: Video Source (Global)&quot;, &quot;text&quot;: &quot;$%TAG!Activity: Video Source (Global)%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!Activity: Video Source (Global)%$"><span>$%TAG!Activity: Video Source (Global)%$</span></button>
+          <button class="item button" style="left:21px;top:1746px;width:1200px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room Name / State&quot;, &quot;text&quot;: &quot;Selected Room Name: $%TAG!DSPL - Selected Room Name%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="Selected Room Name: $%TAG!DSPL - Selected Room Name%$"><span>Selected Room Name: $%TAG!DSPL - Selected Room Name%$</span></button>
+          <button class="item button" style="left:15px;top:1589px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Room One&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Room One"><span>Room One</span></button>
+          <button class="item button" style="left:260px;top:1589px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Room Two&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Room Two"><span>Room Two</span></button>
+          <button class="item button" style="left:505px;top:1589px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Room Three&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Room Three"><span>Room Three</span></button>
+          <button class="item button" style="left:750px;top:1589px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Room Four&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Room Four"><span>Room Four</span></button>
+          <button class="item button" style="left:995px;top:1589px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Room Five&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Room Five"><span>Room Five</span></button>
+          <button class="item button" style="left:19px;top:1687px;width:1200px;height:50px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Selected Status&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Selected Status"><span>Selected Status</span></button>
+          <button class="item button" style="left:31px;top:1530px;width:1200px;height:50px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Room Status&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Room Status"><span>Room Status</span></button>
+          <button class="item button" style="left:21px;top:1491px;width:1200px;height:30px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;&quot;, &quot;targets&quot;: [&quot;Macro&quot;]}' aria-label=""><span></span></button>
+          <button class="item button" style="left:21px;top:219px;width:1200px;height:40px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;&quot;, &quot;targets&quot;: [&quot;Macro&quot;]}' aria-label=""><span></span></button>
+          <button class="item button" style="left:19px;top:1893px;width:1200px;height:50px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;Room Currently Turning Off&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="Room Currently Turning Off"><span>Room Currently Turning Off</span></button>
+          <button class="item button" style="left:21px;top:2001px;width:1200px;height:50px" data-meta='{&quot;tag&quot;: &quot;&quot;, &quot;text&quot;: &quot;System Manger Macros&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;Macro&quot;]}' aria-label="System Manger Macros"><span>System Manger Macros</span></button>
+          <button class="item button" style="left:260px;top:1638px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 2 Status&quot;, &quot;text&quot;: &quot;$%TAG!DSPL - Room 2 Status%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!DSPL - Room 2 Status%$"><span>$%TAG!DSPL - Room 2 Status%$</span></button>
+          <button class="item button" style="left:15px;top:1638px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 1 Status&quot;, &quot;text&quot;: &quot;$%TAG!DSPL - Room 1 Status%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!DSPL - Room 1 Status%$"><span>$%TAG!DSPL - Room 1 Status%$</span></button>
+          <button class="item button" style="left:505px;top:1638px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 3 Status&quot;, &quot;text&quot;: &quot;$%TAG!DSPL - Room 3 Status%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!DSPL - Room 3 Status%$"><span>$%TAG!DSPL - Room 3 Status%$</span></button>
+          <button class="item button" style="left:750px;top:1638px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 4 Status&quot;, &quot;text&quot;: &quot;$%TAG!DSPL - Room 4 Status%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!DSPL - Room 4 Status%$"><span>$%TAG!DSPL - Room 4 Status%$</span></button>
+          <button class="item button" style="left:995px;top:1638px;width:230px;height:40px" data-meta='{&quot;tag&quot;: &quot;DSPL - Room 5 Status&quot;, &quot;text&quot;: &quot;$%TAG!DSPL - Room 5 Status%$&quot;, &quot;targets&quot;: [&quot;Text&quot;, &quot;TextVariable&quot;]}' aria-label="$%TAG!DSPL - Room 5 Status%$"><span>$%TAG!DSPL - Room 5 Status%$</span></button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="popup" role="dialog" aria-modal="true" aria-labelledby="popupTitle">
+      <h3 id="popupTitle">Button Test Targets</h3>
+      <div class="muted" id="popupMeta"></div>
+      <div id="targetsContainer"></div>
+      <div class="popup-footer">
+        <button id="closeBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const viewport = document.getElementById('viewport');
+      const canvas = document.getElementById('canvas');
+      const overlay = document.getElementById('overlay');
+      const popupMeta = document.getElementById('popupMeta');
+      const targetsContainer = document.getElementById('targetsContainer');
+      const closeBtn = document.getElementById('closeBtn');
+      const w = 1242;
+      const h = 2440;
+      let currentKey = '';
+      const store = new Map();
+
+      function fit() {
+        const scale = Math.min(viewport.clientWidth / w, viewport.clientHeight / h);
+        canvas.style.transform = `scale(${scale})`;
+      }
+
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+      }
+
+      function rowHtml(target, state) {
+        const status = state?.status || '';
+        const note = state?.note || '';
+        const failDisabled = status !== 'fail' ? 'disabled' : '';
+        return `
+          <div class="target-row" data-target="${esc(target)}">
+            <div class="target-name">${esc(target)}</div>
+            <div class="actions">
+              <button type="button" data-action="pass" class="${status==='pass' ? 'active-pass' : ''}">Pass</button>
+              <button type="button" data-action="fail" class="${status==='fail' ? 'active-fail' : ''}">Fail</button>
+            </div>
+            <textarea class="note" placeholder="Fail note" ${failDisabled}>${esc(note)}</textarea>
+          </div>
+        `;
+      }
+
+      function renderPopup(meta) {
+        const key = `${meta.tag}|${meta.text}`;
+        currentKey = key;
+        const saved = store.get(key) || {};
+        popupMeta.textContent = `Tag: ${meta.tag || '(none)'} | Text: ${meta.text || '(none)'}`;
+        const targets = meta.targets || [];
+        targetsContainer.innerHTML = targets.length
+          ? targets.map(t => rowHtml(t, saved[t])).join('')
+          : '<div class="muted">No true test targets for this item.</div>';
+      }
+
+      function openPopup(meta) {
+        renderPopup(meta);
+        overlay.classList.add('open');
+      }
+
+      function closePopup() {
+        overlay.classList.remove('open');
+      }
+
+      canvas.querySelectorAll('.item').forEach(el => {
+        el.addEventListener('click', () => {
+          const meta = JSON.parse(el.dataset.meta);
+          openPopup(meta);
+        });
+      });
+
+      targetsContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn || !currentKey) return;
+        const row = btn.closest('.target-row');
+        const target = row.dataset.target;
+        const action = btn.dataset.action;
+        const keyData = store.get(currentKey) || {};
+        keyData[target] = keyData[target] || {status:'',note:''};
+        keyData[target].status = action;
+        if (action !== 'fail') keyData[target].note = '';
+        store.set(currentKey, keyData);
+        const meta = popupMeta.textContent;
+        const [tagPart,textPart] = meta.replace('Tag: ','').split(' | Text: ');
+        const targets = [...targetsContainer.querySelectorAll('.target-row')].map(r => r.dataset.target);
+        renderPopup({tag:tagPart==='(none)'?'':tagPart, text:textPart==='(none)'?'':textPart, targets});
+      });
+
+      targetsContainer.addEventListener('input', (e) => {
+        if (!e.target.classList.contains('note') || !currentKey) return;
+        const row = e.target.closest('.target-row');
+        const target = row.dataset.target;
+        const keyData = store.get(currentKey) || {};
+        keyData[target] = keyData[target] || {status:'',note:''};
+        keyData[target].note = e.target.value;
+        store.set(currentKey, keyData);
+      });
+
+      closeBtn.addEventListener('click', closePopup);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) closePopup(); });
+      window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePopup(); });
+
+      fit();
+      window.addEventListener('resize', fit);
+    })();
+  </script>
+</body>
+</html>
