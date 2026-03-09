@@ -73,6 +73,15 @@ Locked on: 2026-03-09
                     "buttonTagName": null,
                     "text": "Now Playing"
                   },
+                  "buttonUI": {
+                    "fontSize": 12,
+                    "coordinates": {
+                      "top": 0,
+                      "left": 0,
+                      "height": 0,
+                      "width": 0
+                    }
+                  },
                   "testTargets": {
                     "text": true,
                     "macro": false,
@@ -94,6 +103,15 @@ Locked on: 2026-03-09
                   "buttonIdentity": {
                     "buttonTagName": "POWER - TV ON",
                     "text": "Power"
+                  },
+                  "buttonUI": {
+                    "fontSize": 7,
+                    "coordinates": {
+                      "top": 0,
+                      "left": 0,
+                      "height": 0,
+                      "width": 0
+                    }
                   },
                   "testTargets": {
                     "text": true,
@@ -128,6 +146,11 @@ Locked on: 2026-03-09
             "pageName": "",
             "pageOrder": 0,
             "pageNumber": 1,
+            "uiItems": [
+              {
+                "buttonId": 0
+              }
+            ],
             "buttons": [
               {
                 "buttonId": 0,
@@ -135,12 +158,6 @@ Locked on: 2026-03-09
                 "identifiers": {
                   "buttonTagId": 0,
                   "text": "Power"
-                },
-                "coordinates": {
-                  "top": 0,
-                  "left": 0,
-                  "height": 0,
-                  "width": 0
                 },
                 "testTargets": {
                   "label": null,
