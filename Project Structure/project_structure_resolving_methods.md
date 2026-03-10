@@ -93,6 +93,14 @@ Viewport extension path:
 #### `buttonIdentity.text`
 - From `LayerButtons.Text`.
 
+#### `buttonIdentity.buttonType`
+Apex-direct method:
+- Derived from `LayerButtons.ButtonStyle`:
+  - `9 -> Slider`
+  - `7 -> Toggle`
+  - `11 -> LevelIndicatorBar`
+  - all other styles -> `null` in user-facing output.
+
 ### `buttonUI`
 #### `buttonUI.fontSize`
 - From button text size field in `.apex` (`RTIDeviceButtonData.TextSize`).
@@ -147,15 +155,23 @@ Apex-direct method (approved refinement):
 - `LayerButtons.DeviceVariableId`
 2. If direct IDs are empty, resolve tag-scoped fallback from `Variables.ButtonTagId = LayerButtons.ButtonTagId` using the same scope-priority order as macro resolution.
 3. Read variable fields from resolved `Variables.VariableId` rows.
-3. Output booleans in user-facing JSON.
+4. Output booleans in user-facing JSON.
 
 Default boolean shape:
+- `Text` from either:
+  - `ButtonTextTags.ButtonId = LayerButtons.ButtonId`, or
+  - resolved `Variables.ButtonText` non-empty
 - `Reversed` from `Variables.ReversedData` non-empty
 - `Inactive` from `Variables.InactiveData` non-empty
 - `Visible` from `Variables.VisibleData` non-empty
-- `Value` currently unresolved in strict file-backed mode
-- `State` currently unresolved in strict file-backed mode
-- `Command` currently unresolved in strict file-backed mode
+- `Value` from object variable token class:
+  - `Variables.ObjectData` suffix `@DDL###` -> `Value = true` (directly file-backed through driver variable type)
+- `State` from object variable token class:
+  - `Variables.ObjectData` suffix `@DDS###` -> `State = true` (directly file-backed), or
+  - for `@DDL###`, paired-state exists when matching `@DDS###` token is present for the same driver/device index
+- `Command` from object control evidence:
+  - `@DDL###` with `LayerButtons.ButtonStyle = 9` and driver dimmer function support (`DriverData.SystemFunctions` includes dimmer command family) -> `Command = true`
+  - `@DDS###` with style `7`/toggle macro steps (`MacroStepsView` function family such as `SwitchCmd:Switch`) -> `Command = true`
 
 Fallback shape when `ObjectData` exists but subtype cannot be resolved:
 - `Reversed`
@@ -168,8 +184,8 @@ Diagnostics variable scope method:
   - `scope` from resolved variable `(RoomId, DeviceId)` using the same mapping used for macro scope
   - `scopeType = "Global | Room | Source | Controller"`
 
-#### `testTargets.textVariable`
-Apex-direct method (approved):
+#### `testTargets.variables.Text`
+Apex-direct method (renamed from prior textVariable target):
 - `true` if either condition is true:
 1. Variable-backed text:
 - linked variable exists and `Variables.ButtonText` is non-empty
@@ -178,11 +194,8 @@ Apex-direct method (approved):
 
 Token-only refinement:
 - when `buttonIdentity.text` is token-only (`$%TAG!...%$`), force:
-  - `textVariable = true`
+  - `variables.Text = true`
   - `text = false`
-
-Note:
-- This is schema-direct and does not rely on parsing `$%TAG!...%$` strings.
 
 Diagnostics text-variable scope method:
 1. If variable-backed text is present (`Variables.ButtonText`), scope is taken from that resolved variable row `(RoomId, DeviceId)`.

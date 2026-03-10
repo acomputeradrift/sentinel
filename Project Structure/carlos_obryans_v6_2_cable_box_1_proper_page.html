@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -12,6 +12,7 @@
       --line: #c8d4df;
       --button-bg: #1c5e87;
       --button-fg: #fff;
+      --accent: #f5a623;
     }
     * { box-sizing: border-box; }
     body {
@@ -26,21 +27,35 @@
       place-items: center;
       padding: 16px;
     }
-    .panel {
-      width: min(calc(var(--canvas-w) + 22px), 96vw);
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 10px;
-      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.1);
+    .stage {
+      display: grid;
+      grid-template-columns: 64px min(var(--canvas-w), 96vw) 64px;
+      grid-template-areas:
+        ". header ."
+        "vprev viewport vnext"
+        ". vind .";
+      align-items: center;
+      gap: 10px;
     }
-    .title {
+    .header-title {
+      grid-area: header;
       margin: 0 0 8px;
+      width: min(var(--canvas-w), 96vw);
       font-size: 14px;
+      font-weight: 700;
       color: #415c70;
+      border: 0;
+      border-radius: 0;
+      padding: 2px 0 4px;
+      min-height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
     }
     .viewport {
-      width: 100%;
+      grid-area: viewport;
+      width: min(var(--canvas-w), 96vw);
       aspect-ratio: calc(480 / 854);
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -63,20 +78,53 @@
       padding: 4px;
       overflow: hidden;
       line-height: 1.1;
-      font-size: calc(var(--btn-fs, 12px) / var(--scale));
-      cursor: pointer;
-      transition: transform 120ms ease;
+      font-size: calc(var(--btn-fs, 10px) / var(--scale));
       background: linear-gradient(180deg, #2372a1, var(--button-bg));
       color: var(--button-fg);
       white-space: pre-line;
+      cursor: pointer;
     }
-    .item:hover { transform: translateY(-1px); }
     .item span { pointer-events: none; }
     .vp-shell {
       position: absolute;
       border: 2px dashed #89a8bf;
       border-radius: 14px;
       background: rgba(169, 193, 210, 0.25);
+    }
+
+    .vp-nav {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      border: 3px solid var(--accent);
+      background: transparent;
+      color: #344b5d;
+      font-size: 20px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+    .vp-nav:disabled { opacity: 0.35; cursor: default; }
+    .vp-prev { grid-area: vprev; justify-self: center; }
+    .vp-next { grid-area: vnext; justify-self: center; }
+    .vp-indicator {
+      grid-area: vind;
+      justify-self: center;
+      display: flex;
+      gap: 8px;
+      min-height: 14px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 1px solid #9fb4c6;
+      background: #e2ebf2;
+    }
+    .dot.active {
+      background: #2d5f81;
+      border-color: #2d5f81;
     }
 
     .overlay {
@@ -115,12 +163,13 @@
 </head>
 <body>
   <div class="wrap">
-    <section class="panel">
-      <p class="title">IST-5 (Global) - Cable Box 1</p>
-      <div class="viewport" id="viewport">
-        <div class="canvas" id="canvas"></div>
-      </div>
-    </section>
+    <div class="stage">
+      <button class="vp-nav vp-prev" id="vpPrevBtn" aria-label="Previous frame">&lsaquo;</button>
+      <p class="header-title" id="headerTitle"></p>
+      <div class="viewport" id="viewport"><div class="canvas" id="canvas"></div></div>
+      <button class="vp-nav vp-next" id="vpNextBtn" aria-label="Next frame">&rsaquo;</button>
+      <div class="vp-indicator" id="vpIndicator"></div>
+    </div>
   </div>
 
   <div class="overlay" id="overlay">
@@ -133,53 +182,38 @@
 
   <script>
     (() => {
-      // JSON-backed payload from project_structure_user_facing_Carlos-OBryans-v6.2-Caseta-Driver.json
-      const page = {
-        pageName: "Cable Box 1",
-        buttonCategories: {
-          screenLabels: [
-            {
-              buttonIdentity: { buttonTagName: null, text: "Cable Box 1" },
-              buttonUI: { fontSize: 18, coordinates: { top: 0, left: 0, height: 60, width: 480 } },
-              testTargets: {
-                text: true,
-                macro: false,
-                variables: { Reversed: false, Inactive: false, Visible: false, Value: false, State: false, Command: false },
-                textVariable: false,
-                pageLink: false
-              }
-            }
-          ],
-          screenButtons: [
-            {
-              buttonIdentity: { buttonTagName: "NAV - Home", text: "" },
-              buttonUI: { fontSize: 10, coordinates: { top: 754, left: 20, height: 100, width: 440 } },
-              testTargets: {
-                text: false,
-                macro: false,
-                variables: { Reversed: false, Inactive: false, Visible: false, Value: false, State: false, Command: false },
-                textVariable: false,
-                pageLink: true
-              }
-            }
-          ],
-          hardButtons: []
-        },
-        viewports: [
-          {
-            viewportIdentity: { viewportButtonId: 156 },
-            viewportUI: { coordinates: { top: 60, left: 20, height: 694, width: 440 } },
-            frames: []
-          }
-        ]
+      // Sentinel UI policy (app_ui_structure.json)
+      const appUi = {
+        "appUiStructureVersion": "1.0.0",
+        "rendering": { "rtiCanvas": { "fitMode": "contain", "maxScale": 1, "minScale": 0.25, "centerCanvas": true } },
+        "header": { "enabled": true, "titleTemplate": "{deviceName} - {pageName}" },
+        "viewportNavigation": { "enabled": true, "labels": { "previous": "Prev", "next": "Next" }, "behavior": { "wrapFrames": false } },
+        "testingPopup": { "enabled": true, "titleTemplate": "{category} Test - {identity}", "showIdentity": true, "showOnlyTrueTargets": true },
+        "buttonPresentation": { "useProjectFontSize": true, "fallbackFontSize": 10, "preserveRtiCoordinates": true },
+        "viewportPresentation": { "showViewportContainer": true, "renderViewportButtonsByDefault": false, "initialFrameStrategy": "defaultFrameId" }
       };
 
-      const canvasW = 480;
-      const canvasH = 854;
+      // Project data (project_structure JSON)
+      const projectData = {"deviceName":"IST-5 (Global)","page":{"pageName":"Cable Box 1","buttonCategories":{"screenLabels":[{"buttonIdentity":{"buttonTagName":null,"text":"Cable Box 1"},"buttonUI":{"fontSize":18,"coordinates":{"top":0,"left":0,"height":60,"width":480}},"testTargets":{"text":true,"macro":false,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}}],"screenButtons":[{"buttonIdentity":{"buttonTagName":"NAV - Home","text":""},"buttonUI":{"fontSize":10,"coordinates":{"top":754,"left":20,"height":100,"width":440}},"testTargets":{"text":false,"macro":false,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":true}}],"hardButtons":[]},"viewports":[{"viewportIdentity":{"viewportButtonId":156},"viewportUI":{"coordinates":{"top":60,"left":20,"height":694,"width":440}},"frames":[{"frameId":0,"buttonCategories":{"screenLabels":[],"screenButtons":[{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 1","text":"SN Pacific\r\n22"},"buttonUI":{"fontSize":12,"coordinates":{"top":30,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 5","text":"SN East\r\n296"},"buttonUI":{"fontSize":12,"coordinates":{"top":214,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 3","text":"SN West\r\n145"},"buttonUI":{"fontSize":12,"coordinates":{"top":122,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 2","text":"TSN 1\r\n23"},"buttonUI":{"fontSize":12,"coordinates":{"top":30,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 6","text":"TSN 3\r\n183"},"buttonUI":{"fontSize":12,"coordinates":{"top":214,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 4","text":"TSN 2\r\n182"},"buttonUI":{"fontSize":12,"coordinates":{"top":122,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 7","text":"SN Ontario\r\n146"},"buttonUI":{"fontSize":12,"coordinates":{"top":306,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 11","text":"SN 1\r\n159"},"buttonUI":{"fontSize":12,"coordinates":{"top":490,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 9","text":"SN 360\r\n54"},"buttonUI":{"fontSize":12,"coordinates":{"top":398,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 8","text":"TSN 4\r\n184"},"buttonUI":{"fontSize":12,"coordinates":{"top":306,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 12","text":"Golf\r\n144"},"buttonUI":{"fontSize":12,"coordinates":{"top":490,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 10","text":"TSN 5\r\n185"},"buttonUI":{"fontSize":12,"coordinates":{"top":398,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 13","text":"CTV News\r\n17"},"buttonUI":{"fontSize":12,"coordinates":{"top":582,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"CABLE - TV Preset 14","text":"CBC News\r\n26"},"buttonUI":{"fontSize":12,"coordinates":{"top":582,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}}],"hardButtons":[]}},{"frameId":1,"buttonCategories":{"screenLabels":[],"screenButtons":[{"buttonIdentity":{"buttonTagName":"Menu","text":"Menu"},"buttonUI":{"fontSize":14,"coordinates":{"top":30,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Guide","text":"Guide"},"buttonUI":{"fontSize":14,"coordinates":{"top":122,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Page Down","text":"Page -"},"buttonUI":{"fontSize":14,"coordinates":{"top":582,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Info","text":"Info"},"buttonUI":{"fontSize":14,"coordinates":{"top":30,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Exit","text":"Exit"},"buttonUI":{"fontSize":14,"coordinates":{"top":122,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Page Up","text":"Page +"},"buttonUI":{"fontSize":14,"coordinates":{"top":582,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Up","text":""},"buttonUI":{"fontSize":10,"coordinates":{"top":243,"left":145,"height":75,"width":150}},"testTargets":{"text":false,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Left","text":""},"buttonUI":{"fontSize":10,"coordinates":{"top":318,"left":70,"height":150,"width":75}},"testTargets":{"text":false,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"OK","text":""},"buttonUI":{"fontSize":10,"coordinates":{"top":318,"left":145,"height":150,"width":150}},"testTargets":{"text":false,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Right","text":""},"buttonUI":{"fontSize":10,"coordinates":{"top":318,"left":295,"height":150,"width":75}},"testTargets":{"text":false,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Down","text":""},"buttonUI":{"fontSize":10,"coordinates":{"top":468,"left":145,"height":75,"width":150}},"testTargets":{"text":false,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}}],"hardButtons":[]}},{"frameId":2,"buttonCategories":{"screenLabels":[],"screenButtons":[{"buttonIdentity":{"buttonTagName":"1","text":"1"},"buttonUI":{"fontSize":13,"coordinates":{"top":214,"left":10,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"2","text":"2"},"buttonUI":{"fontSize":13,"coordinates":{"top":214,"left":153,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"3","text":"3"},"buttonUI":{"fontSize":13,"coordinates":{"top":214,"left":297,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"6","text":"6"},"buttonUI":{"fontSize":13,"coordinates":{"top":306,"left":297,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"9","text":"9"},"buttonUI":{"fontSize":13,"coordinates":{"top":398,"left":297,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Enter","text":"Enter"},"buttonUI":{"fontSize":13,"coordinates":{"top":490,"left":297,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"5","text":"5"},"buttonUI":{"fontSize":13,"coordinates":{"top":306,"left":153,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"8","text":"8"},"buttonUI":{"fontSize":13,"coordinates":{"top":398,"left":153,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"0","text":"0"},"buttonUI":{"fontSize":13,"coordinates":{"top":490,"left":153,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"4","text":"4"},"buttonUI":{"fontSize":13,"coordinates":{"top":306,"left":10,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"7","text":"7"},"buttonUI":{"fontSize":13,"coordinates":{"top":398,"left":10,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Exit","text":"Exit"},"buttonUI":{"fontSize":13,"coordinates":{"top":490,"left":10,"height":82,"width":133}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Channel Down","text":"Channel -"},"buttonUI":{"fontSize":14,"coordinates":{"top":582,"left":10,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}},{"buttonIdentity":{"buttonTagName":"Channel Up","text":"Channel +"},"buttonUI":{"fontSize":14,"coordinates":{"top":582,"left":225,"height":82,"width":205}},"testTargets":{"text":true,"macro":true,"variables":{"Reversed":false,"Inactive":false,"Visible":false,"Value":false,"State":false,"Command":false},"textVariable":false,"pageLink":false}}],"hardButtons":[]}}]}]},"deviceUI":{"portrait":{"supported":true,"resolution":{"width":480,"height":854}},"landscape":{"supported":true,"resolution":{"width":854,"height":480}}}};
+
+      const canvasW = Number(projectData.deviceUI.portrait.resolution.width || 480);
+      const canvasH = Number(projectData.deviceUI.portrait.resolution.height || 854);
+      document.documentElement.style.setProperty("--canvas-w", `${canvasW}px`);
+      document.documentElement.style.setProperty("--canvas-h", `${canvasH}px`);
+
       const varsOff = { Reversed: false, Inactive: false, Visible: false, Value: false, State: false, Command: false };
+      const page = projectData.page;
+      const viewportModel = page.viewports?.[0] || null;
+      const frameCount = viewportModel ? viewportModel.frames.length : 0;
+      const defaultFrameId = viewportModel && frameCount ? viewportModel.frames[0].frameId : 0;
+      let activeFrameId = defaultFrameId;
 
       const viewportEl = document.getElementById("viewport");
       const canvas = document.getElementById("canvas");
+      const headerTitle = document.getElementById("headerTitle");
+      const vpPrevBtn = document.getElementById("vpPrevBtn");
+      const vpNextBtn = document.getElementById("vpNextBtn");
+      const vpIndicator = document.getElementById("vpIndicator");
       const overlay = document.getElementById("overlay");
       const pTitle = document.getElementById("pTitle");
       const pRows = document.getElementById("pRows");
@@ -189,6 +223,10 @@
       let currentMeta = null;
 
       const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
+
+      function fillTemplate(template, map) {
+        return String(template).replace(/\{(\w+)\}/g, (_, k) => (map[k] ?? ""));
+      }
 
       function displayText(identity) {
         const txt = String(identity?.text || "");
@@ -213,16 +251,17 @@
         return out;
       }
 
-      function addButton(btn, categoryTitle) {
+      function addButton(btn, categoryTitle, offsetLeft = 0, offsetTop = 0) {
         const ui = btn.buttonUI || {};
         const c = ui.coordinates || {};
         const el = document.createElement("button");
         el.className = "item";
-        el.style.left = `${Number(c.left || 0)}px`;
-        el.style.top = `${Number(c.top || 0)}px`;
+        el.style.left = `${Number(c.left || 0) + Number(offsetLeft || 0)}px`;
+        el.style.top = `${Number(c.top || 0) + Number(offsetTop || 0)}px`;
         el.style.width = `${Number(c.width || 0)}px`;
         el.style.height = `${Number(c.height || 0)}px`;
-        el.style.setProperty("--btn-fs", `${Number(ui.fontSize || 10)}px`);
+        const fs = appUi.buttonPresentation.useProjectFontSize ? Number(ui.fontSize || appUi.buttonPresentation.fallbackFontSize) : Number(appUi.buttonPresentation.fallbackFontSize);
+        el.style.setProperty("--btn-fs", `${fs}px`);
 
         const meta = {
           categoryTitle,
@@ -230,8 +269,8 @@
           text: String(btn.buttonIdentity?.text || ""),
           targets: targetsFor(btn)
         };
-
         el.dataset.meta = JSON.stringify(meta);
+
         const span = document.createElement("span");
         span.textContent = displayText(btn.buttonIdentity);
         el.appendChild(span);
@@ -239,28 +278,90 @@
         canvas.appendChild(el);
       }
 
-      function renderPage() {
+      function renderViewportShell() {
+        if (!appUi.viewportPresentation.showViewportContainer || !viewportModel) return;
+        const c = viewportModel.viewportUI?.coordinates || {};
+        const box = document.createElement("div");
+        box.className = "vp-shell";
+        box.style.left = `${Number(c.left || 0)}px`;
+        box.style.top = `${Number(c.top || 0)}px`;
+        box.style.width = `${Number(c.width || 0)}px`;
+        box.style.height = `${Number(c.height || 0)}px`;
+        canvas.appendChild(box);
+      }
+
+      function renderViewportFrameButtons() {
+        if (!viewportModel) return;
+        const frame = viewportModel.frames.find((f) => f.frameId === activeFrameId) || viewportModel.frames[0];
+        if (!frame) return;
+        const vp = viewportModel.viewportUI?.coordinates || {};
+        const categories = frame.buttonCategories || {};
+        (categories.screenLabels || []).forEach((b) => addButton(b, "Screen Label", Number(vp.left || 0), Number(vp.top || 0)));
+        (categories.screenButtons || []).forEach((b) => addButton(b, "Screen Button", Number(vp.left || 0), Number(vp.top || 0)));
+        (categories.hardButtons || []).forEach((b) => addButton(b, "Hard Button", Number(vp.left || 0), Number(vp.top || 0)));
+      }
+
+      function renderPageInsideRtiBox() {
         canvas.innerHTML = "";
         const cats = page.buttonCategories || {};
         (cats.screenLabels || []).forEach((b) => addButton(b, "Screen Label"));
         (cats.screenButtons || []).forEach((b) => addButton(b, "Screen Button"));
         (cats.hardButtons || []).forEach((b) => addButton(b, "Hard Button"));
+        renderViewportShell();
+        renderViewportFrameButtons();
+      }
 
-        // Intentionally render only the viewport container (no viewport frame buttons).
-        (page.viewports || []).forEach((vp) => {
-          const c = vp.viewportUI?.coordinates || {};
-          const box = document.createElement("div");
-          box.className = "vp-shell";
-          box.style.left = `${Number(c.left || 0)}px`;
-          box.style.top = `${Number(c.top || 0)}px`;
-          box.style.width = `${Number(c.width || 0)}px`;
-          box.style.height = `${Number(c.height || 0)}px`;
-          canvas.appendChild(box);
+      function setHeader() {
+        if (!appUi.header.enabled) {
+          headerTitle.style.display = "none";
+          return;
+        }
+        headerTitle.textContent = fillTemplate(appUi.header.titleTemplate, { deviceName: projectData.deviceName, pageName: page.pageName });
+      }
+
+      function setNavState() {
+        if (!appUi.viewportNavigation.enabled || !viewportModel) {
+          vpPrevBtn.style.display = "none";
+          vpNextBtn.style.display = "none";
+          vpIndicator.style.display = "none";
+          return;
+        }
+
+        const idx = viewportModel.frames.findIndex((f) => f.frameId === activeFrameId);
+        const last = viewportModel.frames.length - 1;
+        vpPrevBtn.disabled = !appUi.viewportNavigation.behavior.wrapFrames && idx <= 0;
+        vpNextBtn.disabled = !appUi.viewportNavigation.behavior.wrapFrames && idx >= last;
+
+        vpIndicator.innerHTML = "";
+        viewportModel.frames.forEach((f) => {
+          const dot = document.createElement("span");
+          dot.className = `dot${f.frameId === activeFrameId ? " active" : ""}`;
+          vpIndicator.appendChild(dot);
         });
       }
 
+      function stepFrame(direction) {
+        if (!viewportModel) return;
+        const idx = viewportModel.frames.findIndex((f) => f.frameId === activeFrameId);
+        if (idx < 0) return;
+        const next = idx + direction;
+        if (appUi.viewportNavigation.behavior.wrapFrames) {
+          const count = viewportModel.frames.length;
+          activeFrameId = viewportModel.frames[(next + count) % count].frameId;
+        } else {
+          if (next < 0 || next >= viewportModel.frames.length) return;
+          activeFrameId = viewportModel.frames[next].frameId;
+        }
+        renderPageInsideRtiBox();
+        setNavState();
+      }
+
       function fitCanvas() {
-        const scale = Math.min(viewportEl.clientWidth / canvasW, viewportEl.clientHeight / canvasH);
+        let scale = Math.min(viewportEl.clientWidth / canvasW, viewportEl.clientHeight / canvasH);
+        if (appUi.rendering.rtiCanvas.fitMode === "contain") {
+          scale = Math.min(scale, Number(appUi.rendering.rtiCanvas.maxScale || 1));
+          scale = Math.max(scale, Number(appUi.rendering.rtiCanvas.minScale || 0.25));
+        }
         canvas.style.transform = `scale(${scale})`;
         document.documentElement.style.setProperty("--scale", String(scale || 1));
       }
@@ -276,12 +377,13 @@
         const key = `${currentMeta.tag}|${currentMeta.text}`;
         const saved = state.get(key) || {};
         const identity = String(currentMeta.text || currentMeta.tag || "").trim();
-        pTitle.textContent = `${currentMeta.categoryTitle} Test${identity ? ` - ${identity}` : ""}`;
+        pTitle.textContent = fillTemplate(appUi.testingPopup.titleTemplate, { category: currentMeta.categoryTitle, identity });
         const rows = (currentMeta.targets || []).map((t) => rowHtml(t, t, saved[t]));
         pRows.innerHTML = rows.length ? rows.join("") : '<div class="group"><div class="name">No true test targets.</div></div>';
       }
 
       function openPopup(meta) {
+        if (!appUi.testingPopup.enabled) return;
         currentMeta = meta;
         currentKey = `${meta.tag}|${meta.text}`;
         renderPopup();
@@ -316,14 +418,19 @@
         state.set(currentKey, recs);
       });
 
+      vpPrevBtn.addEventListener("click", () => stepFrame(-1));
+      vpNextBtn.addEventListener("click", () => stepFrame(1));
       pClose.addEventListener("click", closePopup);
       overlay.addEventListener("click", (e) => { if (e.target === overlay) closePopup(); });
       window.addEventListener("keydown", (e) => { if (e.key === "Escape") closePopup(); });
 
-      renderPage();
+      setHeader();
+      renderPageInsideRtiBox();
+      setNavState();
       fitCanvas();
       window.addEventListener("resize", fitCanvas);
     })();
   </script>
 </body>
 </html>
+

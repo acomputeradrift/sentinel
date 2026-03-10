@@ -87,7 +87,8 @@ Locked on: 2026-03-09
                 {
                   "buttonIdentity": {
                     "buttonTagName": null,
-                    "text": "Now Playing"
+                    "text": "Now Playing",
+                    "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
                   },
                   "buttonUI": {
                     "fontSize": 12,
@@ -102,6 +103,7 @@ Locked on: 2026-03-09
                     "text": true,
                     "macro": false,
                     "variables": {
+                      "Text": false,
                       "Reversed": false,
                       "Inactive": false,
                       "Visible": false,
@@ -109,7 +111,6 @@ Locked on: 2026-03-09
                       "State": false,
                       "Command": false
                     },
-                    "textVariable": false,
                     "pageLink": false
                   }
                 }
@@ -118,7 +119,8 @@ Locked on: 2026-03-09
                 {
                   "buttonIdentity": {
                     "buttonTagName": "POWER - TV ON",
-                    "text": "Power"
+                    "text": "Power",
+                    "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
                   },
                   "buttonUI": {
                     "fontSize": 7,
@@ -133,6 +135,7 @@ Locked on: 2026-03-09
                     "text": true,
                     "macro": true,
                     "variables": {
+                      "Text": false,
                       "Reversed": true,
                       "Inactive": true,
                       "Visible": false,
@@ -140,7 +143,6 @@ Locked on: 2026-03-09
                       "State": false,
                       "Command": false
                     },
-                    "textVariable": false,
                     "pageLink": false
                   }
                 }
@@ -220,14 +222,40 @@ Locked on: 2026-03-09
                       "resolvedName": null
                     }
                   ],
-                  "textVariable": {
-                    "scope": "Global",
-                    "scopeType": "Global | Room | Source | Controller",
-                    "rawButtonText": null,
-                    "resolvedName": null,
-                    "format": {
-                      "falseLabel": null,
-                      "trueLabel": null
+                  "variableDetails": {
+                    "Text": {
+                      "enabled": false,
+                      "rawButtonText": null,
+                      "resolvedName": null
+                    },
+                    "Reversed": {
+                      "enabled": false,
+                      "source": null
+                    },
+                    "Inactive": {
+                      "enabled": false,
+                      "source": null
+                    },
+                    "Visible": {
+                      "enabled": false,
+                      "source": null
+                    },
+                    "Value": {
+                      "enabled": false,
+                      "source": "ObjectData",
+                      "objectRef": null
+                    },
+                    "State": {
+                      "enabled": false,
+                      "source": "ObjectData | pairedObjectData",
+                      "objectRef": null
+                    },
+                    "Command": {
+                      "enabled": false,
+                      "source": "driverFunction+controlType | macroFunction",
+                      "controlType": null,
+                      "driverFunction": null,
+                      "pairedMacroFunction": null
                     }
                   },
                   "pageLink": {
@@ -276,14 +304,40 @@ Locked on: 2026-03-09
                             "isEmpty": false
                           },
                           "variables": [],
-                          "textVariable": {
-                            "scope": "Global",
-                            "scopeType": "Global | Room | Source | Controller",
-                            "rawButtonText": null,
-                            "resolvedName": null,
-                            "format": {
-                              "falseLabel": null,
-                              "trueLabel": null
+                          "variableDetails": {
+                            "Text": {
+                              "enabled": false,
+                              "rawButtonText": null,
+                              "resolvedName": null
+                            },
+                            "Reversed": {
+                              "enabled": false,
+                              "source": null
+                            },
+                            "Inactive": {
+                              "enabled": false,
+                              "source": null
+                            },
+                            "Visible": {
+                              "enabled": false,
+                              "source": null
+                            },
+                            "Value": {
+                              "enabled": false,
+                              "source": "ObjectData",
+                              "objectRef": null
+                            },
+                            "State": {
+                              "enabled": false,
+                              "source": "ObjectData | pairedObjectData",
+                              "objectRef": null
+                            },
+                            "Command": {
+                              "enabled": false,
+                              "source": "driverFunction+controlType | macroFunction",
+                              "controlType": null,
+                              "driverFunction": null,
+                              "pairedMacroFunction": null
                             }
                           },
                           "pageLink": {

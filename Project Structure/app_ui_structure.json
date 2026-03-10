@@ -1,0 +1,72 @@
+{
+  "appUiStructureVersion": "1.0.0",
+  "rendering": {
+    "rtiCanvas": {
+      "fitMode": "contain",
+      "maxScale": 1,
+      "minScale": 0.25,
+      "centerCanvas": true
+    },
+    "layers": {
+      "outsideRtiRenderBox": [
+        "header",
+        "globalNavigation",
+        "viewportNavigation"
+      ],
+      "insideRtiRenderBox": [
+        "projectButtons",
+        "projectViewports"
+      ]
+    }
+  },
+  "header": {
+    "enabled": true,
+    "titleTemplate": "{deviceName} - {pageName}",
+    "position": "top"
+  },
+  "globalNavigation": {
+    "enabled": true,
+    "position": "outside-canvas",
+    "showPageControls": true
+  },
+  "viewportNavigation": {
+    "enabled": true,
+    "placement": {
+      "previous": "left-center-outside-canvas",
+      "next": "right-center-outside-canvas",
+      "frameIndicator": "bottom-outside-canvas"
+    },
+    "indicatorStyle": "dots",
+    "labels": {
+      "previous": "Prev",
+      "next": "Next"
+    },
+    "behavior": {
+      "wrapFrames": false
+    }
+  },
+  "testingPopup": {
+    "enabled": true,
+    "titleTemplate": "{category} Test - {identity}",
+    "includeButtonTypeInTitle": true,
+    "showIdentity": true,
+    "variableLabelTemplate": "Variable - {variableType}",
+    "targetGroupStyle": "single-group-per-target",
+    "showOnlyTrueTargets": true,
+    "failNoteRequiredOnFail": false
+  },
+  "buttonPresentation": {
+    "useProjectFontSize": true,
+    "fallbackFontSize": 10,
+    "preserveRtiCoordinates": true
+  },
+  "viewportPresentation": {
+    "showViewportContainer": true,
+    "renderViewportButtonsByDefault": false,
+    "initialFrameStrategy": "defaultFrameId"
+  },
+  "state": {
+    "persistTestResults": true,
+    "persistViewportFrameSelection": true
+  }
+}
