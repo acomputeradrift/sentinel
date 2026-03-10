@@ -63,6 +63,22 @@ Locked on: 2026-03-09
     {
       "userFacing": {
         "displayName": "iPhone",
+        "deviceUI": {
+          "portrait": {
+            "supported": true,
+            "resolution": {
+              "width": 480,
+              "height": 854
+            }
+          },
+          "landscape": {
+            "supported": true,
+            "resolution": {
+              "width": 854,
+              "height": 480
+            }
+          }
+        },
         "pages": [
           {
             "pageName": "",
@@ -130,7 +146,32 @@ Locked on: 2026-03-09
                 }
               ],
               "hardButtons": []
-            }
+            },
+            "viewports": [
+              {
+                "viewportIdentity": {
+                  "viewportButtonId": 0
+                },
+                "viewportUI": {
+                  "coordinates": {
+                    "top": 0,
+                    "left": 0,
+                    "height": 0,
+                    "width": 0
+                  }
+                },
+                "frames": [
+                  {
+                    "frameId": 0,
+                    "buttonCategories": {
+                      "screenLabels": [],
+                      "screenButtons": [],
+                      "hardButtons": []
+                    }
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
@@ -195,6 +236,66 @@ Locked on: 2026-03-09
                     "targetPageName": null
                   }
                 }
+              }
+            ],
+            "viewports": [
+              {
+                "viewportButtonId": 0,
+                "source": {
+                  "viewPortVerticalScroll": 0,
+                  "visibleOrientations": 1
+                },
+                "layerLinks": [
+                  {
+                    "layerId": 0,
+                    "sharedLayerId": 0,
+                    "layerOrder": 0,
+                    "sourceId": 0,
+                    "roomId": 0
+                  }
+                ],
+                "frames": [
+                  {
+                    "frameId": 0,
+                    "buttons": [
+                      {
+                        "buttonId": 0,
+                        "buttonTagName": "POWER - TV ON",
+                        "identifiers": {
+                          "buttonTagId": 0,
+                          "text": "Power"
+                        },
+                        "testTargets": {
+                          "label": null,
+                          "macro": {
+                            "scope": "Global",
+                            "scopeType": "Global | Room | Source | Controller",
+                            "globalMacroId": null,
+                            "deviceMacroId": null,
+                            "resolvedCommand": null,
+                            "isEmpty": false
+                          },
+                          "variables": [],
+                          "textVariable": {
+                            "scope": "Global",
+                            "scopeType": "Global | Room | Source | Controller",
+                            "rawButtonText": null,
+                            "resolvedName": null,
+                            "format": {
+                              "falseLabel": null,
+                              "trueLabel": null
+                            }
+                          },
+                          "pageLink": {
+                            "pageLinkId": null,
+                            "targetPageId": null,
+                            "targetPageName": null
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }

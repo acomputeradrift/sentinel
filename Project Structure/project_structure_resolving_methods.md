@@ -51,6 +51,18 @@ Apex-direct method:
 3. Use `Devices.DisplayName`.
 4. Non-cloned controller selection uses `COALESCE(CloneRTIAddress, -1) <= 0`.
 
+### `devices[].userFacing.deviceUI`
+#### `deviceUI.portrait.supported`
+#### `deviceUI.landscape.supported`
+#### `deviceUI.portrait.resolution`
+#### `deviceUI.landscape.resolution`
+Apex-direct method:
+1. For each controller RTI address, read page layers:
+- `RTIDevicePageData (RTIAddress=controller) -> Layers (PageId) -> SharedLayers (SharedLayerId)`.
+2. Use `SharedLayers.ScreenPortraitWidth/ScreenPortraitHeight` for portrait resolution.
+3. Use `SharedLayers.ScreenLandscapeWidth/ScreenLandscapeHeight` for landscape resolution.
+4. `supported = true` when width and height are both non-zero for that orientation.
+
 ## Pages
 ### `devices[].userFacing.pages[].pageName`
 Apex-direct method:
@@ -67,6 +79,12 @@ Apex-direct method:
 Apex-direct method:
 1. For each page, read `Layers` where `Layers.PageId = RTIDevicePageData.PageId`.
 2. Join `LayerButtons` on `LayerButtons.LayerId = Layers.LayerId`.
+
+Viewport extension path:
+1. Identify viewport container buttons on the page by `ButtonId`.
+2. Read child layers from `Layers` where `Layers.ViewPortButtonId = viewportButtonId`.
+3. Join child-layer buttons from `RTIDeviceButtonData` by `SharedLayerId`.
+4. Group child buttons by `FrameNumber`.
 
 ### `buttonIdentity`
 #### `buttonIdentity.buttonTagName`
@@ -199,6 +217,34 @@ Approved designation used for this file set:
 
 Observed evidence in approved sample:
 - T2i designated physical/remote keys are represented with zero-size button geometry on a dedicated layer.
+
+## Viewports
+### `devices[].userFacing.pages[].viewports[]`
+Apex-direct method:
+1. On each page, find candidate viewport container button IDs.
+2. A button is treated as a viewport when at least one `Layers` row exists with:
+- `Layers.ViewPortButtonId = ButtonId`.
+3. User-facing viewport fields:
+- `viewportIdentity.viewportButtonId` from container `ButtonId`
+- `viewportUI.coordinates` from container button geometry.
+
+### `devices[].userFacing.pages[].viewports[].frames[]`
+Apex-direct method:
+1. Read child buttons from viewport-linked layers.
+2. Group by `RTIDeviceButtonData.FrameNumber` as `frameId`.
+3. Apply the same user-facing button extraction rules per frame:
+- `buttonIdentity`
+- `buttonUI`
+- `testTargets`
+- category split (`screenLabels`, `screenButtons`, `hardButtons`).
+
+### `devices[].diagnostics.pages[].viewports[]`
+Apex-direct method:
+1. `viewportButtonId` from container button.
+2. `source.viewPortVerticalScroll` and `source.visibleOrientations` from container button row.
+3. `layerLinks[]` from layers where `ViewPortButtonId = viewportButtonId`:
+- `layerId`, `sharedLayerId`, `layerOrder`, `sourceId`, `roomId`.
+4. `frames[]` from child buttons grouped by `FrameNumber` with full diagnostics `buttons[]` payload.
 
 ## Diagnostics
 - Diagnostics are now populated for devices/pages/buttons in the current extractor output.
