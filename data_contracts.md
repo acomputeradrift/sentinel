@@ -1,24 +1,26 @@
 # Data Contracts
 
 ## Allowed Inputs
-<<<EXAMPLE OPTIONS:
-1. Raw diagnostic logs captured verbatim.
-2. Read-only project reference files.
-3. Explicit user-selected configuration values.
->>>
+1. An RTI project `.apex` file used as the source for extraction.
+2. A template `project_structure.json` that defines the required generated project-data format for any extracted RTI project.
+3. A template `app_ui_structure.json` that defines how generated project data is turned into the event testing and device testing interfaces.
+4. User testing actions, including pass, fail, timestamps, and required fail notes for failed results.
+5. Updated `.apex` files for regeneration within the same commissioning session.
 
 ## Allowed Outputs
-<<<EXAMPLE OPTIONS:
-1. Human-readable logs with explicit mappings.
-2. Export files that exactly match on-screen views.
-3. Reports listing known and unknown entities.
->>>
+1. A project-specific JSON file generated from the uploaded `.apex` file and shaped according to the `project_structure.json` template.
+2. Event testing and device testing interfaces generated from the project-specific JSON file together with the `app_ui_structure.json` template.
+3. Generated project data that includes source metadata, events, and devices derived from the uploaded `.apex` file.
+4. User-facing device data that includes display names, device UI information, pages, button categories, viewports, and test targets.
+5. Diagnostics data that includes event details, device/page context, button identity, viewport structure, and troubleshooting-relevant target details.
+6. Persistent test-result records that preserve append-only commissioning history across regeneration.
 
 ## Forbidden Data Behavior
-<<<EXAMPLE OPTIONS:
-1. Guessing missing values.
-2. Inferring relationships.
-3. Collapsing unknowns into defaults.
->>>
+1. Writing inferred or guessed data into generated project JSON when that data is not directly supported by the source `.apex` file.
+2. Producing project-specific JSON that breaks the structure defined by the `project_structure.json` template.
+3. Producing generated interfaces that do not follow the rendering and behavior rules defined by `app_ui_structure.json`.
+4. Accepting or storing a failed test result without the notes required to make that failure useful for troubleshooting.
+5. Generating outputs that lose traceability back to the uploaded `.apex` file and the generation session that produced them.
+6. Deleting, replacing, or collapsing prior historical test results when new results are recorded.
 
 ---
