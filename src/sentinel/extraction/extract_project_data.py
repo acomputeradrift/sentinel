@@ -5,12 +5,12 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.common.event_logger import EventLogger
-from scripts.extractor.extractor_core import ExtractContext, extract_project_data
+from sentinel.extraction.extractor_core import ExtractContext, extract_project_data
+from sentinel.logging.event_logger import EventLogger
 
 
 SCRIPT_VERSION = "0.1.0"

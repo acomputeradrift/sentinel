@@ -4,12 +4,12 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.common.event_logger import EventLogger
-from scripts.generator.render_core import load_json, render_html, page_slug
+from sentinel.generation.render_core import load_json, page_slug, render_html
+from sentinel.logging.event_logger import EventLogger
 
 
 SCRIPT_VERSION = "0.1.0"

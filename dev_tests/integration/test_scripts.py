@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
-EXTRACT = ROOT / "scripts" / "extract_project_data.py"
-GENERATE = ROOT / "scripts" / "generate_html.py"
+ROOT = Path(__file__).resolve().parents[2]
+EXTRACT = ROOT / "src" / "sentinel" / "extraction" / "extract_project_data.py"
+GENERATE = ROOT / "src" / "sentinel" / "generation" / "generate_html.py"
 
 
 def create_test_apex(path: Path) -> None:
@@ -386,8 +386,8 @@ class ScriptContractsTest(unittest.TestCase):
 
     def test_real_carlos_lights_all_buttons_exact_coordinates(self):
         root = ROOT
-        project_path = root / "Carlos OBryans v6.3.1 (tag cleanup)_project_data.json"
-        html_path = root / "Carlos OBryans v6.3.1 (tag cleanup)_project_data__page-2-lights.html"
+        project_path = root / "archives" / "generated-samples" / "Carlos OBryans v6.3.1 (tag cleanup)_project_data.json"
+        html_path = root / "archives" / "generated-samples" / "Carlos OBryans v6.3.1 (tag cleanup)_project_data__page-2-lights.html"
         if not project_path.exists() or not html_path.exists():
             self.skipTest("Real Carlos generated files not present")
 

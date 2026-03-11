@@ -1,0 +1,6 @@
+Assets/
+.tmp_apex_env/
+temp/
+output/
+**/__pycache__/
+.DS_Store
