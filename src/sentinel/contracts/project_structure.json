@@ -106,7 +106,10 @@
                       "State": false,
                       "Command": false
                     },
-                    "pageLink": false
+                    "pageLink": {
+                      "enabled": false,
+                      "targetPageId": null
+                    }
                   }
                 }
               ],
@@ -138,7 +141,10 @@
                       "State": false,
                       "Command": false
                     },
-                    "pageLink": false
+                    "pageLink": {
+                      "enabled": false,
+                      "targetPageId": null
+                    }
                   }
                 }
               ],
@@ -353,4 +359,3 @@
     }
   ]
 }
-

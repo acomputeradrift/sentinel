@@ -59,7 +59,7 @@ def _has_non_empty_macro(cur: sqlite3.Cursor, macro_id: int) -> bool:
     return any(step_type not in (3, 15) for step_type in rows)
 
 
-def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id: dict[int, str], variables_by_tag: dict[int, list[sqlite3.Row]], button_text_tag_ids: set[int], macros_by_tag: dict[int, list[sqlite3.Row]], page_links_by_tag: set[int]) -> tuple[dict[str, Any], dict[str, Any], bool]:
+def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id: dict[int, str], variables_by_tag: dict[int, list[sqlite3.Row]], button_text_tag_ids: set[int], macros_by_tag: dict[int, list[sqlite3.Row]], page_links_by_tag: dict[int, sqlite3.Row]) -> tuple[dict[str, Any], dict[str, Any], bool]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
     text = button_row["Text"] or ""
@@ -86,7 +86,10 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
     macro_non_empty = any(_has_non_empty_macro(cur, int(m["MacroId"])) for m in tag_macro_rows)
     has_macro_target = bool(tag_name) and macro_non_empty
 
-    page_link_enabled = tag_id in page_links_by_tag if tag_id > 0 else False
+    page_link_row = page_links_by_tag.get(tag_id) if tag_id > 0 else None
+    page_link_enabled = page_link_row is not None
+    target_page_id = int(page_link_row["PageId"]) if page_link_row and page_link_row["PageId"] is not None else None
+    page_link_id = int(page_link_row["PageLinkId"]) if page_link_row and page_link_row["PageLinkId"] is not None else None
 
     is_hard = int(button_row["ButtonHeight"] or 0) == 0 and int(button_row["ButtonWidth"] or 0) == 0
 
@@ -117,7 +120,10 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
                 "State": state_enabled,
                 "Command": command_enabled,
             },
-            "pageLink": page_link_enabled,
+            "pageLink": {
+                "enabled": page_link_enabled,
+                "targetPageId": target_page_id,
+            },
         },
     }
 
@@ -143,7 +149,7 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
                 "State": {"enabled": state_enabled, "source": "ObjectData" if state_enabled else None, "objectRef": next((t for t in object_tokens if "@DDS" in t), None)},
                 "Command": {"enabled": command_enabled, "source": "driverFunction+controlType" if command_enabled else None, "controlType": button_type, "driverFunction": None, "pairedMacroFunction": None},
             },
-            "pageLink": {"pageLinkId": 1 if page_link_enabled else None, "targetPageId": None, "targetPageName": None},
+            "pageLink": {"pageLinkId": page_link_id, "targetPageId": target_page_id, "targetPageName": None},
         },
     }
 
@@ -183,8 +189,10 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
     for row in cur.fetchall():
         macros_by_tag[int(row["ButtonTagId"] or -1)].append(row)
 
-    cur.execute("select ButtonTagId from PageLinks")
-    page_links_by_tag = {int(r[0]) for r in cur.fetchall() if r[0] is not None}
+    cur.execute("select PageLinkId, ButtonTagId, PageId from PageLinks where ButtonTagId is not null")
+    page_links_by_tag: dict[int, sqlite3.Row] = {}
+    for row in cur.fetchall():
+        page_links_by_tag[int(row["ButtonTagId"])] = row
     cur.execute("select distinct ViewPortButtonId from Layers where ViewPortButtonId is not null")
     viewport_button_ids = {int(r[0]) for r in cur.fetchall() if r[0] is not None}
 
@@ -387,7 +395,9 @@ def _resolve_viewport_frames(cur: sqlite3.Cursor, viewport_button_id: int, tag_n
 def _is_screen_label(button: dict[str, Any]) -> bool:
     t = button["testTargets"]
     has_display = bool(t["text"] or t["variables"]["Text"])
-    return bool(not t["pageLink"] and not t["macro"] and has_display and button["buttonIdentity"].get("buttonType") is None)
+    page_link = t.get("pageLink", {})
+    page_link_enabled = bool(page_link.get("enabled")) if isinstance(page_link, dict) else bool(page_link)
+    return bool(not page_link_enabled and not t["macro"] and has_display and button["buttonIdentity"].get("buttonType") is None)
 
 
 def json_load(path: Path) -> Any:

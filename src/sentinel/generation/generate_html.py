@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sentinel.generation.render_core import load_json, page_slug, render_html
+from sentinel.generation.render_core import load_json, page_filename, render_html
 from sentinel.logging.event_logger import EventLogger
 
 
@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--app-ui", required=True, help="Path to app_ui_structure.json")
     p.add_argument("--out-dir", default=".", help="Output directory")
     p.add_argument("--device-index", type=int, default=0)
-    p.add_argument("--page-index", type=int, default=0)
+    p.add_argument("--page-index", type=int)
     return p.parse_args()
 
 
@@ -47,16 +47,17 @@ def main() -> int:
         app_ui = load_json(app_ui_path)
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        html = render_html(project_data, app_ui, device_index=args.device_index, page_index=args.page_index)
-        page_name = (
-            project_data["devices"][args.device_index]["userFacing"]["pages"][args.page_index].get("pageName", "")
-        )
-        slug = page_slug(str(page_name), args.page_index)
-        out_path = out_dir / f"{project_data_path.stem}__page-{args.page_index}-{slug}.html"
-
-        log.info(f"Writing html output: {out_path}")
-        out_path.write_text(html, encoding="utf-8")
-        log.success(f"Generation complete: {out_path.name}")
+        pages = project_data["devices"][args.device_index]["userFacing"]["pages"]
+        page_indexes = [args.page_index] if args.page_index is not None else list(range(len(pages)))
+        written = 0
+        for page_index in page_indexes:
+            html = render_html(project_data, app_ui, project_stem=project_data_path.stem, device_index=args.device_index, page_index=page_index)
+            page_name = pages[page_index].get("pageName", "")
+            out_path = out_dir / page_filename(project_data_path.stem, str(page_name), page_index)
+            log.info(f"Writing html output: {out_path}")
+            out_path.write_text(html, encoding="utf-8")
+            written += 1
+        log.success(f"Generation complete: wrote {written} html file(s)")
         return 0
     except Exception as exc:  # pragma: no cover
         log.fail(f"Generation failed: {exc}")

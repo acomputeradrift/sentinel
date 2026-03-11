@@ -1,40 +1,63 @@
 {
   "appUiStructureVersion": "1.0.0",
-  "rendering": {
-    "rtiCanvas": {
+  "layout": {
+    "appCanvas": {
+      "mode": "fit-to-content",
+      "centerOnPage": true
+    },
+    "rtiDeviceCanvas": {
       "fitMode": "contain",
       "maxScale": 1,
       "minScale": 0.25,
-      "centerCanvas": true
-    },
-    "layers": {
-      "outsideRtiRenderBox": [
-        "header",
-        "globalNavigation",
-        "viewportNavigation"
-      ],
-      "insideRtiRenderBox": [
-        "projectButtons",
-        "projectViewports"
-      ]
+      "centerWithinAppCanvas": true
     }
+  },
+  "uiHierarchy": {
+    "appCanvas": [
+      "rtiDeviceCanvas",
+      "appUI"
+    ],
+    "rtiDeviceCanvas": [
+      "rtiDeviceUI"
+    ],
+    "rtiDeviceUI": [
+      "projectButtons",
+      "projectViewports"
+    ],
+    "appUI": [
+      "header",
+      "appNavigation",
+      "viewportNavigation"
+    ]
   },
   "header": {
     "enabled": true,
     "titleTemplate": "{deviceName} - {pageName}",
-    "position": "top"
+    "placement": "top"
   },
-  "globalNavigation": {
+  "appNavigation": {
     "enabled": true,
-    "position": "outside-canvas",
-    "showPageControls": true
+    "placement": "canvas-adjacent",
+    "showPageControls": true,
+    "pageLinks": {
+      "enabled": true,
+      "showLinkAffordanceOnHover": true,
+      "iconPlacement": "right-center-inside-button",
+      "iconStyle": "inline-svg",
+      "iconSize": 16,
+      "iconPaddingRight": 8,
+      "hoverActivationArea": {
+        "width": 28,
+        "fullButtonHeight": true
+      }
+    }
   },
   "viewportNavigation": {
     "enabled": true,
     "placement": {
-      "previous": "left-center-outside-canvas",
-      "next": "right-center-outside-canvas",
-      "frameIndicator": "bottom-outside-canvas"
+      "previous": "canvas-left-center",
+      "next": "canvas-right-center",
+      "frameIndicator": "canvas-bottom-center"
     },
     "indicatorStyle": "dots",
     "labels": {
@@ -53,7 +76,7 @@
     "variableLabelTemplate": "Variable - {variableType}",
     "targetGroupStyle": "single-group-per-target",
     "showOnlyTrueTargets": true,
-    "failNoteRequiredOnFail": false
+    "failNoteRequiredOnFail": true
   },
   "buttonPresentation": {
     "useProjectFontSize": true,
