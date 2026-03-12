@@ -80,6 +80,10 @@
       "defaultPercent": 100,
       "maxPercent": 200,
       "stepPercent": 10
+    },
+    "scrollbars": {
+      "showOnHover": true,
+      "thickness": 10
     }
   },
   "viewportNavigation": {

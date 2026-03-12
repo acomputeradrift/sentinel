@@ -276,7 +276,14 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .left-controls{{left:0;display:flex;align-items:center;justify-content:center;}}
 .right-controls{{right:0;display:flex;align-items:center;justify-content:center;}}
 .header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;width:100%;height:100%;}}
-.rti-canvas{{position:absolute;box-sizing:border-box;z-index:1;}}
+.rti-canvas{{position:absolute;box-sizing:border-box;z-index:1;overflow:auto;scrollbar-width:none;scrollbar-gutter:stable overlay;}}
+.rti-canvas.scroll-hover:hover{{scrollbar-width:thin;}}
+.rti-canvas::-webkit-scrollbar{{width:10px;height:10px;}}
+.rti-canvas:not(.scroll-hover)::-webkit-scrollbar-thumb{{background:transparent;}}
+.rti-canvas:not(.scroll-hover)::-webkit-scrollbar-track{{background:transparent;}}
+.rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
+.rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
+.rti-content{{position:relative;min-width:100%;min-height:100%;}}
 .rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:none;z-index:1;box-sizing:border-box;}}
 .btn-wrap{{position:absolute;z-index:2;}}
@@ -309,7 +316,7 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 <div class='app-ui-controls right-controls' id='rightControls'>{nav_next}</div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'>{vp_dot_rows}</div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
-<div class='rti-canvas' id='rtiCanvas'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div></div></div>
+<div class='rti-canvas' id='rtiCanvas'><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div></div></div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
@@ -317,8 +324,16 @@ const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
 const VIEWPORT_NAV={json.dumps(app_ui.get("viewportNavigation", {}))};
 const ZOOM_CONTROLS={json.dumps(app_ui.get("zoomControls", {}))};
+const ZOOM_DEFAULT={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("defaultPercent", 100))};
+const ZOOM_MAX={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 200))};
+const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const VP_FRAMES={vp_frames_json};
+let currentZoomPercent=ZOOM_DEFAULT;
+let currentTotalScale=1;
+let currentDeviceLeft=0;
+let currentDeviceTop=0;
+let currentViewportIndexes=VP_FRAMES.map(()=>0);
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
@@ -326,10 +341,24 @@ document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=
  const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
  pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
  rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='width:100%;min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
- ov.classList.add('open');
+ov.classList.add('open');
 }}));
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
+function applyViewportState() {{
+ if (!(VP_FRAMES.length && VP_FRAMES[0].length)) return;
+ const dots=[...document.querySelectorAll('#vpIndicator .dot')];
+ VP_FRAMES.forEach((frames, vpIndex)=>{{
+   if (!frames.length) return;
+   const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, frames.length-1));
+   currentViewportIndexes[vpIndex]=currentIndex;
+   const frame=frames[currentIndex];
+   document.querySelectorAll(`.vp-btn[data-vp="${{vpIndex}}"]`).forEach(el=>{{
+     el.style.display=(Number(el.dataset.frame)===frame)?'':'none';
+   }});
+   if (vpIndex===0) dots.forEach((d,i)=>d.classList.toggle('active',i===currentIndex));
+ }});
+}}
 function applyRtiLayout() {{
  const appCanvas=document.getElementById('appCanvas');
  const topControls=document.getElementById('topControls');
@@ -338,8 +367,9 @@ function applyRtiLayout() {{
  const rightControls=document.getElementById('rightControls');
  const zoomControls=document.getElementById('zoomControls');
  const rtiCanvas=document.getElementById('rtiCanvas');
+ const rtiContent=document.getElementById('rtiContent');
  const rtiDeviceCanvas=document.getElementById('rtiDeviceCanvas');
- if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !zoomControls || !rtiCanvas || !rtiDeviceCanvas) return;
+ if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !zoomControls || !rtiCanvas || !rtiContent || !rtiDeviceCanvas) return;
 
  const controls={{
    top:Number(APP_UI_CONTROLS.top||0),
@@ -374,19 +404,39 @@ function applyRtiLayout() {{
    scale=Math.min(scale,1);
  }}
  scale=Math.min(maxScale, Math.max(minScale, scale));
- const fittedWidth=SOURCE_DEVICE_SIZE.width*scale;
- const fittedHeight=SOURCE_DEVICE_SIZE.height*scale;
- const offsetLeft=(rtiCanvasWidth-fittedWidth)/2;
- const offsetTop=(rtiCanvasHeight-fittedHeight)/2;
+ const totalScale=scale*(currentZoomPercent/100);
+ const fittedWidth=SOURCE_DEVICE_SIZE.width*totalScale;
+ const fittedHeight=SOURCE_DEVICE_SIZE.height*totalScale;
+ const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
+ const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
+ const offsetLeft=(contentWidth-fittedWidth)/2;
+ const offsetTop=(contentHeight-fittedHeight)/2;
  const navEdgeOffset=Number(VIEWPORT_NAV.placement?.edgeOffset||36);
+ rtiContent.style.width=`${{contentWidth}}px`;
+ rtiContent.style.height=`${{contentHeight}}px`;
  rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
  rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
  rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
  rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
+ currentTotalScale=totalScale;
+ currentDeviceLeft=offsetLeft;
+ currentDeviceTop=offsetTop;
+ rtiCanvas.classList.toggle('scroll-hover', Boolean(ZOOM_CONTROLS.scrollbars?.showOnHover) && currentZoomPercent > 100);
 
- const leftArrowLeft=Math.max((controls.left+offsetLeft)-navEdgeOffset-44,0);
- const rightArrowLeft=Math.max((controls.left+offsetLeft+fittedWidth)+navEdgeOffset,0);
- const arrowTop=Math.max((controls.top+offsetTop)+((fittedHeight-44)/2),0);
+  let viewportLeft=controls.left+currentDeviceLeft-rtiCanvas.scrollLeft;
+  let viewportRight=viewportLeft+fittedWidth;
+  let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;
+  let viewportBottom=viewportTop+fittedHeight;
+  const firstViewport=document.querySelector('.vp-box');
+  if (firstViewport) {{
+    viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
+    viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
+    viewportRight=viewportLeft+(Number(firstViewport.dataset.width||0)*totalScale);
+    viewportBottom=viewportTop+(Number(firstViewport.dataset.height||0)*totalScale);
+  }}
+  const leftArrowLeft=Math.max(viewportLeft-navEdgeOffset-44,0);
+  const rightArrowLeft=Math.max(viewportRight+navEdgeOffset,0);
+  const arrowTop=Math.max(viewportTop+(((viewportBottom-viewportTop)-44)/2),0);
  leftControls.style.left=`${{leftArrowLeft}}px`;
  leftControls.style.width='44px';
  leftControls.style.height='44px';
@@ -406,13 +456,15 @@ function applyRtiLayout() {{
    const zoomLeft = Math.max((controls.left - zoomWidth) / 2, 0);
    zoomControls.style.left = `${{zoomLeft}}px`;
    zoomControls.style.top = `${{controls.top}}px`;
+   const zoomReset = zoomControls.querySelector('.zoom-reset');
+   if (zoomReset) zoomReset.textContent = `${{currentZoomPercent}}%`;
  }}
 
  document.querySelectorAll('.vp-box').forEach(el=>{{
-   const left=Number(el.dataset.left||0)*scale;
-   const top=Number(el.dataset.top||0)*scale;
-   const width=Number(el.dataset.width||0)*scale;
-   const height=Number(el.dataset.height||0)*scale;
+   const left=Number(el.dataset.left||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
+   const width=Number(el.dataset.width||0)*totalScale;
+   const height=Number(el.dataset.height||0)*totalScale;
    el.style.left=`${{left}}px`;
    el.style.top=`${{top}}px`;
    el.style.width=`${{width}}px`;
@@ -420,58 +472,79 @@ function applyRtiLayout() {{
  }});
 
  document.querySelectorAll('.btn-wrap').forEach(el=>{{
-   const left=Number(el.dataset.left||0)*scale;
-   const top=Number(el.dataset.top||0)*scale;
-   const width=Number(el.dataset.width||0)*scale;
-   const height=Number(el.dataset.height||0)*scale;
+   const left=Number(el.dataset.left||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
+   const width=Number(el.dataset.width||0)*totalScale;
+   const height=Number(el.dataset.height||0)*totalScale;
    const visible=String(el.dataset.visible||'1')==='1';
    el.style.left=`${{left}}px`;
    el.style.top=`${{top}}px`;
    el.style.width=`${{width}}px`;
    el.style.height=`${{height}}px`;
-   el.style.display=visible?'':'none';
+   if (!el.classList.contains('vp-btn')) {{
+     el.style.display=visible?'':'none';
+   }}
    const button=el.querySelector('.test-btn');
    if (button) {{
      const sourceFont=Number(el.dataset.fontSize||APP_UI.buttonPresentation?.fallbackFontSize||10);
      if (APP_UI.buttonPresentation?.scaleRtiDerivedFontSizes) {{
-       button.style.fontSize=`${{Math.max(1, sourceFont*scale)}}px`;
+       button.style.fontSize=`${{Math.max(1, sourceFont*totalScale)}}px`;
      }} else {{
        button.style.fontSize=`${{sourceFont}}px`;
      }}
-     button.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+     button.style.borderRadius=`${{Math.max(2, 10*totalScale)}}px`;
    }}
    const linkHit=el.querySelector('.page-link-hit');
    if (linkHit) {{
-     const hitWidth=Number(linkHit.dataset.hitWidth||28)*scale;
-     const hitPadding=Number(linkHit.dataset.hitPadding||8)*scale;
+     const hitWidth=Number(linkHit.dataset.hitWidth||28)*totalScale;
+     const hitPadding=Number(linkHit.dataset.hitPadding||8)*totalScale;
      linkHit.style.width=`${{hitWidth}}px`;
      linkHit.style.paddingRight=`${{hitPadding}}px`;
+     linkHit.style.right='0';
      const icon=linkHit.querySelector('.page-link-icon');
      if (icon) {{
-       const iconSize=Number(icon.dataset.iconSize||16)*scale;
+       const iconSize=Number(icon.dataset.iconSize||16)*totalScale;
        icon.style.width=`${{iconSize}}px`;
        icon.style.height=`${{iconSize}}px`;
        icon.style.fontSize=`${{iconSize}}px`;
      }}
    }}
  }});
+ applyViewportState();
+}}
+function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
+function updateZoom(nextPercent){{
+ const rtiCanvas=document.getElementById('rtiCanvas');
+ if (!rtiCanvas) return;
+ const oldScale=currentTotalScale||1;
+ const oldLeft=currentDeviceLeft||0;
+ const oldTop=currentDeviceTop||0;
+ const centerX=(rtiCanvas.scrollLeft+(rtiCanvas.clientWidth/2)-oldLeft)/oldScale;
+ const centerY=(rtiCanvas.scrollTop+(rtiCanvas.clientHeight/2)-oldTop)/oldScale;
+ currentZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
+ applyRtiLayout();
+ const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
+ const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
+ rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(centerX*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
+ rtiCanvas.scrollTop=clamp((currentDeviceTop+(centerY*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
 }}
 window.addEventListener('resize', applyRtiLayout);
 applyRtiLayout();
+const rtiCanvasEl=document.getElementById('rtiCanvas');
+if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
+const zoomDec=document.querySelector('.zoom-dec');
+const zoomInc=document.querySelector('.zoom-inc');
+const zoomReset=document.querySelector('.zoom-reset');
+if (zoomDec) zoomDec.addEventListener('click',()=>updateZoom(currentZoomPercent-ZOOM_STEP));
+if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(currentZoomPercent+ZOOM_STEP));
+if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
 if (VP_FRAMES.length && VP_FRAMES[0].length) {{
- let vp0 = 0;
- const prev=document.getElementById('vpPrev');
- const next=document.getElementById('vpNext');
- const dots=[...document.querySelectorAll('#vpIndicator .dot')];
- const apply=()=>{{
-   const frame=VP_FRAMES[0][vp0];
-   document.querySelectorAll('.vp-btn[data-vp=\"0\"]').forEach(el=>{{el.style.display=(Number(el.dataset.frame)===frame)?'':'none';}});
-   dots.forEach((d,i)=>d.classList.toggle('active',i===vp0));
- }};
- if (prev && next) {{
-   prev.addEventListener('click',()=>{{ if(vp0>0){{vp0--;apply();}} }});
-   next.addEventListener('click',()=>{{ if(vp0<VP_FRAMES[0].length-1){{vp0++;apply();}} }});
- }}
- apply();
+  const prev=document.getElementById('vpPrev');
+  const next=document.getElementById('vpNext');
+  if (prev && next) {{
+    prev.addEventListener('click',()=>{{ if(currentViewportIndexes[0]>0){{currentViewportIndexes[0]--;applyViewportState();}} }});
+    next.addEventListener('click',()=>{{ if(currentViewportIndexes[0]<VP_FRAMES[0].length-1){{currentViewportIndexes[0]++;applyViewportState();}} }});
+  }}
+  applyViewportState();
 }}
 </script></body></html>"""

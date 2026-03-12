@@ -54,6 +54,7 @@ def sample_app_ui() -> dict:
             "placement": {"anchor": "left-control-space", "alignTopToRtiCanvas": True, "centerHorizontallyInControlSpace": True},
             "buttons": {"decrease": "-", "reset": "100%", "increase": "+"},
             "zoom": {"defaultPercent": 100, "maxPercent": 200, "stepPercent": 10},
+            "scrollbars": {"showOnHover": True, "thickness": 10},
         },
         "viewportNavigation": {
             "enabled": False,
@@ -220,8 +221,16 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("leftControls.style.width", html)
             self.assertIn("rightControls.style.width", html)
             self.assertIn("const navEdgeOffset=Number(VIEWPORT_NAV.placement?.edgeOffset||36);", html)
-            self.assertIn("const leftArrowLeft=Math.max((controls.left+offsetLeft)-navEdgeOffset-44,0);", html)
-            self.assertIn("const rightArrowLeft=Math.max((controls.left+offsetLeft+fittedWidth)+navEdgeOffset,0);", html)
+            self.assertIn("let viewportLeft=controls.left+currentDeviceLeft-rtiCanvas.scrollLeft;", html)
+            self.assertIn("let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;", html)
+            self.assertIn("const firstViewport=document.querySelector('.vp-box');", html)
+            self.assertIn("viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);", html)
+            self.assertIn("viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);", html)
+            self.assertIn("viewportRight=viewportLeft+(Number(firstViewport.dataset.width||0)*totalScale);", html)
+            self.assertIn("viewportBottom=viewportTop+(Number(firstViewport.dataset.height||0)*totalScale);", html)
+            self.assertIn("const leftArrowLeft=Math.max(viewportLeft-navEdgeOffset-44,0);", html)
+            self.assertIn("const rightArrowLeft=Math.max(viewportRight+navEdgeOffset,0);", html)
+            self.assertIn("const arrowTop=Math.max(viewportTop+(((viewportBottom-viewportTop)-44)/2),0);", html)
             self.assertIn(".app-ui-controls{position:absolute;box-sizing:border-box;z-index:20;}", html)
             self.assertIn(".vp-nav{width:44px;height:44px", html)
             self.assertIn("id='zoomControls'", html)
@@ -229,6 +238,17 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("class='zoom-btn zoom-reset'", html)
             self.assertIn("class='zoom-btn zoom-inc'", html)
             self.assertIn("<div class='zoom-controls' id='zoomControls'>", html)
+            self.assertIn("const ZOOM_DEFAULT=100;", html)
+            self.assertIn("const ZOOM_MAX=200;", html)
+            self.assertIn("const ZOOM_STEP=10;", html)
+            self.assertIn("let currentViewportIndexes=VP_FRAMES.map(()=>0);", html)
+            self.assertIn("function applyViewportState()", html)
+            self.assertIn("if (!el.classList.contains('vp-btn')) {", html)
+            self.assertIn("applyViewportState();", html)
+            self.assertIn("id='rtiContent'", html)
+            self.assertIn("rtiCanvas.classList.toggle('scroll-hover'", html)
+            self.assertIn("scrollbar-gutter:stable overlay;", html)
+            self.assertIn("rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {passive:true});", html)
 
     def test_generate_writes_all_pages_when_page_index_not_given(self):
         with tempfile.TemporaryDirectory() as td:
