@@ -49,8 +49,14 @@ def sample_app_ui() -> dict:
                 "hoverActivationArea": {"width": 28, "fullButtonHeight": True},
             },
         },
-            "viewportNavigation": {
-                "enabled": False,
+        "zoomControls": {
+            "enabled": True,
+            "placement": {"anchor": "left-control-space", "alignTopToRtiCanvas": True, "centerHorizontallyInControlSpace": True},
+            "buttons": {"decrease": "-", "reset": "100%", "increase": "+"},
+            "zoom": {"defaultPercent": 100, "maxPercent": 200, "stepPercent": 10},
+        },
+        "viewportNavigation": {
+            "enabled": False,
             "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center", "edgeOffset": 36},
             "indicatorStyle": "dots",
             "labels": {"previous": "Prev", "next": "Next"},
@@ -205,6 +211,7 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("const APP_UI_CONTROLS=", html)
             self.assertIn("const RTI_DEVICE_LAYOUT=", html)
             self.assertIn("const VIEWPORT_NAV=", html)
+            self.assertIn("const ZOOM_CONTROLS=", html)
             self.assertIn("const widthScale=rtiCanvasWidth/SOURCE_DEVICE_SIZE.width;", html)
             self.assertIn("const heightScale=rtiCanvasHeight/SOURCE_DEVICE_SIZE.height;", html)
             self.assertIn("let scale=Math.min(widthScale,heightScale);", html)
@@ -217,6 +224,11 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("const rightArrowLeft=Math.max((controls.left+offsetLeft+fittedWidth)+navEdgeOffset,0);", html)
             self.assertIn(".app-ui-controls{position:absolute;box-sizing:border-box;z-index:20;}", html)
             self.assertIn(".vp-nav{width:44px;height:44px", html)
+            self.assertIn("id='zoomControls'", html)
+            self.assertIn("class='zoom-btn zoom-dec'", html)
+            self.assertIn("class='zoom-btn zoom-reset'", html)
+            self.assertIn("class='zoom-btn zoom-inc'", html)
+            self.assertIn("<div class='zoom-controls' id='zoomControls'>", html)
 
     def test_generate_writes_all_pages_when_page_index_not_given(self):
         with tempfile.TemporaryDirectory() as td:

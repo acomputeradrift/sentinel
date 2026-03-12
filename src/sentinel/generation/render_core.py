@@ -286,6 +286,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;position:relative;z-index:21;}}
+.zoom-controls{{position:absolute;display:flex;gap:8px;z-index:21;}}
+.zoom-btn{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
+.zoom-btn.zoom-reset{{min-width:72px;width:auto;padding:0 12px;font-size:14px;}}
 .vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;position:relative;z-index:21;}}
 .dot{{width:10px;height:10px;border-radius:50%;border:1px solid #9fb4c6;background:#e2ebf2;}}
 .dot.active{{background:#2d5f81;border-color:#2d5f81;}}
@@ -305,6 +308,7 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 <div class='app-ui-controls left-controls' id='leftControls'>{nav_prev}</div>
 <div class='app-ui-controls right-controls' id='rightControls'>{nav_next}</div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'>{vp_dot_rows}</div>
+<div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
 <div class='rti-canvas' id='rtiCanvas'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div></div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
@@ -312,6 +316,7 @@ const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
 const VIEWPORT_NAV={json.dumps(app_ui.get("viewportNavigation", {}))};
+const ZOOM_CONTROLS={json.dumps(app_ui.get("zoomControls", {}))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const VP_FRAMES={vp_frames_json};
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
@@ -331,9 +336,10 @@ function applyRtiLayout() {{
  const bottomControls=document.getElementById('bottomControls');
  const leftControls=document.getElementById('leftControls');
  const rightControls=document.getElementById('rightControls');
+ const zoomControls=document.getElementById('zoomControls');
  const rtiCanvas=document.getElementById('rtiCanvas');
  const rtiDeviceCanvas=document.getElementById('rtiDeviceCanvas');
- if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !rtiCanvas || !rtiDeviceCanvas) return;
+ if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !zoomControls || !rtiCanvas || !rtiDeviceCanvas) return;
 
  const controls={{
    top:Number(APP_UI_CONTROLS.top||0),
@@ -394,6 +400,13 @@ function applyRtiLayout() {{
  rightControls.style.top=`${{arrowTop}}px`;
  rightControls.style.bottom='auto';
  rightControls.style.right='auto';
+
+ if (ZOOM_CONTROLS.enabled) {{
+   const zoomWidth = zoomControls.offsetWidth || 176;
+   const zoomLeft = Math.max((controls.left - zoomWidth) / 2, 0);
+   zoomControls.style.left = `${{zoomLeft}}px`;
+   zoomControls.style.top = `${{controls.top}}px`;
+ }}
 
  document.querySelectorAll('.vp-box').forEach(el=>{{
    const left=Number(el.dataset.left||0)*scale;

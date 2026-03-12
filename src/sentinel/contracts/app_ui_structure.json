@@ -64,6 +64,24 @@
       }
     }
   },
+  "zoomControls": {
+    "enabled": true,
+    "placement": {
+      "anchor": "left-control-space",
+      "alignTopToRtiCanvas": true,
+      "centerHorizontallyInControlSpace": true
+    },
+    "buttons": {
+      "decrease": "-",
+      "reset": "100%",
+      "increase": "+"
+    },
+    "zoom": {
+      "defaultPercent": 100,
+      "maxPercent": 200,
+      "stepPercent": 10
+    }
+  },
   "viewportNavigation": {
     "enabled": true,
     "placement": {
