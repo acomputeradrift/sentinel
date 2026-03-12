@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate html from <filename>_project_data.json and app_ui_structure.json")
     p.add_argument("--project-data", required=True, help="Path to <filename>_project_data.json")
     p.add_argument("--app-ui", required=True, help="Path to app_ui_structure.json")
-    p.add_argument("--out-dir", default=".", help="Output directory")
+    p.add_argument("--out-dir", help="Output directory. Defaults to the project data file directory.")
     p.add_argument("--device-index", type=int, default=0)
     p.add_argument("--page-index", type=int)
     return p.parse_args()
@@ -30,7 +30,7 @@ def main() -> int:
     args = parse_args()
     project_data_path = Path(args.project_data).resolve()
     app_ui_path = Path(args.app_ui).resolve()
-    out_dir = Path(args.out_dir).resolve()
+    out_dir = Path(args.out_dir).resolve() if args.out_dir else project_data_path.parent
 
     try:
         log.info(f"Generator start version={SCRIPT_VERSION}")

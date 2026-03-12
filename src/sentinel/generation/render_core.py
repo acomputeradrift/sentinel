@@ -204,6 +204,8 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
     page_targets = _page_target_map(project_data, project_stem, device_index)
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
+    viewport_fit = app_ui.get("layout", {}).get("rtiDeviceCanvas", {}).get("viewportFit", {})
+    viewport_fit_enabled = bool(viewport_fit.get("enabled", False))
 
     page_button_rows: list[str] = []
     for btn, label, off_top, off_left in _iter_page_buttons(page):
@@ -250,6 +252,7 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
     nav_next = "<button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button>" if vp_nav_enabled else ""
 
     app_json = json.dumps(app_ui)
+    viewport_fit_json = json.dumps(viewport_fit)
     vp_frames_json = json.dumps(vp_frames)
     viewport_boxes = "".join(
         [
@@ -263,10 +266,12 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2\">
 <style>
 body{{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;}}
-.wrap{{min-height:100vh;display:grid;place-items:center;padding:16px;overflow:auto;}}
-.stage{{display:grid;grid-template-columns:56px {w}px 56px;grid-template-areas:'. header .' 'vprev canvas vnext' '. vind .';gap:10px;align-items:center;justify-items:center;}}
-.header{{font-weight:700;font-size:20px;text-align:center;grid-area:header;}}
-.canvas{{grid-area:canvas;position:relative;width:{w}px;height:{h}px;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;}}
+.wrap{{min-height:100vh;display:grid;justify-items:center;align-content:start;padding:16px;overflow:auto;box-sizing:border-box;}}
+.stage{{display:grid;grid-template-columns:56px auto 56px;grid-template-areas:'. header .' 'vprev canvas vnext' '. vind .';gap:10px;align-items:start;justify-items:center;}}
+.header{{font-weight:700;font-size:20px;text-align:center;grid-area:header;min-height:48px;display:flex;align-items:center;justify-content:center;}}
+.canvas-shell{{grid-area:canvas;position:relative;width:{w}px;height:{h}px;display:flex;align-items:flex-start;justify-content:center;overflow:visible;}}
+.canvas{{position:relative;width:{w}px;height:{h}px;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;}}
+.canvas-content{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;transform-origin:top left;}}
 .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:none;z-index:1;box-sizing:border-box;}}
 .btn-wrap{{position:absolute;z-index:2;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
@@ -275,8 +280,8 @@ body{{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;}}
-.vp-prev{{grid-area:vprev;}}
-.vp-next{{grid-area:vnext;}}
+.vp-prev{{grid-area:vprev;align-self:center;}}
+.vp-next{{grid-area:vnext;align-self:center;}}
 .vp-indicator{{grid-area:vind;display:flex;gap:8px;min-height:14px;margin-top:2px;}}
 .dot{{width:10px;height:10px;border-radius:50%;border:1px solid #9fb4c6;background:#e2ebf2;}}
 .dot.active{{background:#2d5f81;border-color:#2d5f81;}}
@@ -291,11 +296,13 @@ body{{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#
 textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;}}
 #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
 </style></head>
-<body><div class='wrap'><div class='stage'><div class='header'>{header}</div>{nav_prev}<div class='canvas'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div>{nav_next}{vp_dot_rows}</div></div>
+<body><div class='wrap'><div class='stage'><div class='header'>{header}</div>{nav_prev}<div class='canvas-shell' id='canvasShell'><div class='canvas' id='canvas'><div class='canvas-content' id='canvasContent'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div></div></div>{nav_next}{vp_dot_rows}</div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
+const VIEWPORT_FIT={viewport_fit_json};
 const VP_FRAMES={vp_frames_json};
+const VIEWPORT_FIT_ENABLED={str(viewport_fit_enabled).lower()};
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
@@ -307,6 +314,35 @@ document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=
 }}));
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
+if (VIEWPORT_FIT_ENABLED) {{
+ const shell=document.getElementById('canvasShell');
+ const canvas=document.getElementById('canvas');
+ const content=document.getElementById('canvasContent');
+ const applyCanvasScale=()=>{{
+   if (!shell || !canvas || !content) return;
+   const viewportPadding=Number(VIEWPORT_FIT.viewportPadding||0);
+   const topBottomSpacing=Number(VIEWPORT_FIT.topBottomSpacing||0);
+   const headerHeight=Number(VIEWPORT_FIT.headerHeight||0);
+   const interAreaGap=Number(VIEWPORT_FIT.interAreaGap||0);
+   const sideNavigationWidth=Number(VIEWPORT_FIT.sideNavigationWidth||0);
+   const hasViewportNavigation=Boolean(document.getElementById('vpPrev') && document.getElementById('vpNext'));
+   const reservedVertical=(viewportPadding*2)+(topBottomSpacing*2)+headerHeight+interAreaGap;
+   const reservedHorizontal=(viewportPadding*2)+(hasViewportNavigation ? ((sideNavigationWidth*2)+(interAreaGap*2)) : 0);
+   const availH=Math.max(window.innerHeight-reservedVertical, 1);
+   const availW=Math.max(window.innerWidth-reservedHorizontal, 1);
+   const rawScale=Math.min(availW/{w}, availH/{h});
+   const maxScale=Number(APP_UI.layout?.rtiDeviceCanvas?.maxScale ?? 1);
+   const minScale=Number(APP_UI.layout?.rtiDeviceCanvas?.minScale ?? 0.25);
+   const scale=Math.min(maxScale, Math.max(minScale, rawScale));
+   shell.style.width=`${{{w} * scale}}px`;
+   shell.style.height=`${{{h} * scale}}px`;
+   canvas.style.width=`${{{w} * scale}}px`;
+   canvas.style.height=`${{{h} * scale}}px`;
+   content.style.transform=`scale(${{scale}})`;
+ }};
+ window.addEventListener('resize', applyCanvasScale);
+ applyCanvasScale();
+}}
 if (VP_FRAMES.length && VP_FRAMES[0].length) {{
  let vp0 = 0;
  const prev=document.getElementById('vpPrev');

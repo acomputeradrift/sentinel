@@ -9,7 +9,16 @@
       "fitMode": "contain",
       "maxScale": 1,
       "minScale": 0.25,
-      "centerWithinAppCanvas": true
+      "centerWithinAppCanvas": true,
+      "viewportFit": {
+        "enabled": true,
+        "viewportPadding": 16,
+        "topBottomSpacing": 16,
+        "headerHeight": 48,
+        "viewportIndicatorHeight": 24,
+        "interAreaGap": 10,
+        "sideNavigationWidth": 56
+      }
     }
   },
   "uiHierarchy": {

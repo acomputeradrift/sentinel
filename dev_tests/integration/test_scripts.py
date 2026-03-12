@@ -17,7 +17,21 @@ def sample_app_ui() -> dict:
         "appUiStructureVersion": "1.0.0",
         "layout": {
             "appCanvas": {"mode": "fit-to-content", "centerOnPage": True},
-            "rtiDeviceCanvas": {"fitMode": "contain", "maxScale": 1, "minScale": 0.25, "centerWithinAppCanvas": True},
+            "rtiDeviceCanvas": {
+                "fitMode": "contain",
+                "maxScale": 1,
+                "minScale": 0.25,
+                "centerWithinAppCanvas": True,
+                "viewportFit": {
+                    "enabled": True,
+                    "viewportPadding": 16,
+                    "topBottomSpacing": 16,
+                    "headerHeight": 48,
+                    "viewportIndicatorHeight": 24,
+                    "interAreaGap": 10,
+                    "sideNavigationWidth": 56,
+                },
+            },
         },
         "uiHierarchy": {
             "appCanvas": ["rtiDeviceCanvas", "appUI"],
@@ -193,6 +207,12 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("IST-5 (Global) - Lights", html)
             self.assertIn("Variable - Value", html)
             self.assertIn(">Btn</button>", html)
+            self.assertIn("const VIEWPORT_FIT_ENABLED=true", html)
+            self.assertIn("const VIEWPORT_FIT=", html)
+            self.assertIn("const rawScale=Math.min(availW/480, availH/854)", html)
+            self.assertIn("id='canvasContent'", html)
+            self.assertIn(".vp-prev{grid-area:vprev;align-self:center;}", html)
+            self.assertIn("const reservedVertical=(viewportPadding*2)+(topBottomSpacing*2)+headerHeight+interAreaGap;", html)
 
     def test_generate_writes_all_pages_when_page_index_not_given(self):
         with tempfile.TemporaryDirectory() as td:
@@ -224,6 +244,35 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
             self.assertTrue((td_path / "sample_project_data__page-0-home.html").exists())
             self.assertTrue((td_path / "sample_project_data__page-1-lights.html").exists())
+
+    def test_generate_defaults_output_to_project_data_directory(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            project_data = {
+                "devices": [
+                    {
+                        "userFacing": {
+                            "displayName": "IST-5 (Global)",
+                            "deviceUI": {
+                                "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                                "landscape": {"supported": False, "resolution": {"width": 854, "height": 480}},
+                            },
+                            "pages": [
+                                {"pageName": "Home", "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []}, "viewports": []}
+                            ],
+                        },
+                        "diagnostics": {"deviceId": 1, "pages": [{"pageId": 101, "pageName": "Home"}]},
+                    }
+                ]
+            }
+            project_path = td_path / "sample_project_data.json"
+            ui_path = td_path / "app_ui_structure.json"
+            project_path.write_text(json.dumps(project_data), encoding="utf-8")
+            ui_path.write_text(json.dumps(sample_app_ui()), encoding="utf-8")
+
+            run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
+            self.assertTrue((td_path / "sample_project_data__page-0-home.html").exists())
 
     def test_generate_includes_page_link_overlay_and_target(self):
         with tempfile.TemporaryDirectory() as td:
