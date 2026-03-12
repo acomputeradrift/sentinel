@@ -17,7 +17,7 @@ def sample_app_ui() -> dict:
         "appUiStructureVersion": "1.0.0",
         "layout": {
             "appCanvas": {"mode": "browser-viewport"},
-            "appUIControls": {"top": 90, "bottom": 32, "left": 300, "right": 300},
+            "appUIControls": {"top": 52, "bottom": 32, "left": 300, "right": 300},
             "rtiCanvas": {"deriveFromAppCanvas": True},
             "rtiDeviceCanvas": {
                 "fitMode": "contain",
@@ -49,9 +49,9 @@ def sample_app_ui() -> dict:
                 "hoverActivationArea": {"width": 28, "fullButtonHeight": True},
             },
         },
-        "viewportNavigation": {
-            "enabled": False,
-            "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center"},
+            "viewportNavigation": {
+                "enabled": False,
+            "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center", "edgeOffset": 36},
             "indicatorStyle": "dots",
             "labels": {"previous": "Prev", "next": "Next"},
             "behavior": {"wrapFrames": False},
@@ -204,6 +204,7 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn(">Btn</button>", html)
             self.assertIn("const APP_UI_CONTROLS=", html)
             self.assertIn("const RTI_DEVICE_LAYOUT=", html)
+            self.assertIn("const VIEWPORT_NAV=", html)
             self.assertIn("const widthScale=rtiCanvasWidth/SOURCE_DEVICE_SIZE.width;", html)
             self.assertIn("const heightScale=rtiCanvasHeight/SOURCE_DEVICE_SIZE.height;", html)
             self.assertIn("let scale=Math.min(widthScale,heightScale);", html)
@@ -211,6 +212,11 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("id='rtiDeviceCanvas'", html)
             self.assertIn("leftControls.style.width", html)
             self.assertIn("rightControls.style.width", html)
+            self.assertIn("const navEdgeOffset=Number(VIEWPORT_NAV.placement?.edgeOffset||36);", html)
+            self.assertIn("const leftArrowLeft=Math.max((controls.left+offsetLeft)-navEdgeOffset-44,0);", html)
+            self.assertIn("const rightArrowLeft=Math.max((controls.left+offsetLeft+fittedWidth)+navEdgeOffset,0);", html)
+            self.assertIn(".app-ui-controls{position:absolute;box-sizing:border-box;z-index:20;}", html)
+            self.assertIn(".vp-nav{width:44px;height:44px", html)
 
     def test_generate_writes_all_pages_when_page_index_not_given(self):
         with tempfile.TemporaryDirectory() as td:

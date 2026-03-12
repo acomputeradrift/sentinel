@@ -5,7 +5,7 @@
       "mode": "browser-viewport"
     },
     "appUIControls": {
-      "top": 90,
+      "top": 52,
       "bottom": 32,
       "left": 300,
       "right": 300
@@ -69,7 +69,8 @@
     "placement": {
       "previous": "canvas-left-center",
       "next": "canvas-right-center",
-      "frameIndicator": "canvas-bottom-center"
+      "frameIndicator": "canvas-bottom-center",
+      "edgeOffset": 36
     },
     "indicatorStyle": "dots",
     "labels": {

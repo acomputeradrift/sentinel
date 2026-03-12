@@ -270,14 +270,14 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
 html,body{{margin:0;width:100%;height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;overflow:hidden;}}
 .app-canvas{{position:relative;width:100vw;height:100vh;overflow:hidden;}}
-.app-ui-controls{{position:absolute;box-sizing:border-box;}}
+.app-ui-controls{{position:absolute;box-sizing:border-box;z-index:20;}}
 .top-controls{{left:0;right:0;top:0;display:flex;align-items:center;justify-content:center;}}
 .bottom-controls{{left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;}}
 .left-controls{{left:0;display:flex;align-items:center;justify-content:center;}}
 .right-controls{{right:0;display:flex;align-items:center;justify-content:center;}}
 .header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;width:100%;height:100%;}}
-.rti-canvas{{position:absolute;box-sizing:border-box;}}
-.rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;}}
+.rti-canvas{{position:absolute;box-sizing:border-box;z-index:1;}}
+.rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:none;z-index:1;box-sizing:border-box;}}
 .btn-wrap{{position:absolute;z-index:2;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
@@ -285,8 +285,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .btn-wrap:hover .page-link-hit{{opacity:1;pointer-events:auto;}}
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
-.vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;}}
-.vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;}}
+.vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;position:relative;z-index:21;}}
+.vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;position:relative;z-index:21;}}
 .dot{{width:10px;height:10px;border-radius:50%;border:1px solid #9fb4c6;background:#e2ebf2;}}
 .dot.active{{background:#2d5f81;border-color:#2d5f81;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
@@ -311,6 +311,7 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
+const VIEWPORT_NAV={json.dumps(app_ui.get("viewportNavigation", {}))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const VP_FRAMES={vp_frames_json};
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
@@ -371,10 +372,28 @@ function applyRtiLayout() {{
  const fittedHeight=SOURCE_DEVICE_SIZE.height*scale;
  const offsetLeft=(rtiCanvasWidth-fittedWidth)/2;
  const offsetTop=(rtiCanvasHeight-fittedHeight)/2;
+ const navEdgeOffset=Number(VIEWPORT_NAV.placement?.edgeOffset||36);
  rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
  rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
  rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
  rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
+
+ const leftArrowLeft=Math.max((controls.left+offsetLeft)-navEdgeOffset-44,0);
+ const rightArrowLeft=Math.max((controls.left+offsetLeft+fittedWidth)+navEdgeOffset,0);
+ const arrowTop=Math.max((controls.top+offsetTop)+((fittedHeight-44)/2),0);
+ leftControls.style.left=`${{leftArrowLeft}}px`;
+ leftControls.style.width='44px';
+ leftControls.style.height='44px';
+ leftControls.style.top=`${{arrowTop}}px`;
+ leftControls.style.bottom='auto';
+ leftControls.style.right='auto';
+
+ rightControls.style.left=`${{rightArrowLeft}}px`;
+ rightControls.style.width='44px';
+ rightControls.style.height='44px';
+ rightControls.style.top=`${{arrowTop}}px`;
+ rightControls.style.bottom='auto';
+ rightControls.style.right='auto';
 
  document.querySelectorAll('.vp-box').forEach(el=>{{
    const left=Number(el.dataset.left||0)*scale;
