@@ -66,13 +66,19 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
             ]
         }
         app_ui = {
-            "layout": {"appCanvas": {"mode": "fit-to-content", "centerOnPage": True}, "rtiDeviceCanvas": {"fitMode": "contain", "maxScale": 1, "minScale": 0.25, "centerWithinAppCanvas": True}},
-            "uiHierarchy": {"appCanvas": ["rtiDeviceCanvas", "appUI"], "rtiDeviceCanvas": ["rtiDeviceUI"], "rtiDeviceUI": ["projectButtons", "projectViewports"], "appUI": ["header", "appNavigation", "viewportNavigation"]},
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 300, "right": 300},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25, "centerWithinRtiCanvas": True},
+            },
+            "uiHierarchy": {"appCanvas": ["appUIControls", "rtiCanvas"], "rtiCanvas": ["rtiDeviceCanvas"], "rtiDeviceUI": ["projectButtons", "projectViewports"], "appUIControls": ["header", "appNavigation", "viewportNavigation"], "rtiDeviceCanvas": ["rtiDeviceUI"]},
             "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
             "appNavigation": {"enabled": True, "placement": "canvas-adjacent", "showPageControls": True, "pageLinks": {"enabled": True, "showLinkAffordanceOnHover": True, "iconPlacement": "right-center-inside-button", "iconStyle": "inline-svg", "iconSize": 16, "iconPaddingRight": 8, "hoverActivationArea": {"width": 28, "fullButtonHeight": True}}},
-            "viewportNavigation": {"enabled": False, "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center"}, "indicatorStyle": "dots", "labels": {"previous": "Prev", "next": "Next"}, "behavior": {"wrapFrames": False}},
+            "zoomControls": {"enabled": True, "placement": {"anchor": "left-control-space", "alignTopToRtiCanvas": True, "centerHorizontallyInControlSpace": True}, "buttons": {"decrease": "-", "reset": "100%", "increase": "+"}, "zoom": {"defaultPercent": 100, "maxPercent": 200, "stepPercent": 10}, "scrollbars": {"showOnHover": True, "thickness": 10}},
+            "viewportNavigation": {"enabled": False, "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center", "edgeOffset": 36}, "indicatorStyle": "dots", "labels": {"previous": "Prev", "next": "Next"}, "behavior": {"wrapFrames": False}},
             "testingPopup": {"enabled": True, "titleTemplate": "{category} Test - {identity}", "includeButtonTypeInTitle": True, "showIdentity": True, "variableLabelTemplate": "Variable - {variableType}", "targetGroupStyle": "single-group-per-target", "showOnlyTrueTargets": True, "failNoteRequiredOnFail": True},
-            "buttonPresentation": {"useProjectFontSize": True, "fallbackFontSize": 10, "preserveRtiCoordinates": True},
+            "buttonPresentation": {"useProjectFontSize": True, "fallbackFontSize": 10, "preserveRtiCoordinates": True, "scaleRtiDerivedFontSizes": True},
             "viewportPresentation": {"showViewportContainer": True, "renderViewportButtonsByDefault": False, "initialFrameStrategy": "defaultFrameId"},
             "state": {"persistTestResults": True, "persistViewportFrameSelection": True},
         }

@@ -2,32 +2,44 @@
   "appUiStructureVersion": "1.0.0",
   "layout": {
     "appCanvas": {
-      "mode": "fit-to-content",
-      "centerOnPage": true
+      "mode": "browser-viewport"
+    },
+    "appUIControls": {
+      "top": 52,
+      "bottom": 32,
+      "left": 300,
+      "right": 300
+    },
+    "rtiCanvas": {
+      "deriveFromAppCanvas": true
     },
     "rtiDeviceCanvas": {
       "fitMode": "contain",
-      "maxScale": 1,
+      "allowScaleAboveOne": true,
+      "maxScale": 10,
       "minScale": 0.25,
-      "centerWithinAppCanvas": true
+      "centerWithinRtiCanvas": true
     }
   },
   "uiHierarchy": {
     "appCanvas": [
-      "rtiDeviceCanvas",
-      "appUI"
+      "appUIControls",
+      "rtiCanvas"
     ],
-    "rtiDeviceCanvas": [
-      "rtiDeviceUI"
+    "rtiCanvas": [
+      "rtiDeviceCanvas"
     ],
     "rtiDeviceUI": [
       "projectButtons",
       "projectViewports"
     ],
-    "appUI": [
+    "appUIControls": [
       "header",
       "appNavigation",
       "viewportNavigation"
+    ],
+    "rtiDeviceCanvas": [
+      "rtiDeviceUI"
     ]
   },
   "header": {
@@ -52,12 +64,35 @@
       }
     }
   },
+  "zoomControls": {
+    "enabled": true,
+    "placement": {
+      "anchor": "left-control-space",
+      "alignTopToRtiCanvas": true,
+      "centerHorizontallyInControlSpace": true
+    },
+    "buttons": {
+      "decrease": "-",
+      "reset": "100%",
+      "increase": "+"
+    },
+    "zoom": {
+      "defaultPercent": 100,
+      "maxPercent": 200,
+      "stepPercent": 10
+    },
+    "scrollbars": {
+      "showOnHover": true,
+      "thickness": 10
+    }
+  },
   "viewportNavigation": {
     "enabled": true,
     "placement": {
       "previous": "canvas-left-center",
       "next": "canvas-right-center",
-      "frameIndicator": "canvas-bottom-center"
+      "frameIndicator": "canvas-bottom-center",
+      "edgeOffset": 36
     },
     "indicatorStyle": "dots",
     "labels": {
@@ -81,7 +116,8 @@
   "buttonPresentation": {
     "useProjectFontSize": true,
     "fallbackFontSize": 10,
-    "preserveRtiCoordinates": true
+    "preserveRtiCoordinates": true,
+    "scaleRtiDerivedFontSizes": true
   },
   "viewportPresentation": {
     "showViewportContainer": true,

@@ -16,14 +16,23 @@ def sample_app_ui() -> dict:
     return {
         "appUiStructureVersion": "1.0.0",
         "layout": {
-            "appCanvas": {"mode": "fit-to-content", "centerOnPage": True},
-            "rtiDeviceCanvas": {"fitMode": "contain", "maxScale": 1, "minScale": 0.25, "centerWithinAppCanvas": True},
+            "appCanvas": {"mode": "browser-viewport"},
+            "appUIControls": {"top": 52, "bottom": 32, "left": 300, "right": 300},
+            "rtiCanvas": {"deriveFromAppCanvas": True},
+            "rtiDeviceCanvas": {
+                "fitMode": "contain",
+                "allowScaleAboveOne": True,
+                "maxScale": 10,
+                "minScale": 0.25,
+                "centerWithinRtiCanvas": True,
+            },
         },
         "uiHierarchy": {
-            "appCanvas": ["rtiDeviceCanvas", "appUI"],
-            "rtiDeviceCanvas": ["rtiDeviceUI"],
+            "appCanvas": ["appUIControls", "rtiCanvas"],
+            "rtiCanvas": ["rtiDeviceCanvas"],
             "rtiDeviceUI": ["projectButtons", "projectViewports"],
-            "appUI": ["header", "appNavigation", "viewportNavigation"],
+            "appUIControls": ["header", "appNavigation", "viewportNavigation"],
+            "rtiDeviceCanvas": ["rtiDeviceUI"],
         },
         "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
         "appNavigation": {
@@ -40,9 +49,16 @@ def sample_app_ui() -> dict:
                 "hoverActivationArea": {"width": 28, "fullButtonHeight": True},
             },
         },
+        "zoomControls": {
+            "enabled": True,
+            "placement": {"anchor": "left-control-space", "alignTopToRtiCanvas": True, "centerHorizontallyInControlSpace": True},
+            "buttons": {"decrease": "-", "reset": "100%", "increase": "+"},
+            "zoom": {"defaultPercent": 100, "maxPercent": 200, "stepPercent": 10},
+            "scrollbars": {"showOnHover": True, "thickness": 10},
+        },
         "viewportNavigation": {
             "enabled": False,
-            "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center"},
+            "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center", "edgeOffset": 36},
             "indicatorStyle": "dots",
             "labels": {"previous": "Prev", "next": "Next"},
             "behavior": {"wrapFrames": False},
@@ -57,7 +73,7 @@ def sample_app_ui() -> dict:
             "showOnlyTrueTargets": True,
             "failNoteRequiredOnFail": True,
         },
-        "buttonPresentation": {"useProjectFontSize": True, "fallbackFontSize": 10, "preserveRtiCoordinates": True},
+        "buttonPresentation": {"useProjectFontSize": True, "fallbackFontSize": 10, "preserveRtiCoordinates": True, "scaleRtiDerivedFontSizes": True},
         "viewportPresentation": {"showViewportContainer": True, "renderViewportButtonsByDefault": False, "initialFrameStrategy": "defaultFrameId"},
         "state": {"persistTestResults": True, "persistViewportFrameSelection": True},
     }
@@ -193,6 +209,46 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("IST-5 (Global) - Lights", html)
             self.assertIn("Variable - Value", html)
             self.assertIn(">Btn</button>", html)
+            self.assertIn("const APP_UI_CONTROLS=", html)
+            self.assertIn("const RTI_DEVICE_LAYOUT=", html)
+            self.assertIn("const VIEWPORT_NAV=", html)
+            self.assertIn("const ZOOM_CONTROLS=", html)
+            self.assertIn("const widthScale=rtiCanvasWidth/SOURCE_DEVICE_SIZE.width;", html)
+            self.assertIn("const heightScale=rtiCanvasHeight/SOURCE_DEVICE_SIZE.height;", html)
+            self.assertIn("let scale=Math.min(widthScale,heightScale);", html)
+            self.assertIn("id='rtiCanvas'", html)
+            self.assertIn("id='rtiDeviceCanvas'", html)
+            self.assertIn("leftControls.style.width", html)
+            self.assertIn("rightControls.style.width", html)
+            self.assertIn("const navEdgeOffset=Number(VIEWPORT_NAV.placement?.edgeOffset||36);", html)
+            self.assertIn("let viewportLeft=controls.left+currentDeviceLeft-rtiCanvas.scrollLeft;", html)
+            self.assertIn("let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;", html)
+            self.assertIn("const firstViewport=document.querySelector('.vp-box');", html)
+            self.assertIn("viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);", html)
+            self.assertIn("viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);", html)
+            self.assertIn("viewportRight=viewportLeft+(Number(firstViewport.dataset.width||0)*totalScale);", html)
+            self.assertIn("viewportBottom=viewportTop+(Number(firstViewport.dataset.height||0)*totalScale);", html)
+            self.assertIn("const leftArrowLeft=Math.max(viewportLeft-navEdgeOffset-44,0);", html)
+            self.assertIn("const rightArrowLeft=Math.max(viewportRight+navEdgeOffset,0);", html)
+            self.assertIn("const arrowTop=Math.max(viewportTop+(((viewportBottom-viewportTop)-44)/2),0);", html)
+            self.assertIn(".app-ui-controls{position:absolute;box-sizing:border-box;z-index:20;}", html)
+            self.assertIn(".vp-nav{width:44px;height:44px", html)
+            self.assertIn("id='zoomControls'", html)
+            self.assertIn("class='zoom-btn zoom-dec'", html)
+            self.assertIn("class='zoom-btn zoom-reset'", html)
+            self.assertIn("class='zoom-btn zoom-inc'", html)
+            self.assertIn("<div class='zoom-controls' id='zoomControls'>", html)
+            self.assertIn("const ZOOM_DEFAULT=100;", html)
+            self.assertIn("const ZOOM_MAX=200;", html)
+            self.assertIn("const ZOOM_STEP=10;", html)
+            self.assertIn("let currentViewportIndexes=VP_FRAMES.map(()=>0);", html)
+            self.assertIn("function applyViewportState()", html)
+            self.assertIn("if (!el.classList.contains('vp-btn')) {", html)
+            self.assertIn("applyViewportState();", html)
+            self.assertIn("id='rtiContent'", html)
+            self.assertIn("rtiCanvas.classList.toggle('scroll-hover'", html)
+            self.assertIn("scrollbar-gutter:stable overlay;", html)
+            self.assertIn("rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {passive:true});", html)
 
     def test_generate_writes_all_pages_when_page_index_not_given(self):
         with tempfile.TemporaryDirectory() as td:
@@ -224,6 +280,35 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
             self.assertTrue((td_path / "sample_project_data__page-0-home.html").exists())
             self.assertTrue((td_path / "sample_project_data__page-1-lights.html").exists())
+
+    def test_generate_defaults_output_to_project_data_directory(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            project_data = {
+                "devices": [
+                    {
+                        "userFacing": {
+                            "displayName": "IST-5 (Global)",
+                            "deviceUI": {
+                                "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                                "landscape": {"supported": False, "resolution": {"width": 854, "height": 480}},
+                            },
+                            "pages": [
+                                {"pageName": "Home", "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []}, "viewports": []}
+                            ],
+                        },
+                        "diagnostics": {"deviceId": 1, "pages": [{"pageId": 101, "pageName": "Home"}]},
+                    }
+                ]
+            }
+            project_path = td_path / "sample_project_data.json"
+            ui_path = td_path / "app_ui_structure.json"
+            project_path.write_text(json.dumps(project_data), encoding="utf-8")
+            ui_path.write_text(json.dumps(sample_app_ui()), encoding="utf-8")
+
+            run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
+            self.assertTrue((td_path / "sample_project_data__page-0-home.html").exists())
 
     def test_generate_includes_page_link_overlay_and_target(self):
         with tempfile.TemporaryDirectory() as td:
@@ -342,7 +427,8 @@ class ScriptContractsTest(unittest.TestCase):
 
             html = (td_path / "sample_project_data__page-0-lights.html").read_text(encoding="utf-8")
             self.assertIn("LIGHTS - Load 2 TOGGLE", html)
-            self.assertIn("left:354px;top:200px", html)
+            self.assertIn("data-left='354'", html)
+            self.assertIn("data-top='200'", html)
 
 
 if __name__ == "__main__":
