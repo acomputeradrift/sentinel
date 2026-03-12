@@ -165,7 +165,7 @@ def _render_button_control(btn: dict[str, Any], label: str, left: int, top: int,
         "targets": _targets(btn, variable_label),
     }
     meta_attr = json.dumps(meta).replace("'", "&apos;")
-    wrap_style = f"left:{left}px;top:{top}px;width:{width}px;height:{height}px;{extra_style}"
+    visibility_attr = "1" if "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_html = ""
@@ -179,12 +179,12 @@ def _render_button_control(btn: dict[str, Any], label: str, left: int, top: int,
             icon = "<span class='material-symbols-outlined' aria-hidden='true'>link_2</span>"
             link_html = (
                 f"<a class='page-link-hit' href='{target_href}' aria-label='Open linked page' "
-                f"style='width:{nav_width}px;padding-right:{nav_pad}px;'>"
-                f"<span class='page-link-icon' style='width:{icon_size}px;height:{icon_size}px;'>{icon}</span></a>"
+                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'>"
+                f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
     return (
-        f"<div class='{classes}' style='{wrap_style}' {extra_attrs}>"
-        f"<button class='test-btn' style='font-size:{fs}px' data-meta='{meta_attr}'>{_btn_text(identity)}</button>"
+        f"<div class='{classes}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {extra_attrs}>"
+        f"<button class='test-btn' data-meta='{meta_attr}'>{_btn_text(identity)}</button>"
         f"{link_html}</div>"
     )
 
@@ -204,8 +204,9 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
     page_targets = _page_target_map(project_data, project_stem, device_index)
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
-    viewport_fit = app_ui.get("layout", {}).get("rtiDeviceCanvas", {}).get("viewportFit", {})
-    viewport_fit_enabled = bool(viewport_fit.get("enabled", False))
+    layout_cfg = app_ui.get("layout", {})
+    control_cfg = layout_cfg.get("appUIControls", {})
+    rti_device_cfg = layout_cfg.get("rtiDeviceCanvas", {})
 
     page_button_rows: list[str] = []
     for btn, label, off_top, off_left in _iter_page_buttons(page):
@@ -252,11 +253,12 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
     nav_next = "<button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button>" if vp_nav_enabled else ""
 
     app_json = json.dumps(app_ui)
-    viewport_fit_json = json.dumps(viewport_fit)
+    control_json = json.dumps(control_cfg)
+    rti_device_json = json.dumps(rti_device_cfg)
     vp_frames_json = json.dumps(vp_frames)
     viewport_boxes = "".join(
         [
-            "<div class='vp-box' style='left:{left}px;top:{top}px;width:{width}px;height:{height}px'></div>".format(**c)
+            "<div class='vp-box' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}'></div>".format(**c)
             for c in _iter_viewport_boxes(page)
         ]
     )
@@ -265,13 +267,17 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2\">
 <style>
-body{{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;}}
-.wrap{{min-height:100vh;display:grid;justify-items:center;align-content:start;padding:16px;overflow:auto;box-sizing:border-box;}}
-.stage{{display:grid;grid-template-columns:56px auto 56px;grid-template-areas:'. header .' 'vprev canvas vnext' '. vind .';gap:10px;align-items:start;justify-items:center;}}
-.header{{font-weight:700;font-size:20px;text-align:center;grid-area:header;min-height:48px;display:flex;align-items:center;justify-content:center;}}
-.canvas-shell{{grid-area:canvas;position:relative;width:{w}px;height:{h}px;display:flex;align-items:flex-start;justify-content:center;overflow:visible;}}
-.canvas{{position:relative;width:{w}px;height:{h}px;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;}}
-.canvas-content{{position:absolute;left:0;top:0;width:{w}px;height:{h}px;transform-origin:top left;}}
+html,body{{margin:0;width:100%;height:100%;}}
+body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;overflow:hidden;}}
+.app-canvas{{position:relative;width:100vw;height:100vh;overflow:hidden;}}
+.app-ui-controls{{position:absolute;box-sizing:border-box;}}
+.top-controls{{left:0;right:0;top:0;display:flex;align-items:center;justify-content:center;}}
+.bottom-controls{{left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;}}
+.left-controls{{left:0;display:flex;align-items:center;justify-content:center;}}
+.right-controls{{right:0;display:flex;align-items:center;justify-content:center;}}
+.header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;width:100%;height:100%;}}
+.rti-canvas{{position:absolute;box-sizing:border-box;}}
+.rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;}}
 .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:none;z-index:1;box-sizing:border-box;}}
 .btn-wrap{{position:absolute;z-index:2;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
@@ -280,9 +286,7 @@ body{{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;}}
-.vp-prev{{grid-area:vprev;align-self:center;}}
-.vp-next{{grid-area:vnext;align-self:center;}}
-.vp-indicator{{grid-area:vind;display:flex;gap:8px;min-height:14px;margin-top:2px;}}
+.vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;}}
 .dot{{width:10px;height:10px;border-radius:50%;border:1px solid #9fb4c6;background:#e2ebf2;}}
 .dot.active{{background:#2d5f81;border-color:#2d5f81;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
@@ -296,13 +300,19 @@ body{{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#
 textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;}}
 #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
 </style></head>
-<body><div class='wrap'><div class='stage'><div class='header'>{header}</div>{nav_prev}<div class='canvas-shell' id='canvasShell'><div class='canvas' id='canvas'><div class='canvas-content' id='canvasContent'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div></div></div>{nav_next}{vp_dot_rows}</div></div>
+<body><div class='app-canvas' id='appCanvas'>
+<div class='app-ui-controls top-controls' id='topControls'><div class='header'>{header}</div></div>
+<div class='app-ui-controls left-controls' id='leftControls'>{nav_prev}</div>
+<div class='app-ui-controls right-controls' id='rightControls'>{nav_next}</div>
+<div class='app-ui-controls bottom-controls' id='bottomControls'>{vp_dot_rows}</div>
+<div class='rti-canvas' id='rtiCanvas'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div></div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
-const VIEWPORT_FIT={viewport_fit_json};
+const APP_UI_CONTROLS={control_json};
+const RTI_DEVICE_LAYOUT={rti_device_json};
+const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const VP_FRAMES={vp_frames_json};
-const VIEWPORT_FIT_ENABLED={str(viewport_fit_enabled).lower()};
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
@@ -314,35 +324,108 @@ document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=
 }}));
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
-if (VIEWPORT_FIT_ENABLED) {{
- const shell=document.getElementById('canvasShell');
- const canvas=document.getElementById('canvas');
- const content=document.getElementById('canvasContent');
- const applyCanvasScale=()=>{{
-   if (!shell || !canvas || !content) return;
-   const viewportPadding=Number(VIEWPORT_FIT.viewportPadding||0);
-   const topBottomSpacing=Number(VIEWPORT_FIT.topBottomSpacing||0);
-   const headerHeight=Number(VIEWPORT_FIT.headerHeight||0);
-   const interAreaGap=Number(VIEWPORT_FIT.interAreaGap||0);
-   const sideNavigationWidth=Number(VIEWPORT_FIT.sideNavigationWidth||0);
-   const hasViewportNavigation=Boolean(document.getElementById('vpPrev') && document.getElementById('vpNext'));
-   const reservedVertical=(viewportPadding*2)+(topBottomSpacing*2)+headerHeight+interAreaGap;
-   const reservedHorizontal=(viewportPadding*2)+(hasViewportNavigation ? ((sideNavigationWidth*2)+(interAreaGap*2)) : 0);
-   const availH=Math.max(window.innerHeight-reservedVertical, 1);
-   const availW=Math.max(window.innerWidth-reservedHorizontal, 1);
-   const rawScale=Math.min(availW/{w}, availH/{h});
-   const maxScale=Number(APP_UI.layout?.rtiDeviceCanvas?.maxScale ?? 1);
-   const minScale=Number(APP_UI.layout?.rtiDeviceCanvas?.minScale ?? 0.25);
-   const scale=Math.min(maxScale, Math.max(minScale, rawScale));
-   shell.style.width=`${{{w} * scale}}px`;
-   shell.style.height=`${{{h} * scale}}px`;
-   canvas.style.width=`${{{w} * scale}}px`;
-   canvas.style.height=`${{{h} * scale}}px`;
-   content.style.transform=`scale(${{scale}})`;
+function applyRtiLayout() {{
+ const appCanvas=document.getElementById('appCanvas');
+ const topControls=document.getElementById('topControls');
+ const bottomControls=document.getElementById('bottomControls');
+ const leftControls=document.getElementById('leftControls');
+ const rightControls=document.getElementById('rightControls');
+ const rtiCanvas=document.getElementById('rtiCanvas');
+ const rtiDeviceCanvas=document.getElementById('rtiDeviceCanvas');
+ if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !rtiCanvas || !rtiDeviceCanvas) return;
+
+ const controls={{
+   top:Number(APP_UI_CONTROLS.top||0),
+   bottom:Number(APP_UI_CONTROLS.bottom||0),
+   left:Number(APP_UI_CONTROLS.left||0),
+   right:Number(APP_UI_CONTROLS.right||0)
  }};
- window.addEventListener('resize', applyCanvasScale);
- applyCanvasScale();
+ const appWidth=window.innerWidth;
+ const appHeight=window.innerHeight;
+ topControls.style.height=`${{controls.top}}px`;
+ bottomControls.style.height=`${{controls.bottom}}px`;
+ leftControls.style.top=`${{controls.top}}px`;
+ leftControls.style.bottom=`${{controls.bottom}}px`;
+ leftControls.style.width=`${{controls.left}}px`;
+ rightControls.style.top=`${{controls.top}}px`;
+ rightControls.style.bottom=`${{controls.bottom}}px`;
+ rightControls.style.width=`${{controls.right}}px`;
+
+ const rtiCanvasWidth=Math.max(appWidth-controls.left-controls.right,1);
+ const rtiCanvasHeight=Math.max(appHeight-controls.top-controls.bottom,1);
+ rtiCanvas.style.left=`${{controls.left}}px`;
+ rtiCanvas.style.top=`${{controls.top}}px`;
+ rtiCanvas.style.width=`${{rtiCanvasWidth}}px`;
+ rtiCanvas.style.height=`${{rtiCanvasHeight}}px`;
+
+ const widthScale=rtiCanvasWidth/SOURCE_DEVICE_SIZE.width;
+ const heightScale=rtiCanvasHeight/SOURCE_DEVICE_SIZE.height;
+ let scale=Math.min(widthScale,heightScale);
+ const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
+ const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
+ if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) {{
+   scale=Math.min(scale,1);
+ }}
+ scale=Math.min(maxScale, Math.max(minScale, scale));
+ const fittedWidth=SOURCE_DEVICE_SIZE.width*scale;
+ const fittedHeight=SOURCE_DEVICE_SIZE.height*scale;
+ const offsetLeft=(rtiCanvasWidth-fittedWidth)/2;
+ const offsetTop=(rtiCanvasHeight-fittedHeight)/2;
+ rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
+ rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
+ rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
+ rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
+
+ document.querySelectorAll('.vp-box').forEach(el=>{{
+   const left=Number(el.dataset.left||0)*scale;
+   const top=Number(el.dataset.top||0)*scale;
+   const width=Number(el.dataset.width||0)*scale;
+   const height=Number(el.dataset.height||0)*scale;
+   el.style.left=`${{left}}px`;
+   el.style.top=`${{top}}px`;
+   el.style.width=`${{width}}px`;
+   el.style.height=`${{height}}px`;
+ }});
+
+ document.querySelectorAll('.btn-wrap').forEach(el=>{{
+   const left=Number(el.dataset.left||0)*scale;
+   const top=Number(el.dataset.top||0)*scale;
+   const width=Number(el.dataset.width||0)*scale;
+   const height=Number(el.dataset.height||0)*scale;
+   const visible=String(el.dataset.visible||'1')==='1';
+   el.style.left=`${{left}}px`;
+   el.style.top=`${{top}}px`;
+   el.style.width=`${{width}}px`;
+   el.style.height=`${{height}}px`;
+   el.style.display=visible?'':'none';
+   const button=el.querySelector('.test-btn');
+   if (button) {{
+     const sourceFont=Number(el.dataset.fontSize||APP_UI.buttonPresentation?.fallbackFontSize||10);
+     if (APP_UI.buttonPresentation?.scaleRtiDerivedFontSizes) {{
+       button.style.fontSize=`${{Math.max(1, sourceFont*scale)}}px`;
+     }} else {{
+       button.style.fontSize=`${{sourceFont}}px`;
+     }}
+     button.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+   }}
+   const linkHit=el.querySelector('.page-link-hit');
+   if (linkHit) {{
+     const hitWidth=Number(linkHit.dataset.hitWidth||28)*scale;
+     const hitPadding=Number(linkHit.dataset.hitPadding||8)*scale;
+     linkHit.style.width=`${{hitWidth}}px`;
+     linkHit.style.paddingRight=`${{hitPadding}}px`;
+     const icon=linkHit.querySelector('.page-link-icon');
+     if (icon) {{
+       const iconSize=Number(icon.dataset.iconSize||16)*scale;
+       icon.style.width=`${{iconSize}}px`;
+       icon.style.height=`${{iconSize}}px`;
+       icon.style.fontSize=`${{iconSize}}px`;
+     }}
+   }}
+ }});
 }}
+window.addEventListener('resize', applyRtiLayout);
+applyRtiLayout();
 if (VP_FRAMES.length && VP_FRAMES[0].length) {{
  let vp0 = 0;
  const prev=document.getElementById('vpPrev');

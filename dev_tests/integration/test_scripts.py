@@ -16,28 +16,23 @@ def sample_app_ui() -> dict:
     return {
         "appUiStructureVersion": "1.0.0",
         "layout": {
-            "appCanvas": {"mode": "fit-to-content", "centerOnPage": True},
+            "appCanvas": {"mode": "browser-viewport"},
+            "appUIControls": {"top": 90, "bottom": 32, "left": 300, "right": 300},
+            "rtiCanvas": {"deriveFromAppCanvas": True},
             "rtiDeviceCanvas": {
                 "fitMode": "contain",
-                "maxScale": 1,
+                "allowScaleAboveOne": True,
+                "maxScale": 10,
                 "minScale": 0.25,
-                "centerWithinAppCanvas": True,
-                "viewportFit": {
-                    "enabled": True,
-                    "viewportPadding": 16,
-                    "topBottomSpacing": 16,
-                    "headerHeight": 48,
-                    "viewportIndicatorHeight": 24,
-                    "interAreaGap": 10,
-                    "sideNavigationWidth": 56,
-                },
+                "centerWithinRtiCanvas": True,
             },
         },
         "uiHierarchy": {
-            "appCanvas": ["rtiDeviceCanvas", "appUI"],
-            "rtiDeviceCanvas": ["rtiDeviceUI"],
+            "appCanvas": ["appUIControls", "rtiCanvas"],
+            "rtiCanvas": ["rtiDeviceCanvas"],
             "rtiDeviceUI": ["projectButtons", "projectViewports"],
-            "appUI": ["header", "appNavigation", "viewportNavigation"],
+            "appUIControls": ["header", "appNavigation", "viewportNavigation"],
+            "rtiDeviceCanvas": ["rtiDeviceUI"],
         },
         "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
         "appNavigation": {
@@ -71,7 +66,7 @@ def sample_app_ui() -> dict:
             "showOnlyTrueTargets": True,
             "failNoteRequiredOnFail": True,
         },
-        "buttonPresentation": {"useProjectFontSize": True, "fallbackFontSize": 10, "preserveRtiCoordinates": True},
+        "buttonPresentation": {"useProjectFontSize": True, "fallbackFontSize": 10, "preserveRtiCoordinates": True, "scaleRtiDerivedFontSizes": True},
         "viewportPresentation": {"showViewportContainer": True, "renderViewportButtonsByDefault": False, "initialFrameStrategy": "defaultFrameId"},
         "state": {"persistTestResults": True, "persistViewportFrameSelection": True},
     }
@@ -207,12 +202,15 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("IST-5 (Global) - Lights", html)
             self.assertIn("Variable - Value", html)
             self.assertIn(">Btn</button>", html)
-            self.assertIn("const VIEWPORT_FIT_ENABLED=true", html)
-            self.assertIn("const VIEWPORT_FIT=", html)
-            self.assertIn("const rawScale=Math.min(availW/480, availH/854)", html)
-            self.assertIn("id='canvasContent'", html)
-            self.assertIn(".vp-prev{grid-area:vprev;align-self:center;}", html)
-            self.assertIn("const reservedVertical=(viewportPadding*2)+(topBottomSpacing*2)+headerHeight+interAreaGap;", html)
+            self.assertIn("const APP_UI_CONTROLS=", html)
+            self.assertIn("const RTI_DEVICE_LAYOUT=", html)
+            self.assertIn("const widthScale=rtiCanvasWidth/SOURCE_DEVICE_SIZE.width;", html)
+            self.assertIn("const heightScale=rtiCanvasHeight/SOURCE_DEVICE_SIZE.height;", html)
+            self.assertIn("let scale=Math.min(widthScale,heightScale);", html)
+            self.assertIn("id='rtiCanvas'", html)
+            self.assertIn("id='rtiDeviceCanvas'", html)
+            self.assertIn("leftControls.style.width", html)
+            self.assertIn("rightControls.style.width", html)
 
     def test_generate_writes_all_pages_when_page_index_not_given(self):
         with tempfile.TemporaryDirectory() as td:
@@ -391,7 +389,8 @@ class ScriptContractsTest(unittest.TestCase):
 
             html = (td_path / "sample_project_data__page-0-lights.html").read_text(encoding="utf-8")
             self.assertIn("LIGHTS - Load 2 TOGGLE", html)
-            self.assertIn("left:354px;top:200px", html)
+            self.assertIn("data-left='354'", html)
+            self.assertIn("data-top='200'", html)
 
 
 if __name__ == "__main__":
