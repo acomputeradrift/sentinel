@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sentinel.generation.render_core import load_json, page_filename, render_html
+from sentinel.generation.render_core import device_filename, load_json, page_filename, render_html, render_single_device_html
 from sentinel.logging.event_logger import EventLogger
 
 
@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", help="Output directory. Defaults to the project data file directory.")
     p.add_argument("--device-index", type=int, default=0)
     p.add_argument("--page-index", type=int)
+    p.add_argument("--single-device", action="store_true", help="Generate one HTML file for the selected device containing all of its pages.")
     return p.parse_args()
 
 
@@ -47,16 +48,25 @@ def main() -> int:
         app_ui = load_json(app_ui_path)
 
         out_dir.mkdir(parents=True, exist_ok=True)
-        pages = project_data["devices"][args.device_index]["userFacing"]["pages"]
-        page_indexes = [args.page_index] if args.page_index is not None else list(range(len(pages)))
+        device = project_data["devices"][args.device_index]
+        pages = device["userFacing"]["pages"]
         written = 0
-        for page_index in page_indexes:
-            html = render_html(project_data, app_ui, project_stem=project_data_path.stem, device_index=args.device_index, page_index=page_index)
-            page_name = pages[page_index].get("pageName", "")
-            out_path = out_dir / page_filename(project_data_path.stem, str(page_name), page_index)
+        if args.single_device:
+            html = render_single_device_html(project_data, app_ui, project_stem=project_data_path.stem, device_index=args.device_index)
+            device_name = device["userFacing"].get("displayName", f"device-{args.device_index}")
+            out_path = out_dir / device_filename(project_data_path.stem, str(device_name), args.device_index)
             log.info(f"Writing html output: {out_path}")
             out_path.write_text(html, encoding="utf-8")
             written += 1
+        else:
+            page_indexes = [args.page_index] if args.page_index is not None else list(range(len(pages)))
+            for page_index in page_indexes:
+                html = render_html(project_data, app_ui, project_stem=project_data_path.stem, device_index=args.device_index, page_index=page_index)
+                page_name = pages[page_index].get("pageName", "")
+                out_path = out_dir / page_filename(project_data_path.stem, str(page_name), page_index)
+                log.info(f"Writing html output: {out_path}")
+                out_path.write_text(html, encoding="utf-8")
+                written += 1
         log.success(f"Generation complete: wrote {written} html file(s)")
         return 0
     except Exception as exc:  # pragma: no cover

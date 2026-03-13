@@ -28,6 +28,10 @@ def page_filename(project_stem: str, page_name: str, page_index: int) -> str:
     return f"{project_stem}__page-{page_index}-{page_slug(page_name, page_index)}.html"
 
 
+def device_filename(project_stem: str, device_name: str, device_index: int) -> str:
+    return f"{project_stem}__device-{device_index}-{page_slug(device_name, device_index)}.html"
+
+
 def _btn_text(identity: dict[str, Any]) -> str:
     text = str(identity.get("text") or "").strip()
     tag = str(identity.get("buttonTagName") or "").strip()
@@ -164,7 +168,29 @@ def _page_target_map(project_data: dict[str, Any], project_stem: str, device_ind
     return out
 
 
-def _render_button_control(btn: dict[str, Any], label: str, left: int, top: int, variable_label: str, app_ui: dict[str, Any], page_targets: dict[int, str], extra_classes: str = "", extra_style: str = "", extra_attrs: str = "") -> str:
+def _page_target_indexes(project_data: dict[str, Any], device_index: int) -> dict[int, int]:
+    diag_pages = project_data["devices"][device_index].get("diagnostics", {}).get("pages", [])
+    out: dict[int, int] = {}
+    for index, diag_page in enumerate(diag_pages):
+        page_id = diag_page.get("pageId")
+        if page_id is not None:
+            out[int(page_id)] = index
+    return out
+
+
+def _render_button_control(
+    btn: dict[str, Any],
+    label: str,
+    left: int,
+    top: int,
+    variable_label: str,
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None = None,
+    extra_classes: str = "",
+    extra_style: str = "",
+    extra_attrs: str = "",
+) -> str:
     c = _ui_coordinates(btn["buttonUI"])
     width = int(c.get("width") or 0)
     height = int(c.get("height") or 0)
@@ -190,9 +216,12 @@ def _render_button_control(btn: dict[str, Any], label: str, left: int, top: int,
             nav_pad = int(link_cfg.get("iconPaddingRight") or 8)
             icon_size = int(link_cfg.get("iconSize") or 16)
             icon = "<span class='material-symbols-outlined' aria-hidden='true'>link_2</span>"
+            page_index_attr = ""
+            if target_page_id is not None and page_target_indexes and target_page_id in page_target_indexes:
+                page_index_attr = f" data-target-page-index='{page_target_indexes[target_page_id]}'"
             link_html = (
                 f"<a class='page-link-hit' href='{target_href}' aria-label='Open linked page' "
-                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'>"
+                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}>"
                 f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
     return (
@@ -202,24 +231,13 @@ def _render_button_control(btn: dict[str, Any], label: str, left: int, top: int,
     )
 
 
-def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0, page_index: int = 0) -> str:
+def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int, page_index: int) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
     page = uf["pages"][page_index]
-
-    res = uf.get("deviceUI", {}).get("portrait", {}).get("resolution", {"width": 480, "height": 854})
-    w = int(res.get("width") or 480)
-    h = int(res.get("height") or 854)
-
-    title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
-    header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", page.get("pageName", ""))
     variable_label = app_ui.get("testingPopup", {}).get("variableLabelTemplate", "Variable - {variableType}")
     page_targets = _page_target_map(project_data, project_stem, device_index)
-    link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
-    link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
-    layout_cfg = app_ui.get("layout", {})
-    control_cfg = layout_cfg.get("appUIControls", {})
-    rti_device_cfg = layout_cfg.get("rtiDeviceCanvas", {})
+    page_target_indexes = _page_target_indexes(project_data, device_index)
 
     page_button_rows: list[str] = []
     for btn, label, off_top, off_left in _iter_page_buttons(page):
@@ -233,6 +251,7 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
                 variable_label,
                 app_ui,
                 page_targets,
+                page_target_indexes,
             )
         )
 
@@ -250,6 +269,7 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
                 variable_label,
                 app_ui,
                 page_targets,
+                page_target_indexes,
                 extra_classes="vp-btn",
                 extra_style=extra,
                 extra_attrs=f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}'",
@@ -257,25 +277,38 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
         )
 
     vp_frames = [sorted([int(f.get("frameId", 0)) for f in vp.get("frames", [])]) for vp in page.get("viewports", [])]
-    vp_nav_enabled = bool(app_ui.get("viewportNavigation", {}).get("enabled", False) and vp_frames and vp_frames[0])
-    vp_dot_rows = ""
-    if vp_nav_enabled:
-        dots = "".join([f"<span class='dot{' active' if i == 0 else ''}' data-dot='{i}'></span>" for i, _ in enumerate(vp_frames[0])])
-        vp_dot_rows = f"<div class='vp-indicator' id='vpIndicator'>{dots}</div>"
-    nav_prev = "<button class='vp-nav vp-prev' id='vpPrev' aria-label='Previous frame'>&lsaquo;</button>" if vp_nav_enabled else ""
-    nav_next = "<button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button>" if vp_nav_enabled else ""
-
-    app_json = json.dumps(app_ui)
-    control_json = json.dumps(control_cfg)
-    rti_device_json = json.dumps(rti_device_cfg)
-    vp_frames_json = json.dumps(vp_frames)
     viewport_boxes = "".join(
         [
             "<div class='vp-box' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}'></div>".format(**c)
             for c in _iter_viewport_boxes(page)
         ]
     )
+    return {
+        "page_name": str(page.get("pageName", "")),
+        "page_index": page_index,
+        "vp_frames": vp_frames,
+        "viewport_boxes": viewport_boxes,
+        "page_button_rows": "".join(page_button_rows),
+        "viewport_button_rows": "".join(viewport_button_rows),
+    }
 
+
+def _render_document(
+    app_ui: dict[str, Any],
+    header: str,
+    w: int,
+    h: int,
+    body_markup: str,
+    page_state_json: str,
+) -> str:
+    link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
+    link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
+    layout_cfg = app_ui.get("layout", {})
+    control_cfg = layout_cfg.get("appUIControls", {})
+    rti_device_cfg = layout_cfg.get("rtiDeviceCanvas", {})
+    app_json = json.dumps(app_ui)
+    control_json = json.dumps(control_cfg)
+    rti_device_json = json.dumps(rti_device_cfg)
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2\">
@@ -298,6 +331,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
 .rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
+.device-page{{position:absolute;inset:0;display:none;}}
+.device-page.active{{display:block;}}
 .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:none;z-index:1;box-sizing:border-box;}}
 .btn-wrap{{position:absolute;z-index:2;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
@@ -325,11 +360,11 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
 <div class='app-ui-controls top-controls' id='topControls'><div class='header'>{header}</div></div>
-<div class='app-ui-controls left-controls' id='leftControls'>{nav_prev}</div>
-<div class='app-ui-controls right-controls' id='rightControls'>{nav_next}</div>
-<div class='app-ui-controls bottom-controls' id='bottomControls'>{vp_dot_rows}</div>
+<div class='app-ui-controls left-controls' id='leftControls'><button class='vp-nav vp-prev' id='vpPrev' aria-label='Previous frame'>&lsaquo;</button></div>
+<div class='app-ui-controls right-controls' id='rightControls'><button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button></div>
+<div class='app-ui-controls bottom-controls' id='bottomControls'><div class='vp-indicator' id='vpIndicator'></div></div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
-<div class='rti-canvas' id='rtiCanvas'><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{viewport_boxes}{''.join(page_button_rows)}{''.join(viewport_button_rows)}</div></div></div></div>
+<div class='rti-canvas' id='rtiCanvas'><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
@@ -341,11 +376,13 @@ const ZOOM_DEFAULT={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("defa
 const ZOOM_MAX={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 200))};
 const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
-const VP_FRAMES={vp_frames_json};
+const PAGE_STATE={page_state_json};
+const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
 let currentZoomPercent=ZOOM_DEFAULT;
 let currentTotalScale=1;
 let currentDeviceLeft=0;
 let currentDeviceTop=0;
+let activePageIndex=0;
 let currentViewportIndexes=VP_FRAMES.map(()=>0);
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
@@ -358,15 +395,47 @@ ov.classList.add('open');
 }}));
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
+function activePageEl() {{
+ return document.querySelector(`.device-page[data-page-index="${{activePageIndex}}"]`);
+}}
+function activePageState() {{
+ return PAGE_STATE[activePageIndex] || {{pageName:'',vpFrames:[]}};
+}}
+function syncHeader() {{
+ const headerEl=document.querySelector('#topControls .header');
+ if (!headerEl) return;
+ const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
+ headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
+}}
+function syncViewportControls() {{
+ const state=activePageState();
+ const frames=state.vpFrames||[];
+ const hasViewportNav=Boolean(VIEWPORT_NAV.enabled && frames.length && frames[0]?.length);
+ const prev=document.getElementById('vpPrev');
+ const next=document.getElementById('vpNext');
+ const indicator=document.getElementById('vpIndicator');
+ if (prev) prev.style.display=hasViewportNav?'':'none';
+ if (next) next.style.display=hasViewportNav?'':'none';
+ if (!indicator) return;
+ if (!hasViewportNav) {{
+   indicator.innerHTML='';
+   return;
+ }}
+ indicator.innerHTML=frames[0].map((_,i)=>`<span class="dot${{i===0?' active':''}}" data-dot="${{i}}"></span>`).join('');
+}}
 function applyViewportState() {{
- if (!(VP_FRAMES.length && VP_FRAMES[0].length)) return;
+ const pageEl=activePageEl();
+ const state=activePageState();
+ const frames=state.vpFrames||[];
+ if (!pageEl) return;
+ if (!(frames.length && frames[0].length)) return;
  const dots=[...document.querySelectorAll('#vpIndicator .dot')];
- VP_FRAMES.forEach((frames, vpIndex)=>{{
-   if (!frames.length) return;
-   const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, frames.length-1));
+ frames.forEach((pageFrames, vpIndex)=>{{
+   if (!pageFrames.length) return;
+   const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
    currentViewportIndexes[vpIndex]=currentIndex;
-   const frame=frames[currentIndex];
-   document.querySelectorAll(`.vp-btn[data-vp="${{vpIndex}}"]`).forEach(el=>{{
+   const frame=pageFrames[currentIndex];
+   pageEl.querySelectorAll(`.vp-btn[data-vp="${{vpIndex}}"]`).forEach(el=>{{
      el.style.display=(Number(el.dataset.frame)===frame)?'':'none';
    }});
    if (vpIndex===0) dots.forEach((d,i)=>d.classList.toggle('active',i===currentIndex));
@@ -436,11 +505,12 @@ function applyRtiLayout() {{
  currentDeviceTop=offsetTop;
  rtiCanvas.classList.toggle('scroll-hover', Boolean(ZOOM_CONTROLS.scrollbars?.showOnHover) && currentZoomPercent > 100);
 
+  const pageEl=activePageEl();
   let viewportLeft=controls.left+currentDeviceLeft-rtiCanvas.scrollLeft;
   let viewportRight=viewportLeft+fittedWidth;
   let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;
   let viewportBottom=viewportTop+fittedHeight;
-  const firstViewport=document.querySelector('.vp-box');
+  const firstViewport=pageEl ? pageEl.querySelector('.vp-box') : null;
   if (firstViewport) {{
     viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
     viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
@@ -473,7 +543,8 @@ function applyRtiLayout() {{
    if (zoomReset) zoomReset.textContent = `${{currentZoomPercent}}%`;
  }}
 
- document.querySelectorAll('.vp-box').forEach(el=>{{
+ document.querySelectorAll('.device-page').forEach(page=>page.classList.toggle('active', Number(page.dataset.pageIndex)===activePageIndex));
+ document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
@@ -484,7 +555,7 @@ function applyRtiLayout() {{
    el.style.height=`${{height}}px`;
  }});
 
- document.querySelectorAll('.btn-wrap').forEach(el=>{{
+ document.querySelectorAll('.device-page .btn-wrap').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
@@ -523,6 +594,8 @@ function applyRtiLayout() {{
      }}
    }}
  }});
+ syncHeader();
+ syncViewportControls();
  applyViewportState();
 }}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
@@ -541,23 +614,91 @@ function updateZoom(nextPercent){{
  rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(centerX*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
  rtiCanvas.scrollTop=clamp((currentDeviceTop+(centerY*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
 }}
+function setActivePage(nextPageIndex) {{
+ const target=Number(nextPageIndex);
+ if (!Number.isFinite(target) || !PAGE_STATE[target]) return;
+ activePageIndex=target;
+ currentViewportIndexes=(PAGE_STATE[target].vpFrames||[]).map(()=>0);
+ const rtiCanvas=document.getElementById('rtiCanvas');
+ if (rtiCanvas) {{
+   rtiCanvas.scrollLeft=0;
+   rtiCanvas.scrollTop=0;
+ }}
+ applyRtiLayout();
+}}
 window.addEventListener('resize', applyRtiLayout);
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
+document.querySelectorAll('.page-link-hit[data-target-page-index]').forEach(link=>link.addEventListener('click',e=>{{
+ e.preventDefault();
+ setActivePage(link.dataset.targetPageIndex);
+}}));
 const zoomDec=document.querySelector('.zoom-dec');
 const zoomInc=document.querySelector('.zoom-inc');
 const zoomReset=document.querySelector('.zoom-reset');
 if (zoomDec) zoomDec.addEventListener('click',()=>updateZoom(currentZoomPercent-ZOOM_STEP));
 if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(currentZoomPercent+ZOOM_STEP));
 if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
-if (VP_FRAMES.length && VP_FRAMES[0].length) {{
-  const prev=document.getElementById('vpPrev');
-  const next=document.getElementById('vpNext');
-  if (prev && next) {{
-    prev.addEventListener('click',()=>{{ if(currentViewportIndexes[0]>0){{currentViewportIndexes[0]--;applyViewportState();}} }});
-    next.addEventListener('click',()=>{{ if(currentViewportIndexes[0]<VP_FRAMES[0].length-1){{currentViewportIndexes[0]++;applyViewportState();}} }});
-  }}
-  applyViewportState();
+const prev=document.getElementById('vpPrev');
+const next=document.getElementById('vpNext');
+if (prev && next) {{
+  prev.addEventListener('click',()=>{{
+    const frames=activePageState().vpFrames||[];
+    if (frames.length && currentViewportIndexes[0]>0) {{
+      currentViewportIndexes[0]--;
+      applyViewportState();
+    }}
+  }});
+  next.addEventListener('click',()=>{{
+    const frames=activePageState().vpFrames||[];
+    if (frames.length && currentViewportIndexes[0]<frames[0].length-1) {{
+      currentViewportIndexes[0]++;
+      applyViewportState();
+    }}
+  }});
 }}
 </script></body></html>"""
+
+
+def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0, page_index: int = 0) -> str:
+    device = project_data["devices"][device_index]
+    uf = device["userFacing"]
+    payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index)
+    res = uf.get("deviceUI", {}).get("portrait", {}).get("resolution", {"width": 480, "height": 854})
+    w = int(res.get("width") or 480)
+    h = int(res.get("height") or 854)
+    title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
+    header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", payload["page_name"])
+    body_markup = payload["viewport_boxes"] + payload["page_button_rows"] + payload["viewport_button_rows"]
+    page_state_json = json.dumps([{"deviceName": uf.get("displayName", ""), "pageName": payload["page_name"], "vpFrames": payload["vp_frames"]}])
+    return _render_document(app_ui, header, w, h, body_markup, page_state_json)
+
+
+def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> str:
+    device = project_data["devices"][device_index]
+    uf = device["userFacing"]
+    res = uf.get("deviceUI", {}).get("portrait", {}).get("resolution", {"width": 480, "height": 854})
+    w = int(res.get("width") or 480)
+    h = int(res.get("height") or 854)
+    pages = uf.get("pages", [])
+    title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
+    first_page_name = str(pages[0].get("pageName", "")) if pages else ""
+    header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
+
+    page_markup: list[str] = []
+    page_state: list[dict[str, Any]] = []
+    for page_index, _page in enumerate(pages):
+        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index)
+        page_markup.append(
+            f"<div class='device-page{' active' if page_index == 0 else ''}' data-page-index='{page_index}'>"
+            f"{payload['viewport_boxes']}{payload['page_button_rows']}{payload['viewport_button_rows']}</div>"
+        )
+        page_state.append(
+            {
+                "deviceName": uf.get("displayName", ""),
+                "pageName": payload["page_name"],
+                "vpFrames": payload["vp_frames"],
+            }
+        )
+    return _render_document(app_ui, header, w, h, "".join(page_markup), json.dumps(page_state))
