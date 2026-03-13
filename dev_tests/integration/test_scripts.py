@@ -12,6 +12,27 @@ EXTRACT = ROOT / "src" / "sentinel" / "extraction" / "extract_project_data.py"
 GENERATE = ROOT / "src" / "sentinel" / "generation" / "generate_html.py"
 
 
+def orientation_ui(font_size: int, top: int, left: int, height: int, width: int, *, p_visible: bool = True, l_visible: bool = False, l_top: int | None = None, l_left: int | None = None, l_height: int | None = None, l_width: int | None = None) -> dict:
+    return {
+        "fontSize": font_size,
+        "orientations": {
+            "portrait": {
+                "visible": p_visible,
+                "coordinates": {"top": top, "left": left, "height": height, "width": width},
+            },
+            "landscape": {
+                "visible": l_visible,
+                "coordinates": {
+                    "top": top if l_top is None else l_top,
+                    "left": left if l_left is None else l_left,
+                    "height": height if l_height is None else l_height,
+                    "width": width if l_width is None else l_width,
+                },
+            },
+        },
+    }
+
+
 def sample_app_ui() -> dict:
     return {
         "appUiStructureVersion": "1.0.0",
@@ -90,7 +111,7 @@ def create_test_apex(path: Path) -> None:
         create table RTIDevicePageData (PageId integer primary key, SourceDeviceId integer, PageNameId integer, RTIAddress integer, PageOrder integer);
         create table PageNames (PageNameId integer primary key, PageName text);
         create table Layers (LayerId integer primary key, PageId integer, SourceId integer, SharedLayerId integer, LayerOrder integer, IsVisible integer, VisibilityVariable text, IsLocked integer, ViewPortButtonId integer, RoomId integer);
-        create table RTIDeviceButtonData (ButtonId integer primary key, SharedLayerId integer, ButtonOrder integer, ButtonTagId integer, FrameNumber integer, ButtonTop integer, ButtonLeft integer, ButtonHeight integer, ButtonWidth integer, Text text, TextSize integer, ButtonStyle integer, VisibleOrientations integer, ViewPortVerticalScroll integer);
+        create table RTIDeviceButtonData (ButtonId integer primary key, SharedLayerId integer, ButtonOrder integer, ButtonTagId integer, FrameNumber integer, ButtonTop integer, ButtonLeft integer, ButtonHeight integer, ButtonWidth integer, Text text, TextSize integer, ButtonStyle integer, ButtonTopAlt integer, ButtonLeftAlt integer, ButtonHeightAlt integer, ButtonWidthAlt integer, VisibleOrientations integer, ViewPortVerticalScroll integer);
         create table ButtonTagNames (ButtonTagId integer primary key, ButtonTagName text);
         create table Variables (VariableId integer primary key, RoomId integer, DeviceId integer, ButtonTagId integer, ButtonText text, ObjectData text, ReversedData text, InactiveData text, VisibleData text);
         create table ButtonTextTags (ButtonTextTagId integer primary key, ButtonId integer, ButtonTagId integer);
@@ -116,8 +137,8 @@ def create_test_apex(path: Path) -> None:
     cur.execute("insert into ButtonTagNames values (114,'LIGHTS - Load 2 Level')")
     cur.execute("insert into ButtonTagNames values (129,'LIGHTS - Load 2 TOGGLE')")
 
-    cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,1,0)")
-    cur.execute("insert into RTIDeviceButtonData values (247,300,1,129,0,140,334,46,76,'',10,7,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,20,320,46,284,2,0)")
+    cur.execute("insert into RTIDeviceButtonData values (247,300,1,129,0,140,334,46,76,'',10,7,20,620,46,76,2,0)")
 
     cur.execute("insert into Variables values (1,0,-1,114,'$%VARIABLE!x@DDL002%$','token@DDL002',null,null,null)")
     cur.execute("insert into Variables values (2,0,-1,129,null,'token@DDS002',null,null,null)")
@@ -152,6 +173,10 @@ class ScriptContractsTest(unittest.TestCase):
             data = json.loads((td_path / "sample_project_data.json").read_text(encoding="utf-8"))
             slider = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][0]
             toggle = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][1]
+            self.assertTrue(slider["buttonUI"]["orientations"]["portrait"]["visible"])
+            self.assertFalse(slider["buttonUI"]["orientations"]["landscape"]["visible"])
+            self.assertEqual(slider["buttonUI"]["orientations"]["portrait"]["coordinates"]["left"], 30)
+            self.assertEqual(slider["buttonUI"]["orientations"]["landscape"]["coordinates"]["left"], 320)
             self.assertTrue(slider["testTargets"]["variables"]["Value"])
             self.assertFalse(slider["testTargets"]["variables"]["State"])
             self.assertTrue(slider["testTargets"]["variables"]["Command"])
@@ -178,7 +203,7 @@ class ScriptContractsTest(unittest.TestCase):
                                         "screenButtons": [
                                             {
                                                 "buttonIdentity": {"buttonTagName": "X", "text": "Btn", "buttonType": "Slider"},
-                                                "buttonUI": {"fontSize": 10, "coordinates": {"top": 10, "left": 10, "height": 40, "width": 100}},
+                                                "buttonUI": orientation_ui(10, 10, 10, 40, 100),
                                                 "testTargets": {
                                                     "text": True,
                                                     "macro": False,
@@ -330,7 +355,7 @@ class ScriptContractsTest(unittest.TestCase):
                                         "screenButtons": [
                                             {
                                                 "buttonIdentity": {"buttonTagName": "GO - Lights", "text": "Lights", "buttonType": None},
-                                                "buttonUI": {"fontSize": 10, "coordinates": {"top": 20, "left": 20, "height": 40, "width": 120}},
+                                                "buttonUI": orientation_ui(10, 20, 20, 40, 120),
                                                 "testTargets": {
                                                     "text": True,
                                                     "macro": False,
@@ -386,7 +411,7 @@ class ScriptContractsTest(unittest.TestCase):
                                     "viewports": [
                                         {
                                             "viewportIdentity": {"viewportButtonId": 2},
-                                            "viewportUI": {"coordinates": {"top": 60, "left": 20, "height": 694, "width": 440}},
+                                            "viewportUI": {"navigationMode": "page", "orientations": {"portrait": {"visible": True, "coordinates": {"top": 60, "left": 20, "height": 694, "width": 440}}, "landscape": {"visible": False, "coordinates": {"top": 30, "left": 10, "height": 300, "width": 700}}}},
                                             "frames": [
                                                 {
                                                     "frameId": 0,
@@ -395,7 +420,7 @@ class ScriptContractsTest(unittest.TestCase):
                                                         "screenButtons": [
                                                             {
                                                                 "buttonIdentity": {"buttonTagName": "LIGHTS - Load 2 TOGGLE", "text": "", "buttonType": "Toggle"},
-                                                                "buttonUI": {"fontSize": 10, "coordinates": {"top": 140, "left": 334, "height": 46, "width": 76}},
+                                                                "buttonUI": orientation_ui(10, 140, 334, 46, 76),
                                                                 "testTargets": {
                                                                     "text": False,
                                                                     "macro": True,

@@ -59,6 +59,58 @@ def _has_non_empty_macro(cur: sqlite3.Cursor, macro_id: int) -> bool:
     return any(step_type not in (3, 15) for step_type in rows)
 
 
+def _coords(top: Any, left: Any, height: Any, width: Any) -> dict[str, int]:
+    return {
+        "top": int(top or 0),
+        "left": int(left or 0),
+        "height": int(height or 0),
+        "width": int(width or 0),
+    }
+
+
+def _orientation_visibility(mask: int) -> dict[str, bool]:
+    if mask == 3:
+        return {"portrait": True, "landscape": True}
+    if mask == 2:
+        return {"portrait": True, "landscape": False}
+    # Strong working inference used to preserve app behavior until mask=1 is explicitly locked.
+    if mask == 1:
+        return {"portrait": False, "landscape": True}
+    return {"portrait": False, "landscape": False}
+
+
+def _button_ui(button_row: sqlite3.Row) -> dict[str, Any]:
+    vis = _orientation_visibility(int(button_row["VisibleOrientations"] or 0))
+    return {
+        "fontSize": int(button_row["TextSize"] or 0),
+        "orientations": {
+            "portrait": {
+                "visible": vis["portrait"],
+                "coordinates": _coords(
+                    button_row["ButtonTop"],
+                    button_row["ButtonLeft"],
+                    button_row["ButtonHeight"],
+                    button_row["ButtonWidth"],
+                ),
+            },
+            "landscape": {
+                "visible": vis["landscape"],
+                "coordinates": _coords(
+                    button_row["ButtonTopAlt"],
+                    button_row["ButtonLeftAlt"],
+                    button_row["ButtonHeightAlt"],
+                    button_row["ButtonWidthAlt"],
+                ),
+            },
+        },
+    }
+
+
+def _is_hard_button(button_ui: dict[str, Any]) -> bool:
+    portrait = button_ui["orientations"]["portrait"]["coordinates"]
+    return int(portrait["height"] or 0) == 0 and int(portrait["width"] or 0) == 0
+
+
 def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id: dict[int, str], variables_by_tag: dict[int, list[sqlite3.Row]], button_text_tag_ids: set[int], macros_by_tag: dict[int, list[sqlite3.Row]], page_links_by_tag: dict[int, sqlite3.Row]) -> tuple[dict[str, Any], dict[str, Any], bool]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -91,7 +143,8 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
     target_page_id = int(page_link_row["PageId"]) if page_link_row and page_link_row["PageId"] is not None else None
     page_link_id = int(page_link_row["PageLinkId"]) if page_link_row and page_link_row["PageLinkId"] is not None else None
 
-    is_hard = int(button_row["ButtonHeight"] or 0) == 0 and int(button_row["ButtonWidth"] or 0) == 0
+    button_ui = _button_ui(button_row)
+    is_hard = _is_hard_button(button_ui)
 
     user_button = {
         "buttonIdentity": {
@@ -99,15 +152,7 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
             "text": text,
             "buttonType": button_type,
         },
-        "buttonUI": {
-            "fontSize": int(button_row["TextSize"] or 0),
-            "coordinates": {
-                "top": int(button_row["ButtonTop"] or 0),
-                "left": int(button_row["ButtonLeft"] or 0),
-                "height": int(button_row["ButtonHeight"] or 0),
-                "width": int(button_row["ButtonWidth"] or 0),
-            },
-        },
+        "buttonUI": button_ui,
         "testTargets": {
             "text": has_literal_text,
             "macro": has_macro_target,
@@ -277,7 +322,10 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         user_viewports.append(
                             {
                                 "viewportIdentity": {"viewportButtonId": button_id},
-                                "viewportUI": {"coordinates": user_button["buttonUI"]["coordinates"]},
+                                "viewportUI": {
+                                    "navigationMode": "verticalScroll" if int(b["ViewPortVerticalScroll"] or 0) != 0 else "page",
+                                    "orientations": user_button["buttonUI"]["orientations"],
+                                },
                                 "frames": frames["user_frames"],
                             }
                         )
@@ -298,7 +346,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         if _empty(user_button["buttonIdentity"]["buttonTagName"]) and _empty(user_button["buttonIdentity"]["text"]):
                             diag_ui_items.append({"buttonId": button_id})
                             continue
-                        if user_button["buttonUI"]["coordinates"]["height"] == 0 and user_button["buttonUI"]["coordinates"]["width"] == 0:
+                        if _is_hard_button(user_button["buttonUI"]):
                             user_cats["hardButtons"].append(user_button)
                             continue
 
@@ -378,7 +426,7 @@ def _resolve_viewport_frames(cur: sqlite3.Cursor, viewport_button_id: int, tag_n
             user_button, diag_button, is_special = _resolve_button(cur, b, tag_name_by_id, variables_by_tag, button_text_tag_ids, macros_by_tag, page_links_by_tag)
             frame_diag[frame_id]["buttons"].append(diag_button)
 
-            if is_special and user_button["buttonUI"]["coordinates"]["height"] == 0 and user_button["buttonUI"]["coordinates"]["width"] == 0:
+            if is_special and _is_hard_button(user_button["buttonUI"]):
                 frame_user[frame_id]["buttonCategories"]["hardButtons"].append(user_button)
             elif _is_screen_label(user_button):
                 frame_user[frame_id]["buttonCategories"]["screenLabels"].append(user_button)

@@ -12,6 +12,22 @@ if str(SRC) not in sys.path:
 from sentinel.generation.render_core import render_html
 
 
+def orientation_ui(font_size: int, top: int, left: int, height: int, width: int) -> dict:
+    return {
+        "fontSize": font_size,
+        "orientations": {
+            "portrait": {
+                "visible": True,
+                "coordinates": {"top": top, "left": left, "height": height, "width": width},
+            },
+            "landscape": {
+                "visible": False,
+                "coordinates": {"top": top, "left": left, "height": height, "width": width},
+            },
+        },
+    }
+
+
 class PageLinkRenderingRegressionTest(unittest.TestCase):
     def test_page_link_overlay_renders_only_for_enabled_links(self):
         project_data = {
@@ -31,7 +47,7 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
                                     "screenButtons": [
                                         {
                                             "buttonIdentity": {"buttonTagName": "GO - Lights", "text": "Lights", "buttonType": None},
-                                            "buttonUI": {"fontSize": 10, "coordinates": {"top": 20, "left": 20, "height": 40, "width": 120}},
+                                            "buttonUI": orientation_ui(10, 20, 20, 40, 120),
                                             "testTargets": {
                                                 "text": True,
                                                 "macro": False,
@@ -41,7 +57,7 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
                                         },
                                         {
                                             "buttonIdentity": {"buttonTagName": "PLAIN - Button", "text": "Plain", "buttonType": None},
-                                            "buttonUI": {"fontSize": 10, "coordinates": {"top": 80, "left": 20, "height": 40, "width": 120}},
+                                            "buttonUI": orientation_ui(10, 80, 20, 40, 120),
                                             "testTargets": {
                                                 "text": True,
                                                 "macro": False,

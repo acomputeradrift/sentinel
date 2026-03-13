@@ -90,10 +90,23 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
     return items
 
 
+def _ui_coordinates(ui: dict[str, Any]) -> dict[str, int]:
+    if "coordinates" in ui:
+        return ui.get("coordinates", {})
+    orientations = ui.get("orientations", {})
+    portrait = orientations.get("portrait", {})
+    if portrait.get("coordinates"):
+        return portrait.get("coordinates", {})
+    landscape = orientations.get("landscape", {})
+    if landscape.get("coordinates"):
+        return landscape.get("coordinates", {})
+    return {}
+
+
 def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, int]]:
     out: list[dict[str, int]] = []
     for viewport in page.get("viewports", []):
-        c = viewport.get("viewportUI", {}).get("coordinates", {})
+        c = _ui_coordinates(viewport.get("viewportUI", {}))
         out.append(
             {
                 "left": int(c.get("left") or 0),
@@ -108,7 +121,7 @@ def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, int]]:
 def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for vp_index, viewport in enumerate(page.get("viewports", [])):
-        vp_c = viewport.get("viewportUI", {}).get("coordinates", {})
+        vp_c = _ui_coordinates(viewport.get("viewportUI", {}))
         off_top = int(vp_c.get("top") or 0)
         off_left = int(vp_c.get("left") or 0)
         frames = sorted(viewport.get("frames", []), key=lambda f: int(f.get("frameId", 0)))
@@ -152,7 +165,7 @@ def _page_target_map(project_data: dict[str, Any], project_stem: str, device_ind
 
 
 def _render_button_control(btn: dict[str, Any], label: str, left: int, top: int, variable_label: str, app_ui: dict[str, Any], page_targets: dict[int, str], extra_classes: str = "", extra_style: str = "", extra_attrs: str = "") -> str:
-    c = btn["buttonUI"]["coordinates"]
+    c = _ui_coordinates(btn["buttonUI"])
     width = int(c.get("width") or 0)
     height = int(c.get("height") or 0)
     fs = int(btn["buttonUI"].get("fontSize") or app_ui.get("buttonPresentation", {}).get("fallbackFontSize", 10))
@@ -210,7 +223,7 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
 
     page_button_rows: list[str] = []
     for btn, label, off_top, off_left in _iter_page_buttons(page):
-        c = btn["buttonUI"]["coordinates"]
+        c = _ui_coordinates(btn["buttonUI"])
         page_button_rows.append(
             _render_button_control(
                 btn,
@@ -226,7 +239,7 @@ def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_st
     viewport_button_rows: list[str] = []
     for vb in _iter_viewport_buttons(page):
         btn = vb["btn"]
-        c = btn["buttonUI"]["coordinates"]
+        c = _ui_coordinates(btn["buttonUI"])
         extra = "" if vb["visible"] else "display:none;"
         viewport_button_rows.append(
             _render_button_control(
