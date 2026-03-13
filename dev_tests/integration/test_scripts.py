@@ -138,7 +138,7 @@ class ScriptContractsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             apex = td_path / "sample.apex"
-            schema = td_path / "project_structure.json"
+            schema = td_path / "apex_project_structure.json"
             schema.write_text("{}", encoding="utf-8")
             create_test_apex(apex)
 

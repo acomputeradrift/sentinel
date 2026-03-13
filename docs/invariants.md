@@ -2,7 +2,7 @@
 
 ## Non-Negotiable Truths
 1. Sentinel must never continue in a silent, unstable, partially valid, or untrusted state.
-2. Project-specific JSON must remain traceable to the uploaded `.apex` file and must conform to the approved `project_structure.json` contract.
+2. Project-specific JSON must remain traceable to the uploaded `.apex` file and must conform to the approved `apex_project_structure.json` contract.
 3. Sentinel-owned interface behavior must remain governed by `app_ui_structure.json` and must not be mixed into `.apex`-derived project data.
 4. Test history must be append-only and must not be erased, overwritten, or collapsed by regeneration or retesting.
 5. Equivalent approved inputs and configurations must produce consistent and repeatable outputs and behavior.

@@ -8,7 +8,7 @@
 
 ## Normal Operation
 1. A commissioning session is created and the current project `.apex` file is uploaded through the diagnostics interface.
-2. Sentinel extracts a project-specific JSON file from the uploaded `.apex` file using the `project_structure.json` template.
+2. Sentinel extracts a project-specific JSON file from the uploaded `.apex` file using the `apex_project_structure.json` template.
 3. Sentinel generates or regenerates the event testing and device testing interfaces from the project-specific JSON file using the `app_ui_structure.json` template.
 4. The user interface is used to execute tests across event testing and device testing areas.
 5. Test results are recorded live as pass or fail, with timestamps captured for every result and fail notes required for failed targets.

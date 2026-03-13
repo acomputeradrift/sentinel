@@ -9,7 +9,7 @@
 6. Testing artifacts must be isolated from application files so test runs can be cleaned up completely without risking project code, approved documents, or source assets.
 
 ## Required Test Layers
-1. Unit tests for extraction logic that maps `.apex` source data into project-specific JSON shaped by `project_structure.json`.
+1. Unit tests for extraction logic that maps `.apex` source data into project-specific JSON shaped by `apex_project_structure.json`.
 2. Unit tests for generation logic that combines project-specific JSON with Sentinel UI rules from `app_ui_structure.json`.
 3. Contract tests that verify generated project JSON conforms to the approved project structure format.
 4. Contract tests that verify Sentinel-only UI elements and interface behavior defined by `app_ui_structure.json` are rendered and behave as configured.
