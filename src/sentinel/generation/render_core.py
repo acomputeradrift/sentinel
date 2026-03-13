@@ -677,13 +677,12 @@ def _event_section_items(project_data: dict[str, Any], event_key: str) -> list[d
 
 def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
     user = item.get("userFacing", {}) if isinstance(item, dict) else {}
-    if event_kind == "driver":
-        primary = str(user.get("driverName") or "Driver Event").strip()
-    else:
-        primary = str(user.get("description") or user.get("eventType") or "System Event").strip()
     trigger = str(user.get("resolvedTrigger") or "No trigger").strip()
     macro = str(user.get("macroName") or "No macro").strip()
-    return " | ".join([primary, trigger, macro])
+    if event_kind == "driver":
+        return f"When {trigger} happens, run macro {macro}"
+    description = str(user.get("description") or user.get("eventType") or "System Event").strip()
+    return f"{description} | {trigger}, run macro {macro}"
 
 
 def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:

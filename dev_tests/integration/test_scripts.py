@@ -171,8 +171,18 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
 
             data = json.loads((td_path / "sample_project_data.json").read_text(encoding="utf-8"))
+            system_event = data["events"]["system"][0]
+            driver_event = data["events"]["driver"][0]
             slider = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][0]
             toggle = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][1]
+            self.assertEqual(system_event["userFacing"]["description"], "Sense Test")
+            self.assertEqual(system_event["userFacing"]["resolvedTrigger"], "Sense Test")
+            self.assertEqual(system_event["userFacing"]["macroName"], "LIGHTS - Load 2 TOGGLE")
+            self.assertEqual(system_event["userFacing"]["testTargets"], {"Trigger": True, "Macro": True})
+            self.assertEqual(driver_event["userFacing"]["driverName"], "IST-5 (Global)")
+            self.assertEqual(driver_event["userFacing"]["resolvedTrigger"], "fallback")
+            self.assertEqual(driver_event["userFacing"]["macroName"], "LIGHTS - Load 2 TOGGLE")
+            self.assertEqual(driver_event["userFacing"]["testTargets"], {"Trigger": True, "Macro": True})
             self.assertTrue(slider["buttonUI"]["orientations"]["portrait"]["visible"])
             self.assertFalse(slider["buttonUI"]["orientations"]["landscape"]["visible"])
             self.assertEqual(slider["buttonUI"]["orientations"]["portrait"]["coordinates"]["left"], 30)
@@ -479,7 +489,7 @@ class ScriptContractsTest(unittest.TestCase):
                             "userFacing": {
                                 "eventType": "Sense",
                                 "description": "Hall Motion",
-                                "resolvedTrigger": "Hall Sensor",
+                                "resolvedTrigger": "When Hall Sensor opens",
                                 "macroName": "Hall Lights",
                                 "testTargets": {"Trigger": True, "Macro": True},
                             }
@@ -536,8 +546,9 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("System Events", home_html)
             self.assertIn("Driver Events", home_html)
             self.assertIn("Devices", home_html)
-            self.assertIn("Hall Motion | Hall Sensor | Hall Lights", home_html)
+            self.assertIn("Hall Motion | When Hall Sensor opens, run macro Hall Lights", home_html)
             self.assertIn("Lutron Driver", home_html)
+            self.assertIn("When Button 1 happens, run macro Scene On", home_html)
             self.assertIn("sample_project_data__device-0-ist-5-global.html", home_html)
             self.assertNotIn("sample_project_data__device-1-xp-6s.html", home_html)
 

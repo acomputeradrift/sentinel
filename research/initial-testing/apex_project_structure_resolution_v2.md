@@ -13,6 +13,18 @@ Working note for `apex_project_structure_v2.json`:
 
 This section tracks approved methods for the `events.system.items[]` shape in `apex_project_structure_v2.json`.
 
+### User-Facing Row Format
+
+Status: `approved`
+
+Homepage/system-event display format:
+- `<description> | <resolvedTrigger>, run macro <macroName>`
+
+Approved trigger style inside that row:
+- sense events use `When ...`
+- scheduled events use `On ...`
+- startup events use `On ...`
+
 ### Description
 
 Status: `locked`
@@ -78,8 +90,8 @@ Source fields:
 Approved rules so far:
 - scheduled trigger data is file-backed in `Events`
 - astronomical schedule subtype mapping is approved:
-  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0000` -> `Sunrise`
-  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0001` -> `Sunset`
+  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0000` -> `On sunrise`
+  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0001` -> `On sunset`
 
 #### Fixed scheduled triggers
 
@@ -100,12 +112,12 @@ Method:
    - element 6 -> `minute`
 6. convert `hour24` and `minute` to 12-hour AM/PM formatting
 7. build the resolved trigger:
-   - `{DayGroup} at {h:mm AM/PM}`
+   - `On {dayGroup lowercase} at {h:mm AM/PM}`
 
 Validated examples:
-- `Weekdays at 7:35 AM`
-- `Weekends at 9:45 PM`
-- `Every day at 9:00 AM`
+- `On weekdays at 7:35 AM`
+- `On weekends at 9:45 PM`
+- `On every day at 9:00 AM`
 
 Rule boundary:
 - the fixed scheduled trigger method is currently locked only for the proven `DailyDayMask` values above
@@ -119,12 +131,12 @@ Method:
 - if `DailyAstronomical = 1`
 - inspect `DailyStartTimeHex`
 - decode:
-  - suffix `...0000` -> `Sunrise`
-  - suffix `...0001` -> `Sunset`
+  - suffix `...0000` -> `On sunrise`
+  - suffix `...0001` -> `On sunset`
 
 Validated examples:
-- `EventId=126` -> `Sunrise`
-- `EventId=127` -> `Sunset`
+- `EventId=126` -> `On sunrise`
+- `EventId=127` -> `On sunset`
 
 ### Resolved Trigger: Startup Events
 
@@ -136,7 +148,7 @@ Source field:
 Approved rule:
 - startup trigger data is file-backed in `Events.StartupType`
 - current approved resolved trigger wording:
-  - `On System Startup`
+  - `On system startup`
 
 Rule boundary:
 - `StartupType` is the file-backed source field
