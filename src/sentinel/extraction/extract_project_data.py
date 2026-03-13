@@ -3,6 +3,8 @@
 import argparse
 import json
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,9 +32,12 @@ def main() -> int:
     apex = Path(args.apex).resolve()
     project_structure = Path(args.project_structure).resolve()
     out_dir = Path(args.out_dir).resolve()
+    started_at = datetime.now(timezone.utc)
+    started_perf = time.perf_counter()
 
     try:
         log.info(f"Extractor start version={SCRIPT_VERSION}")
+        log.info(f"Extraction started_at={started_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
         if not apex.exists():
             log.fail(f"Apex file not found: {apex}")
             return 1
@@ -51,9 +56,17 @@ def main() -> int:
         with out_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=True)
 
+        ended_at = datetime.now(timezone.utc)
+        elapsed_seconds = time.perf_counter() - started_perf
+        log.info(f"Extraction ended_at={ended_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
+        log.info(f"Extraction elapsed_seconds={elapsed_seconds:.3f}")
         log.success(f"Extraction complete: {out_path.name}")
         return 0
     except Exception as exc:  # pragma: no cover
+        ended_at = datetime.now(timezone.utc)
+        elapsed_seconds = time.perf_counter() - started_perf
+        log.info(f"Extraction ended_at={ended_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
+        log.info(f"Extraction elapsed_seconds={elapsed_seconds:.3f}")
         log.fail(f"Extraction failed: {exc}")
         return 1
 

@@ -2,6 +2,8 @@
 
 import argparse
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,9 +31,12 @@ def main() -> int:
     project_data_path = Path(args.project_data).resolve()
     app_ui_path = Path(args.app_ui).resolve()
     out_dir = Path(args.out_dir).resolve() if args.out_dir else project_data_path.parent
+    started_at = datetime.now(timezone.utc)
+    started_perf = time.perf_counter()
 
     try:
         log.info(f"Generator start version={SCRIPT_VERSION}")
+        log.info(f"Generation started_at={started_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
         if not project_data_path.exists():
             log.fail(f"project data file not found: {project_data_path}")
             return 1
@@ -66,9 +71,17 @@ def main() -> int:
             out_path.write_text(html, encoding="utf-8")
             written += 1
 
+        ended_at = datetime.now(timezone.utc)
+        elapsed_seconds = time.perf_counter() - started_perf
+        log.info(f"Generation ended_at={ended_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
+        log.info(f"Generation elapsed_seconds={elapsed_seconds:.3f}")
         log.success(f"Generation complete: wrote {written} html file(s)")
         return 0
     except Exception as exc:  # pragma: no cover
+        ended_at = datetime.now(timezone.utc)
+        elapsed_seconds = time.perf_counter() - started_perf
+        log.info(f"Generation ended_at={ended_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
+        log.info(f"Generation elapsed_seconds={elapsed_seconds:.3f}")
         log.fail(f"Generation failed: {exc}")
         return 1
 
