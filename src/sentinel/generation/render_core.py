@@ -24,10 +24,6 @@ def page_slug(page_name: str, page_index: int) -> str:
     return slug or f"page-{page_index}"
 
 
-def page_filename(project_stem: str, page_name: str, page_index: int) -> str:
-    return f"{project_stem}__page-{page_index}-{page_slug(page_name, page_index)}.html"
-
-
 def device_filename(project_stem: str, device_name: str, device_index: int) -> str:
     return f"{project_stem}__device-{device_index}-{page_slug(device_name, device_index)}.html"
 
@@ -154,8 +150,11 @@ def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _page_target_map(project_data: dict[str, Any], project_stem: str, device_index: int) -> dict[int, str]:
-    user_pages = project_data["devices"][device_index]["userFacing"]["pages"]
+    device = project_data["devices"][device_index]
+    user_pages = device["userFacing"]["pages"]
     diag_pages = project_data["devices"][device_index].get("diagnostics", {}).get("pages", [])
+    device_name = str(device["userFacing"].get("displayName", f"device-{device_index}"))
+    target_href = device_filename(project_stem, device_name, device_index)
     out: dict[int, str] = {}
     for index, diag_page in enumerate(diag_pages):
         if index >= len(user_pages):
@@ -163,8 +162,7 @@ def _page_target_map(project_data: dict[str, Any], project_stem: str, device_ind
         page_id = diag_page.get("pageId")
         if page_id is None:
             continue
-        page_name = user_pages[index].get("pageName", "")
-        out[int(page_id)] = page_filename(project_stem, str(page_name), index)
+        out[int(page_id)] = target_href
     return out
 
 
@@ -659,22 +657,6 @@ if (prev && next) {{
   }});
 }}
 </script></body></html>"""
-
-
-def render_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0, page_index: int = 0) -> str:
-    device = project_data["devices"][device_index]
-    uf = device["userFacing"]
-    payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index)
-    res = uf.get("deviceUI", {}).get("portrait", {}).get("resolution", {"width": 480, "height": 854})
-    w = int(res.get("width") or 480)
-    h = int(res.get("height") or 854)
-    title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
-    header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", payload["page_name"])
-    body_markup = payload["viewport_boxes"] + payload["page_button_rows"] + payload["viewport_button_rows"]
-    page_state_json = json.dumps([{"deviceName": uf.get("displayName", ""), "pageName": payload["page_name"], "vpFrames": payload["vp_frames"]}])
-    return _render_document(app_ui, header, w, h, body_markup, page_state_json)
-
-
 def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> str:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]

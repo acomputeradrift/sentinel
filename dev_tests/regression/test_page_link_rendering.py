@@ -9,7 +9,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from sentinel.generation.render_core import render_html, render_single_device_html
+from sentinel.generation.render_core import render_single_device_html
 
 
 def orientation_ui(font_size: int, top: int, left: int, height: int, width: int) -> dict:
@@ -99,11 +99,12 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
             "state": {"persistTestResults": True, "persistViewportFrameSelection": True},
         }
 
-        html = render_html(project_data, app_ui, project_stem="sample_project_data", device_index=0, page_index=0)
+        html = render_single_device_html(project_data, app_ui, project_stem="sample_project_data", device_index=0)
         self.assertEqual(html.count("<a class='page-link-hit'"), 1)
         self.assertIn("material-symbols-outlined", html)
         self.assertIn("link_2", html)
-        self.assertIn("sample_project_data__page-1-lights.html", html)
+        self.assertIn("sample_project_data__device-0-ist-5-global.html", html)
+        self.assertIn("data-target-page-index='1'", html)
 
     def test_single_device_page_links_include_client_side_target_indexes(self):
         project_data = {

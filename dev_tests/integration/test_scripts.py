@@ -230,7 +230,7 @@ class ScriptContractsTest(unittest.TestCase):
             run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
 
-            html = (td_path / "sample_project_data__page-0-lights.html").read_text(encoding="utf-8")
+            html = (td_path / "sample_project_data__device-0-ist-5-global.html").read_text(encoding="utf-8")
             self.assertIn("IST-5 (Global) - Lights", html)
             self.assertIn("Variable - Value", html)
             self.assertIn(">Btn</button>", html)
@@ -275,7 +275,7 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("scrollbar-gutter:stable overlay;", html)
             self.assertIn("rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {passive:true});", html)
 
-    def test_generate_writes_all_pages_when_page_index_not_given(self):
+    def test_generate_writes_single_device_file_by_default(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             project_data = {
@@ -303,8 +303,9 @@ class ScriptContractsTest(unittest.TestCase):
 
             run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
-            self.assertTrue((td_path / "sample_project_data__page-0-home.html").exists())
-            self.assertTrue((td_path / "sample_project_data__page-1-lights.html").exists())
+            self.assertTrue((td_path / "sample_project_data__device-0-ist-5-global.html").exists())
+            self.assertFalse((td_path / "sample_project_data__page-0-home.html").exists())
+            self.assertFalse((td_path / "sample_project_data__page-1-lights.html").exists())
 
     def test_generate_defaults_output_to_project_data_directory(self):
         with tempfile.TemporaryDirectory() as td:
@@ -333,7 +334,7 @@ class ScriptContractsTest(unittest.TestCase):
 
             run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
-            self.assertTrue((td_path / "sample_project_data__page-0-home.html").exists())
+            self.assertTrue((td_path / "sample_project_data__device-0-ist-5-global.html").exists())
 
     def test_generate_includes_page_link_overlay_and_target(self):
         with tempfile.TemporaryDirectory() as td:
@@ -384,11 +385,12 @@ class ScriptContractsTest(unittest.TestCase):
             project_path.write_text(json.dumps(project_data), encoding="utf-8")
             ui_path.write_text(json.dumps(sample_app_ui()), encoding="utf-8")
 
-            run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path), "--page-index", "0"], capture_output=True, text=True)
+            run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
-            html = (td_path / "sample_project_data__page-0-home.html").read_text(encoding="utf-8")
+            html = (td_path / "sample_project_data__device-0-ist-5-global.html").read_text(encoding="utf-8")
             self.assertIn("page-link-hit", html)
-            self.assertIn("sample_project_data__page-1-lights.html", html)
+            self.assertIn("sample_project_data__device-0-ist-5-global.html", html)
+            self.assertIn("data-target-page-index='1'", html)
             self.assertIn("PageLink", html)
             self.assertIn("test-btn", html)
 
@@ -450,91 +452,10 @@ class ScriptContractsTest(unittest.TestCase):
             run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
 
-            html = (td_path / "sample_project_data__page-0-lights.html").read_text(encoding="utf-8")
+            html = (td_path / "sample_project_data__device-0-ist-5-global.html").read_text(encoding="utf-8")
             self.assertIn("LIGHTS - Load 2 TOGGLE", html)
             self.assertIn("data-left='354'", html)
             self.assertIn("data-top='200'", html)
-
-    def test_generate_single_device_writes_one_html_with_all_pages(self):
-        with tempfile.TemporaryDirectory() as td:
-            td_path = Path(td)
-            project_data = {
-                "devices": [
-                    {
-                        "userFacing": {
-                            "displayName": "IST-5 (Global)",
-                            "deviceUI": {
-                                "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
-                                "landscape": {"supported": False, "resolution": {"width": 854, "height": 480}},
-                            },
-                            "pages": [
-                                {
-                                    "pageName": "Home",
-                                    "buttonCategories": {
-                                        "screenLabels": [],
-                                        "screenButtons": [
-                                            {
-                                                "buttonIdentity": {"buttonTagName": "GO - Lights", "text": "Lights", "buttonType": None},
-                                                "buttonUI": orientation_ui(10, 20, 20, 40, 120),
-                                                "testTargets": {
-                                                    "text": True,
-                                                    "macro": False,
-                                                    "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": False, "State": False, "Command": False},
-                                                    "pageLink": {"enabled": True, "targetPageId": 200},
-                                                },
-                                            }
-                                        ],
-                                        "hardButtons": [],
-                                    },
-                                    "viewports": [],
-                                },
-                                {
-                                    "pageName": "Lights",
-                                    "buttonCategories": {
-                                        "screenLabels": [],
-                                        "screenButtons": [
-                                            {
-                                                "buttonIdentity": {"buttonTagName": "LIGHTS - Load 2 TOGGLE", "text": "", "buttonType": "Toggle"},
-                                                "buttonUI": orientation_ui(10, 140, 334, 46, 76),
-                                                "testTargets": {
-                                                    "text": False,
-                                                    "macro": True,
-                                                    "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": False, "State": True, "Command": False},
-                                                    "pageLink": {"enabled": False, "targetPageId": None},
-                                                },
-                                            }
-                                        ],
-                                        "hardButtons": [],
-                                    },
-                                    "viewports": [],
-                                },
-                            ],
-                        },
-                        "diagnostics": {"deviceId": 1, "pages": [{"pageId": 100, "pageName": "Home"}, {"pageId": 200, "pageName": "Lights"}]},
-                    }
-                ]
-            }
-            project_path = td_path / "sample_project_data.json"
-            ui_path = td_path / "app_ui_structure.json"
-            project_path.write_text(json.dumps(project_data), encoding="utf-8")
-            ui_path.write_text(json.dumps(sample_app_ui()), encoding="utf-8")
-
-            run = subprocess.run(
-                [sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path), "--single-device"],
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
-
-            html = (td_path / "sample_project_data__device-0-ist-5-global.html").read_text(encoding="utf-8")
-            self.assertIn("const PAGE_STATE=", html)
-            self.assertIn("class='device-page active' data-page-index='0'", html)
-            self.assertIn("class='device-page' data-page-index='1'", html)
-            self.assertIn("data-target-page-index='1'", html)
-            self.assertIn("setActivePage(link.dataset.targetPageIndex)", html)
-            self.assertIn("LIGHTS - Load 2 TOGGLE", html)
-            self.assertFalse((td_path / "sample_project_data__page-0-home.html").exists())
-            self.assertFalse((td_path / "sample_project_data__page-1-lights.html").exists())
 
 
 if __name__ == "__main__":
