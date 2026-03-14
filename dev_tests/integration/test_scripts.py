@@ -205,15 +205,15 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(driver_event["userFacing"]["driverName"], "IST-5 (Global)")
             self.assertEqual(driver_event["userFacing"]["resolvedTrigger"], "fallback")
             self.assertEqual(driver_event["userFacing"]["firstActionName"], "LIGHTS - Load 2 TOGGLE")
-            self.assertEqual(driver_event["userFacing"]["resolvedActions"], {"macros": ["LIGHTS - Load 2 TOGGLE"], "commands": []})
+            self.assertEqual(driver_event["userFacing"]["resolvedActions"], {"macros": ["LIGHTS - Load 2 TOGGLE"], "macroSteps": []})
+            self.assertEqual(driver_event["userFacing"]["macroStepCount"], 0)
             self.assertEqual(driver_event["userFacing"]["testTargets"], {"Trigger": True, "Macro": True})
             self.assertNotIn("macroName", driver_event["userFacing"])
-            self.assertNotIn("commandName", driver_event["userFacing"])
             self.assertNotIn("macroNames", driver_event["userFacing"])
-            self.assertNotIn("commandNames", driver_event["userFacing"])
             self.assertEqual(driver_multi["userFacing"]["resolvedTrigger"], "multi")
             self.assertEqual(driver_multi["userFacing"]["firstActionName"], "Driver Action A")
-            self.assertEqual(driver_multi["userFacing"]["resolvedActions"], {"macros": ["Driver Action A", "Driver Action B"], "commands": []})
+            self.assertEqual(driver_multi["userFacing"]["resolvedActions"], {"macros": ["Driver Action A", "Driver Action B"], "macroSteps": []})
+            self.assertEqual(driver_multi["userFacing"]["macroStepCount"], 0)
             self.assertEqual(driver_multi["userFacing"]["testTargets"], {"Trigger": True, "Macros": True})
             self.assertTrue(slider["buttonUI"]["orientations"]["portrait"]["visible"])
             self.assertFalse(slider["buttonUI"]["orientations"]["landscape"]["visible"])
@@ -536,8 +536,15 @@ class ScriptContractsTest(unittest.TestCase):
                                 "driverName": "Lutron Driver",
                                 "resolvedTrigger": "Button 1",
                                 "firstActionName": "Scene On",
-                                "resolvedActions": {"macros": [], "commands": ["Scene On", "Scene Off"]},
-                                "testTargets": {"Trigger": True, "Commands": True},
+                                "resolvedActions": {
+                                    "macros": [],
+                                    "macroSteps": [
+                                        {"name": "Scene On", "type": "command"},
+                                        {"name": "Scene Off", "type": "command"},
+                                    ],
+                                },
+                                "macroStepCount": 2,
+                                "testTargets": {"Trigger": True, "MacroSteps": True},
                             }
                         },
                         {
@@ -546,8 +553,35 @@ class ScriptContractsTest(unittest.TestCase):
                                 "driverName": "Lutron Driver",
                                 "resolvedTrigger": "Button 2",
                                 "firstActionName": "Path Lights",
-                                "resolvedActions": {"macros": ["Path Lights"], "commands": ["Scene Raise", "Scene Lower"]},
-                                "testTargets": {"Trigger": True, "Macro": True, "Commands": True},
+                                "resolvedActions": {
+                                    "macros": ["Path Lights"],
+                                    "macroSteps": [
+                                        {"name": "Scene Raise", "type": "command"},
+                                        {"name": "Scene Lower", "type": "command"},
+                                    ],
+                                },
+                                "macroStepCount": 2,
+                                "testTargets": {"Trigger": True, "Macro": True, "MacroSteps": True},
+                            }
+                        },
+                        {
+                            "userFacing": {
+                                "eventType": "Driver",
+                                "driverName": "Venstar Driver",
+                                "resolvedTrigger": "State Change",
+                                "firstActionName": "",
+                                "resolvedActions": {
+                                    "macros": [],
+                                    "macroSteps": [
+                                        {"name": "", "type": "undefined"},
+                                        {"name": "", "type": "undefined"},
+                                        {"name": "", "type": "undefined"},
+                                        {"name": "", "type": "undefined"},
+                                        {"name": "", "type": "undefined"},
+                                    ],
+                                },
+                                "macroStepCount": 5,
+                                "testTargets": {"Trigger": True, "MacroSteps": True},
                             }
                         }
                     ],
@@ -589,15 +623,16 @@ class ScriptContractsTest(unittest.TestCase):
 
             home_html = (td_path / "sample_project_data__project-home.html").read_text(encoding="utf-8")
             self.assertIn("System Events | 1 event", home_html)
-            self.assertIn("Driver Events | 2 events", home_html)
+            self.assertIn("Driver Events | 3 events", home_html)
             self.assertIn("Devices", home_html)
             self.assertIn('"Hall Motion" | When Hall Sensor opens, run macro: Hall Lights', home_html)
             self.assertIn("Lutron Driver", home_html)
-            self.assertIn("When Button 1 happens, run commands: Scene On ...+1 more", home_html)
+            self.assertIn("When Button 1 happens, run macro steps: Scene On ...+1 more", home_html)
             self.assertIn("When Button 2 happens, run actions: Path Lights ...+2 more", home_html)
+            self.assertIn("When State Change happens, run 5 undefined macro steps", home_html)
             self.assertIn('"targets": ["Trigger", "Macro"]', home_html)
-            self.assertIn('"targets": ["Trigger", "Commands"]', home_html)
-            self.assertIn('"targets": ["Trigger", "Macro", "Commands"]', home_html)
+            self.assertIn('"targets": ["Trigger", "MacroSteps"]', home_html)
+            self.assertIn('"targets": ["Trigger", "Macro", "MacroSteps"]', home_html)
             self.assertIn("id='system-events' hidden", home_html)
             self.assertIn("id='driver-events' hidden", home_html)
             self.assertIn("aria-expanded='false'", home_html)

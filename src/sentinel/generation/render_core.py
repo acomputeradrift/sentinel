@@ -698,14 +698,35 @@ def _event_action_names(user: dict[str, Any], key: str) -> list[str]:
     return [fallback] if fallback else []
 
 
-def _driver_resolved_actions(user: dict[str, Any]) -> tuple[list[str], list[str]]:
+def _driver_macro_steps(user: dict[str, Any]) -> list[dict[str, str]]:
+    resolved = user.get("resolvedActions", {})
+    if isinstance(resolved, dict):
+        raw_steps = resolved.get("macroSteps")
+        if isinstance(raw_steps, list):
+            out: list[dict[str, str]] = []
+            for raw_step in raw_steps:
+                if not isinstance(raw_step, dict):
+                    continue
+                step_type = str(raw_step.get("type") or "").strip()
+                if step_type not in {"command", "undefined"}:
+                    continue
+                out.append({"name": str(raw_step.get("name") or "").strip(), "type": step_type})
+            if out:
+                return out
+        command_names = _dedupe_names(resolved.get("commands"))
+        if command_names:
+            return [{"name": name, "type": "command"} for name in command_names]
+    return []
+
+
+def _driver_resolved_actions(user: dict[str, Any]) -> tuple[list[str], list[dict[str, str]]]:
     resolved = user.get("resolvedActions", {})
     if isinstance(resolved, dict):
         macro_names = _dedupe_names(resolved.get("macros"))
-        command_names = _dedupe_names(resolved.get("commands"))
-        if macro_names or command_names:
-            return macro_names, command_names
-    return _event_action_names(user, "macroNames"), _event_action_names(user, "commandNames")
+        macro_steps = _driver_macro_steps(user)
+        if macro_names or macro_steps:
+            return macro_names, macro_steps
+    return _event_action_names(user, "macroNames"), _driver_macro_steps(user)
 
 
 def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> str:
@@ -728,20 +749,33 @@ def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
     user = item.get("userFacing", {}) if isinstance(item, dict) else {}
     trigger = str(user.get("resolvedTrigger") or "No trigger").strip()
     if event_kind == "driver":
-        macro_names, command_names = _driver_resolved_actions(user)
-        total_actions = len(macro_names) + len(command_names)
+        macro_names, macro_steps = _driver_resolved_actions(user)
+        total_actions = len(macro_names) + len(macro_steps)
         first_action_name = str(user.get("firstActionName") or "").strip()
         if not first_action_name:
-            combined = macro_names + command_names
-            first_action_name = combined[0] if combined else "Unknown"
-        if macro_names and not command_names:
+            if macro_names:
+                first_action_name = macro_names[0]
+            else:
+                first_action_name = next((str(step.get("name") or "").strip() for step in macro_steps if str(step.get("name") or "").strip()), "")
+        if macro_names and not macro_steps:
             noun = "macro" if len(macro_names) == 1 else "macros"
-        elif command_names and not macro_names:
-            noun = "command" if len(command_names) == 1 else "commands"
+            remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
+            return f"When {trigger} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
+        if macro_steps and not macro_names:
+            undefined_count = int(user.get("macroStepCount") or len(macro_steps) or 0)
+            if macro_steps and all(str(step.get("type") or "") == "undefined" for step in macro_steps):
+                noun = "macro step" if undefined_count == 1 else "macro steps"
+                return f"When {trigger} happens, run {undefined_count} undefined {noun}"
+            if len(macro_steps) == 1 and str(macro_steps[0].get("type") or "") == "command":
+                return f"When {trigger} happens, run macro step (Command): {first_action_name or 'Unknown'}"
+            remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
+            noun = "macro step" if total_actions == 1 else "macro steps"
+            return f"When {trigger} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
+        if macro_names and macro_steps:
+            remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
+            return f"When {trigger} happens, run actions: {first_action_name or 'Unknown'}{remainder}"
         else:
-            noun = "actions"
-        remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
-        return f"When {trigger} happens, run {noun}: {first_action_name}{remainder}"
+            return f"When {trigger} happens, run action: Unknown"
     macro_names = _event_action_names(user, "macroNames")
     command_names = _event_action_names(user, "commandNames")
     action_phrase = _event_action_phrase(macro_names, command_names)
@@ -758,7 +792,7 @@ def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
     targets: list[str] = []
     test_targets = user.get("testTargets", {})
     if isinstance(test_targets, dict):
-        for label in ("Trigger", "Macro", "Macros", "Command", "Commands"):
+        for label in ("Trigger", "Macro", "Macros", "MacroStep", "MacroSteps", "Command", "Commands"):
             if test_targets.get(label):
                 targets.append(label)
     return {

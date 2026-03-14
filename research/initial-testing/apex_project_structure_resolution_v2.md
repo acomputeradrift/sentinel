@@ -328,13 +328,14 @@ Approved working shape:
 - `userFacing.resolvedTrigger`
 - `userFacing.firstActionName`
 - `userFacing.resolvedActions.macros[]`
-- `userFacing.resolvedActions.commands[]`
+- `userFacing.resolvedActions.macroSteps[]`
+- `userFacing.macroStepCount`
 - `userFacing.testTargets`
 
 Current intent:
 - driver events remain separate from system events
 - user-facing driver events should show the driver identity, the resolved trigger, and the first resolved action name
-- driver events may resolve to one macro, multiple macros, one command, multiple commands, or a mix
+- driver events may resolve to one macro, multiple macros, one macro step, or multiple macro steps
 - the full proven action set is carried in `resolvedActions`
 
 ### Driver Name
@@ -473,7 +474,8 @@ High-level method:
 5. set:
    - `userFacing.firstActionName` = the first resolved action in that ordered action set
    - `userFacing.resolvedActions.macros[]` = all resolved macro names in order
-   - `userFacing.resolvedActions.commands[]` = all resolved command names in order
+   - `userFacing.resolvedActions.macroSteps[]` = all resolved macro-step entries in order
+   - `userFacing.macroStepCount` = total step count when macro-step behavior is being surfaced
 
 #### Preferred path: named command function calls
 
@@ -526,7 +528,8 @@ Method:
 - map the stored step parameters to the function parameter definitions
 - if a parameter choice label contains placeholders, expand them through that target driver's `DriverConfig`
 - build a readable command summary from the resolved target/action fields
-- add that summary to `resolvedActions.commands[]`
+- add that summary to `resolvedActions.macroSteps[]` as:
+  - `{ "name": "<resolved command summary>", "type": "command" }`
 
 Validated examples:
 - `SetDimmerLevel:QSDimmer` on Lutron:
@@ -541,24 +544,24 @@ Validated examples:
 - `setSelLyr:1` on Layer Switch:
   - function metadata plus config-backed group/layer names provide a readable direct-command summary path
 
-#### Fallback path: comment / explicit action summary
+#### Fallback path: undefined macro steps
 
 Method:
-- if no cleaner name is available from function calls, wrapper tag name, or direct command decoding
-- inspect explicit action steps and comment text in step order
-- build concise action names only from proven step data
-- add them to `resolvedActions.macros[]` in step order
+- if no cleaner named macro or macro-step command path is available
+- inspect the wrapper macro's step count
+- set:
+  - `userFacing.resolvedActions.macroSteps[]` to a same-length list of:
+    - `{ "name": "", "type": "undefined" }`
+  - `userFacing.macroStepCount` to the wrapper step count
 
 Validated example:
 - `OPSTATECHANGE002` wrapper macro includes:
   - variable test on `state002001`
-  - comments:
-    - `Close the XP-8 relay`
-    - `Open the XP-8 relay`
+  - conditional branching
   - relay actions on internal relay port 8
-  - internal relay label:
-    - `Garage Boiler Trigger`
-- this provides a file-backed summary path without inventing a custom driver profile
+  - wrapper step count = `5`
+  - approved placeholder wording target:
+    - `run 5 undefined macro steps`
 
 Rule boundary:
 - prefer the earliest safe naming path above
@@ -587,20 +590,20 @@ Approved rule:
 - `userFacing.testTargets.Trigger = true`
 - `Macro = true` only when `resolvedActions.macros.length = 1`
 - `Macros = true` only when `resolvedActions.macros.length > 1`
-- `Command = true` only when `resolvedActions.commands.length = 1`
-- `Commands = true` only when `resolvedActions.commands.length > 1`
-- mixed macro/command cases set the appropriate macro and command flags independently
+- `MacroStep = true` only when `resolvedActions.macroSteps.length = 1`
+- `MacroSteps = true` only when `resolvedActions.macroSteps.length > 1`
+- macro and macro-step cases set the appropriate flags independently when both exist
 
 Validated example:
 - `App 56, Group 121 On`
   - `firstActionName = LIGHTS - Back Yard Entertain OFF`
   - `resolvedActions.macros = ["LIGHTS - Back Yard Entertain OFF", "ENTERTAIN - Back Lights are OFF"]`
-  - `resolvedActions.commands = []`
+  - `resolvedActions.macroSteps = []`
   - `Trigger = true`
   - `Macros = true`
   - `Macro = false`
-  - `Command = false`
-  - `Commands = false`
+  - `MacroStep = false`
+  - `MacroSteps = false`
 
 ### Display Count Derivation
 
@@ -611,7 +614,7 @@ Purpose:
 
 Method:
 1. compute:
-   - `totalActions = resolvedActions.macros.length + resolvedActions.commands.length`
+   - `totalActions = resolvedActions.macros.length + resolvedActions.macroSteps.length`
 2. use:
    - `firstActionName` as the visible first action
 3. if `totalActions > 1`, compute:

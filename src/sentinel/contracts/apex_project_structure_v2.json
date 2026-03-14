@@ -39,16 +39,20 @@
               "macros": [
                 ""
               ],
-              "commands": [
-                ""
+              "macroSteps": [
+                {
+                  "name": "",
+                  "type": "command | undefined"
+                }
               ]
             },
+            "macroStepCount": 0,
             "testTargets": {
               "Trigger": true,
               "Macro": false,
               "Macros": false,
-              "Command": false,
-              "Commands": false
+              "MacroStep": false,
+              "MacroSteps": false
             }
           },
           "diagnostics": {

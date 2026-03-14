@@ -265,7 +265,7 @@ def _resolve_driver_action(
     tag_name_by_id: dict[int, str],
     driver_data_by_device_id: dict[int, sqlite3.Row],
     driver_config_by_driver_device_id: dict[int, dict[str, str]],
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[dict[str, str]], int]:
     wrapper_rows = [
         row
         for row in macros_by_system_id.get(macro_id, [])
@@ -274,11 +274,14 @@ def _resolve_driver_action(
     root_row = macros_by_id.get(macro_id)
     candidate_rows = wrapper_rows or ([root_row] if root_row is not None else [])
 
+    macro_step_count = 0
+    for row in candidate_rows:
+        cur.execute("select count(*) from MacroStepsView where MacroId = ?", (int(row["MacroId"]),))
+        count_row = cur.fetchone()
+        macro_step_count += int(count_row[0] or 0) if count_row else 0
+
     macro_names: list[str] = []
     for row in candidate_rows:
-        wrapper_name = _usable_name(tag_name_by_id.get(int(row["ButtonTagId"] or -1)))
-        if wrapper_name:
-            macro_names.append(wrapper_name)
         cur.execute(
             "select CommandTagId from MacroStepsView where MacroId = ? and Type = 14 order by StepIndex, MacroStepId",
             (int(row["MacroId"]),),
@@ -293,10 +296,14 @@ def _resolve_driver_action(
 
     macro_names = _dedupe_non_empty(macro_names)
     if macro_names:
-        return macro_names, []
+        return macro_names, [], 0
 
-    command_names: list[str] = []
-    comment_names: list[str] = []
+    for row in candidate_rows:
+        wrapper_name = _usable_name(tag_name_by_id.get(int(row["ButtonTagId"] or -1)))
+        if wrapper_name:
+            return [wrapper_name], [], 0
+
+    macro_steps: list[dict[str, str]] = []
     for row in candidate_rows:
         command_summaries = _resolve_direct_command_summaries(
             cur,
@@ -304,21 +311,23 @@ def _resolve_driver_action(
             driver_data_by_device_id,
             driver_config_by_driver_device_id,
         )
-        command_names.extend(command_summaries)
+        for summary in command_summaries:
+            macro_steps.append({"name": summary, "type": "command"})
 
-        cur.execute(
-            "select CommentText from MacroStepsView where MacroId = ? and Type = 17 order by StepIndex, MacroStepId",
-            (int(row["MacroId"]),),
-        )
-        for step in cur.fetchall():
-            comment = str(step[0] or "").strip()
-            if comment:
-                comment_names.append(comment)
+    seen_step_names: set[tuple[str, str]] = set()
+    deduped_steps: list[dict[str, str]] = []
+    for step in macro_steps:
+        key = (str(step.get("name") or "").strip(), str(step.get("type") or "").strip())
+        if not key[0] or key in seen_step_names:
+            continue
+        seen_step_names.add(key)
+        deduped_steps.append({"name": key[0], "type": key[1] or "command"})
+    if deduped_steps:
+        return [], deduped_steps, macro_step_count
 
-    comment_names = _dedupe_non_empty(comment_names)
-    if comment_names:
-        return comment_names, []
-    return [], _dedupe_non_empty(command_names)
+    if macro_step_count > 0:
+        return [], [{"name": "", "type": "undefined"} for _ in range(macro_step_count)], macro_step_count
+    return [], [], 0
 
 
 def _resolve_system_macro_name(
@@ -341,12 +350,12 @@ def _resolve_system_macro_name(
     return ""
 
 
-def _event_test_targets(macro_names: list[str], command_names: list[str]) -> dict[str, bool]:
+def _event_test_targets(macro_names: list[str], macro_steps: list[dict[str, str]]) -> dict[str, bool]:
     targets = {"Trigger": True}
     if macro_names:
         targets["Macro" if len(macro_names) == 1 else "Macros"] = True
-    if command_names:
-        targets["Command" if len(command_names) == 1 else "Commands"] = True
+    if macro_steps:
+        targets["MacroStep" if len(macro_steps) == 1 else "MacroSteps"] = True
     return targets
 
 
@@ -662,7 +671,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                 ev["DriverExtraString"],
                 driver_config,
             )
-            macro_names, command_names = _resolve_driver_action(
+            macro_names, macro_steps, macro_step_count = _resolve_driver_action(
                 cur,
                 macro_id,
                 driver_id,
@@ -673,12 +682,15 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                 driver_config_by_driver_device_id,
             )
             macro_name = "; ".join(macro_names)
+            command_names = [str(step.get("name") or "").strip() for step in macro_steps if str(step.get("type") or "") == "command" and str(step.get("name") or "").strip()]
             command_name = "; ".join(command_names)
-            first_action_name = (macro_names + command_names)[0] if (macro_names or command_names) else ""
+            first_action_name = macro_names[0] if macro_names else next((str(step.get("name") or "").strip() for step in macro_steps if str(step.get("name") or "").strip()), "")
         else:
             trigger = _resolve_system_trigger(cur, ev, event_type)
             macro_name = _resolve_system_macro_name(macro_id, macros_by_id, macros_by_system_id, tag_name_by_id)
             macro_names = [macro_name] if macro_name else []
+            macro_steps = []
+            macro_step_count = 0
             command_names = []
             command_name = ""
         diag = {
@@ -701,9 +713,10 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         "firstActionName": first_action_name,
                         "resolvedActions": {
                             "macros": macro_names,
-                            "commands": command_names,
+                            "macroSteps": macro_steps,
                         },
-                        "testTargets": _event_test_targets(macro_names, command_names),
+                        "macroStepCount": macro_step_count,
+                        "testTargets": _event_test_targets(macro_names, macro_steps),
                     },
                     "diagnostics": {
                         **diag,
@@ -727,7 +740,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         "macroNames": macro_names,
                         "commandName": command_name,
                         "commandNames": command_names,
-                        "testTargets": _event_test_targets(macro_names, command_names),
+                        "testTargets": _event_test_targets(macro_names, []),
                     },
                     "diagnostics": {
                         **diag,
