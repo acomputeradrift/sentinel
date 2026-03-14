@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 import json
 import re
 from pathlib import Path
@@ -675,14 +676,47 @@ def _event_section_items(project_data: dict[str, Any], event_key: str) -> list[d
     return items if isinstance(items, list) else []
 
 
+def _event_action_names(user: dict[str, Any], key: str) -> list[str]:
+    values = user.get(key)
+    if isinstance(values, list):
+        names: list[str] = []
+        for value in values:
+            cleaned = str(value or "").strip()
+            if cleaned and cleaned not in names:
+                names.append(cleaned)
+        if names:
+            return names
+    fallback_key = "macroName" if key == "macroNames" else "commandName"
+    fallback = str(user.get(fallback_key) or "").strip()
+    return [fallback] if fallback else []
+
+
+def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> str:
+    if macro_names and not command_names:
+        noun = "macro" if len(macro_names) == 1 else "macros"
+        return f"run {noun}: {'; '.join(macro_names)}"
+    if command_names and not macro_names:
+        noun = "command" if len(command_names) == 1 else "commands"
+        return f"run {noun}: {'; '.join(command_names)}"
+    if macro_names and command_names:
+        parts = [
+            f"{'macro' if len(macro_names) == 1 else 'macros'} {'; '.join(macro_names)}",
+            f"{'command' if len(command_names) == 1 else 'commands'} {'; '.join(command_names)}",
+        ]
+        return f"run actions: {'; '.join(parts)}"
+    return "run action: Unknown"
+
+
 def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
     user = item.get("userFacing", {}) if isinstance(item, dict) else {}
     trigger = str(user.get("resolvedTrigger") or "No trigger").strip()
-    macro = str(user.get("macroName") or "No macro").strip()
+    macro_names = _event_action_names(user, "macroNames")
+    command_names = _event_action_names(user, "commandNames")
+    action_phrase = _event_action_phrase(macro_names, command_names)
     if event_kind == "driver":
-        return f"When {trigger} happens, run macro {macro}"
+        return f"When {trigger} happens, {action_phrase}"
     description = str(user.get("description") or user.get("eventType") or "System Event").strip()
-    return f"{description} | {trigger}, run macro {macro}"
+    return f'"{escape(description)}" | {trigger}, {action_phrase}'
 
 
 def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
@@ -694,16 +728,19 @@ def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
     targets: list[str] = []
     test_targets = user.get("testTargets", {})
     if isinstance(test_targets, dict):
-        if test_targets.get("Trigger"):
-            targets.append("Trigger")
-        if test_targets.get("Macro"):
-            targets.append("Macro")
+        for label in ("Trigger", "Macro", "Macros", "Command", "Commands"):
+            if test_targets.get(label):
+                targets.append(label)
     return {
         "category": "Driver Event" if event_kind == "driver" else "System Event",
         "identity": identity,
         "buttonType": "",
         "targets": targets,
     }
+
+
+def _count_label(count: int, noun: str) -> str:
+    return f"{count} {noun}{'' if count == 1 else 's'}"
 
 
 def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str) -> str:
@@ -713,6 +750,8 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
     system_events = _event_section_items(project_data, "system")
     driver_events = _event_section_items(project_data, "driver")
     devices = project_data.get("devices", [])
+    system_title = f"System Events | {_count_label(len(system_events), 'event')}"
+    driver_title = f"Driver Events | {_count_label(len(driver_events), 'event')}"
 
     system_rows = []
     for item in system_events:
@@ -763,9 +802,13 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-title{{margin:0;font-size:32px;line-height:1.05;}}
 .home-source{{margin-top:10px;font-size:14px;color:#4d6678;word-break:break-word;}}
 .home-section{{margin-top:28px;padding:22px 24px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
-.home-section h2{{margin:0 0 16px;font-size:22px;line-height:1.1;}}
+.section-toggle{{display:inline-flex;align-items:center;gap:10px;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
+.section-toggle-label{{font-size:22px;line-height:1.1;font-weight:700;}}
+.section-chevron{{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;color:#5a7387;}}
+.section-chevron svg{{display:block;width:14px;height:14px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;}}
 .home-subtitle{{margin:18px 0 10px;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5a7387;}}
-.home-list{{display:flex;flex-direction:column;gap:12px;}}
+.home-list{{display:flex;flex-direction:column;gap:12px;margin-top:16px;}}
+.home-list[hidden]{{display:none !important;}}
 .home-row{{width:100%;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:1px solid #a9bccd;background:#1e5f86;color:#fff;text-decoration:none;font-size:15px;line-height:1.35;text-align:left;box-shadow:inset 0 0 0 1px #154665;}}
 .home-row:hover{{filter:brightness(1.05);}}
 .event-row{{cursor:pointer;}}
@@ -773,13 +816,13 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
 .ov.open{{display:flex;}}
-.pop{{width:min(980px,100%);background:#fff;border:1px solid #cbd7e2;border-radius:18px;padding:20px 24px;margin-top:0;}}
+.pop{{width:min(560px,calc(100vw - 24px));max-width:100%;box-sizing:border-box;background:#fff;border:1px solid #cbd7e2;border-radius:18px;padding:20px 24px;margin-top:0;}}
 .pop h3{{margin:0 0 16px;font-size:16px;line-height:1.1;font-weight:700;}}
-.row{{border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;}}
+.row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;overflow:hidden;}}
 .n{{font-weight:600;margin-bottom:10px;font-size:14px;line-height:1.1;}}
 .actions{{display:flex;gap:10px;margin-bottom:10px;}}
 .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
-textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;}}
+textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
 #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
 </style></head>
 <body>
@@ -790,12 +833,12 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 <div class='home-source'>{source_file}</div>
 </section>
 <section class='home-section'>
-<h2>System Events</h2>
-<div class='home-list'>{system_content}</div>
+<button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<div class='home-list' id='system-events' hidden>{system_content}</div>
 </section>
 <section class='home-section'>
-<h2>Driver Events</h2>
-<div class='home-list'>{driver_content}</div>
+<button class='section-toggle' type='button' data-target='driver-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{driver_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<div class='home-list' id='driver-events' hidden>{driver_content}</div>
 </section>
 <section class='home-section'>
 <h2>Devices</h2>
@@ -806,16 +849,36 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 <script>
 const APP_UI={app_json};
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
-function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
-document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
- const m=JSON.parse(b.dataset.meta||'{{}}');
- const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:'';
- pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
- rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='width:100%;min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
- ov.classList.add('open');
-}}));
-document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
-ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
+function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
+function toggleSection(btn){{
+ const target=document.getElementById(btn.getAttribute('data-target')||'');
+ if (!target) return;
+ const expanded=btn.getAttribute('aria-expanded')==='true';
+ btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+ const chevron=btn.querySelector('.section-chevron');
+ if (chevron) chevron.innerHTML=expanded
+  ? "<svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg>"
+  : "<svg viewBox='0 0 16 16'><path d='M3.5 9.75 8 5.25 12.5 9.75'/></svg>";
+ if (expanded) {{
+  target.setAttribute('hidden','hidden');
+ }} else {{
+  target.removeAttribute('hidden');
+ }}
+}}
+var popupConfig=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
+Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
+ b.addEventListener('click', function(){{
+  const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
+  const suffix=(popupConfig.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
+  const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
+  pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+  const targets=Array.isArray(m.targets) ? m.targets : [];
+  rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='width:100%;min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+  ov.classList.add('open');
+ }});
+}});
+document.getElementById('close').addEventListener('click', function(){{ov.classList.remove('open');}});
+ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('open');}});
 </script></body></html>"""
 def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> str:
     device = project_data["devices"][device_index]

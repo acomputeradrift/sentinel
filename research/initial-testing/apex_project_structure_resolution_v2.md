@@ -18,12 +18,17 @@ This section tracks approved methods for the `events.system.items[]` shape in `a
 Status: `approved`
 
 Homepage/system-event display format:
-- `<description> | <resolvedTrigger>, run macro <macroName>`
+- `"<description>" | <resolvedTrigger>, run macro <macroName>`
 
 Approved trigger style inside that row:
 - sense events use `When ...`
 - scheduled events use `On ...`
 - startup events use `On ...`
+
+Driver-event display format:
+- `When <resolvedTrigger> happens, run macro <macroName>`
+- if no usable macro name is available but a direct command is proven:
+  - `When <resolvedTrigger> happens, run command <commandName>`
 
 ### Description
 
@@ -52,6 +57,9 @@ Method:
    - `port_number = (LabelKey & 65535) - 512 + 1`
    - `sense_port_index = port_number - 1`
    - match `sense_port_index = Events.SensePort`
+   - for user-facing internal sense labels, prefer the internal negative label-key range:
+     - `PortLabels.LabelKey = -65024..-65017`
+   - do not use the generic positive `Sense 1` label when a proven internal label such as `Gate` exists
 4. resolve sense mode from `SenseModeMap` where `RTIAddress = 0` and `ExpanderId = -1`
 5. decode mode:
    - mask bit `1` -> `Sense Closure`
@@ -163,9 +171,9 @@ The event user's `macroName` is not the same thing as a `ButtonTagName`.
 Tags are containers and may carry macros, variables, or text-variable behavior.
 They must not be treated as canonical macro names by default.
 
-#### Direct method
+#### Direct root-tag method
 
-Status: `approved when present and useful`
+Status: `not approved as the default for Sung system-event wrappers`
 
 Candidate source:
 - event-linked macro row
@@ -175,6 +183,15 @@ Candidate source:
 Note:
 - a direct tag-backed name may be usable for some event macros
 - but it is not universal and should not be treated as a general rule that tag name equals macro name
+- in the validated Sung system-event wrapper family, the root macro tag was repeatedly the wrong user-facing action name
+
+Validated counterexamples from `Sung Residence v207.2.apex`:
+- event `7`
+  - root tag: `GARAGE DOOR - West is CLOSED`
+  - correct user-facing action: child tag `GATE - is OPEN`
+- event `80`
+  - root tag: `SHADES - Laundry OPEN`
+  - correct user-facing action: child tag `VACATION MODE - Master Bed/Bath ON`
 
 #### Fallback method for untagged system macros
 
@@ -211,6 +228,71 @@ Rule boundary:
 - this fallback method is proven for these system-event macro families
 - it should be used when the related `SystemMacroId` row exists and yields a usable name
 - it is not yet treated as a universal macro-name rule for every event macro
+
+#### Preferred method for the proven Sung system-event wrapper family
+
+Status: `approved`
+
+Proven example set:
+- `Sung Residence v207.2.apex`
+- validated events:
+  - `7`
+  - `80`
+  - `81`
+  - `82`
+  - `83`
+  - `84`
+  - `85`
+  - `86`
+  - `87`
+  - `88`
+  - `89`
+  - `90`
+  - `91`
+  - `92`
+  - `93`
+  - `94`
+  - `95`
+  - `96`
+  - `97`
+  - `98`
+  - `99`
+  - `100`
+  - `101`
+  - `102`
+  - `103`
+  - `104`
+
+Method:
+1. start from the event-linked macro row:
+   - `Events.MacroId -> Macros.MacroId`
+2. inspect related macro rows where:
+   - `Macros.SystemMacroId = Events.MacroId`
+3. if a related child row has a usable `ButtonTagId`
+4. resolve:
+   - `child Macros.ButtonTagId -> ButtonTagNames.ButtonTagName`
+5. use that child tag as the user-facing `macroName`
+
+Validated examples:
+- event `7` -> child tag `GATE - is OPEN`
+- events `80` / `81` / `82` / `83` -> child tag `VACATION MODE - Master Bed/Bath ON`
+- events `84` / `85` / `86` / `87` -> child tag `VACATION MODE - Hallway/Stairs ON`
+- events `88` / `89` / `90` / `91` -> child tag `VACATION MODE - Kitchen ON`
+- events `92` / `93` -> child tag `VACATION MODE - Living ON`
+- events `94` / `95` -> child tag `VACATION MODE - All Rooms Except Hallway Morning OFF`
+- events `96` / `97` -> child tag `VACATION MODE - All Included Rooms Evening OFF`
+- event `98` -> `STARTUP - Vacation OFF & Flags Reset & Garage Boiler OFF`
+- event `99` -> `HRV - Master Bath Fan ON`
+- event `100` -> `HRV - Master Bath Fan OFF`
+- event `101` -> `POWER OFF - Room (All Systems)`
+- event `102` -> `POWER OFF - Room (All Systems)`
+- event `103` -> `POOL - Spa Mode OFF`
+- event `104` -> `POWER - Gym OFF - TEST`
+
+Rule boundary:
+- for this proven Sung system-event wrapper family, prefer the child macro tag over the root macro tag
+- these event macros behave like system/background wrapper macros and should not be interpreted like ordinary directly tagged button macros
+- do not generalize this child-tag preference to every system event until the same structure is proven elsewhere
 
 ### Test Targets: System Events
 
@@ -418,8 +500,11 @@ Method:
 #### Fallback path: direct command decoding
 
 Method:
+- only use this path when no usable macro name is available
 - if the wrapper contains direct command steps:
   - `MacroStepsView.Type = 1`
+- if the first wrapper row only page-links or redirects, continue through the proven child macro chain:
+  - `Macros.SystemMacroId = <current MacroId>`
 - use the target command device's driver metadata:
   - `MacroStepsView.DeviceId -> DriverData.DeviceId -> DriverData.SystemFunctions`
 - locate the `<function ...>` definition where:
@@ -427,14 +512,22 @@ Method:
 - map the stored step parameters to the function parameter definitions
 - if a parameter choice label contains placeholders, expand them through that target driver's `DriverConfig`
 - build a readable command summary from the resolved target/action fields
+- set:
+  - `userFacing.commandName`
+  - `userFacing.actionType = command`
+  - `userFacing.testTargets.Command = true`
+- homepage wording uses:
+  - `run command <commandName>`
 
 Validated examples:
 - `SetDimmerLevel:QSDimmer` on Lutron:
   - Integration ID `13` -> `__IDName013`
+  - `DriverConfig(DriverDeviceId=21, Name='__IDName013')='Guest Bed Shelf'`
   - resolved summary can be built from the function metadata and config values
 - `SwitchCmd:Switch` on Lutron:
   - Integration ID `13`
   - command choice `2 -> On`, `3 -> Off`
+  - `DriverConfig(DriverDeviceId=21, Name='__IDName013')='Guest Bed Shelf'`
   - resolved summary can be built from the function metadata and config values
 - `setSelLyr:1` on Layer Switch:
   - function metadata plus config-backed group/layer names provide a readable direct-command summary path

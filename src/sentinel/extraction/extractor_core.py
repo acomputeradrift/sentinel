@@ -83,6 +83,18 @@ def _driver_name(display_name: str | None, raw_name: str | None) -> str:
     return str(display_name or raw_name or "").strip()
 
 
+def _expand_driver_tokens(text: str | None, driver_config: dict[str, str]) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+
+    def replace_token(match: re.Match[str]) -> str:
+        token = match.group(1)
+        return driver_config.get(token, match.group(0))
+
+    return _DRIVER_TOKEN_RE.sub(replace_token, raw).strip()
+
+
 def _resolve_driver_trigger(system_events_xml: str | None, driver_extra_string: str | None, driver_config: dict[str, str]) -> str:
     tag = str(driver_extra_string or "").strip()
     if not tag:
@@ -102,12 +114,198 @@ def _resolve_driver_trigger(system_events_xml: str | None, driver_extra_string: 
     if not matched_name:
         return tag
 
-    def replace_token(match: re.Match[str]) -> str:
-        token = match.group(1)
-        return driver_config.get(token, match.group(0))
-
-    resolved = _DRIVER_TOKEN_RE.sub(replace_token, matched_name).strip()
+    resolved = _expand_driver_tokens(matched_name, driver_config)
     return resolved or tag
+
+
+def _macro_family_rows(root_macro_id: int, macros_by_id: dict[int, sqlite3.Row], macros_by_system_id: dict[int, list[sqlite3.Row]]) -> list[sqlite3.Row]:
+    seen: set[int] = set()
+    out: list[sqlite3.Row] = []
+
+    def visit(macro_id: int) -> None:
+        if macro_id in seen:
+            return
+        seen.add(macro_id)
+        row = macros_by_id.get(macro_id)
+        if row is not None:
+            out.append(row)
+        for child in macros_by_system_id.get(macro_id, []):
+            child_id = int(child["MacroId"])
+            if child_id not in seen:
+                out.append(child)
+                visit(child_id)
+
+    visit(root_macro_id)
+    deduped: list[sqlite3.Row] = []
+    seen_ids: set[int] = set()
+    for row in out:
+        macro_id = int(row["MacroId"])
+        if macro_id in seen_ids:
+            continue
+        seen_ids.add(macro_id)
+        deduped.append(row)
+    return deduped
+
+
+def _dedupe_non_empty(values: list[str]) -> list[str]:
+    out: list[str] = []
+    for value in values:
+        cleaned = str(value or "").strip()
+        if cleaned and cleaned not in out:
+            out.append(cleaned)
+    return out
+
+
+def _resolve_direct_command_summary(
+    cur: sqlite3.Cursor,
+    macro_id: int,
+    driver_data_by_device_id: dict[int, sqlite3.Row],
+    driver_config_by_driver_device_id: dict[int, dict[str, str]],
+) -> str:
+    cur.execute(
+        """
+        select MacroStepId, Type, Name, Function, Parameter1, Parameter2, Parameter3, Parameter4, DeviceId
+        from MacroStepsView
+        where MacroId = ? and Type = 1
+        order by StepIndex, MacroStepId
+        """,
+        (macro_id,),
+    )
+    summaries: list[str] = []
+    for step in cur.fetchall():
+        direct_name = _usable_name(step["Name"])
+        if direct_name:
+            summaries.append(direct_name)
+            continue
+
+        target_device_id = int(step["DeviceId"] or -1)
+        driver_row = driver_data_by_device_id.get(target_device_id)
+        driver_config: dict[str, str] = {}
+        functions_xml = ""
+        if driver_row is not None:
+            driver_device_id = int(driver_row["DriverDeviceId"] or -1)
+            driver_config = driver_config_by_driver_device_id.get(driver_device_id, {})
+            functions_xml = str(driver_row["SystemFunctions"] or "")
+
+        export_name = str(step["Function"] or "").strip()
+        if not export_name:
+            continue
+        if not functions_xml:
+            summaries.append(export_name)
+            continue
+
+        try:
+            root = ET.fromstring(functions_xml)
+        except ET.ParseError:
+            summaries.append(export_name)
+            continue
+
+        function_node = None
+        for candidate in root.findall(".//function"):
+            if str(candidate.attrib.get("export") or "").strip() == export_name:
+                function_node = candidate
+                break
+        if function_node is None:
+            summaries.append(export_name)
+            continue
+
+        param_nodes = [node for node in list(function_node) if node.tag == "parameter"]
+        raw_values = [str(step[f"Parameter{i}"] or "").strip() for i in range(1, 5)]
+        resolved_by_name: dict[str, str] = {}
+        ordered_values: list[str] = []
+        for idx, param_node in enumerate(param_nodes[:4]):
+            if str(param_node.attrib.get("hidden") or "").lower() == "true":
+                continue
+            raw_value = raw_values[idx]
+            if not raw_value:
+                continue
+            resolved_value = raw_value
+            for choice in list(param_node):
+                if choice.tag != "choice":
+                    continue
+                if str(choice.attrib.get("value") or "").strip() != raw_value:
+                    continue
+                choice_name = _expand_driver_tokens(choice.attrib.get("name"), driver_config)
+                if choice_name:
+                    resolved_value = re.sub(r"\s+\(ID\s+\d+\)$", "", choice_name).strip()
+                break
+            param_name = str(param_node.attrib.get("name") or "").strip()
+            if param_name:
+                resolved_by_name[param_name] = resolved_value
+            ordered_values.append(resolved_value)
+
+        function_name = str(function_node.attrib.get("name") or export_name).strip()
+        if export_name == "SetDimmerLevel:QSDimmer":
+            target = resolved_by_name.get("Integration ID")
+            level = resolved_by_name.get("Level")
+            if target and level:
+                summaries.append(f"{target} to {level}%")
+                continue
+        if export_name == "SwitchCmd:Switch":
+            target = resolved_by_name.get("Integration ID")
+            action = resolved_by_name.get("Switch Command")
+            if target and action:
+                summaries.append(f"{target} {action}")
+                continue
+
+        if ordered_values:
+            summaries.append(f"{function_name}: {', '.join(ordered_values)}")
+        else:
+            summaries.append(function_name)
+
+    return " / ".join(_dedupe_non_empty(summaries))
+
+
+def _resolve_driver_action(
+    cur: sqlite3.Cursor,
+    macro_id: int,
+    driver_id: int,
+    macros_by_id: dict[int, sqlite3.Row],
+    macros_by_system_id: dict[int, list[sqlite3.Row]],
+    tag_name_by_id: dict[int, str],
+    driver_data_by_device_id: dict[int, sqlite3.Row],
+    driver_config_by_driver_device_id: dict[int, dict[str, str]],
+) -> tuple[list[str], list[str]]:
+    family_rows = _macro_family_rows(macro_id, macros_by_id, macros_by_system_id)
+    wrapper_rows = [row for row in family_rows if int(row["DeviceId"] or -1) == driver_id]
+    candidate_rows = wrapper_rows or family_rows
+
+    for row in candidate_rows:
+        wrapper_name = _usable_name(tag_name_by_id.get(int(row["ButtonTagId"] or -1)))
+        if wrapper_name:
+            return [wrapper_name], []
+        cur.execute(
+            "select CommandTagId from MacroStepsView where MacroId = ? and Type = 14 order by StepIndex, MacroStepId",
+            (int(row["MacroId"]),),
+        )
+        for step in cur.fetchall():
+            if step[0] is None:
+                continue
+            command_tag_id = int(step[0])
+            command_name = _usable_name(tag_name_by_id.get(command_tag_id))
+            if command_name:
+                return [command_name], []
+
+    for row in candidate_rows:
+        command_summary = _resolve_direct_command_summary(
+            cur,
+            int(row["MacroId"]),
+            driver_data_by_device_id,
+            driver_config_by_driver_device_id,
+        )
+        if command_summary:
+            return [], [command_summary]
+
+        cur.execute(
+            "select CommentText from MacroStepsView where MacroId = ? and Type = 17 order by StepIndex, MacroStepId",
+            (int(row["MacroId"]),),
+        )
+        for step in cur.fetchall():
+            comment = str(step[0] or "").strip()
+            if comment:
+                return [comment], []
+
+    return [], []
 
 
 def _resolve_system_macro_name(
@@ -116,66 +314,31 @@ def _resolve_system_macro_name(
     macros_by_system_id: dict[int, list[sqlite3.Row]],
     tag_name_by_id: dict[int, str],
 ) -> str:
-    direct_row = macros_by_id.get(macro_id)
-    if direct_row:
-        direct_name = _usable_name(tag_name_by_id.get(int(direct_row["ButtonTagId"] or -1)))
-        if direct_name:
-            return direct_name
     for row in macros_by_system_id.get(macro_id, []):
+        if int(row["MacroId"] or -1) == macro_id:
+            continue
         related_name = _usable_name(tag_name_by_id.get(int(row["ButtonTagId"] or -1)))
         if related_name:
             return related_name
-    return ""
-
-
-def _resolve_driver_macro_name(
-    cur: sqlite3.Cursor,
-    macro_id: int,
-    driver_id: int,
-    macros_by_id: dict[int, sqlite3.Row],
-    macros_by_system_id: dict[int, list[sqlite3.Row]],
-    tag_name_by_id: dict[int, str],
-) -> str:
-    for row in macros_by_system_id.get(macro_id, []):
-        if int(row["DeviceId"] or -1) != driver_id:
-            continue
-        wrapper_name = _usable_name(tag_name_by_id.get(int(row["ButtonTagId"] or -1)))
-        if wrapper_name:
-            return wrapper_name
-        cur.execute("select CommandTagId from MacroStepsView where MacroId = ? and Type = 14 order by StepIndex, MacroStepId", (int(row["MacroId"]),))
-        command_tag_ids = [int(step[0]) for step in cur.fetchall() if step[0] is not None]
-        command_names = []
-        for command_tag_id in command_tag_ids:
-            command_name = _usable_name(tag_name_by_id.get(command_tag_id))
-            if command_name and command_name not in command_names:
-                command_names.append(command_name)
-        if command_names:
-            return " | ".join(command_names)
-        cur.execute(
-            "select CommentText from MacroStepsView where MacroId = ? and Type = 17 order by StepIndex, MacroStepId",
-            (int(row["MacroId"]),),
-        )
-        comments = []
-        for step in cur.fetchall():
-            comment = str(step[0] or "").strip()
-            if comment and comment not in comments:
-                comments.append(comment)
-        if comments:
-            return " / ".join(comments)
-
     direct_row = macros_by_id.get(macro_id)
     if direct_row:
         direct_name = _usable_name(tag_name_by_id.get(int(direct_row["ButtonTagId"] or -1)))
         if direct_name:
             return direct_name
-    for row in macros_by_system_id.get(macro_id, []):
-        fallback_name = _usable_name(tag_name_by_id.get(int(row["ButtonTagId"] or -1)))
-        if fallback_name:
-            return fallback_name
     return ""
 
 
+def _event_test_targets(macro_names: list[str], command_names: list[str]) -> dict[str, bool]:
+    targets = {"Trigger": True}
+    if macro_names:
+        targets["Macro" if len(macro_names) == 1 else "Macros"] = True
+    if command_names:
+        targets["Command" if len(command_names) == 1 else "Commands"] = True
+    return targets
+
+
 def _sense_port_label(cur: sqlite3.Cursor, sense_port: int) -> str:
+    generic_label = ""
     cur.execute("select LabelKey, LabelName from PortLabels where RTIAddress = 0")
     for row in cur.fetchall():
         label_key = int(row["LabelKey"] or 0)
@@ -183,8 +346,11 @@ def _sense_port_label(cur: sqlite3.Cursor, sense_port: int) -> str:
         if (port_number - 1) == sense_port:
             label = str(row["LabelName"] or "").strip()
             if label:
-                return label
-    return f"Sense {sense_port + 1}"
+                if -65024 <= label_key <= -65017:
+                    return label
+                if not generic_label:
+                    generic_label = label
+    return generic_label or f"Sense {sense_port + 1}"
 
 
 def _sense_action_text(cur: sqlite3.Cursor, sense_action: int, sense_expander_id: int) -> str:
@@ -217,8 +383,9 @@ def _decode_scheduled_trigger(ev: sqlite3.Row) -> str:
         if 0 <= hour24 <= 23 and 0 <= minute <= 59:
             am_pm = "AM" if hour24 < 12 else "PM"
             hour12 = hour24 % 12 or 12
-            return f"On {day_group.lower()} at {hour12}:{minute:02d} {am_pm}"
-    return f"On {day_group.lower()}"
+            prefix = "Every day" if day_group == "Every day" else f"On {day_group.lower()}"
+            return f"{prefix} at {hour12}:{minute:02d} {am_pm}"
+    return "Every day" if day_group == "Every day" else f"On {day_group.lower()}"
 
 
 def _resolve_system_trigger(cur: sqlite3.Cursor, ev: sqlite3.Row, event_type: int) -> str:
@@ -482,10 +649,24 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                 ev["DriverExtraString"],
                 driver_config,
             )
-            macro_name = _resolve_driver_macro_name(cur, macro_id, driver_id, macros_by_id, macros_by_system_id, tag_name_by_id)
+            macro_names, command_names = _resolve_driver_action(
+                cur,
+                macro_id,
+                driver_id,
+                macros_by_id,
+                macros_by_system_id,
+                tag_name_by_id,
+                driver_data_by_device_id,
+                driver_config_by_driver_device_id,
+            )
+            macro_name = "; ".join(macro_names)
+            command_name = "; ".join(command_names)
         else:
             trigger = _resolve_system_trigger(cur, ev, event_type)
             macro_name = _resolve_system_macro_name(macro_id, macros_by_id, macros_by_system_id, tag_name_by_id)
+            macro_names = [macro_name] if macro_name else []
+            command_names = []
+            command_name = ""
         diag = {
             "eventId": int(ev["EventId"]),
             "enabled": True,
@@ -504,13 +685,19 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         "driverName": driver_name,
                         "resolvedTrigger": trigger,
                         "macroName": macro_name,
-                        "testTargets": {"Trigger": True, "Macro": bool(macro_id)},
+                        "macroNames": macro_names,
+                        "commandName": command_name,
+                        "commandNames": command_names,
+                        "testTargets": _event_test_targets(macro_names, command_names),
                     },
                     "diagnostics": {
                         **diag,
                         "driverId": driver_id,
                         "driverName": driver_name,
                         "driverExtraString": ev["DriverExtraString"] or "",
+                        "macroNames": macro_names,
+                        "commandName": command_name,
+                        "commandNames": command_names,
                     },
                 }
             )
@@ -522,9 +709,20 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         "description": description,
                         "resolvedTrigger": trigger,
                         "macroName": macro_name,
-                        "testTargets": {"Trigger": True, "Macro": bool(macro_id)},
+                        "macroNames": macro_names,
+                        "commandName": command_name,
+                        "commandNames": command_names,
+                        "testTargets": _event_test_targets(macro_names, command_names),
                     },
-                    "diagnostics": {**diag, "description": description, "resolvedTrigger": trigger, "macroName": macro_name},
+                    "diagnostics": {
+                        **diag,
+                        "description": description,
+                        "resolvedTrigger": trigger,
+                        "macroName": macro_name,
+                        "macroNames": macro_names,
+                        "commandName": command_name,
+                        "commandNames": command_names,
+                    },
                 }
             )
 
