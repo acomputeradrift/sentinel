@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 import json
 import re
 from pathlib import Path
@@ -26,6 +27,10 @@ def page_slug(page_name: str, page_index: int) -> str:
 
 def device_filename(project_stem: str, device_name: str, device_index: int) -> str:
     return f"{project_stem}__device-{device_index}-{page_slug(device_name, device_index)}.html"
+
+
+def project_home_filename(project_stem: str) -> str:
+    return f"{project_stem}__project-home.html"
 
 
 def _btn_text(identity: dict[str, Any]) -> str:
@@ -298,6 +303,7 @@ def _render_document(
     h: int,
     body_markup: str,
     page_state_json: str,
+    home_href: str | None = None,
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -319,7 +325,10 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .bottom-controls{{left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;}}
 .left-controls{{left:0;display:flex;align-items:center;justify-content:center;}}
 .right-controls{{right:0;display:flex;align-items:center;justify-content:center;}}
-.header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;width:100%;height:100%;}}
+.top-controls{{padding:0 16px;box-sizing:border-box;gap:12px;justify-content:space-between;}}
+.header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;flex:1;height:100%;min-width:0;}}
+.project-home-link{{display:inline-flex;align-items:center;justify-content:center;min-width:132px;height:40px;padding:0 16px;border-radius:14px;border:1px solid #a9bccd;background:#f7fbff;color:#14324b;text-decoration:none;font-size:14px;line-height:1;box-sizing:border-box;white-space:nowrap;}}
+.project-home-link:hover{{filter:brightness(0.98);}}
 .rti-canvas{{position:absolute;box-sizing:border-box;z-index:1;overflow:auto;scrollbar-width:none;scrollbar-gutter:stable overlay;}}
 .rti-canvas.scroll-hover:hover{{scrollbar-width:thin;}}
 .rti-canvas::-webkit-scrollbar{{width:10px;height:10px;}}
@@ -357,7 +366,7 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
-<div class='app-ui-controls top-controls' id='topControls'><div class='header'>{header}</div></div>
+<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
 <div class='app-ui-controls left-controls' id='leftControls'><button class='vp-nav vp-prev' id='vpPrev' aria-label='Previous frame'>&lsaquo;</button></div>
 <div class='app-ui-controls right-controls' id='rightControls'><button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'><div class='vp-indicator' id='vpIndicator'></div></div>
@@ -657,6 +666,288 @@ if (prev && next) {{
   }});
 }}
 </script></body></html>"""
+
+
+def _event_section_items(project_data: dict[str, Any], event_key: str) -> list[dict[str, Any]]:
+    events = project_data.get("events", {})
+    if not isinstance(events, dict):
+        return []
+    items = events.get(event_key, [])
+    return items if isinstance(items, list) else []
+
+
+def _dedupe_names(values: Any) -> list[str]:
+    if isinstance(values, list):
+        names: list[str] = []
+        for value in values:
+            cleaned = str(value or "").strip()
+            if cleaned and cleaned not in names:
+                names.append(cleaned)
+        if names:
+            return names
+    return []
+
+
+def _event_action_names(user: dict[str, Any], key: str) -> list[str]:
+    values = user.get(key)
+    names = _dedupe_names(values)
+    if names:
+        return names
+    fallback_key = "macroName" if key == "macroNames" else "commandName"
+    fallback = str(user.get(fallback_key) or "").strip()
+    return [fallback] if fallback else []
+
+
+def _driver_macro_steps(user: dict[str, Any]) -> list[dict[str, str]]:
+    resolved = user.get("resolvedActions", {})
+    if isinstance(resolved, dict):
+        raw_steps = resolved.get("macroSteps")
+        if isinstance(raw_steps, list):
+            out: list[dict[str, str]] = []
+            for raw_step in raw_steps:
+                if not isinstance(raw_step, dict):
+                    continue
+                step_type = str(raw_step.get("type") or "").strip()
+                if step_type not in {"command", "undefined"}:
+                    continue
+                out.append({"name": str(raw_step.get("name") or "").strip(), "type": step_type})
+            if out:
+                return out
+        command_names = _dedupe_names(resolved.get("commands"))
+        if command_names:
+            return [{"name": name, "type": "command"} for name in command_names]
+    return []
+
+
+def _driver_resolved_actions(user: dict[str, Any]) -> tuple[list[str], list[dict[str, str]]]:
+    resolved = user.get("resolvedActions", {})
+    if isinstance(resolved, dict):
+        macro_names = _dedupe_names(resolved.get("macros"))
+        macro_steps = _driver_macro_steps(user)
+        if macro_names or macro_steps:
+            return macro_names, macro_steps
+    return _event_action_names(user, "macroNames"), _driver_macro_steps(user)
+
+
+def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> str:
+    if macro_names and not command_names:
+        noun = "macro" if len(macro_names) == 1 else "macros"
+        return f"run {noun}: {'; '.join(macro_names)}"
+    if command_names and not macro_names:
+        noun = "command" if len(command_names) == 1 else "commands"
+        return f"run {noun}: {'; '.join(command_names)}"
+    if macro_names and command_names:
+        parts = [
+            f"{'macro' if len(macro_names) == 1 else 'macros'} {'; '.join(macro_names)}",
+            f"{'command' if len(command_names) == 1 else 'commands'} {'; '.join(command_names)}",
+        ]
+        return f"run actions: {'; '.join(parts)}"
+    return "run action: Unknown"
+
+
+def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
+    user = item.get("userFacing", {}) if isinstance(item, dict) else {}
+    trigger = str(user.get("resolvedTrigger") or "No trigger").strip()
+    if event_kind == "driver":
+        driver_category = str(user.get("driverCategory") or "").strip()
+        trigger_text = f"{driver_category} / {trigger}" if driver_category else trigger
+        macro_names, macro_steps = _driver_resolved_actions(user)
+        total_actions = len(macro_names) + len(macro_steps)
+        first_action_name = str(user.get("firstActionName") or "").strip()
+        if not first_action_name:
+            if macro_names:
+                first_action_name = macro_names[0]
+            else:
+                first_action_name = next((str(step.get("name") or "").strip() for step in macro_steps if str(step.get("name") or "").strip()), "")
+        if macro_names and not macro_steps:
+            noun = "macro" if len(macro_names) == 1 else "macros"
+            remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
+            return f"When {trigger_text} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
+        if macro_steps and not macro_names:
+            undefined_count = int(user.get("macroStepCount") or len(macro_steps) or 0)
+            if macro_steps and all(str(step.get("type") or "") == "undefined" for step in macro_steps):
+                noun = "macro step" if undefined_count == 1 else "macro steps"
+                return f"When {trigger_text} happens, run {undefined_count} undefined {noun}"
+            if len(macro_steps) == 1 and str(macro_steps[0].get("type") or "") == "command":
+                return f"When {trigger_text} happens, run macro step (Command): {first_action_name or 'Unknown'}"
+            remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
+            noun = "macro step" if total_actions == 1 else "macro steps"
+            return f"When {trigger_text} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
+        if macro_names and macro_steps:
+            remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
+            return f"When {trigger_text} happens, run actions: {first_action_name or 'Unknown'}{remainder}"
+        else:
+            return f"When {trigger_text} happens, run action: Unknown"
+    macro_names = _event_action_names(user, "macroNames")
+    command_names = _event_action_names(user, "commandNames")
+    action_phrase = _event_action_phrase(macro_names, command_names)
+    description = str(user.get("description") or "").strip()
+    if description:
+        return f'"{escape(description)}" | {trigger}, {action_phrase}'
+    return f"{trigger}, {action_phrase}"
+
+
+def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
+    user = item.get("userFacing", {}) if isinstance(item, dict) else {}
+    if event_kind == "driver":
+        identity = str(user.get("driverName") or "Driver Event").strip()
+    else:
+        identity = str(user.get("description") or user.get("eventType") or "System Event").strip()
+    targets: list[str] = []
+    test_targets = user.get("testTargets", {})
+    if isinstance(test_targets, dict):
+        for label in ("Trigger", "Macro", "Macros", "MacroStep", "MacroSteps", "Command", "Commands"):
+            if test_targets.get(label):
+                targets.append(label)
+    return {
+        "category": "Driver Event" if event_kind == "driver" else "System Event",
+        "identity": identity,
+        "buttonType": "",
+        "targets": targets,
+    }
+
+
+def _count_label(count: int, noun: str) -> str:
+    return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str) -> str:
+    source = project_data.get("source", {})
+    source_file = str(source.get("file") or project_stem)
+    project_title = Path(source_file).stem if source_file else project_stem
+    system_events = _event_section_items(project_data, "system")
+    driver_events = _event_section_items(project_data, "driver")
+    devices = project_data.get("devices", [])
+    system_title = f"System Events | {_count_label(len(system_events), 'event')}"
+    driver_title = f"Driver Events | {_count_label(len(driver_events), 'event')}"
+
+    system_rows = []
+    for item in system_events:
+        meta_attr = json.dumps(_event_meta(item, "system")).replace("'", "&apos;")
+        system_rows.append(
+            f"<button class='home-row event-row test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'system')}</button>"
+        )
+
+    driver_rows = []
+    grouped_drivers: dict[str, list[dict[str, Any]]] = {}
+    for item in driver_events:
+        user = item.get("userFacing", {}) if isinstance(item, dict) else {}
+        driver_name = str(user.get("driverName") or "Unassigned Driver").strip()
+        grouped_drivers.setdefault(driver_name, []).append(item)
+    for driver_name, items in grouped_drivers.items():
+        driver_rows.append(f"<div class='home-subtitle'>{driver_name}</div>")
+        for item in items:
+            meta_attr = json.dumps(_event_meta(item, "driver")).replace("'", "&apos;")
+            driver_rows.append(
+                f"<button class='home-row event-row test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'driver')}</button>"
+            )
+
+    device_rows = []
+    for device_index, device in enumerate(devices):
+        user = device.get("userFacing", {})
+        device_name = str(user.get("displayName") or f"Device {device_index}").strip()
+        pages = user.get("pages", [])
+        if not isinstance(pages, list) or not pages:
+            continue
+        page_count = len(pages)
+        href = device_filename(project_stem, device_name, device_index)
+        label = f"{device_name} | {page_count} page{'s' if page_count != 1 else ''}"
+        device_rows.append(f"<a class='home-row device-row' href='{href}'>{label}</a>")
+
+    system_content = "".join(system_rows) if system_rows else "<div class='home-empty'>No system events in project.</div>"
+    driver_content = "".join(driver_rows) if driver_rows else "<div class='home-empty'>No driver events in project.</div>"
+    device_content = "".join(device_rows) if device_rows else "<div class='home-empty'>No testable devices in project.</div>"
+
+    app_json = json.dumps(app_ui)
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{project_title}</title>
+<style>
+html,body{{margin:0;min-height:100%;}}
+body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#eef3f7 0%,#dce7ef 100%);color:#183247;}}
+.home-shell{{max-width:980px;margin:0 auto;padding:28px 20px 40px;box-sizing:border-box;}}
+.home-header{{margin-bottom:24px;padding:24px 28px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
+.home-kicker{{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5a7387;margin-bottom:10px;}}
+.home-title{{margin:0;font-size:32px;line-height:1.05;}}
+.home-source{{margin-top:10px;font-size:14px;color:#4d6678;word-break:break-word;}}
+.home-section{{margin-top:28px;padding:22px 24px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
+.section-toggle{{display:inline-flex;align-items:center;gap:10px;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
+.section-toggle-label{{font-size:22px;line-height:1.1;font-weight:700;}}
+.section-chevron{{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;color:#5a7387;}}
+.section-chevron svg{{display:block;width:14px;height:14px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;}}
+.home-subtitle{{margin:18px 0 10px;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5a7387;}}
+.home-list{{display:flex;flex-direction:column;gap:12px;margin-top:16px;}}
+.home-list[hidden]{{display:none !important;}}
+.home-row{{width:100%;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:1px solid #a9bccd;background:#1e5f86;color:#fff;text-decoration:none;font-size:15px;line-height:1.35;text-align:left;box-shadow:inset 0 0 0 1px #154665;}}
+.home-row:hover{{filter:brightness(1.05);}}
+.event-row{{cursor:pointer;}}
+.device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
+.home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
+.ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
+.ov.open{{display:flex;}}
+.pop{{width:min(560px,calc(100vw - 24px));max-width:100%;box-sizing:border-box;background:#fff;border:1px solid #cbd7e2;border-radius:18px;padding:20px 24px;margin-top:0;}}
+.pop h3{{margin:0 0 16px;font-size:16px;line-height:1.1;font-weight:700;}}
+.row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;overflow:hidden;}}
+.n{{font-weight:600;margin-bottom:10px;font-size:14px;line-height:1.1;}}
+.actions{{display:flex;gap:10px;margin-bottom:10px;}}
+.actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
+#close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
+</style></head>
+<body>
+<main class='home-shell'>
+<section class='home-header'>
+<div class='home-kicker'>Project Home</div>
+<h1 class='home-title'>{project_title}</h1>
+<div class='home-source'>{source_file}</div>
+</section>
+<section class='home-section'>
+<button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<div class='home-list' id='system-events' hidden>{system_content}</div>
+</section>
+<section class='home-section'>
+<button class='section-toggle' type='button' data-target='driver-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{driver_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<div class='home-list' id='driver-events' hidden>{driver_content}</div>
+</section>
+<section class='home-section'>
+<h2>Devices</h2>
+<div class='home-list'>{device_content}</div>
+</section>
+</main>
+<div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
+<script>
+const APP_UI={app_json};
+const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
+function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
+function toggleSection(btn){{
+ const target=document.getElementById(btn.getAttribute('data-target')||'');
+ if (!target) return;
+ const expanded=btn.getAttribute('aria-expanded')==='true';
+ btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+ const chevron=btn.querySelector('.section-chevron');
+ if (chevron) chevron.innerHTML=expanded
+  ? "<svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg>"
+  : "<svg viewBox='0 0 16 16'><path d='M3.5 9.75 8 5.25 12.5 9.75'/></svg>";
+ if (expanded) {{
+  target.setAttribute('hidden','hidden');
+ }} else {{
+  target.removeAttribute('hidden');
+ }}
+}}
+var popupConfig=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
+Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
+ b.addEventListener('click', function(){{
+  const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
+  const suffix=(popupConfig.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
+  const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
+  pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+  const targets=Array.isArray(m.targets) ? m.targets : [];
+  rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='width:100%;min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+  ov.classList.add('open');
+ }});
+}});
+document.getElementById('close').addEventListener('click', function(){{ov.classList.remove('open');}});
+ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('open');}});
+</script></body></html>"""
 def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> str:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
@@ -683,4 +974,4 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
                 "vpFrames": payload["vp_frames"],
             }
         )
-    return _render_document(app_ui, header, w, h, "".join(page_markup), json.dumps(page_state))
+    return _render_document(app_ui, header, w, h, "".join(page_markup), json.dumps(page_state), home_href=project_home_filename(project_stem))

@@ -13,6 +13,23 @@ Working note for `apex_project_structure_v2.json`:
 
 This section tracks approved methods for the `events.system.items[]` shape in `apex_project_structure_v2.json`.
 
+### User-Facing Row Format
+
+Status: `approved`
+
+Homepage/system-event display format:
+- `"<description>" | <resolvedTrigger>, run macro <macroName>`
+
+Approved trigger style inside that row:
+- sense events use `When ...`
+- scheduled events use `On ...`
+- startup events use `On ...`
+
+Driver-event display format:
+- `When <resolvedTrigger> happens, run macro <macroName>`
+- if no usable macro name is available but a direct command is proven:
+  - `When <resolvedTrigger> happens, run command <commandName>`
+
 ### Description
 
 Status: `locked`
@@ -40,10 +57,17 @@ Method:
    - `port_number = (LabelKey & 65535) - 512 + 1`
    - `sense_port_index = port_number - 1`
    - match `sense_port_index = Events.SensePort`
+   - for user-facing internal sense labels, prefer the internal negative label-key range:
+     - `PortLabels.LabelKey = -65024..-65017`
+   - do not use the generic positive `Sense 1` label when a proven internal label such as `Gate` exists
 4. resolve sense mode from `SenseModeMap` where `RTIAddress = 0` and `ExpanderId = -1`
-5. decode mode:
-   - mask bit `1` -> `Sense Closure`
-   - mask bit `0` -> `Sense Voltage`
+5. decode mode per port from the mask:
+   - use:
+     - `is_closure = bool(Mask & (1 << SensePort))`
+   - if `is_closure` is true:
+     - `Sense Closure`
+   - otherwise:
+     - `Sense Voltage`
 6. decode action wording by mode:
    - `Sense Closure`
      - `SenseAction = 0` -> `closes`
@@ -66,6 +90,21 @@ Notes:
 - diagnostics does need port numbers
 - this method is currently proven for internal controller sense inputs, not expander inputs
 
+Validated cross-project evidence:
+- `Sung Residence v207.2.apex`
+  - `SenseModeMap.Mask = 1`
+  - only port `0` / input `1` is closure mode
+  - software confirms:
+    - input `1` = `Sense Closure`
+    - inputs `2-8` = `Sense Voltage`
+  - proven event fit:
+    - `SensePort = 0` (`Gate`) resolves through closure wording
+- `Verrier Home FEENY EDIT v49.apex`
+  - `SenseModeMap.Mask = 195`
+  - `SensePort = 4` is not closure mode because bit `4` is not set
+  - software confirms the related septic events are `Sense Voltage`
+  - therefore closure wording such as `opens` is incorrect for those events
+
 ### Resolved Trigger: Scheduled Events
 
 Status: `locked for proven fixed and astronomical cases`
@@ -78,8 +117,8 @@ Source fields:
 Approved rules so far:
 - scheduled trigger data is file-backed in `Events`
 - astronomical schedule subtype mapping is approved:
-  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0000` -> `Sunrise`
-  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0001` -> `Sunset`
+  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0000` -> `At Sunrise`
+  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0001` or `...0100` -> `At Sunset`
 
 #### Fixed scheduled triggers
 
@@ -100,12 +139,12 @@ Method:
    - element 6 -> `minute`
 6. convert `hour24` and `minute` to 12-hour AM/PM formatting
 7. build the resolved trigger:
-   - `{DayGroup} at {h:mm AM/PM}`
+   - `On {dayGroup lowercase} at {h:mm AM/PM}`
 
 Validated examples:
-- `Weekdays at 7:35 AM`
-- `Weekends at 9:45 PM`
-- `Every day at 9:00 AM`
+- `On weekdays at 7:35 AM`
+- `On weekends at 9:45 PM`
+- `On every day at 9:00 AM`
 
 Rule boundary:
 - the fixed scheduled trigger method is currently locked only for the proven `DailyDayMask` values above
@@ -119,12 +158,12 @@ Method:
 - if `DailyAstronomical = 1`
 - inspect `DailyStartTimeHex`
 - decode:
-  - suffix `...0000` -> `Sunrise`
-  - suffix `...0001` -> `Sunset`
+  - suffix `...0000` -> `At Sunrise`
+  - suffix `...0001` or `...0100` -> `At Sunset`
 
 Validated examples:
-- `EventId=126` -> `Sunrise`
-- `EventId=127` -> `Sunset`
+- `EventId=126` -> `At Sunrise`
+- `EventId=127` -> `At Sunset`
 
 ### Resolved Trigger: Startup Events
 
@@ -136,7 +175,7 @@ Source field:
 Approved rule:
 - startup trigger data is file-backed in `Events.StartupType`
 - current approved resolved trigger wording:
-  - `On System Startup`
+  - `On system startup`
 
 Rule boundary:
 - `StartupType` is the file-backed source field
@@ -151,9 +190,9 @@ The event user's `macroName` is not the same thing as a `ButtonTagName`.
 Tags are containers and may carry macros, variables, or text-variable behavior.
 They must not be treated as canonical macro names by default.
 
-#### Direct method
+#### Direct root-tag method
 
-Status: `approved when present and useful`
+Status: `not approved as the default for Sung system-event wrappers`
 
 Candidate source:
 - event-linked macro row
@@ -163,6 +202,15 @@ Candidate source:
 Note:
 - a direct tag-backed name may be usable for some event macros
 - but it is not universal and should not be treated as a general rule that tag name equals macro name
+- in the validated Sung system-event wrapper family, the root macro tag was repeatedly the wrong user-facing action name
+
+Validated counterexamples from `Sung Residence v207.2.apex`:
+- event `7`
+  - root tag: `GARAGE DOOR - West is CLOSED`
+  - correct user-facing action: child tag `GATE - is OPEN`
+- event `80`
+  - root tag: `SHADES - Laundry OPEN`
+  - correct user-facing action: child tag `VACATION MODE - Master Bed/Bath ON`
 
 #### Fallback method for untagged system macros
 
@@ -200,6 +248,71 @@ Rule boundary:
 - it should be used when the related `SystemMacroId` row exists and yields a usable name
 - it is not yet treated as a universal macro-name rule for every event macro
 
+#### Preferred method for the proven Sung system-event wrapper family
+
+Status: `approved`
+
+Proven example set:
+- `Sung Residence v207.2.apex`
+- validated events:
+  - `7`
+  - `80`
+  - `81`
+  - `82`
+  - `83`
+  - `84`
+  - `85`
+  - `86`
+  - `87`
+  - `88`
+  - `89`
+  - `90`
+  - `91`
+  - `92`
+  - `93`
+  - `94`
+  - `95`
+  - `96`
+  - `97`
+  - `98`
+  - `99`
+  - `100`
+  - `101`
+  - `102`
+  - `103`
+  - `104`
+
+Method:
+1. start from the event-linked macro row:
+   - `Events.MacroId -> Macros.MacroId`
+2. inspect related macro rows where:
+   - `Macros.SystemMacroId = Events.MacroId`
+3. if a related child row has a usable `ButtonTagId`
+4. resolve:
+   - `child Macros.ButtonTagId -> ButtonTagNames.ButtonTagName`
+5. use that child tag as the user-facing `macroName`
+
+Validated examples:
+- event `7` -> child tag `GATE - is OPEN`
+- events `80` / `81` / `82` / `83` -> child tag `VACATION MODE - Master Bed/Bath ON`
+- events `84` / `85` / `86` / `87` -> child tag `VACATION MODE - Hallway/Stairs ON`
+- events `88` / `89` / `90` / `91` -> child tag `VACATION MODE - Kitchen ON`
+- events `92` / `93` -> child tag `VACATION MODE - Living ON`
+- events `94` / `95` -> child tag `VACATION MODE - All Rooms Except Hallway Morning OFF`
+- events `96` / `97` -> child tag `VACATION MODE - All Included Rooms Evening OFF`
+- event `98` -> `STARTUP - Vacation OFF & Flags Reset & Garage Boiler OFF`
+- event `99` -> `HRV - Master Bath Fan ON`
+- event `100` -> `HRV - Master Bath Fan OFF`
+- event `101` -> `POWER OFF - Room (All Systems)`
+- event `102` -> `POWER OFF - Room (All Systems)`
+- event `103` -> `POOL - Spa Mode OFF`
+- event `104` -> `POWER - Gym OFF - TEST`
+
+Rule boundary:
+- for this proven Sung system-event wrapper family, prefer the child macro tag over the root macro tag
+- these event macros behave like system/background wrapper macros and should not be interpreted like ordinary directly tagged button macros
+- do not generalize this child-tag preference to every system event until the same structure is proven elsewhere
+
 ### Test Targets: System Events
 
 Status: `approved for the current proven sample set`
@@ -231,14 +344,19 @@ This section tracks the approved target shape for `events.driver.items[]` in `ap
 Approved working shape:
 - `userFacing.eventType`
 - `userFacing.driverName`
+- `userFacing.driverCategory`
 - `userFacing.resolvedTrigger`
-- `userFacing.macroName`
+- `userFacing.firstActionName`
+- `userFacing.resolvedActions.macros[]`
+- `userFacing.resolvedActions.macroSteps[]`
+- `userFacing.macroStepCount`
 - `userFacing.testTargets`
 
 Current intent:
 - driver events remain separate from system events
-- user-facing driver events should show the driver identity, the resolved trigger, and the macro name
-- test targets are expected to follow the same technician-facing pattern as system events unless a driver-event exception is proven
+- user-facing driver events should show the driver identity, the resolved category, the resolved trigger, and the first resolved action name
+- driver events may resolve to one macro, multiple macros, one macro step, or multiple macro steps
+- the full proven action set is carried in `resolvedActions`
 
 ### Driver Name
 
@@ -361,7 +479,37 @@ Method used:
 Validated example:
 - `stUp` -> `Startup`
 
-### Macro Name
+### Driver Category
+
+Status: `approved for the current proven sample set`
+
+Method:
+1. start from the same matched driver event node used for `resolvedTrigger`:
+   - `Events.DriverExtraString`
+   - `Events.DriverId -> DriverData.SystemEvents`
+   - match `<event ... tag="Events.DriverExtraString">`
+2. inspect the matched event node's parent:
+   - `<category name="...">`
+3. expand any `%%VariableName%%` placeholders in that category `name` using:
+   - `DriverData.DriverDeviceId -> DriverConfig.Name / DriverConfig.Value`
+4. write the expanded category name to:
+   - `userFacing.driverCategory`
+
+Display rule:
+- if `driverCategory` is non-empty, show:
+  - `When <driverCategory> / <resolvedTrigger> happens, ...`
+
+Validated examples:
+- `Verrier Home FEENY EDIT v49.apex`
+  - `Gate Schedule Manager`
+    - `SCHEDULESTART1` -> `1:(Gate 1) Morning`
+    - `SCHEDULEEND1` -> `1:(Gate 1) Morning`
+    - `SCHEDULESTART3` -> `3:(Gate 2) Morning`
+    - `SCHEDULESTART2` -> `2:(Gate 1) Evening`
+  - `LS - DISPLAY Layers`
+    - `stUp` -> `General`
+
+### First Action Name + Resolved Actions
 
 Status: `approved for the current proven sample set`
 
@@ -371,7 +519,13 @@ High-level method:
    - and require:
      - `Macros.DeviceId = Events.DriverId`
 2. inspect the wrapper macro in step order using `MacroStepsView`
-3. resolve `macroName` by the first safe naming path below
+3. resolve the full proven action set by the safe naming paths below
+4. preserve action order exactly as proven from wrapper step order
+5. set:
+   - `userFacing.firstActionName` = the first resolved action in that ordered action set
+   - `userFacing.resolvedActions.macros[]` = all resolved macro names in order
+   - `userFacing.resolvedActions.macroSteps[]` = all resolved macro-step entries in order
+   - `userFacing.macroStepCount` = total step count when macro-step behavior is being surfaced
 
 #### Preferred path: named command function calls
 
@@ -382,9 +536,9 @@ Method:
 - resolve:
   - `CommandTagId -> ButtonTagNames.ButtonTagName`
 - if one command tag name is resolved:
-  - use it as `macroName`
+  - add it to `resolvedActions.macros[]`
 - if multiple command tag names are resolved:
-  - join them in step order as a readable summary
+  - add all of them to `resolvedActions.macros[]` in step order
 
 This is the dominant pattern in the current sample set.
 
@@ -393,6 +547,12 @@ Validated examples:
 - `APP38GROUP01ON` -> `LIGHTS - West Bed Accent ON`
 - `SCHEDULESTART1` (`Gate Schedule Manager`) -> `SCHEDULE - ACCESS Gate 1 [OPEN/HOLD]`
 - `SCHEDULEEND1` (`Irrigation Schedule Manager`) -> `SCHEDULE - IRRIGATION Zone 1 [OFF]`
+- `APP38GROUP79ON` (`App 56, Group 121 On`) ->
+  - `LIGHTS - Back Yard Entertain OFF`
+  - `ENTERTAIN - Back Lights are OFF`
+- `APP38GROUP3AON` (`App 56, Group 58 On`) ->
+  - `LIGHTS - Gym Accent ON`
+  - `HRV - Gym Fan ON`
 
 #### Secondary path: wrapper tag name
 
@@ -401,13 +561,16 @@ Method:
 - and the wrapper macro row has a usable `ButtonTagId`
 - resolve:
   - `Macros.ButtonTagId -> ButtonTagNames.ButtonTagName`
-- use that as `macroName`
+- add that as the first and only entry in `resolvedActions.macros[]`
 
 #### Fallback path: direct command decoding
 
 Method:
+- only use this path when no usable macro name is available
 - if the wrapper contains direct command steps:
   - `MacroStepsView.Type = 1`
+- if the first wrapper row only page-links or redirects, continue through the proven child macro chain:
+  - `Macros.SystemMacroId = <current MacroId>`
 - use the target command device's driver metadata:
   - `MacroStepsView.DeviceId -> DriverData.DeviceId -> DriverData.SystemFunctions`
 - locate the `<function ...>` definition where:
@@ -415,39 +578,44 @@ Method:
 - map the stored step parameters to the function parameter definitions
 - if a parameter choice label contains placeholders, expand them through that target driver's `DriverConfig`
 - build a readable command summary from the resolved target/action fields
+- add that summary to `resolvedActions.macroSteps[]` as:
+  - `{ "name": "<resolved command summary>", "type": "command" }`
 
 Validated examples:
 - `SetDimmerLevel:QSDimmer` on Lutron:
   - Integration ID `13` -> `__IDName013`
+  - `DriverConfig(DriverDeviceId=21, Name='__IDName013')='Guest Bed Shelf'`
   - resolved summary can be built from the function metadata and config values
 - `SwitchCmd:Switch` on Lutron:
   - Integration ID `13`
   - command choice `2 -> On`, `3 -> Off`
+  - `DriverConfig(DriverDeviceId=21, Name='__IDName013')='Guest Bed Shelf'`
   - resolved summary can be built from the function metadata and config values
 - `setSelLyr:1` on Layer Switch:
   - function metadata plus config-backed group/layer names provide a readable direct-command summary path
 
-#### Fallback path: comment / explicit action summary
+#### Fallback path: undefined macro steps
 
 Method:
-- if no cleaner name is available from function calls, wrapper tag name, or direct command decoding
-- inspect explicit action steps and comment text in step order
-- build a concise summary only from proven step data
+- if no cleaner named macro or macro-step command path is available
+- inspect the wrapper macro's step count
+- set:
+  - `userFacing.resolvedActions.macroSteps[]` to a same-length list of:
+    - `{ "name": "", "type": "undefined" }`
+  - `userFacing.macroStepCount` to the wrapper step count
 
 Validated example:
 - `OPSTATECHANGE002` wrapper macro includes:
   - variable test on `state002001`
-  - comments:
-    - `Close the XP-8 relay`
-    - `Open the XP-8 relay`
+  - conditional branching
   - relay actions on internal relay port 8
-  - internal relay label:
-    - `Garage Boiler Trigger`
-- this provides a file-backed summary path without inventing a custom driver profile
+  - wrapper step count = `5`
+  - approved placeholder wording target:
+    - `run 5 undefined macro steps`
 
 Rule boundary:
 - prefer the earliest safe naming path above
-- if none produces a trustworthy human-readable name, leave `macroName` unresolved rather than guessing
+- if none produces a trustworthy human-readable action name, leave the relevant action list empty rather than guessing
 - the goal is one generic macro-resolution pipeline, not a growing list of driver-specific profiles
 
 Current sample-set result:
@@ -470,7 +638,46 @@ Source evidence:
 
 Approved rule:
 - `userFacing.testTargets.Trigger = true`
-- `userFacing.testTargets.Macro = true`
+- `Macro = true` only when `resolvedActions.macros.length = 1`
+- `Macros = true` only when `resolvedActions.macros.length > 1`
+- `MacroStep = true` only when `resolvedActions.macroSteps.length = 1`
+- `MacroSteps = true` only when `resolvedActions.macroSteps.length > 1`
+- macro and macro-step cases set the appropriate flags independently when both exist
+
+Validated example:
+- `App 56, Group 121 On`
+  - `firstActionName = LIGHTS - Back Yard Entertain OFF`
+  - `resolvedActions.macros = ["LIGHTS - Back Yard Entertain OFF", "ENTERTAIN - Back Lights are OFF"]`
+  - `resolvedActions.macroSteps = []`
+  - `Trigger = true`
+  - `Macros = true`
+  - `Macro = false`
+  - `MacroStep = false`
+  - `MacroSteps = false`
+
+### Display Count Derivation
+
+Status: `approved`
+
+Purpose:
+- support shortened homepage wording such as `...+<count> more`
+
+Method:
+1. compute:
+   - `totalActions = resolvedActions.macros.length + resolvedActions.macroSteps.length`
+2. use:
+   - `firstActionName` as the visible first action
+3. if `totalActions > 1`, compute:
+   - `remainingActions = totalActions - 1`
+4. display:
+   - `...+<remainingActions> more`
+
+Validated example:
+- `App 56, Group 121 On`
+  - total actions = `2`
+  - first action = `LIGHTS - Back Yard Entertain OFF`
+  - remaining count = `1`
+  - shortened title suffix = `...+1 more`
 
 ## V2 Locked Methods: Devices User Facing
 
