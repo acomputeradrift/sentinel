@@ -326,13 +326,16 @@ Approved working shape:
 - `userFacing.eventType`
 - `userFacing.driverName`
 - `userFacing.resolvedTrigger`
-- `userFacing.macroName`
+- `userFacing.firstActionName`
+- `userFacing.resolvedActions.macros[]`
+- `userFacing.resolvedActions.commands[]`
 - `userFacing.testTargets`
 
 Current intent:
 - driver events remain separate from system events
-- user-facing driver events should show the driver identity, the resolved trigger, and the macro name
-- test targets are expected to follow the same technician-facing pattern as system events unless a driver-event exception is proven
+- user-facing driver events should show the driver identity, the resolved trigger, and the first resolved action name
+- driver events may resolve to one macro, multiple macros, one command, multiple commands, or a mix
+- the full proven action set is carried in `resolvedActions`
 
 ### Driver Name
 
@@ -455,7 +458,7 @@ Method used:
 Validated example:
 - `stUp` -> `Startup`
 
-### Macro Name
+### First Action Name + Resolved Actions
 
 Status: `approved for the current proven sample set`
 
@@ -465,7 +468,12 @@ High-level method:
    - and require:
      - `Macros.DeviceId = Events.DriverId`
 2. inspect the wrapper macro in step order using `MacroStepsView`
-3. resolve `macroName` by the first safe naming path below
+3. resolve the full proven action set by the safe naming paths below
+4. preserve action order exactly as proven from wrapper step order
+5. set:
+   - `userFacing.firstActionName` = the first resolved action in that ordered action set
+   - `userFacing.resolvedActions.macros[]` = all resolved macro names in order
+   - `userFacing.resolvedActions.commands[]` = all resolved command names in order
 
 #### Preferred path: named command function calls
 
@@ -476,9 +484,9 @@ Method:
 - resolve:
   - `CommandTagId -> ButtonTagNames.ButtonTagName`
 - if one command tag name is resolved:
-  - use it as `macroName`
+  - add it to `resolvedActions.macros[]`
 - if multiple command tag names are resolved:
-  - join them in step order as a readable summary
+  - add all of them to `resolvedActions.macros[]` in step order
 
 This is the dominant pattern in the current sample set.
 
@@ -487,6 +495,12 @@ Validated examples:
 - `APP38GROUP01ON` -> `LIGHTS - West Bed Accent ON`
 - `SCHEDULESTART1` (`Gate Schedule Manager`) -> `SCHEDULE - ACCESS Gate 1 [OPEN/HOLD]`
 - `SCHEDULEEND1` (`Irrigation Schedule Manager`) -> `SCHEDULE - IRRIGATION Zone 1 [OFF]`
+- `APP38GROUP79ON` (`App 56, Group 121 On`) ->
+  - `LIGHTS - Back Yard Entertain OFF`
+  - `ENTERTAIN - Back Lights are OFF`
+- `APP38GROUP3AON` (`App 56, Group 58 On`) ->
+  - `LIGHTS - Gym Accent ON`
+  - `HRV - Gym Fan ON`
 
 #### Secondary path: wrapper tag name
 
@@ -495,7 +509,7 @@ Method:
 - and the wrapper macro row has a usable `ButtonTagId`
 - resolve:
   - `Macros.ButtonTagId -> ButtonTagNames.ButtonTagName`
-- use that as `macroName`
+- add that as the first and only entry in `resolvedActions.macros[]`
 
 #### Fallback path: direct command decoding
 
@@ -512,12 +526,7 @@ Method:
 - map the stored step parameters to the function parameter definitions
 - if a parameter choice label contains placeholders, expand them through that target driver's `DriverConfig`
 - build a readable command summary from the resolved target/action fields
-- set:
-  - `userFacing.commandName`
-  - `userFacing.actionType = command`
-  - `userFacing.testTargets.Command = true`
-- homepage wording uses:
-  - `run command <commandName>`
+- add that summary to `resolvedActions.commands[]`
 
 Validated examples:
 - `SetDimmerLevel:QSDimmer` on Lutron:
@@ -537,7 +546,8 @@ Validated examples:
 Method:
 - if no cleaner name is available from function calls, wrapper tag name, or direct command decoding
 - inspect explicit action steps and comment text in step order
-- build a concise summary only from proven step data
+- build concise action names only from proven step data
+- add them to `resolvedActions.macros[]` in step order
 
 Validated example:
 - `OPSTATECHANGE002` wrapper macro includes:
@@ -552,7 +562,7 @@ Validated example:
 
 Rule boundary:
 - prefer the earliest safe naming path above
-- if none produces a trustworthy human-readable name, leave `macroName` unresolved rather than guessing
+- if none produces a trustworthy human-readable action name, leave the relevant action list empty rather than guessing
 - the goal is one generic macro-resolution pipeline, not a growing list of driver-specific profiles
 
 Current sample-set result:
@@ -575,7 +585,46 @@ Source evidence:
 
 Approved rule:
 - `userFacing.testTargets.Trigger = true`
-- `userFacing.testTargets.Macro = true`
+- `Macro = true` only when `resolvedActions.macros.length = 1`
+- `Macros = true` only when `resolvedActions.macros.length > 1`
+- `Command = true` only when `resolvedActions.commands.length = 1`
+- `Commands = true` only when `resolvedActions.commands.length > 1`
+- mixed macro/command cases set the appropriate macro and command flags independently
+
+Validated example:
+- `App 56, Group 121 On`
+  - `firstActionName = LIGHTS - Back Yard Entertain OFF`
+  - `resolvedActions.macros = ["LIGHTS - Back Yard Entertain OFF", "ENTERTAIN - Back Lights are OFF"]`
+  - `resolvedActions.commands = []`
+  - `Trigger = true`
+  - `Macros = true`
+  - `Macro = false`
+  - `Command = false`
+  - `Commands = false`
+
+### Display Count Derivation
+
+Status: `approved`
+
+Purpose:
+- support shortened homepage wording such as `...+<count> more`
+
+Method:
+1. compute:
+   - `totalActions = resolvedActions.macros.length + resolvedActions.commands.length`
+2. use:
+   - `firstActionName` as the visible first action
+3. if `totalActions > 1`, compute:
+   - `remainingActions = totalActions - 1`
+4. display:
+   - `...+<remainingActions> more`
+
+Validated example:
+- `App 56, Group 121 On`
+  - total actions = `2`
+  - first action = `LIGHTS - Back Yard Entertain OFF`
+  - remaining count = `1`
+  - shortened title suffix = `...+1 more`
 
 ## V2 Locked Methods: Devices User Facing
 

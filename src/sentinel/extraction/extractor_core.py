@@ -156,12 +156,12 @@ def _dedupe_non_empty(values: list[str]) -> list[str]:
     return out
 
 
-def _resolve_direct_command_summary(
+def _resolve_direct_command_summaries(
     cur: sqlite3.Cursor,
     macro_id: int,
     driver_data_by_device_id: dict[int, sqlite3.Row],
     driver_config_by_driver_device_id: dict[int, dict[str, str]],
-) -> str:
+) -> list[str]:
     cur.execute(
         """
         select MacroStepId, Type, Name, Function, Parameter1, Parameter2, Parameter3, Parameter4, DeviceId
@@ -253,7 +253,7 @@ def _resolve_direct_command_summary(
         else:
             summaries.append(function_name)
 
-    return " / ".join(_dedupe_non_empty(summaries))
+    return _dedupe_non_empty(summaries)
 
 
 def _resolve_driver_action(
@@ -266,14 +266,19 @@ def _resolve_driver_action(
     driver_data_by_device_id: dict[int, sqlite3.Row],
     driver_config_by_driver_device_id: dict[int, dict[str, str]],
 ) -> tuple[list[str], list[str]]:
-    family_rows = _macro_family_rows(macro_id, macros_by_id, macros_by_system_id)
-    wrapper_rows = [row for row in family_rows if int(row["DeviceId"] or -1) == driver_id]
-    candidate_rows = wrapper_rows or family_rows
+    wrapper_rows = [
+        row
+        for row in macros_by_system_id.get(macro_id, [])
+        if int(row["MacroId"] or -1) != macro_id and int(row["DeviceId"] or -1) == driver_id
+    ]
+    root_row = macros_by_id.get(macro_id)
+    candidate_rows = wrapper_rows or ([root_row] if root_row is not None else [])
 
+    macro_names: list[str] = []
     for row in candidate_rows:
         wrapper_name = _usable_name(tag_name_by_id.get(int(row["ButtonTagId"] or -1)))
         if wrapper_name:
-            return [wrapper_name], []
+            macro_names.append(wrapper_name)
         cur.execute(
             "select CommandTagId from MacroStepsView where MacroId = ? and Type = 14 order by StepIndex, MacroStepId",
             (int(row["MacroId"]),),
@@ -284,17 +289,22 @@ def _resolve_driver_action(
             command_tag_id = int(step[0])
             command_name = _usable_name(tag_name_by_id.get(command_tag_id))
             if command_name:
-                return [command_name], []
+                macro_names.append(command_name)
 
+    macro_names = _dedupe_non_empty(macro_names)
+    if macro_names:
+        return macro_names, []
+
+    command_names: list[str] = []
+    comment_names: list[str] = []
     for row in candidate_rows:
-        command_summary = _resolve_direct_command_summary(
+        command_summaries = _resolve_direct_command_summaries(
             cur,
             int(row["MacroId"]),
             driver_data_by_device_id,
             driver_config_by_driver_device_id,
         )
-        if command_summary:
-            return [], [command_summary]
+        command_names.extend(command_summaries)
 
         cur.execute(
             "select CommentText from MacroStepsView where MacroId = ? and Type = 17 order by StepIndex, MacroStepId",
@@ -303,9 +313,12 @@ def _resolve_driver_action(
         for step in cur.fetchall():
             comment = str(step[0] or "").strip()
             if comment:
-                return [comment], []
+                comment_names.append(comment)
 
-    return [], []
+    comment_names = _dedupe_non_empty(comment_names)
+    if comment_names:
+        return comment_names, []
+    return [], _dedupe_non_empty(command_names)
 
 
 def _resolve_system_macro_name(
@@ -661,6 +674,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
             )
             macro_name = "; ".join(macro_names)
             command_name = "; ".join(command_names)
+            first_action_name = (macro_names + command_names)[0] if (macro_names or command_names) else ""
         else:
             trigger = _resolve_system_trigger(cur, ev, event_type)
             macro_name = _resolve_system_macro_name(macro_id, macros_by_id, macros_by_system_id, tag_name_by_id)
@@ -684,10 +698,11 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         "eventType": "Driver",
                         "driverName": driver_name,
                         "resolvedTrigger": trigger,
-                        "macroName": macro_name,
-                        "macroNames": macro_names,
-                        "commandName": command_name,
-                        "commandNames": command_names,
+                        "firstActionName": first_action_name,
+                        "resolvedActions": {
+                            "macros": macro_names,
+                            "commands": command_names,
+                        },
                         "testTargets": _event_test_targets(macro_names, command_names),
                     },
                     "diagnostics": {

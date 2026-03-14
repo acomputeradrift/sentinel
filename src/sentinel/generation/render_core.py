@@ -676,8 +676,7 @@ def _event_section_items(project_data: dict[str, Any], event_key: str) -> list[d
     return items if isinstance(items, list) else []
 
 
-def _event_action_names(user: dict[str, Any], key: str) -> list[str]:
-    values = user.get(key)
+def _dedupe_names(values: Any) -> list[str]:
     if isinstance(values, list):
         names: list[str] = []
         for value in values:
@@ -686,9 +685,27 @@ def _event_action_names(user: dict[str, Any], key: str) -> list[str]:
                 names.append(cleaned)
         if names:
             return names
+    return []
+
+
+def _event_action_names(user: dict[str, Any], key: str) -> list[str]:
+    values = user.get(key)
+    names = _dedupe_names(values)
+    if names:
+        return names
     fallback_key = "macroName" if key == "macroNames" else "commandName"
     fallback = str(user.get(fallback_key) or "").strip()
     return [fallback] if fallback else []
+
+
+def _driver_resolved_actions(user: dict[str, Any]) -> tuple[list[str], list[str]]:
+    resolved = user.get("resolvedActions", {})
+    if isinstance(resolved, dict):
+        macro_names = _dedupe_names(resolved.get("macros"))
+        command_names = _dedupe_names(resolved.get("commands"))
+        if macro_names or command_names:
+            return macro_names, command_names
+    return _event_action_names(user, "macroNames"), _event_action_names(user, "commandNames")
 
 
 def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> str:
@@ -710,11 +727,24 @@ def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> st
 def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
     user = item.get("userFacing", {}) if isinstance(item, dict) else {}
     trigger = str(user.get("resolvedTrigger") or "No trigger").strip()
+    if event_kind == "driver":
+        macro_names, command_names = _driver_resolved_actions(user)
+        total_actions = len(macro_names) + len(command_names)
+        first_action_name = str(user.get("firstActionName") or "").strip()
+        if not first_action_name:
+            combined = macro_names + command_names
+            first_action_name = combined[0] if combined else "Unknown"
+        if macro_names and not command_names:
+            noun = "macro" if len(macro_names) == 1 else "macros"
+        elif command_names and not macro_names:
+            noun = "command" if len(command_names) == 1 else "commands"
+        else:
+            noun = "actions"
+        remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
+        return f"When {trigger} happens, run {noun}: {first_action_name}{remainder}"
     macro_names = _event_action_names(user, "macroNames")
     command_names = _event_action_names(user, "commandNames")
     action_phrase = _event_action_phrase(macro_names, command_names)
-    if event_kind == "driver":
-        return f"When {trigger} happens, {action_phrase}"
     description = str(user.get("description") or user.get("eventType") or "System Event").strip()
     return f'"{escape(description)}" | {trigger}, {action_phrase}'
 

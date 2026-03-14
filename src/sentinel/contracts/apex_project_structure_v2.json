@@ -34,10 +34,21 @@
             "eventType": "Driver",
             "driverName": "",
             "resolvedTrigger": "",
-            "macroName": "",
+            "firstActionName": "",
+            "resolvedActions": {
+              "macros": [
+                ""
+              ],
+              "commands": [
+                ""
+              ]
+            },
             "testTargets": {
               "Trigger": true,
-              "Macro": true
+              "Macro": false,
+              "Macros": false,
+              "Command": false,
+              "Commands": false
             }
           },
           "diagnostics": {
@@ -46,16 +57,52 @@
             "driverId": 0,
             "driverName": "",
             "driverExtraString": "",
-            "macro": {
-              "systemMacroId": 0,
-              "macroId": 0,
-              "scope": {
-                "roomId": 0,
-                "roomName": "Global",
-                "deviceId": 0,
-                "deviceName": ""
-              },
-              "buttonTagName": null
+            "resolvedActions": {
+              "macros": [
+                {
+                  "name": "",
+                  "macroId": 0,
+                  "systemMacroId": 0,
+                  "roomId": 0,
+                  "roomName": "Global",
+                  "deviceId": 0,
+                  "deviceName": "",
+                  "buttonTagId": 0,
+                  "buttonTagName": "",
+                  "steps": [
+                    {
+                      "stepId": 0,
+                      "stepIndex": 0,
+                      "stepType": 0,
+                      "commandTagId": 0,
+                      "commandTagName": "",
+                      "function": "",
+                      "parameter1": "",
+                      "parameter2": "",
+                      "parameter3": "",
+                      "parameter4": ""
+                    }
+                  ]
+                }
+              ],
+              "commands": [
+                {
+                  "name": "",
+                  "sourceMacroId": 0,
+                  "sourceSystemMacroId": 0,
+                  "sourceRoomId": 0,
+                  "sourceRoomName": "Global",
+                  "sourceDeviceId": 0,
+                  "sourceDeviceName": "",
+                  "sourceStepId": 0,
+                  "sourceStepType": 0,
+                  "sourceFunction": "",
+                  "parameter1": "",
+                  "parameter2": "",
+                  "parameter3": "",
+                  "parameter4": ""
+                }
+              ]
             }
           }
         }

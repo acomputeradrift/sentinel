@@ -141,6 +141,9 @@ def create_test_apex(path: Path) -> None:
     cur.execute("insert into ButtonTagNames values (129,'LIGHTS - Load 2 TOGGLE')")
     cur.execute("insert into ButtonTagNames values (130,'WRAPPER - Sense Test')")
     cur.execute("insert into ButtonTagNames values (131,'SENSE - Gate Open')")
+    cur.execute("insert into ButtonTagNames values (140,'Driver Action A')")
+    cur.execute("insert into ButtonTagNames values (141,'Driver Action B')")
+    cur.execute("insert into ButtonTagNames values (142,'Driver Action Leak')")
 
     cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,20,320,46,284,2,0)")
     cur.execute("insert into RTIDeviceButtonData values (247,300,1,129,0,140,334,46,76,'',10,7,20,620,46,76,2,0)")
@@ -151,12 +154,19 @@ def create_test_apex(path: Path) -> None:
     cur.execute("insert into Macros values (362,362,0,-1,129,0)")
     cur.execute("insert into Macros values (400,400,0,-1,130,0)")
     cur.execute("insert into Macros values (401,400,0,-1,131,0)")
+    cur.execute("insert into Macros values (500,500,0,-1,0,0)")
+    cur.execute("insert into Macros values (501,500,0,99,0,0)")
+    cur.execute("insert into Macros values (502,501,0,99,0,0)")
     cur.execute("insert into MacroSteps values (1,362,0,1,0,0)")
+    cur.execute("insert into MacroStepsView values (10,501,0,14,140,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (11,501,1,14,141,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (12,502,0,14,142,null,null,null,null,null,null,null,null)")
     cur.execute("insert into PortLabels values (1,0,-65024,'Gate')")
     cur.execute("insert into PortLabels values (2,0,66048,'Sense 1')")
     cur.execute("insert into SenseModeMap values (1,0,-1,1)")
     cur.execute("insert into Events values (1,1,400,'Sense Test',1,0,0,-1,null,null,0,null,0,0,null,null)")
     cur.execute("insert into Events values (2,5,362,'Driver Test',1,null,null,null,null,null,0,null,0,0,99,'fallback')")
+    cur.execute("insert into Events values (3,5,500,'Driver Multi',1,null,null,null,null,null,0,null,0,0,99,'multi')")
     cur.execute("insert into DriverData values (99,1,1,'Driver Name','SwitchCmd:Switch;DimmerCmd:SetLevel')")
     cur.execute("insert into PageLinks values (1,1,129,0,101)")
 
@@ -183,6 +193,7 @@ class ScriptContractsTest(unittest.TestCase):
             data = json.loads((td_path / "sample_project_data.json").read_text(encoding="utf-8"))
             system_event = data["events"]["system"][0]
             driver_event = data["events"]["driver"][0]
+            driver_multi = data["events"]["driver"][1]
             slider = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][0]
             toggle = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][1]
             self.assertEqual(system_event["userFacing"]["description"], "Sense Test")
@@ -193,10 +204,17 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(system_event["userFacing"]["testTargets"], {"Trigger": True, "Macro": True})
             self.assertEqual(driver_event["userFacing"]["driverName"], "IST-5 (Global)")
             self.assertEqual(driver_event["userFacing"]["resolvedTrigger"], "fallback")
-            self.assertEqual(driver_event["userFacing"]["macroName"], "LIGHTS - Load 2 TOGGLE")
-            self.assertEqual(driver_event["userFacing"]["macroNames"], ["LIGHTS - Load 2 TOGGLE"])
-            self.assertEqual(driver_event["userFacing"]["commandNames"], [])
+            self.assertEqual(driver_event["userFacing"]["firstActionName"], "LIGHTS - Load 2 TOGGLE")
+            self.assertEqual(driver_event["userFacing"]["resolvedActions"], {"macros": ["LIGHTS - Load 2 TOGGLE"], "commands": []})
             self.assertEqual(driver_event["userFacing"]["testTargets"], {"Trigger": True, "Macro": True})
+            self.assertNotIn("macroName", driver_event["userFacing"])
+            self.assertNotIn("commandName", driver_event["userFacing"])
+            self.assertNotIn("macroNames", driver_event["userFacing"])
+            self.assertNotIn("commandNames", driver_event["userFacing"])
+            self.assertEqual(driver_multi["userFacing"]["resolvedTrigger"], "multi")
+            self.assertEqual(driver_multi["userFacing"]["firstActionName"], "Driver Action A")
+            self.assertEqual(driver_multi["userFacing"]["resolvedActions"], {"macros": ["Driver Action A", "Driver Action B"], "commands": []})
+            self.assertEqual(driver_multi["userFacing"]["testTargets"], {"Trigger": True, "Macros": True})
             self.assertTrue(slider["buttonUI"]["orientations"]["portrait"]["visible"])
             self.assertFalse(slider["buttonUI"]["orientations"]["landscape"]["visible"])
             self.assertEqual(slider["buttonUI"]["orientations"]["portrait"]["coordinates"]["left"], 30)
@@ -517,9 +535,8 @@ class ScriptContractsTest(unittest.TestCase):
                                 "eventType": "Driver",
                                 "driverName": "Lutron Driver",
                                 "resolvedTrigger": "Button 1",
-                                "commandName": "Scene On; Scene Off",
-                                "macroNames": [],
-                                "commandNames": ["Scene On", "Scene Off"],
+                                "firstActionName": "Scene On",
+                                "resolvedActions": {"macros": [], "commands": ["Scene On", "Scene Off"]},
                                 "testTargets": {"Trigger": True, "Commands": True},
                             }
                         },
@@ -528,10 +545,8 @@ class ScriptContractsTest(unittest.TestCase):
                                 "eventType": "Driver",
                                 "driverName": "Lutron Driver",
                                 "resolvedTrigger": "Button 2",
-                                "macroName": "Path Lights",
-                                "macroNames": ["Path Lights"],
-                                "commandName": "Scene Raise; Scene Lower",
-                                "commandNames": ["Scene Raise", "Scene Lower"],
+                                "firstActionName": "Path Lights",
+                                "resolvedActions": {"macros": ["Path Lights"], "commands": ["Scene Raise", "Scene Lower"]},
                                 "testTargets": {"Trigger": True, "Macro": True, "Commands": True},
                             }
                         }
@@ -578,8 +593,8 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("Devices", home_html)
             self.assertIn('"Hall Motion" | When Hall Sensor opens, run macro: Hall Lights', home_html)
             self.assertIn("Lutron Driver", home_html)
-            self.assertIn("When Button 1 happens, run commands: Scene On; Scene Off", home_html)
-            self.assertIn("When Button 2 happens, run actions: macro Path Lights; commands Scene Raise; Scene Lower", home_html)
+            self.assertIn("When Button 1 happens, run commands: Scene On ...+1 more", home_html)
+            self.assertIn("When Button 2 happens, run actions: Path Lights ...+2 more", home_html)
             self.assertIn('"targets": ["Trigger", "Macro"]', home_html)
             self.assertIn('"targets": ["Trigger", "Commands"]', home_html)
             self.assertIn('"targets": ["Trigger", "Macro", "Commands"]', home_html)
