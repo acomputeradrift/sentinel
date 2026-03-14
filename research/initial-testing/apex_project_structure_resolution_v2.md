@@ -61,9 +61,13 @@ Method:
      - `PortLabels.LabelKey = -65024..-65017`
    - do not use the generic positive `Sense 1` label when a proven internal label such as `Gate` exists
 4. resolve sense mode from `SenseModeMap` where `RTIAddress = 0` and `ExpanderId = -1`
-5. decode mode:
-   - mask bit `1` -> `Sense Closure`
-   - mask bit `0` -> `Sense Voltage`
+5. decode mode per port from the mask:
+   - use:
+     - `is_closure = bool(Mask & (1 << SensePort))`
+   - if `is_closure` is true:
+     - `Sense Closure`
+   - otherwise:
+     - `Sense Voltage`
 6. decode action wording by mode:
    - `Sense Closure`
      - `SenseAction = 0` -> `closes`
@@ -86,6 +90,21 @@ Notes:
 - diagnostics does need port numbers
 - this method is currently proven for internal controller sense inputs, not expander inputs
 
+Validated cross-project evidence:
+- `Sung Residence v207.2.apex`
+  - `SenseModeMap.Mask = 1`
+  - only port `0` / input `1` is closure mode
+  - software confirms:
+    - input `1` = `Sense Closure`
+    - inputs `2-8` = `Sense Voltage`
+  - proven event fit:
+    - `SensePort = 0` (`Gate`) resolves through closure wording
+- `Verrier Home FEENY EDIT v49.apex`
+  - `SenseModeMap.Mask = 195`
+  - `SensePort = 4` is not closure mode because bit `4` is not set
+  - software confirms the related septic events are `Sense Voltage`
+  - therefore closure wording such as `opens` is incorrect for those events
+
 ### Resolved Trigger: Scheduled Events
 
 Status: `locked for proven fixed and astronomical cases`
@@ -98,8 +117,8 @@ Source fields:
 Approved rules so far:
 - scheduled trigger data is file-backed in `Events`
 - astronomical schedule subtype mapping is approved:
-  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0000` -> `On sunrise`
-  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0001` -> `On sunset`
+  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0000` -> `At Sunrise`
+  - `DailyAstronomical = 1` and `DailyStartTimeHex ...0001` or `...0100` -> `At Sunset`
 
 #### Fixed scheduled triggers
 
@@ -139,12 +158,12 @@ Method:
 - if `DailyAstronomical = 1`
 - inspect `DailyStartTimeHex`
 - decode:
-  - suffix `...0000` -> `On sunrise`
-  - suffix `...0001` -> `On sunset`
+  - suffix `...0000` -> `At Sunrise`
+  - suffix `...0001` or `...0100` -> `At Sunset`
 
 Validated examples:
-- `EventId=126` -> `On sunrise`
-- `EventId=127` -> `On sunset`
+- `EventId=126` -> `At Sunrise`
+- `EventId=127` -> `At Sunset`
 
 ### Resolved Trigger: Startup Events
 
@@ -325,6 +344,7 @@ This section tracks the approved target shape for `events.driver.items[]` in `ap
 Approved working shape:
 - `userFacing.eventType`
 - `userFacing.driverName`
+- `userFacing.driverCategory`
 - `userFacing.resolvedTrigger`
 - `userFacing.firstActionName`
 - `userFacing.resolvedActions.macros[]`
@@ -334,7 +354,7 @@ Approved working shape:
 
 Current intent:
 - driver events remain separate from system events
-- user-facing driver events should show the driver identity, the resolved trigger, and the first resolved action name
+- user-facing driver events should show the driver identity, the resolved category, the resolved trigger, and the first resolved action name
 - driver events may resolve to one macro, multiple macros, one macro step, or multiple macro steps
 - the full proven action set is carried in `resolvedActions`
 
@@ -458,6 +478,36 @@ Method used:
 
 Validated example:
 - `stUp` -> `Startup`
+
+### Driver Category
+
+Status: `approved for the current proven sample set`
+
+Method:
+1. start from the same matched driver event node used for `resolvedTrigger`:
+   - `Events.DriverExtraString`
+   - `Events.DriverId -> DriverData.SystemEvents`
+   - match `<event ... tag="Events.DriverExtraString">`
+2. inspect the matched event node's parent:
+   - `<category name="...">`
+3. expand any `%%VariableName%%` placeholders in that category `name` using:
+   - `DriverData.DriverDeviceId -> DriverConfig.Name / DriverConfig.Value`
+4. write the expanded category name to:
+   - `userFacing.driverCategory`
+
+Display rule:
+- if `driverCategory` is non-empty, show:
+  - `When <driverCategory> / <resolvedTrigger> happens, ...`
+
+Validated examples:
+- `Verrier Home FEENY EDIT v49.apex`
+  - `Gate Schedule Manager`
+    - `SCHEDULESTART1` -> `1:(Gate 1) Morning`
+    - `SCHEDULEEND1` -> `1:(Gate 1) Morning`
+    - `SCHEDULESTART3` -> `3:(Gate 2) Morning`
+    - `SCHEDULESTART2` -> `2:(Gate 1) Evening`
+  - `LS - DISPLAY Layers`
+    - `stUp` -> `General`
 
 ### First Action Name + Resolved Actions
 

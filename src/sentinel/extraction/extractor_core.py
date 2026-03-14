@@ -95,27 +95,33 @@ def _expand_driver_tokens(text: str | None, driver_config: dict[str, str]) -> st
     return _DRIVER_TOKEN_RE.sub(replace_token, raw).strip()
 
 
-def _resolve_driver_trigger(system_events_xml: str | None, driver_extra_string: str | None, driver_config: dict[str, str]) -> str:
+def _resolve_driver_trigger(system_events_xml: str | None, driver_extra_string: str | None, driver_config: dict[str, str]) -> tuple[str, str]:
     tag = str(driver_extra_string or "").strip()
     if not tag:
-        return ""
+        return "", ""
     xml_text = str(system_events_xml or "").strip()
     if not xml_text:
-        return tag
+        return "", tag
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return tag
+        return "", tag
     matched_name = ""
-    for event_node in root.findall(".//event"):
-        if str(event_node.attrib.get("tag") or "").strip() == tag:
-            matched_name = str(event_node.attrib.get("name") or "").strip()
+    matched_category = ""
+    for category_node in root.findall(".//category"):
+        category_name = _expand_driver_tokens(category_node.attrib.get("name"), driver_config)
+        for event_node in category_node.findall("./event"):
+            if str(event_node.attrib.get("tag") or "").strip() == tag:
+                matched_name = str(event_node.attrib.get("name") or "").strip()
+                matched_category = str(category_name or "").strip()
+                break
+        if matched_name:
             break
     if not matched_name:
-        return tag
+        return "", tag
 
     resolved = _expand_driver_tokens(matched_name, driver_config)
-    return resolved or tag
+    return matched_category, resolved or tag
 
 
 def _macro_family_rows(root_macro_id: int, macros_by_id: dict[int, sqlite3.Row], macros_by_system_id: dict[int, list[sqlite3.Row]]) -> list[sqlite3.Row]:
@@ -234,7 +240,7 @@ def _resolve_direct_command_summaries(
                 resolved_by_name[param_name] = resolved_value
             ordered_values.append(resolved_value)
 
-        function_name = str(function_node.attrib.get("name") or export_name).strip()
+        function_name = _expand_driver_tokens(function_node.attrib.get("name"), driver_config) or str(export_name).strip()
         if export_name == "SetDimmerLevel:QSDimmer":
             target = resolved_by_name.get("Integration ID")
             level = resolved_by_name.get("Level")
@@ -375,14 +381,14 @@ def _sense_port_label(cur: sqlite3.Cursor, sense_port: int) -> str:
     return generic_label or f"Sense {sense_port + 1}"
 
 
-def _sense_action_text(cur: sqlite3.Cursor, sense_action: int, sense_expander_id: int) -> str:
+def _sense_action_text(cur: sqlite3.Cursor, sense_port: int, sense_action: int, sense_expander_id: int) -> str:
     cur.execute("select Mask from SenseModeMap where RTIAddress = 0 and ExpanderId = ?", (sense_expander_id,))
     row = cur.fetchone()
     mask = int(row["Mask"] or 0) if row else 0
-    is_closure = bool(mask & 1)
+    is_closure = bool(mask & (1 << sense_port))
     if is_closure:
         return "closes" if sense_action == 0 else "opens"
-    return "goes high" if sense_action == 0 else "goes low"
+    return "goes Low" if sense_action == 0 else "goes High"
 
 
 def _decode_scheduled_trigger(ev: sqlite3.Row) -> str:
@@ -390,10 +396,10 @@ def _decode_scheduled_trigger(ev: sqlite3.Row) -> str:
         raw = bytes(_row_value(ev, "DailyStartTime", b"") or b"")
         raw_hex = raw.hex().upper()
         if raw_hex.endswith("0000"):
-            return "On sunrise"
-        if raw_hex.endswith("0001"):
-            return "On sunset"
-        return "On scheduled astronomical event"
+            return "At Sunrise"
+        if raw_hex.endswith("0001") or raw_hex.endswith("0100"):
+            return "At Sunset"
+        return "At astronomical event"
 
     day_mask = int(_row_value(ev, "DailyDayMask", 0) or 0)
     day_group = {62: "Weekdays", 65: "Weekends", 127: "Every day"}.get(day_mask, "Scheduled")
@@ -419,7 +425,7 @@ def _resolve_system_trigger(cur: sqlite3.Cursor, ev: sqlite3.Row, event_type: in
         sense_action = int(_row_value(ev, "SenseAction", 0) or 0)
         sense_expander_id = int(_row_value(ev, "SenseExpanderId", -1) or -1)
         label = _sense_port_label(cur, sense_port)
-        action = _sense_action_text(cur, sense_action, sense_expander_id)
+        action = _sense_action_text(cur, sense_port, sense_action, sense_expander_id)
         return f"When {label} {action}"
     if event_type == 3:
         return _decode_scheduled_trigger(ev)
@@ -666,7 +672,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
             if not driver_name and driver_data_row is not None and "DriverId" in driver_data_columns:
                 driver_name = str(driver_data_row["DriverId"] or "").strip()
         if event_type == 5 or driver_id > 0:
-            trigger = _resolve_driver_trigger(
+            driver_category, trigger = _resolve_driver_trigger(
                 driver_data_row["SystemEvents"] if driver_data_row is not None and "SystemEvents" in driver_data_columns else None,
                 ev["DriverExtraString"],
                 driver_config,
@@ -709,6 +715,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                     "userFacing": {
                         "eventType": "Driver",
                         "driverName": driver_name,
+                        "driverCategory": driver_category,
                         "resolvedTrigger": trigger,
                         "firstActionName": first_action_name,
                         "resolvedActions": {

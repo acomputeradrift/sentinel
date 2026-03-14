@@ -33,6 +33,7 @@
           "userFacing": {
             "eventType": "Driver",
             "driverName": "",
+            "driverCategory": "",
             "resolvedTrigger": "",
             "firstActionName": "",
             "resolvedActions": {
