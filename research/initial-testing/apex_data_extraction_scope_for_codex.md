@@ -1873,6 +1873,32 @@ Resolved command/page details for those Office room-event macros:
 - `MacroId 2938`: `Type 8` page-link to `Please Wait` (multi-target by controller address)
 - `MacroId 6`: flag-gated flow (`Type 16/17/15`) plus `Type 26` select source `Home (DeviceId 6) in Office (RoomId 2)`
 
+Verrier runtime clarification from direct room-select tracing:
+
+- viewport room-selector buttons do not need to carry page-link steps themselves
+- in `Verrier Home FEENY EDIT v49.apex`, iPhone `Room Select` page (`PageId = 513`, `RTIAddress = 3`) uses viewport/list items such as `Room: Master Bedroom`
+- those room items resolve to button-tag macros whose only proven step is `Type 24` via `MacroSelectRoom.SelectRoomId`
+- the landing-page jump occurs in room-level follow-up macros from `RoomEvents`, not on the room-selector button macro itself
+- confirmed `Master Bedroom` chain:
+  - viewport item `Room: Master Bedroom`
+  - button macro `Type 24` -> `SelectRoomId = 6`
+  - room-level `RoomEvents` selected-hook macros for `RoomId = 6` include page-link-bearing macros (`MacroId 5877`, `MacroId 5894`)
+  - those room-event macros contain `Type 8` page-link steps targeting iPhone page `PageId = 518` -> `Lights/Home (Master)`
+- practical implication:
+  - room selection is a two-stage navigation model:
+    - stage 1: select room context
+    - stage 2: room event applies landing-page navigation and any setup commands
+
+Relationship to `Activities`:
+
+- once already inside a room, activity selection is a separate navigation path from room selection
+- `Activities` rows can carry:
+  - `SelectedMacroId` for activity-specific follow-up actions
+  - `PagelinkMacroId` for activity-specific page navigation
+- therefore page navigation in runtime can come from at least two distinct non-button-direct paths:
+  - room selection -> `RoomEvents`
+  - activity selection -> `Activities.PagelinkMacroId`
+
 #### F. Source-level on/off event hooks are separately extractable
 
 Status: `confirmed extractable now`

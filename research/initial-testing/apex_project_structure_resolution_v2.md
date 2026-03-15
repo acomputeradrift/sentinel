@@ -955,7 +955,8 @@ Status: `locked for the current v2 user-facing shape`
 
 Approved user-facing fields:
 - `testTargets.text`
-- `testTargets.macro`
+- `testTargets.macros`
+- `testTargets.macroSteps`
 - `testTargets.variables.Text`
 - `testTargets.variables.Reversed`
 - `testTargets.variables.Inactive`
@@ -963,26 +964,31 @@ Approved user-facing fields:
 - `testTargets.variables.Value`
 - `testTargets.variables.State`
 - `testTargets.variables.Command`
-- `testTargets.pageLink.enabled`
-- `testTargets.pageLink.targetPageId`
+- `testTargets.pageLink`
+- `resolvedPageLink`
 
 #### Text target
 
 Method:
 - `testTargets.text = true` only when `RTIDeviceButtonData.Text` is non-empty and is not token-only text
 
-#### Macro target
+#### Macro targets
 
 Method:
 1. resolve button tag name through `ButtonTagId -> ButtonTagNames`
-2. resolve candidate macros through:
+2. resolve explicit attached macros through:
+   - `RTIDeviceButtonData.GlobalMacroId`
+   - `RTIDeviceButtonData.DeviceMacroId`
+3. resolve direct button-step wrappers through:
    - `Macros.ButtonTagId = RTIDeviceButtonData.ButtonTagId`
-3. inspect `MacroSteps` for each candidate macro
-4. `testTargets.macro = true` only when at least one candidate macro is non-empty
-5. otherwise `false`
+4. inspect `MacroSteps` only for the direct button-step wrappers
+5. `testTargets.macros = true` only when at least one explicit attached macro is present on the button row
+6. `testTargets.macroSteps = true` only when at least one direct button-step wrapper is non-empty
+7. do not set `testTargets.macroSteps = true` merely because an attached macro contains steps
+8. otherwise `false`
 
 Boundary:
-- current extractor path uses tag-backed macro detection for user-facing macro presence
+- attached macro presence and direct button-step presence are separate user-facing test targets
 - keep unresolved scope-specific macro matching out of this locked user-facing presence rule
 
 #### Variable targets
@@ -1017,14 +1023,103 @@ Rule boundary:
 #### Page-link target
 
 Method:
-1. if `RTIDeviceButtonData.ButtonTagId` is present, resolve:
-   - `PageLinks.ButtonTagId = RTIDeviceButtonData.ButtonTagId`
-2. if a page-link row exists:
-   - `testTargets.pageLink.enabled = true`
-   - `testTargets.pageLink.targetPageId = PageLinks.PageId`
+1. fully resolve eventual navigation by the locked method in `resolvedPageLink`
+2. if `resolvedPageLink` is non-null:
+   - `testTargets.pageLink = true`
 3. otherwise:
-   - `enabled = false`
-   - `targetPageId = null`
+   - `testTargets.pageLink = false`
+
+#### Resolved page link
+
+Status: `locked for normalized singular user-facing navigation output`
+
+This field is broader than direct button page-link detection and is the single user-facing navigation payload for the resolved button instance.
+
+`testTargets.pageLink` answers:
+- whether the button eventually resolves to a navigation target
+
+`resolvedPageLink` answers:
+- the final resolved navigation target for that properly scoped button instance
+
+Allowed object shape:
+- `targetPageId`
+- `targetPageName`
+- `resolutionPath`
+
+Allowed `resolutionPath` values for the current locked method:
+- `directPageLink`
+- `macroStep`
+- `roomSelectEvent`
+- `activityEvent`
+
+Locked method:
+1. Start with `resolvedPageLink = null`.
+2. Resolve direct button page links:
+   - `PageLinks.ButtonTagId = RTIDeviceButtonData.ButtonTagId`
+   - if a valid target is found for the properly scoped button instance, set:
+     - `resolvedPageLink.targetPageId`
+     - `resolvedPageLink.targetPageName`
+     - `resolvedPageLink.resolutionPath = directPageLink`
+3. Resolve macro-step page links:
+   - only continue if `resolvedPageLink` is still null
+   - resolve effective macro for the pressed button
+   - inspect `MacroStepsView`
+   - for rows where `Type = 8`, resolve targets through `MacroPageLinkView`
+   - if a valid target is found for the properly scoped button instance, set `resolvedPageLink` with `resolutionPath = macroStep`
+4. Resolve room-selection follow-up links:
+   - only continue if `resolvedPageLink` is still null
+   - when the pressed button resolves to `Type 24` `Select Room`
+   - use `MacroSelectRoom.SelectRoomId`
+   - inspect room-level `RoomEvents` macros for the selected room
+   - if those room-event macros contain a valid target for the properly scoped button instance, set `resolvedPageLink` with `resolutionPath = roomSelectEvent`
+5. Resolve activity-selection links:
+   - only continue if `resolvedPageLink` is still null
+   - when the pressed button corresponds to an activity-selection control, resolve the pressed instance through `ButtonsAndListItems`
+   - use the current page/source context from that `ButtonsAndListItems` row
+   - for local room activities, derive current room from the page/source device context
+   - resolve candidate tag macros through `Macros.ButtonTagId`
+   - scope the activity-selection macro by current room when possible
+   - inspect `MacroStepsView`
+   - when the scoped macro contains `Type = 26`, use:
+     - `SelectSourceId`
+     - `SelectSourceRoomId`
+   - if `SelectSourceRoomId > 0`, use that room id for the activity lookup
+   - if `SelectSourceRoomId = -1`, use the current room context from the pressed page instance for the activity lookup
+   - resolve the activity row through `Activities.RoomId` + `Activities.DeviceId`
+   - inspect that activity row's `PagelinkMacroId`
+   - resolve `Type = 8` targets through `MacroStepsView` + `MacroPageLinkView`
+   - resolve `targetPageName` from `RTIDevicePageData.PageNameId -> PageNames.PageName`
+   - if a valid target is found for the properly scoped button instance, set `resolvedPageLink` with `resolutionPath = activityEvent`
+6. If no proven eventual page target is found, leave `resolvedPageLink = null`.
+
+Output discipline:
+- do not fabricate page ids or page names
+- keep `testTargets.pageLink` and `resolvedPageLink` separate
+- `resolvedPageLink` is user-facing normalized navigation output intended for simulator/app behavior
+
+Validated Verrier examples:
+- iPhone `PageId = 518` (`Lights/Home (Master)`), `ButtonId = 50245`, `ButtonTagName = Activity: Apple TV 1`
+  - `ButtonsAndListItems.SourceDeviceId = 8` -> current room `RoomId = 6` (`Master Bedroom`)
+  - scoped tag macro `MacroId = 5940`
+  - `Type = 26` -> `SelectSourceId = 227`, `SelectSourceRoomId = 6`
+  - `Activities(RoomId = 6, DeviceId = 227)` -> `PagelinkMacroId = 5934`
+  - `Type = 8` target includes iPhone `PageId = 521` -> `AppleTV 1 (Master Bed)`
+- iPhone `PageId = 518`, `ButtonId = 50249`, `ButtonTagName = Activity: Samsung TV`
+  - scoped tag macro `MacroId = 5943`
+  - `Type = 26` -> `SelectSourceId = 121`, `SelectSourceRoomId = 6`
+  - `Activities(RoomId = 6, DeviceId = 121)` -> `PagelinkMacroId = 5188`
+  - `Type = 8` target includes iPhone `PageId = 525` -> `Samsung TV (Master)`
+- iPhone `PageId = 518`, `ButtonId = 50250`, `ButtonTagName = Activity: Climate`
+  - scoped tag macro `MacroId = 5962`
+  - `Type = 26` -> `SelectSourceId = 229`, `SelectSourceRoomId = 6`
+  - `Activities(RoomId = 6, DeviceId = 229)` -> `PagelinkMacroId = 5961`
+  - `Type = 8` target includes iPhone `PageId = 519` -> `Climate (Master)`
+- iPhone `PageId = 518`, `ButtonId = 57070`, `ButtonTagName = Activity: AV Overview`
+  - global tag macro `MacroId = 7005`
+  - `Type = 26` -> `SelectSourceId = 314`, `SelectSourceRoomId = -1`
+  - approved fallback for this method: use current room context from the pressed page instance
+  - `Activities(RoomId = 6, DeviceId = 314)` -> `PagelinkMacroId = 6988`
+  - `Type = 8` target includes iPhone `PageId = 761` -> `AV Overview`
 
 ### Viewports: Identity + Frames
 
@@ -1157,6 +1252,21 @@ High-value next steps for this page:
 3. Resolve whether room-select triggers use `MacroSelectRoom` (`Type 24`) or alternate step types in assigned macros.
 4. TODO: resolve `Visibility Variable` token `{EA6067BE-AE4B-4DBF-A2A8-F925C34FA889}@64861` to a concrete variable/source path for `LayerId=7287`.
 
+Resolved runtime note from Verrier room-selection review:
+
+- the room-selector viewport button is not the final navigation carrier
+- for `Room: Master Bedroom` on iPhone `Room Select` (`PageId = 513`):
+  - button-tag macro resolves to `Type 24` -> `Select Room: Master Bedroom`
+  - no direct button page-link step is required on that room-selector item
+  - room-level follow-up navigation is carried by `RoomEvents` macros for `RoomId = 6`
+  - those room-event macros include `Type 8` page-link steps targeting `Lights/Home (Master)` on the iPhone (`PageId = 518`)
+- use this distinction when resolving navigation:
+  - room selector button -> room context change
+  - room-selected event -> landing page
+- do not collapse room-selection navigation and activity-selection navigation into one rule:
+  - room selection can land through `RoomEvents`
+  - activity selection can land through `Activities.PagelinkMacroId`
+
 ---
 
 ## Locked Fully Resolved Button Table Method
@@ -1241,10 +1351,12 @@ Each button record used for technician workflows must be split into exactly two 
 Required fields:
 - `ButtonTagName`
 - `Test Targets`
+- `resolvedPageLink`
 
 `Test Targets` is a set populated only from what exists on that button:
 - `Label` (only for pure label rows: text shown, no non-empty macro, no variable, no page link)
-- `Macro`
+- `Macros`
+- `Macro Steps`
 - `Variable`
 - `Text Variable`
 - `Page Link`

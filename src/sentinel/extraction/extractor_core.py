@@ -486,7 +486,87 @@ def _is_hard_button(button_ui: dict[str, Any]) -> bool:
     return int(portrait["height"] or 0) == 0 and int(portrait["width"] or 0) == 0
 
 
-def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id: dict[int, str], variables_by_tag: dict[int, list[sqlite3.Row]], button_text_tag_ids: set[int], macros_by_tag: dict[int, list[sqlite3.Row]], page_links_by_tag: dict[int, sqlite3.Row]) -> tuple[dict[str, Any], dict[str, Any], bool]:
+def _csv_ints(value: Any) -> list[int]:
+    out: list[int] = []
+    for piece in str(value or "").split(","):
+        cleaned = piece.strip()
+        if not cleaned:
+            continue
+        try:
+            num = int(cleaned)
+        except ValueError:
+            continue
+        if num not in out:
+            out.append(num)
+    return out
+
+
+def _append_resolved_page_link(
+    resolved: list[dict[str, Any]],
+    seen: set[tuple[int, str]],
+    target_page_id: int | None,
+    target_page_name: str | None,
+    resolution_path: str,
+) -> None:
+    if target_page_id is None:
+        return
+    key = (int(target_page_id), str(resolution_path))
+    if key in seen:
+        return
+    seen.add(key)
+    resolved.append(
+        {
+            "targetPageId": int(target_page_id),
+            "targetPageName": str(target_page_name or "").strip() or None,
+            "resolutionPath": resolution_path,
+        }
+    )
+
+
+def _csv_page_targets(page_ids_value: Any, rti_addresses_value: Any) -> list[tuple[int, int]]:
+    page_ids = _csv_ints(page_ids_value)
+    rti_addresses = _csv_ints(rti_addresses_value)
+    out: list[tuple[int, int]] = []
+    for idx, page_id in enumerate(page_ids):
+        rti_address = rti_addresses[idx] if idx < len(rti_addresses) else 0
+        out.append((page_id, rti_address))
+    return out
+
+
+def _pick_target_for_rti(targets: list[tuple[int, int]], current_rti_address: int) -> int | None:
+    for page_id, rti_address in targets:
+        if int(rti_address or 0) == int(current_rti_address or 0):
+            return int(page_id)
+    return int(targets[0][0]) if targets else None
+
+
+def _activity_target_page_ids(
+    select_source_id: int,
+    select_source_room_id: int,
+    fallback_room_id: int,
+    activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
+) -> list[tuple[int, int]]:
+    room_id = select_source_room_id if select_source_room_id > 0 else fallback_room_id
+    return activity_target_pages_by_room_and_device.get((room_id, select_source_id), [])
+
+
+def _resolve_button(
+    button_row: sqlite3.Row,
+    tag_name_by_id: dict[int, str],
+    variables_by_tag: dict[int, list[sqlite3.Row]],
+    button_text_tag_ids: set[int],
+    macros_by_tag: dict[int, list[sqlite3.Row]],
+    macro_non_empty_by_id: dict[int, bool],
+    page_links_by_tag: dict[int, sqlite3.Row],
+    page_name_by_page_id: dict[int, str],
+    macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
+    room_event_targets_by_room: dict[int, list[tuple[int, int]]],
+    select_rooms_by_macro: dict[int, list[int]],
+    select_sources_by_macro: dict[int, list[tuple[int, int]]],
+    activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
+    page_room_id: int,
+    current_rti_address: int,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
     text = button_row["Text"] or ""
@@ -509,14 +589,91 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
     inactive_enabled = any(not _empty(v["InactiveData"]) for v in variables_rows)
     visible_enabled = any(not _empty(v["VisibleData"]) for v in variables_rows)
 
-    tag_macro_rows = macros_by_tag.get(tag_id, []) if tag_id > 0 else []
-    macro_non_empty = any(_has_non_empty_macro(cur, int(m["MacroId"])) for m in tag_macro_rows)
-    has_macro_target = bool(tag_name) and macro_non_empty
+    explicit_macro_ids: list[int] = []
+    for field in ("GlobalMacroId", "DeviceMacroId"):
+        if field in button_row.keys() and button_row[field] is not None:
+            macro_id = int(button_row[field])
+            if macro_id > 0 and macro_id not in explicit_macro_ids:
+                explicit_macro_ids.append(macro_id)
 
+    all_tag_macro_rows = macros_by_tag.get(tag_id, []) if tag_id > 0 else []
+    scoped_tag_macro_rows = [m for m in all_tag_macro_rows if int(m["RoomId"] or 0) in {0, page_room_id}]
+    tag_macro_rows = scoped_tag_macro_rows or all_tag_macro_rows
+    has_macros_target = bool(explicit_macro_ids)
+    has_macro_steps_target = any(macro_non_empty_by_id.get(int(m["MacroId"]), False) for m in tag_macro_rows)
+
+    direct_page_link_id = int(button_row["PageLinkId"]) if "PageLinkId" in button_row.keys() and button_row["PageLinkId"] is not None else None
+    direct_target_page_id = int(button_row["LinkPageId"]) if "LinkPageId" in button_row.keys() and button_row["LinkPageId"] is not None else None
     page_link_row = page_links_by_tag.get(tag_id) if tag_id > 0 else None
-    page_link_enabled = page_link_row is not None
-    target_page_id = int(page_link_row["PageId"]) if page_link_row and page_link_row["PageId"] is not None else None
-    page_link_id = int(page_link_row["PageLinkId"]) if page_link_row and page_link_row["PageLinkId"] is not None else None
+    if direct_page_link_id is not None or direct_target_page_id is not None:
+        page_link_enabled = True
+        target_page_id = direct_target_page_id
+        page_link_id = direct_page_link_id
+    else:
+        page_link_enabled = page_link_row is not None
+        target_page_id = int(page_link_row["PageId"]) if page_link_row and page_link_row["PageId"] is not None else None
+        page_link_id = int(page_link_row["PageLinkId"]) if page_link_row and page_link_row["PageLinkId"] is not None else None
+
+    resolved_page_link: dict[str, Any] | None = None
+    if target_page_id is not None:
+        resolved_page_link = {
+            "targetPageId": int(target_page_id),
+            "targetPageName": str(page_name_by_page_id.get(target_page_id) or "").strip() or None,
+            "resolutionPath": "directPageLink",
+        }
+
+    candidate_macro_ids: list[int] = explicit_macro_ids[:]
+    for macro_row in tag_macro_rows:
+        macro_id = int(macro_row["MacroId"] or 0)
+        if macro_id > 0 and macro_id not in candidate_macro_ids:
+            candidate_macro_ids.append(macro_id)
+
+    if resolved_page_link is None:
+        for macro_id in candidate_macro_ids:
+            macro_target_page_id = _pick_target_for_rti(macro_step_targets_by_macro.get(macro_id, []), current_rti_address)
+            if macro_target_page_id is not None:
+                resolved_page_link = {
+                    "targetPageId": macro_target_page_id,
+                    "targetPageName": str(page_name_by_page_id.get(macro_target_page_id) or "").strip() or None,
+                    "resolutionPath": "macroStep",
+                }
+                break
+
+    if resolved_page_link is None:
+        for macro_id in candidate_macro_ids:
+            for select_room_id in select_rooms_by_macro.get(macro_id, []):
+                room_target_page_id = _pick_target_for_rti(room_event_targets_by_room.get(select_room_id, []), current_rti_address)
+                if room_target_page_id is not None:
+                    resolved_page_link = {
+                        "targetPageId": room_target_page_id,
+                        "targetPageName": str(page_name_by_page_id.get(room_target_page_id) or "").strip() or None,
+                        "resolutionPath": "roomSelectEvent",
+                    }
+                    break
+            if resolved_page_link is not None:
+                break
+
+    if resolved_page_link is None:
+        for macro_id in candidate_macro_ids:
+            for select_source_id, select_source_room_id in select_sources_by_macro.get(macro_id, []):
+                activity_target_page_id = _pick_target_for_rti(
+                    _activity_target_page_ids(
+                        select_source_id,
+                        select_source_room_id,
+                        page_room_id,
+                        activity_target_pages_by_room_and_device,
+                    ),
+                    current_rti_address,
+                )
+                if activity_target_page_id is not None:
+                    resolved_page_link = {
+                        "targetPageId": activity_target_page_id,
+                        "targetPageName": str(page_name_by_page_id.get(activity_target_page_id) or "").strip() or None,
+                        "resolutionPath": "activityEvent",
+                    }
+                    break
+            if resolved_page_link is not None:
+                break
 
     button_ui = _button_ui(button_row)
     is_hard = _is_hard_button(button_ui)
@@ -530,7 +687,8 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
         "buttonUI": button_ui,
         "testTargets": {
             "text": has_literal_text,
-            "macro": has_macro_target,
+            "macros": has_macros_target,
+            "macroSteps": has_macro_steps_target,
             "variables": {
                 "Text": has_var_text,
                 "Reversed": reversed_enabled,
@@ -540,11 +698,9 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
                 "State": state_enabled,
                 "Command": command_enabled,
             },
-            "pageLink": {
-                "enabled": page_link_enabled,
-                "targetPageId": target_page_id,
-            },
+            "pageLink": resolved_page_link is not None,
         },
+        "resolvedPageLink": resolved_page_link,
     }
 
     diag_button = {
@@ -558,7 +714,7 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
                 "globalMacroId": tag_macro_rows[0]["MacroId"] if tag_macro_rows else None,
                 "deviceMacroId": None,
                 "resolvedCommand": None,
-                "isEmpty": not macro_non_empty if tag_macro_rows else False,
+                "isEmpty": not has_macro_steps_target if tag_macro_rows else False,
             },
             "variableDetails": {
                 "Text": {"enabled": has_var_text, "rawButtonText": next((t for t in button_text_tokens if t), None), "resolvedName": None},
@@ -582,7 +738,7 @@ def _resolve_button(cur: sqlite3.Cursor, button_row: sqlite3.Row, tag_name_by_id
         or state_enabled
         or command_enabled
     )
-    is_ui_item = bool(tag_id <= 0 and _empty(text) and not has_macro_target and not has_any_variable_target)
+    is_ui_item = bool(tag_id <= 0 and _empty(text) and not has_macros_target and not has_any_variable_target)
     return user_button, diag_button, is_hard or is_ui_item
 
 
@@ -622,6 +778,79 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
     for row in cur.fetchall():
         macros_by_id[int(row["MacroId"])] = row
         macros_by_system_id[int(row["SystemMacroId"] or -1)].append(row)
+
+    cur.execute("select MacroId, Type from MacroSteps")
+    macro_types_by_macro: dict[int, set[int]] = defaultdict(set)
+    for row in cur.fetchall():
+        macro_types_by_macro[int(row["MacroId"] or 0)].add(int(row["Type"] or 0))
+    macro_non_empty_by_id = {
+        macro_id: any(step_type not in (3, 15) for step_type in step_types)
+        for macro_id, step_types in macro_types_by_macro.items()
+    }
+
+    cur.execute("select PageId, PageName, RoomId from PagesView")
+    page_name_by_page_id: dict[int, str] = {}
+    page_room_id_by_page_id: dict[int, int] = {}
+    for row in cur.fetchall():
+        page_name_by_page_id[int(row["PageId"])] = str(row["PageName"] or "").strip()
+        page_room_id_by_page_id[int(row["PageId"])] = int(row["RoomId"] or 0)
+
+    cur.execute(
+        """
+        select msv.MacroId, msv.Type, mpl.TargetPageId, msv.TargetRTIAddress, msr.SelectRoomId, mss.SelectSourceId, mss.SelectSourceRoomId
+        from MacroStepsView msv
+        left join MacroPageLinkView mpl on mpl.MacroStepId = msv.MacroStepId and msv.Type = 8
+        left join MacroSelectRoom msr on msr.MacroStepId = msv.MacroStepId and msv.Type = 24
+        left join MacroSelectSource mss on mss.MacroStepId = msv.MacroStepId and msv.Type = 26
+        order by msv.MacroId, msv.StepIndex, msv.MacroStepId
+        """
+    )
+    macro_step_targets_by_macro: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    select_rooms_by_macro: dict[int, list[int]] = defaultdict(list)
+    select_sources_by_macro: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for row in cur.fetchall():
+        macro_id = int(row["MacroId"] or 0)
+        step_type = int(row["Type"] or 0)
+        if step_type == 8:
+            for target in _csv_page_targets(row["TargetPageId"], row["TargetRTIAddress"]):
+                if target not in macro_step_targets_by_macro[macro_id]:
+                    macro_step_targets_by_macro[macro_id].append(target)
+        elif step_type == 24:
+            select_room_id = int(row["SelectRoomId"] or 0)
+            if select_room_id > 0 and select_room_id not in select_rooms_by_macro[macro_id]:
+                select_rooms_by_macro[macro_id].append(select_room_id)
+        elif step_type == 26:
+            select_source_id = int(row["SelectSourceId"] or 0)
+            select_source_room_id = int(row["SelectSourceRoomId"] or 0)
+            pair = (select_source_id, select_source_room_id)
+            if select_source_id > 0 and pair not in select_sources_by_macro[macro_id]:
+                select_sources_by_macro[macro_id].append(pair)
+
+    cur.execute(
+        """
+        select a.*, d.DisplayName, d.Name
+        from Activities a
+        join Devices d on d.DeviceId = a.DeviceId
+        order by a.RoomId, a.Checked desc, a.ActivityOrder, a.ActivitiesId
+        """
+    )
+    activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for row in cur.fetchall():
+        room_id = int(row["RoomId"] or 0)
+        device_id = int(row["DeviceId"] or 0)
+        key = (room_id, device_id)
+        pagelink_macro_id = int(row["PagelinkMacroId"] or 0)
+        if key not in activity_target_pages_by_room_and_device:
+            activity_target_pages_by_room_and_device[key] = macro_step_targets_by_macro.get(pagelink_macro_id, [])
+
+    cur.execute("select RoomId, SelectedMacroId from RoomEvents where SelectedMacroId is not null order by RoomId, EventType")
+    room_event_targets_by_room: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for row in cur.fetchall():
+        room_id = int(row["RoomId"] or 0)
+        selected_macro_id = int(row["SelectedMacroId"] or 0)
+        for target in macro_step_targets_by_macro.get(selected_macro_id, []):
+            if target not in room_event_targets_by_room[room_id]:
+                room_event_targets_by_room[room_id].append(target)
 
     cur.execute("select PageLinkId, ButtonTagId, PageId from PageLinks where ButtonTagId is not null")
     page_links_by_tag: dict[int, sqlite3.Row] = {}
@@ -789,6 +1018,8 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
         for prow in page_rows:
             page_id = int(prow["PageId"])
             page_name = page_name_by_id.get(int(prow["PageNameId"] or -1), "")
+            page_room_id = page_room_id_by_page_id.get(page_id, 0)
+            page_rti_address = int(prow["RTIAddress"] or 0)
 
             cur.execute("select * from Layers where PageId = ? order by LayerOrder, LayerId", (page_id,))
             page_layers = cur.fetchall()
@@ -803,11 +1034,44 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                 cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
                 for b in cur.fetchall():
                     button_id = int(b["ButtonId"])
-                    user_button, diag_button, is_special = _resolve_button(cur, b, tag_name_by_id, variables_by_tag, button_text_tag_ids, macros_by_tag, page_links_by_tag)
+                    user_button, diag_button, is_special = _resolve_button(
+                        b,
+                        tag_name_by_id,
+                        variables_by_tag,
+                        button_text_tag_ids,
+                        macros_by_tag,
+                        macro_non_empty_by_id,
+                        page_links_by_tag,
+                        page_name_by_page_id,
+                        macro_step_targets_by_macro,
+                        room_event_targets_by_room,
+                        select_rooms_by_macro,
+                        select_sources_by_macro,
+                        activity_target_pages_by_room_and_device,
+                        page_room_id,
+                        page_rti_address,
+                    )
                     diag_buttons.append(diag_button)
 
                     if button_id in viewport_button_ids:
-                        frames = _resolve_viewport_frames(cur, button_id, tag_name_by_id, variables_by_tag, button_text_tag_ids, macros_by_tag, page_links_by_tag)
+                        frames = _resolve_viewport_frames(
+                            cur,
+                            button_id,
+                            tag_name_by_id,
+                            variables_by_tag,
+                            button_text_tag_ids,
+                            macros_by_tag,
+                            macro_non_empty_by_id,
+                            page_links_by_tag,
+                            page_name_by_page_id,
+                            macro_step_targets_by_macro,
+                            room_event_targets_by_room,
+                            select_rooms_by_macro,
+                            select_sources_by_macro,
+                            activity_target_pages_by_room_and_device,
+                            page_room_id,
+                            page_rti_address,
+                        )
                         user_viewports.append(
                             {
                                 "viewportIdentity": {"viewportButtonId": button_id},
@@ -888,7 +1152,24 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
     return out
 
 
-def _resolve_viewport_frames(cur: sqlite3.Cursor, viewport_button_id: int, tag_name_by_id: dict[int, str], variables_by_tag: dict[int, list[sqlite3.Row]], button_text_tag_ids: set[int], macros_by_tag: dict[int, list[sqlite3.Row]], page_links_by_tag: set[int]) -> dict[str, Any]:
+def _resolve_viewport_frames(
+    cur: sqlite3.Cursor,
+    viewport_button_id: int,
+    tag_name_by_id: dict[int, str],
+    variables_by_tag: dict[int, list[sqlite3.Row]],
+    button_text_tag_ids: set[int],
+    macros_by_tag: dict[int, list[sqlite3.Row]],
+    macro_non_empty_by_id: dict[int, bool],
+    page_links_by_tag: dict[int, sqlite3.Row],
+    page_name_by_page_id: dict[int, str],
+    macro_step_targets_by_macro: dict[int, list[int]],
+    room_event_targets_by_room: dict[int, list[int]],
+    select_rooms_by_macro: dict[int, list[int]],
+    select_sources_by_macro: dict[int, list[tuple[int, int]]],
+    activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
+    page_room_id: int,
+    current_rti_address: int,
+) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
     child_layers = cur.fetchall()
 
@@ -912,7 +1193,23 @@ def _resolve_viewport_frames(cur: sqlite3.Cursor, viewport_button_id: int, tag_n
             frame_user.setdefault(frame_id, {"frameId": frame_id, "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []}})
             frame_diag.setdefault(frame_id, {"frameId": frame_id, "buttons": []})
 
-            user_button, diag_button, is_special = _resolve_button(cur, b, tag_name_by_id, variables_by_tag, button_text_tag_ids, macros_by_tag, page_links_by_tag)
+            user_button, diag_button, is_special = _resolve_button(
+                b,
+                tag_name_by_id,
+                variables_by_tag,
+                button_text_tag_ids,
+                macros_by_tag,
+                macro_non_empty_by_id,
+                page_links_by_tag,
+                page_name_by_page_id,
+                macro_step_targets_by_macro,
+                room_event_targets_by_room,
+                select_rooms_by_macro,
+                select_sources_by_macro,
+                activity_target_pages_by_room_and_device,
+                page_room_id,
+                current_rti_address,
+            )
             frame_diag[frame_id]["buttons"].append(diag_button)
 
             if is_special and _is_hard_button(user_button["buttonUI"]):
@@ -932,9 +1229,8 @@ def _resolve_viewport_frames(cur: sqlite3.Cursor, viewport_button_id: int, tag_n
 def _is_screen_label(button: dict[str, Any]) -> bool:
     t = button["testTargets"]
     has_display = bool(t["text"] or t["variables"]["Text"])
-    page_link = t.get("pageLink", {})
-    page_link_enabled = bool(page_link.get("enabled")) if isinstance(page_link, dict) else bool(page_link)
-    return bool(not page_link_enabled and not t["macro"] and has_display and button["buttonIdentity"].get("buttonType") is None)
+    page_link_enabled = bool(t.get("pageLink"))
+    return bool(not page_link_enabled and not t["macros"] and not t["macroSteps"] and has_display and button["buttonIdentity"].get("buttonType") is None)
 
 
 def json_load(path: Path) -> Any:

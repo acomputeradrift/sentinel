@@ -170,7 +170,8 @@
                   },
                   "testTargets": {
                     "text": true,
-                    "macro": false,
+                    "macros": false,
+                    "macroSteps": false,
                     "variables": {
                       "Text": false,
                       "Reversed": false,
@@ -180,11 +181,9 @@
                       "State": false,
                       "Command": false
                     },
-                    "pageLink": {
-                      "enabled": false,
-                      "targetPageId": null
-                    }
-                  }
+                    "pageLink": false
+                  },
+                  "resolvedPageLink": null
                 }
               ],
               "screenButtons": [
@@ -219,7 +218,8 @@
                   },
                   "testTargets": {
                     "text": true,
-                    "macro": true,
+                    "macros": true,
+                    "macroSteps": true,
                     "variables": {
                       "Text": false,
                       "Reversed": true,
@@ -229,10 +229,12 @@
                       "State": false,
                       "Command": false
                     },
-                    "pageLink": {
-                      "enabled": false,
-                      "targetPageId": null
-                    }
+                    "pageLink": true
+                  },
+                  "resolvedPageLink": {
+                    "targetPageId": 518,
+                    "targetPageName": "Lights/Home (Master)",
+                    "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent"
                   }
                 }
               ],

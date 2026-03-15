@@ -46,10 +46,10 @@ def _page_link_enabled(targets: dict[str, Any]) -> bool:
     return bool(page_link)
 
 
-def _page_link_target_id(targets: dict[str, Any]) -> int | None:
-    page_link = targets.get("pageLink")
-    if isinstance(page_link, dict):
-        raw = page_link.get("targetPageId")
+def _page_link_target_id(btn: dict[str, Any]) -> int | None:
+    resolved = btn.get("resolvedPageLink")
+    if isinstance(resolved, dict):
+        raw = resolved.get("targetPageId")
         return int(raw) if raw is not None else None
     return None
 
@@ -60,8 +60,10 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     out: list[str] = []
     if t.get("text"):
         out.append("Text")
-    if t.get("macro"):
+    if t.get("macros"):
         out.append("Macro")
+    if t.get("macroSteps"):
+        out.append("MacroStep")
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command"):
         if vars_t.get(name):
             out.append(variable_label_template.replace("{variableType}", name))
@@ -79,7 +81,8 @@ def _is_ui_only_button(btn: dict[str, Any]) -> bool:
         not str(identity.get("buttonTagName") or "").strip()
         and not str(identity.get("text") or "").strip()
         and not bool(t.get("text"))
-        and not bool(t.get("macro"))
+        and not bool(t.get("macros"))
+        and not bool(t.get("macroSteps"))
         and not _page_link_enabled(t)
         and not has_any_var
     )
@@ -212,7 +215,7 @@ def _render_button_control(
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_html = ""
     if link_cfg.get("enabled") and _page_link_enabled(targets):
-        target_page_id = _page_link_target_id(targets)
+        target_page_id = _page_link_target_id(btn)
         target_href = page_targets.get(target_page_id) if target_page_id is not None else None
         if target_href:
             nav_width = int(link_cfg.get("hoverActivationArea", {}).get("width") or 28)
