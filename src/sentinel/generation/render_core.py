@@ -12,6 +12,15 @@ def load_json(path: Path) -> Any:
         return json.load(f)
 
 
+def _resolution_or_default(resolution: dict[str, Any] | None, default_width: int, default_height: int) -> dict[str, int]:
+    raw = resolution or {}
+    width = int(raw.get("width") or 0)
+    height = int(raw.get("height") or 0)
+    if width > 0 and height > 0:
+        return {"width": width, "height": height}
+    return {"width": default_width, "height": default_height}
+
+
 def page_index_by_name(project_data: dict[str, Any], page_name: str, device_index: int = 0) -> int:
     pages = project_data["devices"][device_index]["userFacing"]["pages"]
     for i, page in enumerate(pages):
@@ -562,13 +571,13 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .dot.active{{background:#2d5f81;border-color:#2d5f81;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
 .ov.open{{display:flex;}}
-.pop{{width:min(980px,100%);background:#fff;border:1px solid #cbd7e2;border-radius:18px;padding:20px 24px;margin-top:0;}}
+.pop{{width:min(560px,calc(100vw - 24px));max-width:100%;box-sizing:border-box;background:#fff;border:1px solid #cbd7e2;border-radius:18px;padding:20px 24px;margin-top:0;}}
 .pop h3{{margin:0 0 16px;font-size:16px;line-height:1.1;font-weight:700;}}
-.row{{border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;}}
+.row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;overflow:hidden;}}
 .n{{font-weight:600;margin-bottom:10px;font-size:14px;line-height:1.1;}}
 .actions{{display:flex;gap:10px;margin-bottom:10px;}}
 .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
-textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;}}
+textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
 #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
@@ -609,7 +618,7 @@ document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=
  const m=JSON.parse(b.dataset.meta||'{{}}');
  const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
  pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
- rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='width:100%;min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+ rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
 ov.classList.add('open');
 }}));
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
@@ -1310,7 +1319,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b)
   const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
   pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
   const targets=Array.isArray(m.targets) ? m.targets : [];
-  rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='width:100%;min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+  rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
   ov.classList.add('open');
  }});
 }});
@@ -1323,14 +1332,16 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
     device_ui = uf.get("deviceUI", {})
     portrait = device_ui.get("portrait", {})
     landscape = device_ui.get("landscape", {})
+    portrait_resolution = _resolution_or_default(portrait.get("resolution"), 480, 854)
+    landscape_resolution = _resolution_or_default(landscape.get("resolution"), 854, 480)
     if bool(portrait.get("supported")):
-        res = portrait.get("resolution", {"width": 480, "height": 854})
+        res = portrait_resolution
         active_orientation = "portrait"
     elif bool(landscape.get("supported")):
-        res = landscape.get("resolution", {"width": 854, "height": 480})
+        res = landscape_resolution
         active_orientation = "landscape"
     else:
-        res = portrait.get("resolution") or landscape.get("resolution") or {"width": 480, "height": 854}
+        res = portrait_resolution if any(int(portrait_resolution.get(k) or 0) > 0 for k in ("width", "height")) else landscape_resolution
         active_orientation = "portrait"
     w = int(res.get("width") or 480)
     h = int(res.get("height") or 854)
@@ -1340,8 +1351,8 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
         "current": active_orientation,
         "options": orientation_options,
         "sizes": {
-            "portrait": portrait.get("resolution", {"width": 0, "height": 0}),
-            "landscape": landscape.get("resolution", {"width": 0, "height": 0}),
+            "portrait": portrait_resolution,
+            "landscape": landscape_resolution,
         },
     }
     pages = uf.get("pages", [])

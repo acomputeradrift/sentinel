@@ -43,6 +43,14 @@ def _device_orientation_support(
     if value == 2:
         return False, landscape_dimensions or fallback_dimensions
     if value == 3:
+        if portrait_dimensions or landscape_dimensions:
+            return portrait_dimensions, landscape_dimensions
+        if fallback_dimensions:
+            fallback_w = int(fallback_width or 0)
+            fallback_h = int(fallback_height or 0)
+            if fallback_h >= fallback_w:
+                return True, False
+            return False, True
         return portrait_dimensions, landscape_dimensions
     return False, False
 

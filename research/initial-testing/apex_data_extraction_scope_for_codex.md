@@ -801,8 +801,13 @@ Size fallback finding:
 - practical extraction rule:
   - use `SupportedOrientations` to determine which orientations are eligible
   - if the device is single-orientation, allow fallback from the missing orientation-specific size fields to `ScreenWidth` / `ScreenHeight`
-  - if the device is dual-orientation, only generate an orientation when that orientation-specific dimension pair exists
+  - if the device is dual-orientation and orientation-specific dimension pairs exist, only generate the orientations that have their own dimension pair
+  - if the device is dual-orientation but no orientation-specific dimension pairs exist and one generic `ScreenWidth` / `ScreenHeight` pair exists, treat it as a single-size device
+  - for that single-size device path, choose portrait when `ScreenHeight >= ScreenWidth`, otherwise choose landscape
   - do not treat one generic size pair as proof that both orientations should be generated
+- locked result after Verrier retest:
+  - `RK3-V (Bedroom1)` -> `portrait 480x640`, landscape unsupported
+  - `RK3-V (Bedroom2)` -> `portrait 480x640`, landscape unsupported
 - `RTiQConfig`
 - `RTiQMonitoredDevices`
 - `SharedLayers`

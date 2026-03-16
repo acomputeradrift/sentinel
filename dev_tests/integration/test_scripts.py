@@ -100,7 +100,17 @@ def sample_app_ui() -> dict:
     }
 
 
-def create_test_apex(path: Path) -> None:
+def create_test_apex(
+    path: Path,
+    *,
+    supported_orientations: int = 1,
+    portrait_width: int = 480,
+    portrait_height: int = 854,
+    landscape_width: int = 0,
+    landscape_height: int = 0,
+    screen_width: int = 480,
+    screen_height: int = 854,
+) -> None:
     con = sqlite3.connect(path)
     cur = con.cursor()
 
@@ -139,7 +149,18 @@ def create_test_apex(path: Path) -> None:
     )
 
     cur.execute("insert into Devices values (1,0,1,5,'IST-5','','','','',0,0,'IST-5 (Global)')")
-    cur.execute("insert into RTIDeviceData values (1,1,0,1,480,854,0,0,480,854)")
+    cur.execute(
+        "insert into RTIDeviceData values (1,1,0,?,?,?,?,?, ?,?)",
+        (
+            supported_orientations,
+            portrait_width,
+            portrait_height,
+            landscape_width,
+            landscape_height,
+            screen_width,
+            screen_height,
+        ),
+    )
     cur.execute("insert into PageNames values (10,'Lights')")
     cur.execute("insert into PageNames values (11,'Home')")
     cur.execute("insert into PagesView values (100,'Lights',0)")
@@ -290,6 +311,35 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertTrue(toggle["testTargets"]["pageLink"])
             self.assertEqual(toggle["resolvedPageLink"], {"targetPageId": 101, "targetPageName": "Home", "resolutionPath": "directPageLink"})
 
+    def test_extract_single_size_device_uses_fallback_dimensions(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            apex = td_path / "sample.apex"
+            schema = td_path / "apex_project_structure.json"
+            schema.write_text("{}", encoding="utf-8")
+            create_test_apex(
+                apex,
+                supported_orientations=3,
+                portrait_width=0,
+                portrait_height=0,
+                landscape_width=0,
+                landscape_height=0,
+                screen_width=480,
+                screen_height=640,
+            )
+
+            run = subprocess.run(
+                [sys.executable, str(EXTRACT), "--apex", str(apex), "--project-structure", str(schema), "--out-dir", str(td_path)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
+
+            data = json.loads((td_path / "sample_project_data.json").read_text(encoding="utf-8"))
+            device_ui = data["devices"][0]["userFacing"]["deviceUI"]
+            self.assertEqual(device_ui["portrait"], {"supported": True, "resolution": {"width": 480, "height": 640}})
+            self.assertEqual(device_ui["landscape"], {"supported": False, "resolution": {"width": 0, "height": 0}})
+
     def test_generate_writes_html(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
@@ -389,6 +439,11 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("rtiCanvas.classList.toggle('scroll-hover'", html)
             self.assertIn("scrollbar-gutter:stable overlay;", html)
             self.assertIn("rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {passive:true});", html)
+            self.assertIn("width:min(560px,calc(100vw - 24px))", html)
+            self.assertIn(".row{box-sizing:border-box;width:100%;", html)
+            self.assertIn("textarea{display:block;box-sizing:border-box;width:100%;max-width:100%;", html)
+            self.assertIn("textarea placeholder='Fail note' style='min-height:70px;'", html)
+            self.assertNotIn("textarea placeholder='Fail note' style='width:100%;min-height:70px;'", html)
 
     def test_generate_writes_single_device_file_by_default(self):
         with tempfile.TemporaryDirectory() as td:
@@ -581,6 +636,48 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("data-l-left='210'", html)
             self.assertIn("data-l-top='100'", html)
 
+    def test_generate_uses_single_size_device_ui_for_source_size(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            project_data = {
+                "devices": [
+                    {
+                        "userFacing": {
+                            "displayName": "RK3-V (Bedroom1)",
+                            "deviceUI": {
+                                "portrait": {"supported": True, "resolution": {"width": 480, "height": 640}},
+                                "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                            },
+                            "pages": [
+                                {
+                                    "pageName": "Home",
+                                    "layers": [
+                                        {
+                                            "layerName": "Hard Keys",
+                                            "layerOrder": 0,
+                                            "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                            "viewports": [],
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                        "diagnostics": {"deviceId": 1, "pages": [{"pageId": 100, "pageName": "Home"}]},
+                    }
+                ]
+            }
+            project_path = td_path / "sample_project_data.json"
+            ui_path = td_path / "app_ui_structure.json"
+            project_path.write_text(json.dumps(project_data), encoding="utf-8")
+            ui_path.write_text(json.dumps(sample_app_ui()), encoding="utf-8")
+
+            run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
+
+            html = (td_path / "sample_project_data__device-0-rk3-v-bedroom1.html").read_text(encoding="utf-8")
+            self.assertIn("const SOURCE_DEVICE_SIZE={width:480,height:640};", html)
+            self.assertIn('const ORIENTATION_STATE={"current": "portrait", "options": ["portrait"], "sizes": {"portrait": {"width": 480, "height": 640}, "landscape": {"width": 854, "height": 480}}};', html)
+
     def test_generate_project_home_includes_event_sections_and_device_links(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
@@ -726,6 +823,8 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("<span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span>", home_html)
             self.assertIn("width:min(560px,calc(100vw - 24px))", home_html)
             self.assertIn("textarea{display:block;box-sizing:border-box;width:100%;max-width:100%;", home_html)
+            self.assertIn("textarea placeholder='Fail note' style='min-height:70px;'", home_html)
+            self.assertNotIn("textarea placeholder='Fail note' style='width:100%;min-height:70px;'", home_html)
             self.assertNotIn("?.", home_html)
             self.assertNotIn("??", home_html)
             self.assertIn("sample_project_data__device-0-ist-5-global.html", home_html)

@@ -720,8 +720,9 @@ Method:
    - `2` -> landscape only
    - `3` -> both
 2. if the device is portrait-only, allow fallback from missing portrait-specific dimensions to `ScreenWidth` / `ScreenHeight`
-3. if the device is dual-orientation, mark portrait supported only when portrait-specific dimensions exist
-4. prefer `ScreenPortraitWidth` / `ScreenPortraitHeight` for portrait resolution
+3. if the device is dual-orientation and portrait-specific dimensions exist, mark portrait supported
+4. if the device is dual-orientation and no portrait-specific or landscape-specific dimensions exist, but one generic `ScreenWidth` / `ScreenHeight` pair exists, treat the device as a single-size device and choose portrait when `ScreenHeight >= ScreenWidth`
+5. prefer `ScreenPortraitWidth` / `ScreenPortraitHeight` for portrait resolution
 
 ### Device UI: Landscape Support + Resolution
 
@@ -740,8 +741,9 @@ Method:
    - `2` -> landscape only
    - `3` -> both
 2. if the device is landscape-only, allow fallback from missing landscape-specific dimensions to `ScreenWidth` / `ScreenHeight`
-3. if the device is dual-orientation, mark landscape supported only when landscape-specific dimensions exist
-4. prefer `ScreenLandscapeWidth` / `ScreenLandscapeHeight` for landscape resolution
+3. if the device is dual-orientation and landscape-specific dimensions exist, mark landscape supported
+4. if the device is dual-orientation and no portrait-specific or landscape-specific dimensions exist, but one generic `ScreenWidth` / `ScreenHeight` pair exists, treat the device as a single-size device and choose landscape when `ScreenWidth > ScreenHeight`
+5. prefer `ScreenLandscapeWidth` / `ScreenLandscapeHeight` for landscape resolution
 
 Rendering rule:
 - if only one orientation is supported, render that orientation with no orientation toggle controls
