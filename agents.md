@@ -35,6 +35,35 @@ Until such confirmation is given, results must remain temporary and displayed on
 
 ---
 
+
+## Forward Progress Rule
+
+When an investigation or discovery thread reaches a concrete, evidence-backed next step, the AI must proactively move the thread forward by presenting the next minimal change scope for approval.
+
+The AI must not wait for an extra user prompt such as:
+- `proceed`
+- `go ahead`
+- `what next`
+
+if the next scoped action is already clear from the investigation.
+
+Required behavior:
+- after presenting investigation findings, the AI should immediately offer the smallest reasonable approval scope that would implement or document the next step
+- the scope must still follow all existing approval rules
+- the AI must not make edits without approval
+- the AI must not skip scope presentation
+- the AI should only stop without offering scope when:
+  - the user explicitly says they want analysis only
+  - the next step is genuinely unclear
+  - multiple materially different paths exist and need user choice first
+
+Example expected behavior:
+1. investigate and display findings
+2. identify the most likely proven next step
+3. immediately present the scoped file list and purpose
+4. wait for `approved`
+
+
 ## Approval Scope
 
 - Before making edits, the AI must present the proposed change scope.

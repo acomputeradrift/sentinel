@@ -54,6 +54,18 @@ def _page_link_target_id(btn: dict[str, Any]) -> int | None:
     return None
 
 
+def _button_tag_name(btn: dict[str, Any]) -> str:
+    return str(btn.get("buttonIdentity", {}).get("buttonTagName") or "").strip()
+
+
+def _room_name_from_button_tag(tag_name: str) -> str | None:
+    tag = str(tag_name or "").strip()
+    if not tag.lower().startswith("room:"):
+        return None
+    name = tag.split(":", 1)[1].strip()
+    return name or None
+
+
 def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     t = btn.get("testTargets", {})
     vars_t = t.get("variables", {})
@@ -223,6 +235,12 @@ def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _page_all_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
+    buttons = [btn for btn, *_rest in _iter_page_buttons(page)]
+    buttons.extend(vb["btn"] for vb in _iter_viewport_buttons(page))
+    return buttons
+
+
 def _page_target_map(project_data: dict[str, Any], project_stem: str, device_index: int) -> dict[int, str]:
     device = project_data["devices"][device_index]
     user_pages = device["userFacing"]["pages"]
@@ -280,6 +298,7 @@ def _render_button_control(
     classes = f"btn-wrap {extra_classes}".strip()
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_html = ""
+    tag_name = _button_tag_name(btn)
     if link_cfg.get("enabled") and _page_link_enabled(targets):
         target_page_id = _page_link_target_id(btn)
         target_href = page_targets.get(target_page_id) if target_page_id is not None else None
@@ -296,14 +315,21 @@ def _render_button_control(
                 f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}>"
                 f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
+    standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
-        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {extra_attrs}>"
+        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {standard_attrs} {extra_attrs}>"
         f"<button class='test-btn' data-meta='{meta_attr}'>{_btn_text(identity)}</button>"
         f"{link_html}</div>"
     )
 
 
-def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int, page_index: int) -> dict[str, Any]:
+def _page_payload(
+    project_data: dict[str, Any],
+    app_ui: dict[str, Any],
+    project_stem: str,
+    device_index: int,
+    page_index: int,
+) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
     page = uf["pages"][page_index]
@@ -383,6 +409,7 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
         "page_button_rows": "".join(page_button_rows),
         "viewport_button_rows": "".join(viewport_button_rows),
     }
+
 
 
 def _render_document(
@@ -593,7 +620,7 @@ function applyLayerVisibility() {{
        shouldShow=layerVisible && Number(el.dataset.frame)===activeFrame;
      }}
    }}
-   el.style.display=shouldShow?'':'none';
+  el.style.display=shouldShow?'':'none';
  }});
 }}
 function syncHeader() {{
@@ -839,10 +866,14 @@ window.addEventListener('resize', applyRtiLayout);
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
-document.querySelectorAll('.page-link-hit[data-target-page-index]').forEach(link=>link.addEventListener('click',e=>{{
+document.addEventListener('click', e=>{{
+ const link=e.target.closest('.page-link-hit');
+ if (!link) return;
+ const targetPageIndex=link.dataset.targetPageIndex;
+ if (targetPageIndex==null || targetPageIndex==='') return;
  e.preventDefault();
- setActivePage(link.dataset.targetPageIndex);
-}}));
+ setActivePage(targetPageIndex);
+}});
 const zoomDec=document.querySelector('.zoom-dec');
 const zoomInc=document.querySelector('.zoom-inc');
 const zoomReset=document.querySelector('.zoom-reset');
@@ -1160,11 +1191,13 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
     title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
     header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
+    diag_pages = device.get("diagnostics", {}).get("pages", [])
 
     page_markup: list[str] = []
     page_state: list[dict[str, Any]] = []
     for page_index, _page in enumerate(pages):
         payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index)
+        diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
         page_markup.append(
             f"<div class='device-page{' active' if page_index == 0 else ''}' data-page-index='{page_index}'>"
             f"{payload['viewport_boxes']}{payload['page_button_rows']}{payload['viewport_button_rows']}</div>"
@@ -1173,6 +1206,7 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
             {
                 "deviceName": uf.get("displayName", ""),
                 "pageName": payload["page_name"],
+                "pageId": diag_page_id,
                 "layers": payload.get("layers", []),
                 "vpFrames": payload["vp_frames"],
             }
