@@ -972,6 +972,16 @@ Practical implication:
 
 - dynamic layer visibility is explicitly modeled
 - viewport-driven nested UI composition exists and is not hypothetical
+- a user-facing contract can truthfully model ownership as:
+  - page -> page layers -> buttons / viewport containers
+  - viewport container -> child layers -> frame buttons
+
+Locked user-facing modeling direction derived from this evidence:
+
+- page-level user-facing controls should be owned by `pages[].layers[]`, not flattened directly under the page root
+- viewport-owned controls should be owned by `viewports[].layers[]`, with frames nested under the owning viewport child layer
+- `SharedLayers.Name` is the approved user-facing layer-name source for both page layers and viewport child layers
+- `Layers.LayerOrder` is the approved file-backed ordering source for both page layers and viewport child layers
 
 #### E. Button tag naming
 
@@ -1562,7 +1572,206 @@ The user hierarchy is directionally useful, but direct schema inspection support
 - `Rooms` is not a child of `Devices`; `Devices` usually points to `Rooms` through `Devices.RoomId`, so this is a many-devices-to-one-room relationship instead of a containment tree.
 - `Activities` is not a direct parent of page rows; activities primarily carry macro pointers (`SelectedMacroId`, `DeselectedMacroId`, `PagelinkMacroId`), and page targets are reached through `PagelinkMacroId`.
 - `Layers` is not only a page child; `Layers` references `SharedLayerId`, so the effective UI model is page instance layer -> shared layer template -> button instances.
+
+### Proven button-state evidence from `Variables.ObjectData`
+
+Status: `approved for extraction presence detection`
+
+Verified in `Verrier Home FEENY EDIT v49.apex`:
+
+- `iPhone (Sean) -> Lights/Home (Outside)` contains toggle tags that RTI exposes in the tag editor as `Variable -> Global -> State`
+- those same tags have backing `Variables` rows with:
+  - `RoomId = 0`
+  - `DeviceId = -1`
+  - non-empty `ObjectData`
+- proven examples:
+  - `Garage Soffit [Toggle]` -> `{EC82485C-AF0B-4BF0-9DB1-22B290C8B814}#24@App38Group45`
+  - `Garage Wall [Toggle]` -> `{EC82485C-AF0B-4BF0-9DB1-22B290C8B814}#24@App38Group3F`
+  - `Water Feature [Toggle]` -> `{EC82485C-AF0B-4BF0-9DB1-22B290C8B814}#24@App38Group3C`
+  - `Kitchen Soffit [Toggle]` -> `{EC82485C-AF0B-4BF0-9DB1-22B290C8B814}#24@App38Group46`
+
+Approved extraction implication:
+
+- for button test-target presence, `State` is not limited to `@DDS`
+- but `State` must only be assigned for proven control types
+- `ObjectData` alone is not a safe generic semantic discriminator
 - `Screen Titles`, `Screen Text Variables`, and `Hard Buttons` are not first-class tables in the current schema; each is a composite concept that must be assembled from multiple objects.
+
+### Proven `ObjectData` control-type split
+
+Status: `approved for extraction presence detection`
+
+Verified in `Verrier Home FEENY EDIT v49.apex`:
+
+- `Lights/Home (Pool)` contains matched toggle/slide pairs with non-empty `Variables.ObjectData`
+- the reliable discriminator is the control object, not driver-specific payload terminology
+
+Proven examples:
+
+- `Office Main [Toggle]`
+  - non-slider control
+  - RTI shows `Variable -> State`
+  - `Variables.ObjectData` is non-empty
+- `Office Main [Slide]`
+  - slider control
+  - RTI shows `Variable -> Value`
+  - `Variables.ObjectData` is non-empty
+- `Change Room [Toggle]`
+  - non-slider control
+  - RTI shows `Variable -> State`
+  - `Variables.ObjectData` is non-empty
+- `Change Room [Slide]`
+  - slider control
+  - RTI shows `Variable -> Value`
+  - `Variables.ObjectData` is non-empty
+
+Read-only classification test table:
+
+```text
+buttonType         objectData   variableCmdLink   expectValue   expectState   expectCommand
+Slider             yes          yes               true          false         true
+Toggle             yes          no                false         true          false
+LevelIndicatorBar  yes          no                true          false         false
+UnknownFutureType  yes          unknown           unknown       unknown       unknown
+```
+
+Cross-file validation:
+
+- `Verrier Home FEENY EDIT v49.apex`
+  - `Office Main [Slide]` -> `Slider`
+  - `Office Main [Toggle]` -> proven toggle object
+  - proven toggle objects also appear with `ButtonStyle = 10`
+  - `AudioGauge` -> `LevelIndicatorBar`
+- `Sung Residence v207.2.apex`
+  - `Circuit 1 - Slider` -> `Slider`
+  - `Circuit 1 - Toggle` -> `Toggle`
+  - proven toggle objects appear with `ButtonStyle = 7`
+  - `NP Progress` -> `LevelIndicatorBar`
+
+Additional read-only findings:
+
+- additional `ObjectData` styles exist in both projects beyond the three proven types
+- those extra styles are mixed or semantically unproven
+- they must remain unresolved by default until proven
+
+Approved extraction implication:
+
+- for `ObjectData`, use a strict proven allowlist
+- `Slider` with non-empty `ObjectData` -> `Value`
+- `Toggle` with non-empty `ObjectData` -> `State`
+- `LevelIndicatorBar` with non-empty `ObjectData` -> `Value`
+- do not assign `State` to `Slider` or `LevelIndicatorBar`
+- do not use driver-specific payload wording as the general extraction rule
+- unknown future object types must not be force-mapped by fallback logic
+- current proven toggle styles are `ButtonStyle = 7` and `ButtonStyle = 10`
+
+### Proven variable-side command path for `ObjectData` sliders
+
+Status: `approved for extraction presence detection`
+
+Verified in `Verrier Home FEENY EDIT v49.apex`:
+
+- slider controls with non-empty `Variables.ObjectData` can also have variable-side command rows
+- the proven path is:
+  - `Variables.VariableId -> MacroDeviceCommand.VariableId`
+  - require `MacroDeviceCommand.MacroStepId = NULL`
+- this is distinct from macro-step commands
+
+Proven examples:
+
+- `Office Main [Slide]`
+  - `Variables.VariableId = 1270`
+  - `ObjectData = {EC82485C-AF0B-4BF0-9DB1-22B290C8B814}#24@App38Level3A`
+  - matching `MacroDeviceCommand` row:
+    - `VariableId = 1270`
+    - `MacroStepId = NULL`
+    - `Function = Ramp`
+- `Change Room [Slide]`
+  - `Variables.VariableId = 343` and `1572`
+  - `ObjectData = {EC82485C-AF0B-4BF0-9DB1-22B290C8B814}#24@App38Level38`
+  - matching `MacroDeviceCommand` rows:
+    - `VariableId = 343` / `1572`
+    - `MacroStepId = NULL`
+    - `Function = Ramp`
+
+Counterexamples in the same sample:
+
+- `Office Main [Toggle]`
+  - `Variables.VariableId = 1261`
+  - no matching `MacroDeviceCommand` row
+- `Change Room [Toggle]`
+  - `Variables.VariableId = 2045`
+  - no matching `MacroDeviceCommand` row
+- `Garage Soffit [Toggle]`
+  - `Variables.VariableId = 1179`
+  - no matching `MacroDeviceCommand` row
+
+Approved extraction implication:
+
+- variable-side `Command` should be resolved from `Variables.VariableId`
+- prove it only through `MacroDeviceCommand.VariableId` with `MacroStepId = NULL`
+- do not use macro-step command evidence for this target
+- only treat `Slider` as command-capable in the current proven allowlist
+
+### Proven `LevelIndicatorBar` behavior
+
+Status: `approved for extraction presence detection`
+
+Verified in both sample projects:
+
+- `Verrier Home FEENY EDIT v49.apex`
+  - `AudioGauge`
+  - `AudioGauge [z10]`
+  - `AudioGauge [z11]`
+- `Sung Residence v207.2.apex`
+  - `NP Progress`
+
+Proven characteristics:
+
+- `buttonType = LevelIndicatorBar`
+- non-empty `Variables.ObjectData`
+- no matching variable-side `MacroDeviceCommand` row through:
+  - `Variables.VariableId -> MacroDeviceCommand.VariableId`
+  - `MacroStepId = NULL`
+
+Approved extraction implication:
+
+- `LevelIndicatorBar` should be treated as value-backed
+- `LevelIndicatorBar` should not be treated as state-backed
+- `LevelIndicatorBar` should not be treated as variable-command-backed
+
+### Proven positional pairing in `MacroPageLinkView`
+
+Status: `approved for navigation target resolution`
+
+Verified in `Verrier Home FEENY EDIT v49.apex`:
+
+- some `MacroPageLinkView` rows carry comma-separated target lists
+- `TargetRTIAddress` and `TargetPageId` are ordered positional pairs
+- repeated page ids are meaningful and must not be deduplicated before pairing
+
+Proven room-select examples:
+
+- `Room: Pool`
+  - room-event target row:
+    - `TargetRTIAddress = 4,5,9,1,2,3,7`
+    - `TargetPageId = 607,607,607,606,606,606,606`
+  - correct positional pair for iPhone `RTIAddress = 3` is `PageId = 606`
+- `Room: Deck`
+  - room-event target row:
+    - `TargetRTIAddress = 4,5,9,1,2,3,7`
+    - `TargetPageId = 602,602,602,603,603,603,603`
+  - correct positional pair for iPhone `RTIAddress = 3` is `PageId = 603`
+- `Room: Change Room`
+  - room-event target row:
+    - `TargetRTIAddress = 4,5,9,1,2,3,7`
+    - `TargetPageId = 609,609,609,608,608,608,608`
+  - correct positional pair for iPhone `RTIAddress = 3` is `PageId = 608`
+
+Approved extraction implication:
+
+- do not use a deduplicating integer parser for `TargetRTIAddress` / `TargetPageId`
+- preserve duplicates and pair by index before selecting the current device target
 
 ### Corrected schema-backed hierarchy
 

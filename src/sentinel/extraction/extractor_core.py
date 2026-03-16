@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-_STYLE_TO_TYPE = {9: "Slider", 7: "Toggle", 11: "LevelIndicatorBar"}
+_STYLE_TO_TYPE = {9: "Slider", 7: "Toggle", 10: "Toggle", 11: "LevelIndicatorBar"}
 _TOKEN_ONLY_RE = re.compile(r"^\s*\$%TAG!.*?%\$\s*$", re.IGNORECASE | re.DOTALL)
 _DRIVER_TOKEN_RE = re.compile(r"%%([^%]+)%%")
 
@@ -486,7 +486,7 @@ def _is_hard_button(button_ui: dict[str, Any]) -> bool:
     return int(portrait["height"] or 0) == 0 and int(portrait["width"] or 0) == 0
 
 
-def _csv_ints(value: Any) -> list[int]:
+def _csv_ints(value: Any, *, dedupe: bool = True) -> list[int]:
     out: list[int] = []
     for piece in str(value or "").split(","):
         cleaned = piece.strip()
@@ -496,7 +496,7 @@ def _csv_ints(value: Any) -> list[int]:
             num = int(cleaned)
         except ValueError:
             continue
-        if num not in out:
+        if not dedupe or num not in out:
             out.append(num)
     return out
 
@@ -524,8 +524,8 @@ def _append_resolved_page_link(
 
 
 def _csv_page_targets(page_ids_value: Any, rti_addresses_value: Any) -> list[tuple[int, int]]:
-    page_ids = _csv_ints(page_ids_value)
-    rti_addresses = _csv_ints(rti_addresses_value)
+    page_ids = _csv_ints(page_ids_value, dedupe=False)
+    rti_addresses = _csv_ints(rti_addresses_value, dedupe=False)
     out: list[tuple[int, int]] = []
     for idx, page_id in enumerate(page_ids):
         rti_address = rti_addresses[idx] if idx < len(rti_addresses) else 0
@@ -564,6 +564,7 @@ def _resolve_button(
     select_rooms_by_macro: dict[int, list[int]],
     select_sources_by_macro: dict[int, list[tuple[int, int]]],
     activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
+    variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     page_room_id: int,
     current_rti_address: int,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
@@ -577,13 +578,23 @@ def _resolve_button(
     variables_rows = variables_by_tag.get(tag_id, []) if tag_id > 0 else []
     object_tokens = [str(v["ObjectData"] or "") for v in variables_rows]
     button_text_tokens = [str(v["ButtonText"] or "") for v in variables_rows]
+    variable_ids = [int(v["VariableId"]) for v in variables_rows if v["VariableId"] is not None]
 
     has_var_text = any(not _empty(v["ButtonText"]) for v in variables_rows) or button_id in button_text_tag_ids or _is_token_only_text(text)
     has_literal_text = not _empty(text) and not _is_token_only_text(text)
 
-    value_enabled = any("@DDL" in tok for tok in object_tokens)
-    state_enabled = any("@DDS" in tok for tok in object_tokens)
-    command_enabled = bool(style == 9 and value_enabled)
+    object_data_tokens = [tok for tok in object_tokens if tok]
+    has_object_data = bool(object_data_tokens)
+    is_slider = button_type == "Slider"
+    is_toggle = button_type == "Toggle"
+    is_level_indicator = button_type == "LevelIndicatorBar"
+    value_enabled = bool(has_object_data and (is_slider or is_level_indicator))
+    state_object_tokens = object_data_tokens if is_toggle else []
+    state_enabled = bool(state_object_tokens)
+    variable_command_rows: list[sqlite3.Row] = []
+    for variable_id in variable_ids:
+        variable_command_rows.extend(variable_command_rows_by_variable_id.get(variable_id, []))
+    command_enabled = bool(is_slider and variable_command_rows)
 
     reversed_enabled = any(not _empty(v["ReversedData"]) for v in variables_rows)
     inactive_enabled = any(not _empty(v["InactiveData"]) for v in variables_rows)
@@ -721,9 +732,15 @@ def _resolve_button(
                 "Reversed": {"enabled": reversed_enabled, "source": "ReversedData" if reversed_enabled else None},
                 "Inactive": {"enabled": inactive_enabled, "source": "InactiveData" if inactive_enabled else None},
                 "Visible": {"enabled": visible_enabled, "source": "VisibleData" if visible_enabled else None},
-                "Value": {"enabled": value_enabled, "source": "ObjectData" if value_enabled else None, "objectRef": next((t for t in object_tokens if "@DDL" in t), None)},
-                "State": {"enabled": state_enabled, "source": "ObjectData" if state_enabled else None, "objectRef": next((t for t in object_tokens if "@DDS" in t), None)},
-                "Command": {"enabled": command_enabled, "source": "driverFunction+controlType" if command_enabled else None, "controlType": button_type, "driverFunction": None, "pairedMacroFunction": None},
+                "Value": {"enabled": value_enabled, "source": "ObjectData" if value_enabled else None, "objectRef": next(iter(object_data_tokens), None)},
+                "State": {"enabled": state_enabled, "source": "ObjectData" if state_enabled else None, "objectRef": next(iter(state_object_tokens), None)},
+                "Command": {
+                    "enabled": command_enabled,
+                    "source": "MacroDeviceCommand.VariableId" if command_enabled else None,
+                    "controlType": button_type,
+                    "driverFunction": next((str(r["Function"] or "").strip() or None for r in variable_command_rows), None),
+                    "pairedMacroFunction": None,
+                },
             },
             "pageLink": {"pageLinkId": page_link_id, "targetPageId": target_page_id, "targetPageName": None},
         },
@@ -843,6 +860,21 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
         if key not in activity_target_pages_by_room_and_device:
             activity_target_pages_by_room_and_device[key] = macro_step_targets_by_macro.get(pagelink_macro_id, [])
 
+    variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]] = defaultdict(list)
+    cur.execute(
+        """
+        select *
+        from MacroDeviceCommand
+        where VariableId is not null
+          and MacroStepId is null
+        order by VariableId
+        """
+    )
+    for row in cur.fetchall():
+        variable_id = int(row["VariableId"] or 0)
+        if variable_id > 0:
+            variable_command_rows_by_variable_id[variable_id].append(row)
+
     cur.execute("select RoomId, SelectedMacroId from RoomEvents where SelectedMacroId is not null order by RoomId, EventType")
     room_event_targets_by_room: dict[int, list[tuple[int, int]]] = defaultdict(list)
     for row in cur.fetchall():
@@ -858,6 +890,8 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
         page_links_by_tag[int(row["ButtonTagId"])] = row
     cur.execute("select distinct ViewPortButtonId from Layers where ViewPortButtonId is not null")
     viewport_button_ids = {int(r[0]) for r in cur.fetchall() if r[0] is not None}
+    cur.execute("select SharedLayerId, Name from SharedLayers")
+    shared_layer_name_by_id = {int(row["SharedLayerId"]): str(row["Name"] or "") for row in cur.fetchall()}
 
     cur.execute("select * from Events where Enabled = 1")
     event_rows = cur.fetchall()
@@ -1023,14 +1057,18 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
 
             cur.execute("select * from Layers where PageId = ? order by LayerOrder, LayerId", (page_id,))
             page_layers = cur.fetchall()
-            user_cats = {"screenLabels": [], "screenButtons": [], "hardButtons": []}
+            user_layers: list[dict[str, Any]] = []
             diag_ui_items: list[dict[str, Any]] = []
             diag_buttons: list[dict[str, Any]] = []
-            user_viewports: list[dict[str, Any]] = []
             diag_viewports: list[dict[str, Any]] = []
 
-            # page-level buttons
             for layer in [l for l in page_layers if l["ViewPortButtonId"] is None]:
+                layer_user = {
+                    "layerName": shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
+                    "layerOrder": int(layer["LayerOrder"] or 0),
+                    "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                    "viewports": [],
+                }
                 cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
                 for b in cur.fetchall():
                     button_id = int(b["ButtonId"])
@@ -1048,6 +1086,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         select_rooms_by_macro,
                         select_sources_by_macro,
                         activity_target_pages_by_room_and_device,
+                        variable_command_rows_by_variable_id,
                         page_room_id,
                         page_rti_address,
                     )
@@ -1069,17 +1108,18 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                             select_rooms_by_macro,
                             select_sources_by_macro,
                             activity_target_pages_by_room_and_device,
+                            variable_command_rows_by_variable_id,
                             page_room_id,
                             page_rti_address,
                         )
-                        user_viewports.append(
+                        layer_user["viewports"].append(
                             {
                                 "viewportIdentity": {"viewportButtonId": button_id},
                                 "viewportUI": {
                                     "navigationMode": "verticalScroll" if int(b["ViewPortVerticalScroll"] or 0) != 0 else "page",
                                     "orientations": user_button["buttonUI"]["orientations"],
                                 },
-                                "frames": frames["user_frames"],
+                                "layers": frames["viewport_layers"],
                             }
                         )
                         diag_viewports.append(
@@ -1100,15 +1140,17 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                             diag_ui_items.append({"buttonId": button_id})
                             continue
                         if _is_hard_button(user_button["buttonUI"]):
-                            user_cats["hardButtons"].append(user_button)
+                            layer_user["buttonCategories"]["hardButtons"].append(user_button)
                             continue
 
                     if _is_screen_label(user_button):
-                        user_cats["screenLabels"].append(user_button)
+                        layer_user["buttonCategories"]["screenLabels"].append(user_button)
                     else:
-                        user_cats["screenButtons"].append(user_button)
+                        layer_user["buttonCategories"]["screenButtons"].append(user_button)
 
-            user_pages.append({"pageName": page_name, "buttonCategories": user_cats, "viewports": user_viewports})
+                user_layers.append(layer_user)
+
+            user_pages.append({"pageName": page_name, "layers": user_layers})
             diag_pages.append(
                 {
                     "pageId": page_id,
@@ -1167,6 +1209,7 @@ def _resolve_viewport_frames(
     select_rooms_by_macro: dict[int, list[int]],
     select_sources_by_macro: dict[int, list[tuple[int, int]]],
     activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
+    variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     page_room_id: int,
     current_rti_address: int,
 ) -> dict[str, Any]:
@@ -1176,8 +1219,13 @@ def _resolve_viewport_frames(
     frame_user: dict[int, dict[str, Any]] = {}
     frame_diag: dict[int, dict[str, Any]] = {}
     layer_links: list[dict[str, Any]] = []
+    viewport_layers: list[dict[str, Any]] = []
+
+    cur.execute("select SharedLayerId, Name from SharedLayers")
+    shared_layer_name_by_id = {int(row["SharedLayerId"]): str(row["Name"] or "") for row in cur.fetchall()}
 
     for layer in child_layers:
+        layer_frames: dict[int, dict[str, Any]] = {}
         layer_links.append(
             {
                 "layerId": int(layer["LayerId"]),
@@ -1192,6 +1240,7 @@ def _resolve_viewport_frames(
             frame_id = int(b["FrameNumber"] or 0)
             frame_user.setdefault(frame_id, {"frameId": frame_id, "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []}})
             frame_diag.setdefault(frame_id, {"frameId": frame_id, "buttons": []})
+            layer_frames.setdefault(frame_id, {"frameId": frame_id, "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []}})
 
             user_button, diag_button, is_special = _resolve_button(
                 b,
@@ -1207,6 +1256,7 @@ def _resolve_viewport_frames(
                 select_rooms_by_macro,
                 select_sources_by_macro,
                 activity_target_pages_by_room_and_device,
+                variable_command_rows_by_variable_id,
                 page_room_id,
                 current_rti_address,
             )
@@ -1214,15 +1264,27 @@ def _resolve_viewport_frames(
 
             if is_special and _is_hard_button(user_button["buttonUI"]):
                 frame_user[frame_id]["buttonCategories"]["hardButtons"].append(user_button)
+                layer_frames[frame_id]["buttonCategories"]["hardButtons"].append(user_button)
             elif _is_screen_label(user_button):
                 frame_user[frame_id]["buttonCategories"]["screenLabels"].append(user_button)
+                layer_frames[frame_id]["buttonCategories"]["screenLabels"].append(user_button)
             else:
                 frame_user[frame_id]["buttonCategories"]["screenButtons"].append(user_button)
+                layer_frames[frame_id]["buttonCategories"]["screenButtons"].append(user_button)
+
+        viewport_layers.append(
+            {
+                "layerName": shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
+                "layerOrder": int(layer["LayerOrder"] or 0),
+                "frames": [layer_frames[k] for k in sorted(layer_frames)],
+            }
+        )
 
     return {
         "user_frames": [frame_user[k] for k in sorted(frame_user)],
         "diag_frames": [frame_diag[k] for k in sorted(frame_diag)],
         "layer_links": layer_links,
+        "viewport_layers": viewport_layers,
     }
 
 

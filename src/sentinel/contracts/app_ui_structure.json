@@ -103,6 +103,38 @@
       "wrapFrames": false
     }
   },
+  "layerPanel": {
+    "enabled": true,
+    "title": "Layers",
+    "placement": {
+      "anchor": "right-control-space",
+      "centerVertically": true
+    },
+    "panel": {
+      "maxWidth": 240,
+      "minWidth": 160,
+      "sidePadding": 32,
+      "verticalPadding": 24,
+      "padding": 14,
+      "gap": 12,
+      "borderRadius": 18
+    },
+    "buttons": {
+      "minHeight": 44,
+      "borderRadius": 12,
+      "fontSize": 13,
+      "active": {
+        "background": "#1e5f86",
+        "text": "#ffffff",
+        "border": "#154665"
+      },
+      "inactive": {
+        "background": "#f7fbff",
+        "text": "#14324b",
+        "border": "#a9bccd"
+      }
+    }
+  },
   "testingPopup": {
     "enabled": true,
     "titleTemplate": "{category} Test - {identity}",

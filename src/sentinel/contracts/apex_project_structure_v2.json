@@ -137,147 +137,169 @@
         "pages": [
           {
             "pageName": "",
-            "buttonCategories": {
-              "screenLabels": [
-                {
-                  "buttonIdentity": {
-                    "buttonTagName": null,
-                    "text": "Now Playing",
-                    "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
-                  },
-                  "buttonUI": {
-                    "fontSize": 12,
-                    "orientations": {
-                      "portrait": {
-                        "visible": true,
-                        "coordinates": {
-                          "top": 0,
-                          "left": 0,
-                          "height": 0,
-                          "width": 0
-                        }
-                      },
-                      "landscape": {
-                        "visible": true,
-                        "coordinates": {
-                          "top": 0,
-                          "left": 0,
-                          "height": 0,
-                          "width": 0
-                        }
-                      }
-                    }
-                  },
-                  "testTargets": {
-                    "text": true,
-                    "macros": false,
-                    "macroSteps": false,
-                    "variables": {
-                      "Text": false,
-                      "Reversed": false,
-                      "Inactive": false,
-                      "Visible": false,
-                      "Value": false,
-                      "State": false,
-                      "Command": false
-                    },
-                    "pageLink": false
-                  },
-                  "resolvedPageLink": null
-                }
-              ],
-              "screenButtons": [
-                {
-                  "buttonIdentity": {
-                    "buttonTagName": "POWER - TV ON",
-                    "text": "Power",
-                    "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
-                  },
-                  "buttonUI": {
-                    "fontSize": 7,
-                    "orientations": {
-                      "portrait": {
-                        "visible": true,
-                        "coordinates": {
-                          "top": 0,
-                          "left": 0,
-                          "height": 0,
-                          "width": 0
-                        }
-                      },
-                      "landscape": {
-                        "visible": true,
-                        "coordinates": {
-                          "top": 0,
-                          "left": 0,
-                          "height": 0,
-                          "width": 0
-                        }
-                      }
-                    }
-                  },
-                  "testTargets": {
-                    "text": true,
-                    "macros": true,
-                    "macroSteps": true,
-                    "variables": {
-                      "Text": false,
-                      "Reversed": true,
-                      "Inactive": true,
-                      "Visible": false,
-                      "Value": false,
-                      "State": false,
-                      "Command": false
-                    },
-                    "pageLink": true
-                  },
-                  "resolvedPageLink": {
-                    "targetPageId": 518,
-                    "targetPageName": "Lights/Home (Master)",
-                    "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent"
-                  }
-                }
-              ],
-              "hardButtons": []
-            },
-            "viewports": [
+            "layers": [
               {
-                "viewportIdentity": {
-                  "viewportButtonId": 0
+                "layerName": "DISPLAY - Now Playing",
+                "layerOrder": 0,
+                "buttonCategories": {
+                  "screenLabels": [
+                    {
+                      "buttonIdentity": {
+                        "buttonTagName": null,
+                        "text": "Now Playing",
+                        "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
+                      },
+                      "buttonUI": {
+                        "fontSize": 12,
+                        "orientations": {
+                          "portrait": {
+                            "visible": true,
+                            "coordinates": {
+                              "top": 0,
+                              "left": 0,
+                              "height": 0,
+                              "width": 0
+                            }
+                          },
+                          "landscape": {
+                            "visible": true,
+                            "coordinates": {
+                              "top": 0,
+                              "left": 0,
+                              "height": 0,
+                              "width": 0
+                            }
+                          }
+                        }
+                      },
+                      "testTargets": {
+                        "text": true,
+                        "macros": false,
+                        "macroSteps": false,
+                        "variables": {
+                          "Text": false,
+                          "Reversed": false,
+                          "Inactive": false,
+                          "Visible": false,
+                          "Value": false,
+                          "State": false,
+                          "Command": false
+                        },
+                        "pageLink": false
+                      },
+                      "resolvedPageLink": null
+                    }
+                  ],
+                  "screenButtons": [
+                    {
+                      "buttonIdentity": {
+                        "buttonTagName": "POWER - TV ON",
+                        "text": "Power",
+                        "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
+                      },
+                      "buttonUI": {
+                        "fontSize": 7,
+                        "orientations": {
+                          "portrait": {
+                            "visible": true,
+                            "coordinates": {
+                              "top": 0,
+                              "left": 0,
+                              "height": 0,
+                              "width": 0
+                            }
+                          },
+                          "landscape": {
+                            "visible": true,
+                            "coordinates": {
+                              "top": 0,
+                              "left": 0,
+                              "height": 0,
+                              "width": 0
+                            }
+                          }
+                        }
+                      },
+                      "testTargets": {
+                        "text": true,
+                        "macros": true,
+                        "macroSteps": true,
+                        "variables": {
+                          "Text": false,
+                          "Reversed": true,
+                          "Inactive": true,
+                          "Visible": false,
+                          "Value": false,
+                          "State": false,
+                          "Command": false
+                        },
+                        "pageLink": true
+                      },
+                      "resolvedPageLink": {
+                        "targetPageId": 518,
+                        "targetPageName": "Lights/Home (Master)",
+                        "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent"
+                      }
+                    }
+                  ],
+                  "hardButtons": []
                 },
-                "viewportUI": {
-                  "navigationMode": "page | verticalScroll",
-                  "orientations": {
-                    "portrait": {
-                      "visible": true,
-                      "coordinates": {
-                        "top": 0,
-                        "left": 0,
-                        "height": 0,
-                        "width": 0
+                "viewports": [
+                  {
+                    "viewportIdentity": {
+                      "viewportButtonId": 0
+                    },
+                    "viewportUI": {
+                      "navigationMode": "page | verticalScroll",
+                      "orientations": {
+                        "portrait": {
+                          "visible": true,
+                          "coordinates": {
+                            "top": 0,
+                            "left": 0,
+                            "height": 0,
+                            "width": 0
+                          }
+                        },
+                        "landscape": {
+                          "visible": true,
+                          "coordinates": {
+                            "top": 0,
+                            "left": 0,
+                            "height": 0,
+                            "width": 0
+                          }
+                        }
                       }
                     },
-                    "landscape": {
-                      "visible": true,
-                      "coordinates": {
-                        "top": 0,
-                        "left": 0,
-                        "height": 0,
-                        "width": 0
+                    "layers": [
+                      {
+                        "layerName": "Viewport Page 1",
+                        "layerOrder": 0,
+                        "frames": [
+                          {
+                            "frameId": 0,
+                            "buttonCategories": {
+                              "screenLabels": [],
+                              "screenButtons": [],
+                              "hardButtons": []
+                            }
+                          }
+                        ]
                       }
-                    }
-                  }
-                },
-                "frames": [
-                  {
-                    "frameId": 0,
-                    "buttonCategories": {
-                      "screenLabels": [],
-                      "screenButtons": [],
-                      "hardButtons": []
-                    }
+                    ]
                   }
                 ]
+              },
+              {
+                "layerName": "Hard Keys",
+                "layerOrder": 1,
+                "buttonCategories": {
+                  "screenLabels": [],
+                  "screenButtons": [],
+                  "hardButtons": []
+                },
+                "viewports": []
               }
             ]
           }
