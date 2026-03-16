@@ -758,6 +758,51 @@ These schema areas are present in sample `.apex` files and are relevant to a fut
 - `MacroVariableTest`
 - `PageLinks`
 - `RTiQAction`
+
+## Device Orientation and Size Notes (Verrier)
+
+- proven `RTIDeviceData.SupportedOrientations` mapping from file plus direct device-property screenshots:
+  - `1` -> `Portrait Only`
+  - `2` -> `Landscape Only`
+  - `3` -> `Both Portrait and Landscape`
+- this field determines whether portrait and/or landscape should be included in rendering
+- the portrait/landscape-specific size fields do not determine supported orientation
+
+## Button Orientation Visibility Notes (Verrier)
+
+- failing evidence from the generated portrait-only iPhone showed many controls extracted as:
+  - `portrait.visible = false`
+  - `landscape.visible = true`
+- that behavior was backwards for controls with `VisibleOrientations` set to a single orientation
+- corrected working mapping:
+  - `VisibleOrientations = 1` -> portrait only
+  - `VisibleOrientations = 2` -> landscape only
+  - `VisibleOrientations = 3` -> both
+- orientation visibility must stay aligned with the matching orientation-specific coordinates
+
+Verified Verrier examples:
+
+- `iPhone (Sean)`
+  - screenshot: `Portrait Only`
+  - file: `SupportedOrientations = 1`
+- `iPad (#1)`
+  - screenshot: `Landscape Only`
+  - file: `SupportedOrientations = 2`
+- `RK3-V (Bedroom1/2)`
+  - user-provided confirmation: `3` means both
+  - file: `SupportedOrientations = 3`
+
+Size fallback finding:
+
+- some devices have `0` in `ScreenPortraitWidth/Height` and `ScreenLandscapeWidth/Height`
+- Verrier `RK3-V` devices still carry file-backed size in:
+  - `RTIDeviceData.ScreenWidth = 480`
+  - `RTIDeviceData.ScreenHeight = 640`
+- practical extraction rule:
+  - use `SupportedOrientations` to determine which orientations are eligible
+  - if the device is single-orientation, allow fallback from the missing orientation-specific size fields to `ScreenWidth` / `ScreenHeight`
+  - if the device is dual-orientation, only generate an orientation when that orientation-specific dimension pair exists
+  - do not treat one generic size pair as proof that both orientations should be generated
 - `RTiQConfig`
 - `RTiQMonitoredDevices`
 - `SharedLayers`

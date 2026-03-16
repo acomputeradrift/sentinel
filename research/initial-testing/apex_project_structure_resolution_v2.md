@@ -708,28 +708,45 @@ Rule boundary:
 Status: `locked`
 
 Source fields:
+- `RTIDeviceData.SupportedOrientations`
 - `RTIDeviceData.ScreenPortraitWidth`
 - `RTIDeviceData.ScreenPortraitHeight`
+- `RTIDeviceData.ScreenWidth`
+- `RTIDeviceData.ScreenHeight`
 
 Method:
-1. use `ScreenPortraitWidth` as `userFacing.deviceUI.portrait.resolution.width`
-2. use `ScreenPortraitHeight` as `userFacing.deviceUI.portrait.resolution.height`
-3. set `userFacing.deviceUI.portrait.supported = true` only when both values are greater than `0`
-4. otherwise set `supported = false`
+1. determine portrait support from `SupportedOrientations`:
+   - `1` -> portrait only
+   - `2` -> landscape only
+   - `3` -> both
+2. if the device is portrait-only, allow fallback from missing portrait-specific dimensions to `ScreenWidth` / `ScreenHeight`
+3. if the device is dual-orientation, mark portrait supported only when portrait-specific dimensions exist
+4. prefer `ScreenPortraitWidth` / `ScreenPortraitHeight` for portrait resolution
 
 ### Device UI: Landscape Support + Resolution
 
 Status: `locked`
 
 Source fields:
+- `RTIDeviceData.SupportedOrientations`
 - `RTIDeviceData.ScreenLandscapeWidth`
 - `RTIDeviceData.ScreenLandscapeHeight`
+- `RTIDeviceData.ScreenWidth`
+- `RTIDeviceData.ScreenHeight`
 
 Method:
-1. use `ScreenLandscapeWidth` as `userFacing.deviceUI.landscape.resolution.width`
-2. use `ScreenLandscapeHeight` as `userFacing.deviceUI.landscape.resolution.height`
-3. set `userFacing.deviceUI.landscape.supported = true` only when both values are greater than `0`
-4. otherwise set `supported = false`
+1. determine landscape support from `SupportedOrientations`:
+   - `1` -> portrait only
+   - `2` -> landscape only
+   - `3` -> both
+2. if the device is landscape-only, allow fallback from missing landscape-specific dimensions to `ScreenWidth` / `ScreenHeight`
+3. if the device is dual-orientation, mark landscape supported only when landscape-specific dimensions exist
+4. prefer `ScreenLandscapeWidth` / `ScreenLandscapeHeight` for landscape resolution
+
+Rendering rule:
+- if only one orientation is supported, render that orientation with no orientation toggle controls
+- if both orientations are supported, show a left-side portrait/landscape toggle
+- render button and viewport geometry/visibility from the active orientation, not by falling back to portrait first
 
 ### Button UI: Orientation-Aware Geometry
 
@@ -777,9 +794,12 @@ Visible-orientation method:
 - `VisibleOrientations = 3`
   - `buttonUI.orientations.portrait.visible = true`
   - `buttonUI.orientations.landscape.visible = true`
-- `VisibleOrientations = 2`
+- `VisibleOrientations = 1`
   - `buttonUI.orientations.portrait.visible = true`
   - `buttonUI.orientations.landscape.visible = false`
+- `VisibleOrientations = 2`
+  - `buttonUI.orientations.portrait.visible = false`
+  - `buttonUI.orientations.landscape.visible = true`
 
 Current rule boundary:
 - `VisibleOrientations = 3` and `VisibleOrientations = 2` are proven from the current sample evidence
@@ -839,9 +859,12 @@ Visible-orientation method:
 - `VisibleOrientations = 3`
   - `viewportUI.orientations.portrait.visible = true`
   - `viewportUI.orientations.landscape.visible = true`
-- `VisibleOrientations = 2`
+- `VisibleOrientations = 1`
   - `viewportUI.orientations.portrait.visible = true`
   - `viewportUI.orientations.landscape.visible = false`
+- `VisibleOrientations = 2`
+  - `viewportUI.orientations.portrait.visible = false`
+  - `viewportUI.orientations.landscape.visible = true`
 
 Locked method boundary:
 - viewport orientation support must be preserved through the viewport container button row

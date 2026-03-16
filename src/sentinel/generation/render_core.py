@@ -144,20 +144,50 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
     return items
 
 
-def _ui_coordinates(ui: dict[str, Any]) -> dict[str, int]:
+def _orientation_ui(ui: dict[str, Any], orientation: str) -> dict[str, Any]:
+    orientations = ui.get("orientations", {})
+    oriented = orientations.get(orientation, {})
+    if oriented:
+        return oriented
+    fallback = orientations.get("portrait") or orientations.get("landscape")
+    if fallback:
+        return fallback
+    return ui
+
+
+def _ui_coordinates(ui: dict[str, Any], orientation: str) -> dict[str, int]:
     if "coordinates" in ui:
         return ui.get("coordinates", {})
-    orientations = ui.get("orientations", {})
-    portrait = orientations.get("portrait", {})
-    if portrait.get("coordinates"):
-        return portrait.get("coordinates", {})
-    landscape = orientations.get("landscape", {})
-    if landscape.get("coordinates"):
-        return landscape.get("coordinates", {})
+    oriented = _orientation_ui(ui, orientation)
+    if oriented.get("coordinates"):
+        return oriented.get("coordinates", {})
     return {}
 
 
-def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, Any]]:
+def _orientation_data_attrs(
+    ui: dict[str, Any],
+    *,
+    portrait_offset_left: int = 0,
+    portrait_offset_top: int = 0,
+    landscape_offset_left: int = 0,
+    landscape_offset_top: int = 0,
+) -> str:
+    orientations = ui.get("orientations", {})
+    attrs: list[str] = []
+    for key, short in (("portrait", "p"), ("landscape", "l")):
+        oriented = orientations.get(key, {})
+        coords = oriented.get("coordinates", {})
+        offset_left = portrait_offset_left if key == "portrait" else landscape_offset_left
+        offset_top = portrait_offset_top if key == "portrait" else landscape_offset_top
+        attrs.append(f"data-{short}-visible='{'1' if bool(oriented.get('visible', True)) else '0'}'")
+        attrs.append(f"data-{short}-left='{int(coords.get('left') or 0) + offset_left}'")
+        attrs.append(f"data-{short}-top='{int(coords.get('top') or 0) + offset_top}'")
+        attrs.append(f"data-{short}-width='{int(coords.get('width') or 0)}'")
+        attrs.append(f"data-{short}-height='{int(coords.get('height') or 0)}'")
+    return " ".join(attrs)
+
+
+def _iter_viewport_boxes(page: dict[str, Any], orientation: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     page_viewports: list[dict[str, Any]] = []
     layers = _page_layers(page)
@@ -171,13 +201,17 @@ def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, Any]]:
         page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0), "layer_order": 0} for viewport in page.get("viewports", [])]
     for entry in page_viewports:
         viewport = entry["viewport"]
-        c = _ui_coordinates(viewport.get("viewportUI", {}))
+        viewport_ui = _orientation_ui(viewport.get("viewportUI", {}), orientation)
+        if not bool(viewport_ui.get("visible", True)):
+            continue
+        c = _ui_coordinates(viewport.get("viewportUI", {}), orientation)
         out.append(
             {
                 "left": int(c.get("left") or 0),
                 "top": int(c.get("top") or 0),
                 "width": int(c.get("width") or 0),
                 "height": int(c.get("height") or 0),
+                "viewport_ui": viewport.get("viewportUI", {}),
                 "layer_key": entry["layer_key"],
                 "layer_order": entry["layer_order"],
             }
@@ -185,7 +219,7 @@ def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
+def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     page_viewports: list[dict[str, Any]] = []
     layers = _page_layers(page)
@@ -199,7 +233,12 @@ def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
         page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0), "layer_order": 0} for viewport in page.get("viewports", [])]
     for vp_index, entry in enumerate(page_viewports):
         viewport = entry["viewport"]
-        vp_c = _ui_coordinates(viewport.get("viewportUI", {}))
+        viewport_ui = _orientation_ui(viewport.get("viewportUI", {}), orientation)
+        if not bool(viewport_ui.get("visible", True)):
+            continue
+        vp_c = _ui_coordinates(viewport.get("viewportUI", {}), orientation)
+        portrait_vp_c = _ui_coordinates(viewport.get("viewportUI", {}), "portrait")
+        landscape_vp_c = _ui_coordinates(viewport.get("viewportUI", {}), "landscape")
         off_top = int(vp_c.get("top") or 0)
         off_left = int(vp_c.get("left") or 0)
         frames: list[dict[str, Any]] = []
@@ -225,9 +264,13 @@ def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
                             "label": label,
                             "off_top": off_top,
                             "off_left": off_left,
+                            "portrait_off_top": int(portrait_vp_c.get("top") or 0),
+                            "portrait_off_left": int(portrait_vp_c.get("left") or 0),
+                            "landscape_off_top": int(landscape_vp_c.get("top") or 0),
+                            "landscape_off_left": int(landscape_vp_c.get("left") or 0),
                             "vp_index": vp_index,
                             "frame_id": frame_id,
-                            "visible": frame_id == default_frame_id,
+                            "visible": frame_id == default_frame_id and bool(_orientation_ui(btn["buttonUI"], orientation).get("visible", True)),
                             "owner_layer_key": entry["layer_key"],
                             "owner_layer_order": entry["layer_order"],
                         }
@@ -235,9 +278,9 @@ def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _page_all_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
+def _page_all_buttons(page: dict[str, Any], orientation: str) -> list[dict[str, Any]]:
     buttons = [btn for btn, *_rest in _iter_page_buttons(page)]
-    buttons.extend(vb["btn"] for vb in _iter_viewport_buttons(page))
+    buttons.extend(vb["btn"] for vb in _iter_viewport_buttons(page, orientation))
     return buttons
 
 
@@ -280,8 +323,21 @@ def _render_button_control(
     extra_classes: str = "",
     extra_style: str = "",
     extra_attrs: str = "",
+    orientation: str = "portrait",
+    portrait_offset_left: int = 0,
+    portrait_offset_top: int = 0,
+    landscape_offset_left: int = 0,
+    landscape_offset_top: int = 0,
 ) -> str:
-    c = _ui_coordinates(btn["buttonUI"])
+    oriented_ui = _orientation_ui(btn["buttonUI"], orientation)
+    c = _ui_coordinates(btn["buttonUI"], orientation)
+    orientation_attrs = _orientation_data_attrs(
+        btn["buttonUI"],
+        portrait_offset_left=portrait_offset_left,
+        portrait_offset_top=portrait_offset_top,
+        landscape_offset_left=landscape_offset_left,
+        landscape_offset_top=landscape_offset_top,
+    )
     width = int(c.get("width") or 0)
     height = int(c.get("height") or 0)
     fs = int(btn["buttonUI"].get("fontSize") or app_ui.get("buttonPresentation", {}).get("fallbackFontSize", 10))
@@ -294,7 +350,7 @@ def _render_button_control(
         "targets": _targets(btn, variable_label),
     }
     meta_attr = json.dumps(meta).replace("'", "&apos;")
-    visibility_attr = "1" if "display:none" not in extra_style else "0"
+    visibility_attr = "1" if bool(oriented_ui.get("visible", True)) and "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_html = ""
@@ -317,7 +373,7 @@ def _render_button_control(
             )
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
-        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {standard_attrs} {extra_attrs}>"
+        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
         f"<button class='test-btn' data-meta='{meta_attr}'>{_btn_text(identity)}</button>"
         f"{link_html}</div>"
     )
@@ -329,6 +385,7 @@ def _page_payload(
     project_stem: str,
     device_index: int,
     page_index: int,
+    orientation: str,
 ) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
@@ -339,7 +396,10 @@ def _page_payload(
 
     page_button_rows: list[str] = []
     for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
-        c = _ui_coordinates(btn["buttonUI"])
+        oriented_ui = _orientation_ui(btn["buttonUI"], orientation)
+        if not bool(oriented_ui.get("visible", True)):
+            continue
+        c = _ui_coordinates(btn["buttonUI"], orientation)
         page_button_rows.append(
             _render_button_control(
                 btn,
@@ -352,13 +412,14 @@ def _page_payload(
                 page_target_indexes,
                 extra_style=f"z-index:{100 + layer_order};",
                 extra_attrs=f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'",
+                orientation=orientation,
             )
         )
 
     viewport_button_rows: list[str] = []
-    for vb in _iter_viewport_buttons(page):
+    for vb in _iter_viewport_buttons(page, orientation):
         btn = vb["btn"]
-        c = _ui_coordinates(btn["buttonUI"])
+        c = _ui_coordinates(btn["buttonUI"], orientation)
         extra = f"z-index:{100 + int(vb['owner_layer_order'])};"
         if not vb["visible"]:
             extra = "display:none;" + extra
@@ -375,6 +436,11 @@ def _page_payload(
                 extra_classes="vp-btn",
                 extra_style=extra,
                 extra_attrs=f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'",
+                orientation=orientation,
+                portrait_offset_left=int(vb["portrait_off_left"]),
+                portrait_offset_top=int(vb["portrait_off_top"]),
+                landscape_offset_left=int(vb["landscape_off_left"]),
+                landscape_offset_top=int(vb["landscape_off_top"]),
             )
         )
 
@@ -396,8 +462,12 @@ def _page_payload(
         vp_frames.append(sorted({int(f.get("frameId", 0)) for f in frames}))
     viewport_boxes = "".join(
         [
-            "<div class='vp-box' style='z-index:{z};' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(z=50 + int(c["layer_order"]), **c)
-            for c in _iter_viewport_boxes(page)
+            "<div class='vp-box' style='z-index:{z};' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
+                z=50 + int(c["layer_order"]),
+                orientation_attrs=_orientation_data_attrs(c["viewport_ui"]),
+                **c,
+            )
+            for c in _iter_viewport_boxes(page, orientation)
         ]
     )
     return {
@@ -420,6 +490,8 @@ def _render_document(
     body_markup: str,
     page_state_json: str,
     project_session_key: str,
+    orientation_state_json: str,
+    show_orientation_toggle: bool,
     home_href: str | None = None,
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
@@ -448,6 +520,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .left-controls{{left:0;display:flex;align-items:center;justify-content:center;}}
 .right-controls{{right:0;display:flex;align-items:center;justify-content:center;}}
 .layer-controls{{right:0;display:flex;align-items:center;justify-content:center;z-index:22;}}
+.orientation-controls{{left:0;display:flex;align-items:flex-start;justify-content:center;z-index:23;}}
 .top-controls{{padding:0 16px;box-sizing:border-box;gap:12px;justify-content:space-between;}}
 .header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;flex:1;height:100%;min-width:0;}}
 .project-home-link{{display:inline-flex;align-items:center;justify-content:center;min-width:132px;height:40px;padding:0 16px;border-radius:14px;border:1px solid #a9bccd;background:#f7fbff;color:#14324b;text-decoration:none;font-size:14px;line-height:1;box-sizing:border-box;white-space:nowrap;}}
@@ -471,6 +544,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;position:relative;z-index:21;}}
+.orientation-toggle{{display:flex;flex-direction:column;gap:8px;align-items:stretch;justify-content:center;max-width:120px;}}
+.orientation-btn{{min-width:96px;height:40px;border-radius:12px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:0 10px;}}
+.orientation-btn.active{{background:#29445a;color:#fff;}}
 .zoom-controls{{position:absolute;display:flex;gap:8px;z-index:21;}}
 .zoom-btn{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
 .zoom-btn.zoom-reset{{min-width:72px;width:auto;padding:0 12px;font-size:14px;}}
@@ -497,6 +573,7 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
 <div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
+{f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}
 <div class='app-ui-controls left-controls' id='leftControls'><button class='vp-nav vp-prev' id='vpPrev' aria-label='Previous frame'>&lsaquo;</button></div>
 <div class='app-ui-controls right-controls' id='rightControls'><button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button></div>
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
@@ -517,6 +594,7 @@ const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPer
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
 const PAGE_STATE={page_state_json};
+const ORIENTATION_STATE={orientation_state_json};
 const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
 let currentZoomPercent=ZOOM_DEFAULT;
 let currentTotalScale=1;
@@ -524,6 +602,7 @@ let currentDeviceLeft=0;
 let currentDeviceTop=0;
 let activePageIndex=0;
 let currentViewportIndexes=VP_FRAMES.map(()=>0);
+let currentOrientation=ORIENTATION_STATE.current;
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
@@ -569,6 +648,47 @@ function ensureLayerVisibility(state) {{
 }}
 function activeLayerVisibility() {{
  return ensureLayerVisibility(activePageState());
+}}
+function currentOrientationSize() {{
+ const size=(ORIENTATION_STATE.sizes && ORIENTATION_STATE.sizes[currentOrientation]) || SOURCE_DEVICE_SIZE;
+ return {{
+  width:Number(size?.width||SOURCE_DEVICE_SIZE.width||480),
+  height:Number(size?.height||SOURCE_DEVICE_SIZE.height||854)
+ }};
+}}
+function applyOrientationState() {{
+ const short=currentOrientation==='landscape' ? 'l' : 'p';
+ document.querySelectorAll('.orientation-btn').forEach(button=>button.classList.toggle('active', button.dataset.orientation===currentOrientation));
+ document.querySelectorAll('.device-page .vp-box, .device-page .btn-wrap').forEach(el=>{{
+  el.dataset.left=String(Number(el.dataset[`${{short}}Left`]||0));
+  el.dataset.top=String(Number(el.dataset[`${{short}}Top`]||0));
+  el.dataset.width=String(Number(el.dataset[`${{short}}Width`]||0));
+  el.dataset.height=String(Number(el.dataset[`${{short}}Height`]||0));
+  if ('visible' in el.dataset) {{
+   el.dataset.visible=String(el.dataset[`${{short}}Visible`]||'1');
+  }}
+ }});
+}}
+function renderOrientationToggle() {{
+ const toggle=document.getElementById('orientationToggle');
+ if (!toggle) return;
+ const options=Array.isArray(ORIENTATION_STATE.options) ? ORIENTATION_STATE.options : [];
+ toggle.querySelectorAll('.orientation-btn').forEach(button=>{{
+  const enabled=options.includes(button.dataset.orientation||'');
+  button.style.display=enabled ? '' : 'none';
+  button.classList.toggle('active', button.dataset.orientation===currentOrientation);
+  if (!button.dataset.bound) {{
+   button.dataset.bound='1';
+   button.addEventListener('click', ()=>{{
+    const next=button.dataset.orientation||'portrait';
+    if (next===currentOrientation || !options.includes(next)) return;
+    currentOrientation=next;
+    applyOrientationState();
+    applyRtiLayout();
+    applyLayerVisibility();
+   }});
+  }}
+ }});
 }}
 function isLayerVisible(layerKey) {{
  return activeLayerVisibility()[layerKey] !== false;
@@ -665,6 +785,7 @@ function applyRtiLayout() {{
  const bottomControls=document.getElementById('bottomControls');
  const leftControls=document.getElementById('leftControls');
  const rightControls=document.getElementById('rightControls');
+ const orientationControls=document.getElementById('orientationControls');
  const layerControls=document.getElementById('layerControls');
  const layerPanel=document.getElementById('layerPanel');
  const zoomControls=document.getElementById('zoomControls');
@@ -686,6 +807,11 @@ function applyRtiLayout() {{
  leftControls.style.top=`${{controls.top}}px`;
  leftControls.style.bottom=`${{controls.bottom}}px`;
  leftControls.style.width=`${{controls.left}}px`;
+ if (orientationControls) {{
+  orientationControls.style.top=`${{controls.top}}px`;
+  orientationControls.style.bottom='auto';
+  orientationControls.style.width=`${{controls.left}}px`;
+ }}
  rightControls.style.top=`${{controls.top}}px`;
  rightControls.style.bottom=`${{controls.bottom}}px`;
  rightControls.style.width=`${{controls.right}}px`;
@@ -702,8 +828,9 @@ function applyRtiLayout() {{
  rtiCanvas.style.width=`${{rtiCanvasWidth}}px`;
  rtiCanvas.style.height=`${{rtiCanvasHeight}}px`;
 
- const widthScale=rtiCanvasWidth/SOURCE_DEVICE_SIZE.width;
- const heightScale=rtiCanvasHeight/SOURCE_DEVICE_SIZE.height;
+ const sourceSize=currentOrientationSize();
+ const widthScale=rtiCanvasWidth/sourceSize.width;
+ const heightScale=rtiCanvasHeight/sourceSize.height;
  let scale=Math.min(widthScale,heightScale);
  const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
  const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
@@ -712,8 +839,8 @@ function applyRtiLayout() {{
  }}
  scale=Math.min(maxScale, Math.max(minScale, scale));
  const totalScale=scale*(currentZoomPercent/100);
- const fittedWidth=SOURCE_DEVICE_SIZE.width*totalScale;
- const fittedHeight=SOURCE_DEVICE_SIZE.height*totalScale;
+ const fittedWidth=sourceSize.width*totalScale;
+ const fittedHeight=sourceSize.height*totalScale;
  const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
  const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
  const offsetLeft=(contentWidth-fittedWidth)/2;
@@ -751,6 +878,13 @@ function applyRtiLayout() {{
  leftControls.style.top=`${{arrowTop}}px`;
  leftControls.style.bottom='auto';
  leftControls.style.right='auto';
+
+ if (orientationControls) {{
+  orientationControls.style.left='0';
+  orientationControls.style.right='auto';
+  orientationControls.style.height='auto';
+  orientationControls.style.top=`${{Math.max(controls.top + 8, 8)}}px`;
+ }}
 
  rightControls.style.left=`${{rightArrowLeft}}px`;
  rightControls.style.width='44px';
@@ -863,6 +997,8 @@ function setActivePage(nextPageIndex) {{
  applyRtiLayout();
 }}
 window.addEventListener('resize', applyRtiLayout);
+renderOrientationToggle();
+applyOrientationState();
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
@@ -1184,9 +1320,30 @@ ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('
 def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> str:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
-    res = uf.get("deviceUI", {}).get("portrait", {}).get("resolution", {"width": 480, "height": 854})
+    device_ui = uf.get("deviceUI", {})
+    portrait = device_ui.get("portrait", {})
+    landscape = device_ui.get("landscape", {})
+    if bool(portrait.get("supported")):
+        res = portrait.get("resolution", {"width": 480, "height": 854})
+        active_orientation = "portrait"
+    elif bool(landscape.get("supported")):
+        res = landscape.get("resolution", {"width": 854, "height": 480})
+        active_orientation = "landscape"
+    else:
+        res = portrait.get("resolution") or landscape.get("resolution") or {"width": 480, "height": 854}
+        active_orientation = "portrait"
     w = int(res.get("width") or 480)
     h = int(res.get("height") or 854)
+    orientation_options = [name for name, cfg in (("portrait", portrait), ("landscape", landscape)) if bool(cfg.get("supported"))]
+    show_orientation_toggle = len(orientation_options) > 1
+    orientation_state = {
+        "current": active_orientation,
+        "options": orientation_options,
+        "sizes": {
+            "portrait": portrait.get("resolution", {"width": 0, "height": 0}),
+            "landscape": landscape.get("resolution", {"width": 0, "height": 0}),
+        },
+    }
     pages = uf.get("pages", [])
     title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
@@ -1196,7 +1353,7 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
     page_markup: list[str] = []
     page_state: list[dict[str, Any]] = []
     for page_index, _page in enumerate(pages):
-        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index)
+        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation)
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
         page_markup.append(
             f"<div class='device-page{' active' if page_index == 0 else ''}' data-page-index='{page_index}'>"
@@ -1219,5 +1376,7 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
         "".join(page_markup),
         json.dumps(page_state),
         project_stem,
+        json.dumps(orientation_state),
+        show_orientation_toggle,
         home_href=project_home_filename(project_stem),
     )

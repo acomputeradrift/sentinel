@@ -21,6 +21,47 @@ class ExtractContext:
     project_structure_path: Path
 
 
+def _has_dimensions(width: Any, height: Any) -> bool:
+    return int(width or 0) > 0 and int(height or 0) > 0
+
+
+def _device_orientation_support(
+    supported_orientations: Any,
+    portrait_width: Any,
+    portrait_height: Any,
+    landscape_width: Any,
+    landscape_height: Any,
+    fallback_width: Any,
+    fallback_height: Any,
+) -> tuple[bool, bool]:
+    value = int(supported_orientations or 0)
+    portrait_dimensions = _has_dimensions(portrait_width, portrait_height)
+    landscape_dimensions = _has_dimensions(landscape_width, landscape_height)
+    fallback_dimensions = _has_dimensions(fallback_width, fallback_height)
+    if value == 1:
+        return portrait_dimensions or fallback_dimensions, False
+    if value == 2:
+        return False, landscape_dimensions or fallback_dimensions
+    if value == 3:
+        return portrait_dimensions, landscape_dimensions
+    return False, False
+
+
+def _device_resolution(
+    supported: bool,
+    width: Any,
+    height: Any,
+    fallback_width: Any,
+    fallback_height: Any,
+) -> dict[str, int]:
+    resolved_width = int(width or 0)
+    resolved_height = int(height or 0)
+    if supported and (resolved_width <= 0 or resolved_height <= 0):
+        resolved_width = int(fallback_width or 0)
+        resolved_height = int(fallback_height or 0)
+    return {"width": resolved_width, "height": resolved_height}
+
+
 def _is_token_only_text(text: str | None) -> bool:
     return bool(text and _TOKEN_ONLY_RE.match(text))
 
@@ -446,10 +487,9 @@ def _coords(top: Any, left: Any, height: Any, width: Any) -> dict[str, int]:
 def _orientation_visibility(mask: int) -> dict[str, bool]:
     if mask == 3:
         return {"portrait": True, "landscape": True}
-    if mask == 2:
-        return {"portrait": True, "landscape": False}
-    # Strong working inference used to preserve app behavior until mask=1 is explicitly locked.
     if mask == 1:
+        return {"portrait": True, "landscape": False}
+    if mask == 2:
         return {"portrait": False, "landscape": True}
     return {"portrait": False, "landscape": False}
 
@@ -1079,7 +1119,8 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
     cur.execute(
         """
         select rd.RTIAddress, rd.DeviceId, rd.CloneRTIAddress, rd.ScreenPortraitWidth, rd.ScreenPortraitHeight,
-               rd.ScreenLandscapeWidth, rd.ScreenLandscapeHeight, d.DisplayName, d.Name
+               rd.ScreenLandscapeWidth, rd.ScreenLandscapeHeight, rd.SupportedOrientations,
+               rd.ScreenWidth, rd.ScreenHeight, d.DisplayName, d.Name
         from RTIDeviceData rd join Devices d on d.DeviceId = rd.DeviceId
         where coalesce(rd.CloneRTIAddress, 0) <= 0
         order by d.DisplayOrder, rd.RTIAddress
@@ -1090,6 +1131,29 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
     for drow in device_rows:
         device_id = int(drow["DeviceId"])
         rti_address = int(drow["RTIAddress"])
+        portrait_supported, landscape_supported = _device_orientation_support(
+            drow["SupportedOrientations"] if "SupportedOrientations" in drow.keys() else 0,
+            drow["ScreenPortraitWidth"] if "ScreenPortraitWidth" in drow.keys() else 0,
+            drow["ScreenPortraitHeight"] if "ScreenPortraitHeight" in drow.keys() else 0,
+            drow["ScreenLandscapeWidth"] if "ScreenLandscapeWidth" in drow.keys() else 0,
+            drow["ScreenLandscapeHeight"] if "ScreenLandscapeHeight" in drow.keys() else 0,
+            drow["ScreenWidth"] if "ScreenWidth" in drow.keys() else 0,
+            drow["ScreenHeight"] if "ScreenHeight" in drow.keys() else 0,
+        )
+        portrait_resolution = _device_resolution(
+            portrait_supported,
+            drow["ScreenPortraitWidth"] if "ScreenPortraitWidth" in drow.keys() else 0,
+            drow["ScreenPortraitHeight"] if "ScreenPortraitHeight" in drow.keys() else 0,
+            drow["ScreenWidth"] if "ScreenWidth" in drow.keys() else 0,
+            drow["ScreenHeight"] if "ScreenHeight" in drow.keys() else 0,
+        )
+        landscape_resolution = _device_resolution(
+            landscape_supported,
+            drow["ScreenLandscapeWidth"] if "ScreenLandscapeWidth" in drow.keys() else 0,
+            drow["ScreenLandscapeHeight"] if "ScreenLandscapeHeight" in drow.keys() else 0,
+            drow["ScreenWidth"] if "ScreenWidth" in drow.keys() else 0,
+            drow["ScreenHeight"] if "ScreenHeight" in drow.keys() else 0,
+        )
         cur.execute(
             """
             select cr.RoomId, rm.Name
@@ -1239,12 +1303,12 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                     "displayName": drow["DisplayName"] or drow["Name"] or f"Device {device_id}",
                     "deviceUI": {
                         "portrait": {
-                            "supported": int(drow["ScreenPortraitWidth"] or 0) > 0 and int(drow["ScreenPortraitHeight"] or 0) > 0,
-                            "resolution": {"width": int(drow["ScreenPortraitWidth"] or 0), "height": int(drow["ScreenPortraitHeight"] or 0)},
+                            "supported": portrait_supported,
+                            "resolution": portrait_resolution,
                         },
                         "landscape": {
-                            "supported": int(drow["ScreenLandscapeWidth"] or 0) > 0 and int(drow["ScreenLandscapeHeight"] or 0) > 0,
-                            "resolution": {"width": int(drow["ScreenLandscapeWidth"] or 0), "height": int(drow["ScreenLandscapeHeight"] or 0)},
+                            "supported": landscape_supported,
+                            "resolution": landscape_resolution,
                         },
                     },
                     "pages": user_pages,

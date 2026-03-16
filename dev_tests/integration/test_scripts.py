@@ -107,18 +107,28 @@ def create_test_apex(path: Path) -> None:
     cur.executescript(
         """
         create table Devices (DeviceId integer primary key, RoomId integer, DisplayOrder integer, ControlType integer, Name text, Manufacturer text, Type text, Model text, Comment text, HasCompositeController integer, SourceType integer, DisplayName text);
-        create table RTIDeviceData (RTIAddress integer primary key, DeviceId integer, CloneRTIAddress integer, SupportedOrientations integer, ScreenPortraitWidth integer, ScreenPortraitHeight integer, ScreenLandscapeWidth integer, ScreenLandscapeHeight integer);
+        create table RTIDeviceData (RTIAddress integer primary key, DeviceId integer, CloneRTIAddress integer, SupportedOrientations integer, ScreenPortraitWidth integer, ScreenPortraitHeight integer, ScreenLandscapeWidth integer, ScreenLandscapeHeight integer, ScreenWidth integer, ScreenHeight integer);
         create table RTIDevicePageData (PageId integer primary key, SourceDeviceId integer, PageNameId integer, RTIAddress integer, PageOrder integer);
+        create table PagesView (PageId integer primary key, PageName text, RoomId integer);
         create table PageNames (PageNameId integer primary key, PageName text);
         create table Layers (LayerId integer primary key, PageId integer, SourceId integer, SharedLayerId integer, LayerOrder integer, IsVisible integer, VisibilityVariable text, IsLocked integer, ViewPortButtonId integer, RoomId integer);
+        create table SharedLayers (SharedLayerId integer primary key, Name text);
         create table RTIDeviceButtonData (ButtonId integer primary key, SharedLayerId integer, ButtonOrder integer, ButtonTagId integer, FrameNumber integer, ButtonTop integer, ButtonLeft integer, ButtonHeight integer, ButtonWidth integer, Text text, TextSize integer, ButtonStyle integer, ButtonTopAlt integer, ButtonLeftAlt integer, ButtonHeightAlt integer, ButtonWidthAlt integer, VisibleOrientations integer, ViewPortVerticalScroll integer);
         create table ButtonTagNames (ButtonTagId integer primary key, ButtonTagName text);
         create table Variables (VariableId integer primary key, RoomId integer, DeviceId integer, ButtonTagId integer, ButtonText text, ObjectData text, ReversedData text, InactiveData text, VisibleData text);
         create table ButtonTextTags (ButtonTextTagId integer primary key, ButtonId integer, ButtonTagId integer);
         create table Rooms (RoomId integer primary key, Name text, HomePageId integer, RoomOrder integer);
+        create table ControllerRoomList (ControllerRoomListId integer primary key, RTIAddress integer, RoomId integer, ControllerRoomOrder integer);
         create table Macros (MacroId integer primary key, SystemMacroId integer, RoomId integer, DeviceId integer, ButtonTagId integer, OutputType integer);
         create table MacroSteps (MacroStepId integer primary key, MacroId integer, StepIndex integer, Type integer, Level integer, InElseSection integer);
-        create table MacroStepsView (MacroStepId integer primary key, MacroId integer, StepIndex integer, Type integer, CommandTagId integer, CommentText text, Name text, Function text, Parameter1 text, Parameter2 text, Parameter3 text, Parameter4 text, DeviceId integer);
+        create table MacroStepsView (MacroStepId integer primary key, MacroId integer, StepIndex integer, Type integer, CommandTagId integer, CommentText text, Name text, Function text, Parameter1 text, Parameter2 text, Parameter3 text, Parameter4 text, DeviceId integer, TargetRTIAddress text);
+        create table MacroSelectRoom (MacroStepId integer primary key, SelectRoomId integer);
+        create table MacroSelectSource (MacroStepId integer primary key, SelectSourceId integer, SelectSourceRoomId integer);
+        create table MacroRoomOff (MacroStepId integer primary key, RoomOffId integer);
+        create table MacroPageLinkView (MacroStepId integer primary key, TargetPageId text, TargetRTIAddress text);
+        create table Activities (ActivitiesId integer primary key, RoomId integer, DeviceId integer, ActivityOrder integer, Checked integer, PagelinkMacroId integer);
+        create table RoomEvents (RoomEventId integer primary key, RoomId integer, EventType integer, SelectedMacroId integer);
+        create table MacroDeviceCommand (MacroStepId integer primary key, VariableId integer, MacroStepType integer, MacroStepIdRef integer);
         create table PageLinks (PageLinkId integer primary key, DeviceId integer, ButtonTagId integer, LinkType integer, PageId integer);
         create table Events (EventId integer primary key, EventType integer, MacroId integer, Description text, Enabled integer, SensePort integer, SenseAction integer, SenseExpanderId integer, PeriodicInterval integer, PeriodicStartTime blob, DailyAstronomical integer, DailyStartTime blob, DailyDayMask integer, StartupType integer, DriverId integer, DriverExtraString text);
         create table DriverData (DriverDeviceId integer primary key, DeviceId integer, Enabled integer, DriverId text, SystemFunctions text, SystemEvents text);
@@ -129,14 +139,19 @@ def create_test_apex(path: Path) -> None:
     )
 
     cur.execute("insert into Devices values (1,0,1,5,'IST-5','','','','',0,0,'IST-5 (Global)')")
-    cur.execute("insert into RTIDeviceData values (1,1,0,1,480,854,0,0)")
+    cur.execute("insert into RTIDeviceData values (1,1,0,1,480,854,0,0,480,854)")
     cur.execute("insert into PageNames values (10,'Lights')")
     cur.execute("insert into PageNames values (11,'Home')")
+    cur.execute("insert into PagesView values (100,'Lights',0)")
+    cur.execute("insert into PagesView values (101,'Home',0)")
     cur.execute("insert into Rooms values (0,'Global',0,0)")
+    cur.execute("insert into ControllerRoomList values (1,1,0,0)")
     cur.execute("insert into RTIDevicePageData values (100,1,10,1,0)")
     cur.execute("insert into RTIDevicePageData values (101,1,11,1,1)")
     cur.execute("insert into Layers values (200,100,1,300,0,1,'',0,null,0)")
     cur.execute("insert into Layers values (201,101,1,301,0,1,'',0,null,0)")
+    cur.execute("insert into SharedLayers values (300,'Page Layer')")
+    cur.execute("insert into SharedLayers values (301,'Home Layer')")
 
     cur.execute("insert into ButtonTagNames values (114,'LIGHTS - Load 2 Level')")
     cur.execute("insert into ButtonTagNames values (129,'LIGHTS - Load 2 TOGGLE')")
@@ -147,7 +162,7 @@ def create_test_apex(path: Path) -> None:
     cur.execute("insert into ButtonTagNames values (142,'Driver Action Leak')")
     cur.execute("insert into ButtonTagNames values (143,'SENSE - Driveway High')")
 
-    cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,20,320,46,284,2,0)")
+    cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,20,320,46,284,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (247,300,1,129,0,140,334,46,76,'',10,7,20,620,46,76,2,0)")
 
     cur.execute("insert into Variables values (1,0,-1,114,'$%VARIABLE!x@DDL002%$','token@DDL002',null,null,null)")
@@ -163,10 +178,10 @@ def create_test_apex(path: Path) -> None:
     cur.execute("insert into Macros values (600,600,0,-1,0,0)")
     cur.execute("insert into Macros values (601,600,0,99,0,0)")
     cur.execute("insert into MacroSteps values (1,362,0,1,0,0)")
-    cur.execute("insert into MacroStepsView values (10,501,0,14,140,null,null,null,null,null,null,null,null)")
-    cur.execute("insert into MacroStepsView values (11,501,1,14,141,null,null,null,null,null,null,null,null)")
-    cur.execute("insert into MacroStepsView values (12,502,0,14,142,null,null,null,null,null,null,null,null)")
-    cur.execute("insert into MacroStepsView values (13,601,0,1,null,null,null,'setSelLyr:1','G1L0','','','',1)")
+    cur.execute("insert into MacroStepsView values (10,501,0,14,140,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (11,501,1,14,141,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (12,502,0,14,142,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (13,601,0,1,null,null,null,'setSelLyr:1','G1L0','','','',1,null)")
     cur.execute("insert into PortLabels values (1,0,-65024,'Gate')")
     cur.execute("insert into PortLabels values (3,0,-65023,'Driveway')")
     cur.execute("insert into PortLabels values (2,0,66048,'Sense 1')")
@@ -219,8 +234,10 @@ class ScriptContractsTest(unittest.TestCase):
             driver_event = data["events"]["driver"][0]
             driver_multi = data["events"]["driver"][1]
             driver_command = data["events"]["driver"][2]
-            slider = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][0]
-            toggle = data["devices"][0]["userFacing"]["pages"][0]["buttonCategories"]["screenButtons"][1]
+            page = data["devices"][0]["userFacing"]["pages"][0]
+            layer = page["layers"][0]
+            slider = layer["buttonCategories"]["screenButtons"][0]
+            toggle = layer["buttonCategories"]["screenButtons"][1]
             self.assertEqual(system_event["userFacing"]["description"], "Sense Test")
             self.assertEqual(system_event["userFacing"]["resolvedTrigger"], "When Gate closes")
             self.assertEqual(system_event["userFacing"]["macroName"], "SENSE - Gate Open")
@@ -262,11 +279,16 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertFalse(slider["buttonUI"]["orientations"]["landscape"]["visible"])
             self.assertEqual(slider["buttonUI"]["orientations"]["portrait"]["coordinates"]["left"], 30)
             self.assertEqual(slider["buttonUI"]["orientations"]["landscape"]["coordinates"]["left"], 320)
+            self.assertFalse(toggle["buttonUI"]["orientations"]["portrait"]["visible"])
+            self.assertTrue(toggle["buttonUI"]["orientations"]["landscape"]["visible"])
+            self.assertEqual(toggle["buttonUI"]["orientations"]["portrait"]["coordinates"]["left"], 334)
+            self.assertEqual(toggle["buttonUI"]["orientations"]["landscape"]["coordinates"]["left"], 620)
             self.assertTrue(slider["testTargets"]["variables"]["Value"])
             self.assertFalse(slider["testTargets"]["variables"]["State"])
-            self.assertTrue(slider["testTargets"]["variables"]["Command"])
-            self.assertEqual(slider["testTargets"]["pageLink"], {"enabled": False, "targetPageId": None})
-            self.assertEqual(toggle["testTargets"]["pageLink"], {"enabled": True, "targetPageId": 101})
+            self.assertFalse(slider["testTargets"]["variables"]["Command"])
+            self.assertFalse(slider["testTargets"]["pageLink"])
+            self.assertTrue(toggle["testTargets"]["pageLink"])
+            self.assertEqual(toggle["resolvedPageLink"], {"targetPageId": 101, "targetPageName": "Home", "resolutionPath": "directPageLink"})
 
     def test_generate_writes_html(self):
         with tempfile.TemporaryDirectory() as td:
@@ -330,8 +352,9 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("const RTI_DEVICE_LAYOUT=", html)
             self.assertIn("const VIEWPORT_NAV=", html)
             self.assertIn("const ZOOM_CONTROLS=", html)
-            self.assertIn("const widthScale=rtiCanvasWidth/SOURCE_DEVICE_SIZE.width;", html)
-            self.assertIn("const heightScale=rtiCanvasHeight/SOURCE_DEVICE_SIZE.height;", html)
+            self.assertIn("const sourceSize=currentOrientationSize();", html)
+            self.assertIn("const widthScale=rtiCanvasWidth/sourceSize.width;", html)
+            self.assertIn("const heightScale=rtiCanvasHeight/sourceSize.height;", html)
             self.assertIn("let scale=Math.min(widthScale,heightScale);", html)
             self.assertIn("id='rtiCanvas'", html)
             self.assertIn("id='rtiDeviceCanvas'", html)
@@ -360,7 +383,7 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("const ZOOM_STEP=10;", html)
             self.assertIn("let currentViewportIndexes=VP_FRAMES.map(()=>0);", html)
             self.assertIn("function applyViewportState()", html)
-            self.assertIn("if (!el.classList.contains('vp-btn')) {", html)
+            self.assertIn("if (el.classList.contains('vp-btn')) {", html)
             self.assertIn("applyViewportState();", html)
             self.assertIn("id='rtiContent'", html)
             self.assertIn("rtiCanvas.classList.toggle('scroll-hover'", html)
@@ -454,11 +477,12 @@ class ScriptContractsTest(unittest.TestCase):
                                                 "testTargets": {
                                                     "text": True,
                                                     "macro": False,
-                                                    "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": False, "State": False, "Command": False},
-                                                    "pageLink": {"enabled": True, "targetPageId": 200},
-                                                },
-                                            }
-                                        ],
+                                                "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": False, "State": False, "Command": False},
+                                                "pageLink": {"enabled": True, "targetPageId": 200},
+                                            },
+                                            "resolvedPageLink": {"targetPageId": 200},
+                                        }
+                                    ],
                                         "hardButtons": [],
                                     },
                                     "viewports": [],
@@ -518,7 +542,7 @@ class ScriptContractsTest(unittest.TestCase):
                                                         "screenButtons": [
                                                             {
                                                                 "buttonIdentity": {"buttonTagName": "LIGHTS - Load 2 TOGGLE", "text": "", "buttonType": "Toggle"},
-                                                                "buttonUI": orientation_ui(10, 140, 334, 46, 76),
+                                                                "buttonUI": orientation_ui(10, 140, 334, 46, 76, l_top=70, l_left=200, l_height=40, l_width=60),
                                                                 "testTargets": {
                                                                     "text": False,
                                                                     "macro": True,
@@ -552,6 +576,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("LIGHTS - Load 2 TOGGLE", html)
             self.assertIn("data-left='354'", html)
             self.assertIn("data-top='200'", html)
+            self.assertIn("data-p-left='354'", html)
+            self.assertIn("data-p-top='200'", html)
+            self.assertIn("data-l-left='210'", html)
+            self.assertIn("data-l-top='100'", html)
 
     def test_generate_project_home_includes_event_sections_and_device_links(self):
         with tempfile.TemporaryDirectory() as td:

@@ -54,6 +54,7 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
                                                 "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": False, "State": False, "Command": False},
                                                 "pageLink": {"enabled": True, "targetPageId": 200},
                                             },
+                                            "resolvedPageLink": {"targetPageId": 200},
                                         },
                                         {
                                             "buttonIdentity": {"buttonTagName": "PLAIN - Button", "text": "Plain", "buttonType": None},
@@ -145,7 +146,7 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
         }
 
         html = render_project_home_html(project_data, app_ui, project_stem="sample_project_data")
-        self.assertIn("Hall Motion | Hall Sensor | Hall Lights", html)
+        self.assertIn('"Hall Motion" | Hall Sensor, run macro: Hall Lights', html)
         self.assertIn("class='home-row event-row test-btn'", html)
         self.assertIn('"targets": ["Trigger", "Macro"]', html)
         self.assertIn("function esc(s)", html)
@@ -175,6 +176,7 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
                                                 "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": False, "State": False, "Command": False},
                                                 "pageLink": {"enabled": True, "targetPageId": 200},
                                             },
+                                            "resolvedPageLink": {"targetPageId": 200},
                                         }
                                     ],
                                     "hardButtons": [],
@@ -212,7 +214,7 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
 
         html = render_single_device_html(project_data, app_ui, project_stem="sample_project_data", device_index=0)
         self.assertIn("data-target-page-index='1'", html)
-        self.assertIn("setActivePage(link.dataset.targetPageIndex)", html)
+        self.assertIn("setActivePage(targetPageIndex)", html)
         self.assertIn("class='device-page active' data-page-index='0'", html)
         self.assertIn("class='device-page' data-page-index='1'", html)
 
