@@ -140,6 +140,7 @@
             "layers": [
               {
                 "layerName": "DISPLAY - Now Playing",
+                "layerOrder": 0,
                 "buttonCategories": {
                   "screenLabels": [
                     {
@@ -274,6 +275,7 @@
                     "layers": [
                       {
                         "layerName": "Viewport Page 1",
+                        "layerOrder": 0,
                         "frames": [
                           {
                             "frameId": 0,
@@ -291,6 +293,7 @@
               },
               {
                 "layerName": "Hard Keys",
+                "layerOrder": 1,
                 "buttonCategories": {
                   "screenLabels": [],
                   "screenButtons": [],

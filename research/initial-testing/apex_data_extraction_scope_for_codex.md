@@ -981,6 +981,7 @@ Locked user-facing modeling direction derived from this evidence:
 - page-level user-facing controls should be owned by `pages[].layers[]`, not flattened directly under the page root
 - viewport-owned controls should be owned by `viewports[].layers[]`, with frames nested under the owning viewport child layer
 - `SharedLayers.Name` is the approved user-facing layer-name source for both page layers and viewport child layers
+- `Layers.LayerOrder` is the approved file-backed ordering source for both page layers and viewport child layers
 
 #### E. Button tag naming
 

@@ -1065,6 +1065,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
             for layer in [l for l in page_layers if l["ViewPortButtonId"] is None]:
                 layer_user = {
                     "layerName": shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
+                    "layerOrder": int(layer["LayerOrder"] or 0),
                     "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
                     "viewports": [],
                 }
@@ -1274,6 +1275,7 @@ def _resolve_viewport_frames(
         viewport_layers.append(
             {
                 "layerName": shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
+                "layerOrder": int(layer["LayerOrder"] or 0),
                 "frames": [layer_frames[k] for k in sorted(layer_frames)],
             }
         )

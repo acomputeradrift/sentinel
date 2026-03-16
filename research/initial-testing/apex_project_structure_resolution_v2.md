@@ -873,6 +873,7 @@ Status: `locked for the current v2 user-facing shape`
 
 Approved user-facing fields:
 - `pages[].layers[].layerName`
+- `pages[].layers[].layerOrder`
 - `pages[].layers[].buttonCategories`
 - `pages[].layers[].viewports`
 
@@ -883,11 +884,13 @@ Method:
    - only include rows where `Layers.ViewPortButtonId` is null for page-level layers
 3. resolve `pages[].layers[].layerName` from:
    - `Layers.SharedLayerId -> SharedLayers.Name`
-4. resolve each page layer's button rows from:
+4. resolve `pages[].layers[].layerOrder` from:
+   - `Layers.LayerOrder`
+5. resolve each page layer's button rows from:
    - `Layers.SharedLayerId -> RTIDeviceButtonData.SharedLayerId`
-5. exclude viewport container buttons from the owning page layer's `buttonCategories`
-6. classify each remaining page-layer button row into exactly one category
-7. resolve any viewport container button owned by that page layer into `pages[].layers[].viewports[]`
+6. exclude viewport container buttons from the owning page layer's `buttonCategories`
+7. classify each remaining page-layer button row into exactly one category
+8. resolve any viewport container button owned by that page layer into `pages[].layers[].viewports[]`
 
 Approved user-facing categories:
 - `screenLabels`
@@ -912,6 +915,15 @@ Category rules:
 Rule boundary:
 - page UI ownership is layer-first:
   - no page-level user-facing button or viewport may exist outside a `pages[].layers[]` entry
+- page-layer ordering is file-backed from `Layers.LayerOrder`
+- for frontend rendering:
+  - keep `layerOrder` as raw file-backed order in extracted JSON
+  - display the layer list in descending `layerOrder` so visually top layers appear first
+  - paint higher `layerOrder` above lower `layerOrder` in the rendered device view
+- generated layer-visibility overrides are frontend session state only:
+  - key by project + device + page + layer
+  - survive in-app page changes
+  - reset on refresh or new upload
 - category assignment is derived from file-backed button structure plus resolved user-facing test targets
 - do not place a button in multiple user-facing categories
 
@@ -1221,6 +1233,7 @@ Status: `locked for the current v2 user-facing shape`
 Approved user-facing fields:
 - `viewportIdentity.viewportButtonId`
 - `viewports[].layers[].layerName`
+- `viewports[].layers[].layerOrder`
 - `viewports[].layers[].frames[].frameId`
 - `viewports[].layers[].frames[].buttonCategories`
 
@@ -1240,9 +1253,17 @@ Method:
    - `Layers.SharedLayerId -> SharedLayers.Name`
 3. use the resolved shared-layer name as `viewports[].layers[].layerName`
 
+#### `viewports[].layers[].layerOrder`
+
+Method:
+1. resolve child viewport layers through:
+   - `Layers.ViewPortButtonId = viewportButtonId`
+2. use `Layers.LayerOrder` as `viewports[].layers[].layerOrder`
+
 Rule boundary:
 - viewport child UI is layer-owned
 - do not flatten viewport child buttons directly onto the viewport root when a child layer exists
+- viewport child-layer ordering is file-backed from `Layers.LayerOrder`
 
 #### `viewports[].layers[].frames[].frameId`
 

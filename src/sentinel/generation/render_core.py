@@ -94,37 +94,41 @@ def _layer_key(layer_index: int) -> str:
 
 def _page_layers(page: dict[str, Any]) -> list[dict[str, Any]]:
     layers = page.get("layers", [])
-    return layers if isinstance(layers, list) else []
+    if not isinstance(layers, list):
+        return []
+    return sorted(layers, key=lambda layer: (int(layer.get("layerOrder", 0) or 0), str(layer.get("layerName") or "")))
 
 
-def _page_layer_state(page: dict[str, Any]) -> list[dict[str, str]]:
+def _page_layer_state(page: dict[str, Any]) -> list[dict[str, Any]]:
     layers = _page_layers(page)
     if not layers:
-        return [{"key": _layer_key(0), "name": "Page Layer"}]
-    out: list[dict[str, str]] = []
+        return [{"key": _layer_key(0), "name": "Page Layer", "layerOrder": 0}]
+    out: list[dict[str, Any]] = []
     for index, layer in enumerate(layers):
         name = str(layer.get("layerName") or "").strip() or f"Layer {index + 1}"
-        out.append({"key": _layer_key(index), "name": name})
-    return out
+        out.append({"key": _layer_key(index), "name": name, "layerOrder": int(layer.get("layerOrder", 0) or 0)})
+    return sorted(out, key=lambda layer: (-int(layer.get("layerOrder", 0) or 0), str(layer.get("name") or "")))
 
 
-def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str]]:
-    items: list[tuple[dict[str, Any], str, int, int, str]] = []
-    if page.get("layers"):
-        for layer_index, layer in enumerate(page.get("layers", [])):
+def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str, int]]:
+    items: list[tuple[dict[str, Any], str, int, int, str, int]] = []
+    layers = _page_layers(page)
+    if layers:
+        for layer_index, layer in enumerate(layers):
             layer_key = _layer_key(layer_index)
+            layer_order = int(layer.get("layerOrder", 0) or 0)
             cats = layer.get("buttonCategories", {})
             for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
                 for btn in cats.get(cat, []):
                     if _is_ui_only_button(btn):
                         continue
-                    items.append((btn, label, 0, 0, layer_key))
+                    items.append((btn, label, 0, 0, layer_key, layer_order))
         return items
     for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
         for btn in page.get("buttonCategories", {}).get(cat, []):
             if _is_ui_only_button(btn):
                 continue
-            items.append((btn, label, 0, 0, _layer_key(0)))
+            items.append((btn, label, 0, 0, _layer_key(0), 0))
     return items
 
 
@@ -144,13 +148,15 @@ def _ui_coordinates(ui: dict[str, Any]) -> dict[str, int]:
 def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     page_viewports: list[dict[str, Any]] = []
-    if page.get("layers"):
-        for layer_index, layer in enumerate(page.get("layers", [])):
+    layers = _page_layers(page)
+    if layers:
+        for layer_index, layer in enumerate(layers):
             layer_key = _layer_key(layer_index)
+            layer_order = int(layer.get("layerOrder", 0) or 0)
             for viewport in layer.get("viewports", []):
-                page_viewports.append({"viewport": viewport, "layer_key": layer_key})
+                page_viewports.append({"viewport": viewport, "layer_key": layer_key, "layer_order": layer_order})
     else:
-        page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0)} for viewport in page.get("viewports", [])]
+        page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0), "layer_order": 0} for viewport in page.get("viewports", [])]
     for entry in page_viewports:
         viewport = entry["viewport"]
         c = _ui_coordinates(viewport.get("viewportUI", {}))
@@ -161,6 +167,7 @@ def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, Any]]:
                 "width": int(c.get("width") or 0),
                 "height": int(c.get("height") or 0),
                 "layer_key": entry["layer_key"],
+                "layer_order": entry["layer_order"],
             }
         )
     return out
@@ -169,13 +176,15 @@ def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, Any]]:
 def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     page_viewports: list[dict[str, Any]] = []
-    if page.get("layers"):
-        for layer_index, layer in enumerate(page.get("layers", [])):
+    layers = _page_layers(page)
+    if layers:
+        for layer_index, layer in enumerate(layers):
             layer_key = _layer_key(layer_index)
+            layer_order = int(layer.get("layerOrder", 0) or 0)
             for viewport in layer.get("viewports", []):
-                page_viewports.append({"viewport": viewport, "layer_key": layer_key})
+                page_viewports.append({"viewport": viewport, "layer_key": layer_key, "layer_order": layer_order})
     else:
-        page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0)} for viewport in page.get("viewports", [])]
+        page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0), "layer_order": 0} for viewport in page.get("viewports", [])]
     for vp_index, entry in enumerate(page_viewports):
         viewport = entry["viewport"]
         vp_c = _ui_coordinates(viewport.get("viewportUI", {}))
@@ -208,6 +217,7 @@ def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
                             "frame_id": frame_id,
                             "visible": frame_id == default_frame_id,
                             "owner_layer_key": entry["layer_key"],
+                            "owner_layer_order": entry["layer_order"],
                         }
                     )
     return out
@@ -302,7 +312,7 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
     page_target_indexes = _page_target_indexes(project_data, device_index)
 
     page_button_rows: list[str] = []
-    for btn, label, off_top, off_left, layer_key in _iter_page_buttons(page):
+    for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
         c = _ui_coordinates(btn["buttonUI"])
         page_button_rows.append(
             _render_button_control(
@@ -314,7 +324,8 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
                 app_ui,
                 page_targets,
                 page_target_indexes,
-                extra_attrs=f"data-owner-layer-key='{layer_key}'",
+                extra_style=f"z-index:{100 + layer_order};",
+                extra_attrs=f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'",
             )
         )
 
@@ -322,7 +333,9 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
     for vb in _iter_viewport_buttons(page):
         btn = vb["btn"]
         c = _ui_coordinates(btn["buttonUI"])
-        extra = "" if vb["visible"] else "display:none;"
+        extra = f"z-index:{100 + int(vb['owner_layer_order'])};"
+        if not vb["visible"]:
+            extra = "display:none;" + extra
         viewport_button_rows.append(
             _render_button_control(
                 btn,
@@ -335,13 +348,14 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
                 page_target_indexes,
                 extra_classes="vp-btn",
                 extra_style=extra,
-                extra_attrs=f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' data-owner-layer-key='{vb['owner_layer_key']}'",
+                extra_attrs=f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'",
             )
         )
 
     page_viewports: list[dict[str, Any]] = []
-    if page.get("layers"):
-        for layer in page.get("layers", []):
+    layers = _page_layers(page)
+    if layers:
+        for layer in layers:
             page_viewports.extend(layer.get("viewports", []))
     else:
         page_viewports = list(page.get("viewports", []))
@@ -356,7 +370,7 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
         vp_frames.append(sorted({int(f.get("frameId", 0)) for f in frames}))
     viewport_boxes = "".join(
         [
-            "<div class='vp-box' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-owner-layer-key='{layer_key}'></div>".format(**c)
+            "<div class='vp-box' style='z-index:{z};' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(z=50 + int(c["layer_order"]), **c)
             for c in _iter_viewport_boxes(page)
         ]
     )
@@ -378,6 +392,7 @@ def _render_document(
     h: int,
     body_markup: str,
     page_state_json: str,
+    project_session_key: str,
     home_href: str | None = None,
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
@@ -473,6 +488,7 @@ const ZOOM_DEFAULT={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("defa
 const ZOOM_MAX={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 200))};
 const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
+const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
 const PAGE_STATE={page_state_json};
 const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
 let currentZoomPercent=ZOOM_DEFAULT;
@@ -481,7 +497,7 @@ let currentDeviceLeft=0;
 let currentDeviceTop=0;
 let activePageIndex=0;
 let currentViewportIndexes=VP_FRAMES.map(()=>0);
-const layerVisibilityByPage=PAGE_STATE.map(state=>Object.fromEntries((state.layers||[]).map(layer=>[layer.key,true])));
+const sessionLayerVisibility={{}};
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
@@ -499,8 +515,21 @@ function activePageEl() {{
 function activePageState() {{
  return PAGE_STATE[activePageIndex] || {{pageName:'',vpFrames:[],layers:[]}};
 }}
+function layerScopeKey(state) {{
+ return [PROJECT_SESSION_KEY, state?.deviceName||'', state?.pageName||''].join('::');
+}}
+function ensureLayerVisibility(state) {{
+ const scopeKey=layerScopeKey(state);
+ if (!sessionLayerVisibility[scopeKey]) {{
+   sessionLayerVisibility[scopeKey]=Object.fromEntries((state?.layers||[]).map(layer=>[layer.key,true]));
+ }}
+ (state?.layers||[]).forEach(layer=>{{
+   if (!(layer.key in sessionLayerVisibility[scopeKey])) sessionLayerVisibility[scopeKey][layer.key]=true;
+ }});
+ return sessionLayerVisibility[scopeKey];
+}}
 function activeLayerVisibility() {{
- return layerVisibilityByPage[activePageIndex] || {{}};
+ return ensureLayerVisibility(activePageState());
 }}
 function isLayerVisible(layerKey) {{
  return activeLayerVisibility()[layerKey] !== false;
@@ -1133,4 +1162,13 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
                 "vpFrames": payload["vp_frames"],
             }
         )
-    return _render_document(app_ui, header, w, h, "".join(page_markup), json.dumps(page_state), home_href=project_home_filename(project_stem))
+    return _render_document(
+        app_ui,
+        header,
+        w,
+        h,
+        "".join(page_markup),
+        json.dumps(page_state),
+        project_stem,
+        home_href=project_home_filename(project_stem),
+    )
