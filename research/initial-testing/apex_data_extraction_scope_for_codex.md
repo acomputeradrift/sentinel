@@ -1894,6 +1894,116 @@ Practical implication:
 - when `ControllerRoomList` exists, do not derive room control scope from page source rooms instead
 - page source rooms are useful as supporting context, but not as the authoritative room-selection scope
 
+#### D. Device diagnostics room-list extraction
+
+Status: `confirmed extractable now`
+
+For the v2 diagnostics device shape, the approved minimal room list is:
+
+- `diagnostics.rooms[].roomId`
+- `diagnostics.rooms[].roomName`
+
+Extraction method:
+
+1. start from the controller device's effective RTI address
+2. read `ControllerRoomList` rows for that address
+3. preserve `ControllerRoomOrder` as extraction order
+4. resolve:
+   - `ControllerRoomList.RoomId -> Rooms.Name`
+5. emit one device-level diagnostics room row per controller-room entry
+
+Direct Verrier evidence:
+
+- `iPhone (Sean)` uses `RTIAddress = 3`
+- `ControllerRoomList` for `RTIAddress = 3` is populated with `17` room rows
+- ordered examples:
+  - `0 -> RoomId 5 -> Garage Loft`
+  - `1 -> RoomId 6 -> Master Bedroom`
+  - `2 -> RoomId 7 -> Master Ensuite`
+  - `3 -> RoomId 8 -> Office`
+  - `4 -> RoomId 9 -> Pool`
+  - `15 -> RoomId 22 -> Bed 1`
+  - `16 -> RoomId 23 -> Bed 2`
+
+Important boundary:
+
+- this device-level room list is not the same thing as page-derived room context
+- for diagnostics room availability, `ControllerRoomList` is authoritative when present
+- `diagnostics.rooms[]` is the device's room list, not the project room table
+- `diagnostics.rooms[].roomId` is the canonical project room id backing that device-room entry
+- the array order of `diagnostics.rooms[]` carries the device room order from `ControllerRoomList.ControllerRoomOrder`
+
+#### E. Room-selection landing pages can chain through `Activities`
+
+Status: `confirmed extractable now`
+
+The room-selection follow-up path is not always:
+
+- `Type 24 Select Room -> RoomEvents -> direct Type 8 page link`
+
+Confirmed Sung counterexample:
+
+- `To Whole Home Floorplan`
+  - tag macro `MacroId = 1964`
+  - `Type 24` -> `SelectRoomId = 25` (`Whole House`)
+- `RoomEvents(RoomId = 25)` includes selected macro `1973`
+- macro `1973` contains:
+  - `Type 26` -> `SelectSourceId = 127`, `SelectSourceRoomId = 25`
+- `Activities(RoomId = 25, DeviceId = 127)` resolves:
+  - `PagelinkMacroId = 1957`
+- `PagelinkMacroId = 1957` contains:
+  - `Type 8` page link with RTI-specific targets for KA11 and iPhone
+
+Practical implication:
+
+- room-select landing-page extraction must support both proven follow-up paths:
+  - direct `RoomEvents.SelectedMacroId -> Type 8`
+  - indirect `RoomEvents.SelectedMacroId -> Type 26 -> Activities.PagelinkMacroId -> Type 8`
+
+#### F. Temporary Verrier global-page activity fallback
+
+Status: `confirmed extractable now for current testing fallback`
+
+Direct file-backed comparison for `Activity: AV Overview` on Verrier iPhone:
+
+- `Room Select` (`PageId = 513`)
+  - page source device `1` -> `RoomId = 0`
+  - activity macro `7005` uses:
+    - `Type 26`
+    - `SelectSourceId = 314`
+    - `SelectSourceRoomId = -1`
+  - normal current-room fallback yields:
+    - `Activities(DeviceId = 314, RoomId = 0)` -> no rows
+
+- `Lights/Home (Master)` (`PageId = 518`)
+  - page source device `8` -> `RoomId = 6`
+  - same activity macro `7005`
+  - current-room fallback yields:
+    - `Activities(DeviceId = 314, RoomId = 6)` -> `PagelinkMacroId = 6988`
+    - resolved iPhone target `PageId = 761` (`AV Overview`)
+
+Read-only tested fallback:
+
+- when the effective current room is `0` on the global `Room Select` page
+- use the lowest non-zero room from that device's `ControllerRoomList` for activity lookup only
+- in Verrier `iPhone (Sean)`, that lowest non-zero room is `RoomId = 6`
+
+Verified resolved targets with that temporary fallback:
+
+- `Activity: AV Overview` -> `761` `AV Overview`
+- `Activity: Camera Overview` -> `773` `Cameras Overview`
+- `Activity: Climate Overview` -> `763` `Climate Overview`
+- `Activity: Access Overview` -> `774` `Access Overview`
+- `Activity: Pool Overview` -> `772` `Pool Overview`
+- `Activity: Sprinklers Overview` -> `775` `Irrigation Overview`
+- `Activity: Weather Overview` -> `776` `Feeny Weather Overview`
+
+Boundary:
+
+- this is a temporary page-link resolution fallback for current testing only
+- it applies only when the effective room context for activity lookup would otherwise be `0`
+- it does not change extracted page room truth, layer room truth, or diagnostics room truth
+
 ### Partially supported / incomplete
 
 #### A. Fallback when `ControllerRoomList` is empty

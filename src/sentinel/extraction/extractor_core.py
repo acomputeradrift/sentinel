@@ -545,8 +545,11 @@ def _activity_target_page_ids(
     select_source_room_id: int,
     fallback_room_id: int,
     activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
+    global_room_fallback_id: int | None = None,
 ) -> list[tuple[int, int]]:
     room_id = select_source_room_id if select_source_room_id > 0 else fallback_room_id
+    if room_id == 0 and global_room_fallback_id is not None:
+        room_id = int(global_room_fallback_id)
     return activity_target_pages_by_room_and_device.get((room_id, select_source_id), [])
 
 
@@ -567,6 +570,7 @@ def _resolve_button(
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     page_room_id: int,
     current_rti_address: int,
+    global_room_fallback_id: int | None,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -673,6 +677,7 @@ def _resolve_button(
                         select_source_room_id,
                         page_room_id,
                         activity_target_pages_by_room_and_device,
+                        global_room_fallback_id=global_room_fallback_id,
                     ),
                     current_rti_address,
                 )
@@ -883,6 +888,15 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
         for target in macro_step_targets_by_macro.get(selected_macro_id, []):
             if target not in room_event_targets_by_room[room_id]:
                 room_event_targets_by_room[room_id].append(target)
+        for select_source_id, select_source_room_id in select_sources_by_macro.get(selected_macro_id, []):
+            for target in _activity_target_page_ids(
+                select_source_id,
+                select_source_room_id,
+                room_id,
+                activity_target_pages_by_room_and_device,
+            ):
+                if target not in room_event_targets_by_room[room_id]:
+                    room_event_targets_by_room[room_id].append(target)
 
     cur.execute("select PageLinkId, ButtonTagId, PageId from PageLinks where ButtonTagId is not null")
     page_links_by_tag: dict[int, sqlite3.Row] = {}
@@ -1040,6 +1054,18 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
         rti_address = int(drow["RTIAddress"])
         cur.execute(
             """
+            select cr.RoomId, rm.Name
+            from ControllerRoomList cr
+            join Rooms rm on rm.RoomId = cr.RoomId
+            where cr.RTIAddress = ?
+            order by cr.ControllerRoomOrder, cr.RoomId
+            """,
+            (rti_address,),
+        )
+        diag_rooms = [{"roomId": int(row["RoomId"]), "roomName": str(row["Name"] or "")} for row in cur.fetchall()]
+        lowest_nonzero_device_room_id = min((int(room["roomId"]) for room in diag_rooms if int(room["roomId"]) > 0), default=None)
+        cur.execute(
+            """
             select * from RTIDevicePageData where RTIAddress = ? order by PageOrder, PageId
             """,
             (rti_address,),
@@ -1089,6 +1115,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         variable_command_rows_by_variable_id,
                         page_room_id,
                         page_rti_address,
+                        lowest_nonzero_device_room_id,
                     )
                     diag_buttons.append(diag_button)
 
@@ -1111,6 +1138,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                             variable_command_rows_by_variable_id,
                             page_room_id,
                             page_rti_address,
+                            lowest_nonzero_device_room_id,
                         )
                         layer_user["viewports"].append(
                             {
@@ -1185,6 +1213,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                     "displayName": drow["DisplayName"] or drow["Name"],
                     "rtiAddress": rti_address,
                     "isClonedController": False,
+                    "rooms": diag_rooms,
                     "pages": diag_pages,
                 },
             }
@@ -1212,6 +1241,7 @@ def _resolve_viewport_frames(
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     page_room_id: int,
     current_rti_address: int,
+    global_room_fallback_id: int | None,
 ) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
     child_layers = cur.fetchall()
@@ -1259,6 +1289,7 @@ def _resolve_viewport_frames(
                 variable_command_rows_by_variable_id,
                 page_room_id,
                 current_rti_address,
+                global_room_fallback_id,
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
 

@@ -867,6 +867,35 @@ Rule boundary:
 - use the file-backed page name only
 - do not invent fallback page titles
 
+### Diagnostics: Device Rooms
+
+Status: `locked`
+
+Approved diagnostics fields:
+- `diagnostics.rooms[].roomId`
+- `diagnostics.rooms[].roomName`
+
+Method:
+1. start from the controller device's effective RTI address:
+   - if `RTIDeviceData.CloneRTIAddress > 0`, use `CloneRTIAddress`
+   - otherwise use `RTIDeviceData.RTIAddress`
+2. resolve selectable room rows from:
+   - `ControllerRoomList.RTIAddress = effective RTI address`
+3. preserve controller room ordering from:
+   - `ControllerRoomList.ControllerRoomOrder`
+4. resolve each room name from:
+   - `ControllerRoomList.RoomId -> Rooms.RoomId -> Rooms.Name`
+5. emit the device diagnostics room list in that stored controller-room order
+
+Rule boundary:
+- this diagnostics room list is device-level controller scope, not page scope
+- use `ControllerRoomList` as the primary source
+- do not derive this list from page source rooms when `ControllerRoomList` exists
+- `diagnostics.rooms[]` is the device's room list
+- `diagnostics.rooms[].roomId` is the backing project room id for that device-room entry
+- the array order of `diagnostics.rooms[]` is the device room order from `ControllerRoomList.ControllerRoomOrder`
+- if no `ControllerRoomList` rows exist, leave `diagnostics.rooms` empty until a fallback method is separately approved
+
 ### Pages: Layers
 
 Status: `locked for the current v2 user-facing shape`
@@ -1165,7 +1194,14 @@ Locked method:
    - when the pressed button resolves to `Type 24` `Select Room`
    - use `MacroSelectRoom.SelectRoomId`
    - inspect room-level `RoomEvents` macros for the selected room
-   - when room-event page-link rows expose comma-separated `TargetRTIAddress` and `TargetPageId` values:
+   - resolve room-event landing targets by either of these proven paths:
+     - direct room-event page link:
+       - `RoomEvents.SelectedMacroId -> MacroStepsView.Type = 8 -> MacroPageLinkView`
+     - room-event selected source followed by activity page link:
+       - `RoomEvents.SelectedMacroId -> MacroStepsView.Type = 26 -> MacroSelectSource`
+       - `MacroSelectSource.SelectSourceId` + room context -> `Activities.DeviceId` + `Activities.RoomId`
+       - `Activities.PagelinkMacroId -> MacroStepsView.Type = 8 -> MacroPageLinkView`
+   - when page-link rows expose comma-separated `TargetRTIAddress` and `TargetPageId` values:
      - treat them as ordered positional pairs
      - preserve duplicate page ids
      - select the page id whose paired RTI address matches the current pressed device instance
@@ -1179,10 +1215,16 @@ Locked method:
    - scope the activity-selection macro by current room when possible
    - inspect `MacroStepsView`
    - when the scoped macro contains `Type = 26`, use:
-     - `SelectSourceId`
-     - `SelectSourceRoomId`
-   - if `SelectSourceRoomId > 0`, use that room id for the activity lookup
-   - if `SelectSourceRoomId = -1`, use the current room context from the pressed page instance for the activity lookup
+   - `SelectSourceId`
+   - `SelectSourceRoomId`
+ - if `SelectSourceRoomId > 0`, use that room id for the activity lookup
+ - if `SelectSourceRoomId = -1`, use the current room context from the pressed page instance for the activity lookup
+  - if that current room context resolves to `0` (`Global`) for activity page-link resolution:
+    - read the current device's `diagnostics.rooms[]` source path from `ControllerRoomList`
+    - choose the lowest non-zero `roomId`
+    - use that room id for the activity lookup
+    - this fallback applies only to activity page-link resolution
+    - do not rewrite extracted page, layer, or diagnostics room truth
    - resolve the activity row through `Activities.RoomId` + `Activities.DeviceId`
    - inspect that activity row's `PagelinkMacroId`
    - resolve `Type = 8` targets through `MacroStepsView` + `MacroPageLinkView`
@@ -1218,6 +1260,14 @@ Validated Verrier examples:
   - approved fallback for this method: use current room context from the pressed page instance
   - `Activities(RoomId = 6, DeviceId = 314)` -> `PagelinkMacroId = 6988`
   - `Type = 8` target includes iPhone `PageId = 761` -> `AV Overview`
+- iPhone `Room Select`, `ButtonTagName = Activity: AV Overview`
+  - global tag macro `MacroId = 7005`
+  - `Type = 26` -> `SelectSourceId = 314`, `SelectSourceRoomId = -1`
+  - page source room on `Room Select` is `0` (`Global`)
+  - temporary approved testing fallback for this global-page case:
+    - use `RoomId = 6`
+  - `Activities(RoomId = 6, DeviceId = 314)` -> `PagelinkMacroId = 6988`
+  - `Type = 8` target includes iPhone `PageId = 761` -> `AV Overview`
 - iPhone `Room Select`, `ButtonTagName = Room: Pool`
   - button macro `MacroId = 5874`
   - `Type = 24` -> `SelectRoomId = 9` (`Pool`)
@@ -1227,6 +1277,15 @@ Validated Verrier examples:
   - these are ordered positional pairs and duplicates are meaningful
   - iPhone current device is `RTIAddress = 3`
   - correct resolved target is iPhone `PageId = 606` -> `Lights/Home (Pool)`
+- Sung `Initial Load Page`, `ButtonTagName = To Whole Home Floorplan`
+  - button macro `MacroId = 1964`
+  - `Type = 24` -> `SelectRoomId = 25` (`Whole House`)
+  - `RoomEvents(RoomId = 25)` selected macro `MacroId = 1973`
+  - room-event macro does not contain direct `Type = 8`
+  - room-event macro contains `Type = 26` -> `SelectSourceId = 127`, `SelectSourceRoomId = 25`
+  - `Activities(RoomId = 25, DeviceId = 127)` -> `PagelinkMacroId = 1957`
+  - that pagelink macro contains `Type = 8`
+  - RTI-specific targets then resolve the device landing page
 
 ### Viewports: Identity + Layers + Frames
 

@@ -311,6 +311,12 @@
         "displayName": "iPhone",
         "rtiAddress": 0,
         "isClonedController": false,
+        "rooms": [
+          {
+            "roomId": 0,
+            "roomName": "Global"
+          }
+        ],
         "pages": [
           {
             "pageId": 0,
