@@ -3009,6 +3009,32 @@ Status: `partially supported / incomplete`
   - `MacroSteps.Type = 27`
   - `MacroRoomOff.RoomOffId`
 
+### F. Verrier `POWER - (Room) AudioVideo OFF` page-link follow-up
+
+- proven button macro path:
+  - `ButtonTagName = POWER - (Room) AudioVideo OFF`
+  - tag macro `MacroId = 5860`
+  - only step is `Type = 27`
+  - `MacroRoomOff.RoomOffId = -1`
+- proven landing-page path for current-room room-off:
+  - resolve current room from the pressed page instance
+  - in `Activities`, use:
+    - `Activities.RoomId = current room`
+    - `Checked = 1`
+    - `ActivityOrder = 0`
+  - use that row's `PagelinkMacroId`
+  - resolve `Type = 8` through `MacroPageLinkView`
+  - choose the target page for the current RTI address
+- read-only verified examples:
+  - page `AppleTV 1 (Master Bed)` (`RoomId = 6`) -> target `PageId = 518` `Lights/Home (Master)`
+  - page `Samsung TV (Master)` (`RoomId = 6`) -> target `PageId = 518` `Lights/Home (Master)`
+  - page `Lights/Home (Office)` (`RoomId = 8`) -> target `PageId = 604` `Lights/Home (Office)`
+  - page `Lights/Home (Pool)` (`RoomId = 9`) -> target `PageId = 606` `Lights/Home (Pool)`
+  - page `Apple TV 1 (Bed 2)` (`RoomId = 23`) -> target `PageId = 567` `Lights/Home (Bed 2)`
+- current proven boundary:
+  - this pass proves `RoomOffId = -1` only
+  - `RoomOffId = -2` and explicit room-id room-off targets are not yet normalized into page-link resolution
+
 ### Known schema paths that exist but are not fully explored
 
 #### A. Event-trigger normalization and naming completeness

@@ -1170,6 +1170,7 @@ Allowed `resolutionPath` values for the current locked method:
 - `macroStep`
 - `roomSelectEvent`
 - `activityEvent`
+- `roomOffEvent`
 
 Locked method:
 1. Start with `resolvedPageLink = null`.
@@ -1230,7 +1231,21 @@ Locked method:
    - resolve `Type = 8` targets through `MacroStepsView` + `MacroPageLinkView`
    - resolve `targetPageName` from `RTIDevicePageData.PageNameId -> PageNames.PageName`
    - if a valid target is found for the properly scoped button instance, set `resolvedPageLink` with `resolutionPath = activityEvent`
-6. If no proven eventual page target is found, leave `resolvedPageLink = null`.
+6. Resolve room-off links:
+   - only continue if `resolvedPageLink` is still null
+   - when the pressed button's effective macro contains `Type = 27`
+   - use `MacroRoomOff.RoomOffId`
+   - currently proven path:
+     - if `RoomOffId = -1`, interpret it as `Current Room`
+     - resolve current room from the pressed page instance
+     - in `Activities`, find the row for that room where:
+       - `Checked = 1`
+       - `ActivityOrder = 0`
+     - use that row's `PagelinkMacroId`
+     - resolve `Type = 8` targets through `MacroStepsView` + `MacroPageLinkView`
+     - select the page id whose paired RTI address matches the current pressed device instance
+   - if a valid target is found for the properly scoped button instance, set `resolvedPageLink` with `resolutionPath = roomOffEvent`
+7. If no proven eventual page target is found, leave `resolvedPageLink = null`.
 
 Output discipline:
 - do not fabricate page ids or page names
@@ -1277,6 +1292,18 @@ Validated Verrier examples:
   - these are ordered positional pairs and duplicates are meaningful
   - iPhone current device is `RTIAddress = 3`
   - correct resolved target is iPhone `PageId = 606` -> `Lights/Home (Pool)`
+- iPhone `PageId = 521` (`AppleTV 1 (Master Bed)`), `ButtonTagName = POWER - (Room) AudioVideo OFF`
+  - global tag macro `MacroId = 5860`
+  - `Type = 27` -> `MacroRoomOff.RoomOffId = -1` (`Current Room`)
+  - page source room is `RoomId = 6`
+  - `Activities(RoomId = 6, Checked = 1, ActivityOrder = 0)` -> `PagelinkMacroId = 5185`
+  - `Type = 8` target includes iPhone `PageId = 518` -> `Lights/Home (Master)`
+- iPhone `PageId = 606` (`Lights/Home (Pool)`), `ButtonTagName = POWER - (Room) AudioVideo OFF`
+  - global tag macro `MacroId = 5860`
+  - `Type = 27` -> `MacroRoomOff.RoomOffId = -1` (`Current Room`)
+  - page source room is `RoomId = 9`
+  - `Activities(RoomId = 9, Checked = 1, ActivityOrder = 0)` -> `PagelinkMacroId = 5440`
+  - `Type = 8` target includes iPhone `PageId = 606` -> `Lights/Home (Pool)`
 - Sung `Initial Load Page`, `ButtonTagName = To Whole Home Floorplan`
   - button macro `MacroId = 1964`
   - `Type = 24` -> `SelectRoomId = 25` (`Whole House`)
