@@ -88,13 +88,43 @@ def _is_ui_only_button(btn: dict[str, Any]) -> bool:
     )
 
 
-def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int]]:
-    items: list[tuple[dict[str, Any], str, int, int]] = []
+def _layer_key(layer_index: int) -> str:
+    return f"layer-{layer_index}"
+
+
+def _page_layers(page: dict[str, Any]) -> list[dict[str, Any]]:
+    layers = page.get("layers", [])
+    return layers if isinstance(layers, list) else []
+
+
+def _page_layer_state(page: dict[str, Any]) -> list[dict[str, str]]:
+    layers = _page_layers(page)
+    if not layers:
+        return [{"key": _layer_key(0), "name": "Page Layer"}]
+    out: list[dict[str, str]] = []
+    for index, layer in enumerate(layers):
+        name = str(layer.get("layerName") or "").strip() or f"Layer {index + 1}"
+        out.append({"key": _layer_key(index), "name": name})
+    return out
+
+
+def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str]]:
+    items: list[tuple[dict[str, Any], str, int, int, str]] = []
+    if page.get("layers"):
+        for layer_index, layer in enumerate(page.get("layers", [])):
+            layer_key = _layer_key(layer_index)
+            cats = layer.get("buttonCategories", {})
+            for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
+                for btn in cats.get(cat, []):
+                    if _is_ui_only_button(btn):
+                        continue
+                    items.append((btn, label, 0, 0, layer_key))
+        return items
     for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
         for btn in page.get("buttonCategories", {}).get(cat, []):
             if _is_ui_only_button(btn):
                 continue
-            items.append((btn, label, 0, 0))
+            items.append((btn, label, 0, 0, _layer_key(0)))
     return items
 
 
@@ -111,9 +141,18 @@ def _ui_coordinates(ui: dict[str, Any]) -> dict[str, int]:
     return {}
 
 
-def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, int]]:
-    out: list[dict[str, int]] = []
-    for viewport in page.get("viewports", []):
+def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    page_viewports: list[dict[str, Any]] = []
+    if page.get("layers"):
+        for layer_index, layer in enumerate(page.get("layers", [])):
+            layer_key = _layer_key(layer_index)
+            for viewport in layer.get("viewports", []):
+                page_viewports.append({"viewport": viewport, "layer_key": layer_key})
+    else:
+        page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0)} for viewport in page.get("viewports", [])]
+    for entry in page_viewports:
+        viewport = entry["viewport"]
         c = _ui_coordinates(viewport.get("viewportUI", {}))
         out.append(
             {
@@ -121,6 +160,7 @@ def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, int]]:
                 "top": int(c.get("top") or 0),
                 "width": int(c.get("width") or 0),
                 "height": int(c.get("height") or 0),
+                "layer_key": entry["layer_key"],
             }
         )
     return out
@@ -128,11 +168,26 @@ def _iter_viewport_boxes(page: dict[str, Any]) -> list[dict[str, int]]:
 
 def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for vp_index, viewport in enumerate(page.get("viewports", [])):
+    page_viewports: list[dict[str, Any]] = []
+    if page.get("layers"):
+        for layer_index, layer in enumerate(page.get("layers", [])):
+            layer_key = _layer_key(layer_index)
+            for viewport in layer.get("viewports", []):
+                page_viewports.append({"viewport": viewport, "layer_key": layer_key})
+    else:
+        page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0)} for viewport in page.get("viewports", [])]
+    for vp_index, entry in enumerate(page_viewports):
+        viewport = entry["viewport"]
         vp_c = _ui_coordinates(viewport.get("viewportUI", {}))
         off_top = int(vp_c.get("top") or 0)
         off_left = int(vp_c.get("left") or 0)
-        frames = sorted(viewport.get("frames", []), key=lambda f: int(f.get("frameId", 0)))
+        frames: list[dict[str, Any]] = []
+        if viewport.get("layers"):
+            for layer in viewport.get("layers", []):
+                frames.extend(layer.get("frames", []))
+        else:
+            frames = list(viewport.get("frames", []))
+        frames = sorted(frames, key=lambda f: int(f.get("frameId", 0)))
         if not frames:
             continue
         default_frame_id = int(frames[0].get("frameId", 0))
@@ -152,6 +207,7 @@ def _iter_viewport_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
                             "vp_index": vp_index,
                             "frame_id": frame_id,
                             "visible": frame_id == default_frame_id,
+                            "owner_layer_key": entry["layer_key"],
                         }
                     )
     return out
@@ -231,7 +287,7 @@ def _render_button_control(
                 f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
     return (
-        f"<div class='{classes}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {extra_attrs}>"
+        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {extra_attrs}>"
         f"<button class='test-btn' data-meta='{meta_attr}'>{_btn_text(identity)}</button>"
         f"{link_html}</div>"
     )
@@ -246,7 +302,7 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
     page_target_indexes = _page_target_indexes(project_data, device_index)
 
     page_button_rows: list[str] = []
-    for btn, label, off_top, off_left in _iter_page_buttons(page):
+    for btn, label, off_top, off_left, layer_key in _iter_page_buttons(page):
         c = _ui_coordinates(btn["buttonUI"])
         page_button_rows.append(
             _render_button_control(
@@ -258,6 +314,7 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
                 app_ui,
                 page_targets,
                 page_target_indexes,
+                extra_attrs=f"data-owner-layer-key='{layer_key}'",
             )
         )
 
@@ -278,20 +335,35 @@ def _page_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_
                 page_target_indexes,
                 extra_classes="vp-btn",
                 extra_style=extra,
-                extra_attrs=f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}'",
+                extra_attrs=f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' data-owner-layer-key='{vb['owner_layer_key']}'",
             )
         )
 
-    vp_frames = [sorted([int(f.get("frameId", 0)) for f in vp.get("frames", [])]) for vp in page.get("viewports", [])]
+    page_viewports: list[dict[str, Any]] = []
+    if page.get("layers"):
+        for layer in page.get("layers", []):
+            page_viewports.extend(layer.get("viewports", []))
+    else:
+        page_viewports = list(page.get("viewports", []))
+    vp_frames: list[list[int]] = []
+    for vp in page_viewports:
+        if vp.get("layers"):
+            frames = []
+            for layer in vp.get("layers", []):
+                frames.extend(layer.get("frames", []))
+        else:
+            frames = list(vp.get("frames", []))
+        vp_frames.append(sorted({int(f.get("frameId", 0)) for f in frames}))
     viewport_boxes = "".join(
         [
-            "<div class='vp-box' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}'></div>".format(**c)
+            "<div class='vp-box' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-owner-layer-key='{layer_key}'></div>".format(**c)
             for c in _iter_viewport_boxes(page)
         ]
     )
     return {
         "page_name": str(page.get("pageName", "")),
         "page_index": page_index,
+        "layers": _page_layer_state(page),
         "vp_frames": vp_frames,
         "viewport_boxes": viewport_boxes,
         "page_button_rows": "".join(page_button_rows),
@@ -313,6 +385,11 @@ def _render_document(
     layout_cfg = app_ui.get("layout", {})
     control_cfg = layout_cfg.get("appUIControls", {})
     rti_device_cfg = layout_cfg.get("rtiDeviceCanvas", {})
+    layer_panel_cfg = app_ui.get("layerPanel", {})
+    layer_panel_panel_cfg = layer_panel_cfg.get("panel", {})
+    layer_panel_button_cfg = layer_panel_cfg.get("buttons", {})
+    layer_button_active_cfg = layer_panel_button_cfg.get("active", {})
+    layer_button_inactive_cfg = layer_panel_button_cfg.get("inactive", {})
     app_json = json.dumps(app_ui)
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
@@ -328,6 +405,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .bottom-controls{{left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;}}
 .left-controls{{left:0;display:flex;align-items:center;justify-content:center;}}
 .right-controls{{right:0;display:flex;align-items:center;justify-content:center;}}
+.layer-controls{{right:0;display:flex;align-items:center;justify-content:center;z-index:22;}}
 .top-controls{{padding:0 16px;box-sizing:border-box;gap:12px;justify-content:space-between;}}
 .header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;flex:1;height:100%;min-width:0;}}
 .project-home-link{{display:inline-flex;align-items:center;justify-content:center;min-width:132px;height:40px;padding:0 16px;border-radius:14px;border:1px solid #a9bccd;background:#f7fbff;color:#14324b;text-decoration:none;font-size:14px;line-height:1;box-sizing:border-box;white-space:nowrap;}}
@@ -354,6 +432,13 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .zoom-controls{{position:absolute;display:flex;gap:8px;z-index:21;}}
 .zoom-btn{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
 .zoom-btn.zoom-reset{{min-width:72px;width:auto;padding:0 12px;font-size:14px;}}
+.layer-panel{{width:min(100%,{int(layer_panel_panel_cfg.get("maxWidth", 240))}px);max-height:100%;display:flex;flex-direction:column;gap:{int(layer_panel_panel_cfg.get("gap", 12))}px;padding:{int(layer_panel_panel_cfg.get("padding", 14))}px;border:1px solid #b9cad8;border-radius:{int(layer_panel_panel_cfg.get("borderRadius", 18))}px;background:rgba(247,251,255,.94);box-shadow:0 10px 30px rgba(20,50,75,.10);box-sizing:border-box;}}
+.layer-panel[hidden]{{display:none;}}
+.layer-panel-title{{font-size:15px;font-weight:700;line-height:1;color:#14324b;text-align:center;}}
+.layer-list{{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:2px;}}
+.layer-toggle{{width:100%;min-height:{int(layer_panel_button_cfg.get("minHeight", 44))}px;border-radius:{int(layer_panel_button_cfg.get("borderRadius", 12))}px;border:0;box-shadow:inset 0 0 0 1px {str(layer_button_active_cfg.get("border", "#154665"))};background:{str(layer_button_active_cfg.get("background", "#1e5f86"))};color:{str(layer_button_active_cfg.get("text", "#ffffff"))};font-size:{int(layer_panel_button_cfg.get("fontSize", 13))}px;line-height:1.15;padding:10px 12px;cursor:pointer;text-align:center;}}
+.layer-toggle.is-inactive{{background:{str(layer_button_inactive_cfg.get("background", "#f7fbff"))};color:{str(layer_button_inactive_cfg.get("text", "#14324b"))};box-shadow:inset 0 0 0 1px {str(layer_button_inactive_cfg.get("border", "#a9bccd"))};}}
+.layer-toggle:hover{{filter:brightness(0.98);}}
 .vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;position:relative;z-index:21;}}
 .dot{{width:10px;height:10px;border-radius:50%;border:1px solid #9fb4c6;background:#e2ebf2;}}
 .dot.active{{background:#2d5f81;border-color:#2d5f81;}}
@@ -372,6 +457,7 @@ textarea{{border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-siz
 <div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
 <div class='app-ui-controls left-controls' id='leftControls'><button class='vp-nav vp-prev' id='vpPrev' aria-label='Previous frame'>&lsaquo;</button></div>
 <div class='app-ui-controls right-controls' id='rightControls'><button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button></div>
+<div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'><div class='vp-indicator' id='vpIndicator'></div></div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
 <div class='rti-canvas' id='rtiCanvas'><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
@@ -382,6 +468,7 @@ const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
 const VIEWPORT_NAV={json.dumps(app_ui.get("viewportNavigation", {}))};
 const ZOOM_CONTROLS={json.dumps(app_ui.get("zoomControls", {}))};
+const LAYER_PANEL={json.dumps(layer_panel_cfg)};
 const ZOOM_DEFAULT={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("defaultPercent", 100))};
 const ZOOM_MAX={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 200))};
 const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
@@ -394,6 +481,7 @@ let currentDeviceLeft=0;
 let currentDeviceTop=0;
 let activePageIndex=0;
 let currentViewportIndexes=VP_FRAMES.map(()=>0);
+const layerVisibilityByPage=PAGE_STATE.map(state=>Object.fromEntries((state.layers||[]).map(layer=>[layer.key,true])));
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
@@ -409,7 +497,60 @@ function activePageEl() {{
  return document.querySelector(`.device-page[data-page-index="${{activePageIndex}}"]`);
 }}
 function activePageState() {{
- return PAGE_STATE[activePageIndex] || {{pageName:'',vpFrames:[]}};
+ return PAGE_STATE[activePageIndex] || {{pageName:'',vpFrames:[],layers:[]}};
+}}
+function activeLayerVisibility() {{
+ return layerVisibilityByPage[activePageIndex] || {{}};
+}}
+function isLayerVisible(layerKey) {{
+ return activeLayerVisibility()[layerKey] !== false;
+}}
+function renderLayerPanel() {{
+ const panel=document.getElementById('layerPanel');
+ const list=document.getElementById('layerList');
+ if (!panel || !list) return;
+ const layers=activePageState().layers||[];
+ if (!layers.length) {{
+   list.innerHTML='';
+   panel.setAttribute('hidden','hidden');
+   return;
+ }}
+ list.innerHTML=layers.map(layer=>`<button class="layer-toggle${{isLayerVisible(layer.key)?'':' is-inactive'}}" type="button" data-layer-key="${{esc(layer.key)}}" aria-pressed="${{isLayerVisible(layer.key)?'true':'false'}}">${{esc(layer.name)}}</button>`).join('');
+ panel.removeAttribute('hidden');
+ list.querySelectorAll('.layer-toggle').forEach(button=>button.addEventListener('click',()=>{{
+   const key=button.dataset.layerKey||'';
+   const visibility=activeLayerVisibility();
+   visibility[key]=!(visibility[key] !== false);
+   renderLayerPanel();
+   applyLayerVisibility();
+ }}));
+}}
+function applyLayerVisibility() {{
+ const pageEl=activePageEl();
+ if (!pageEl) return;
+ pageEl.querySelectorAll('.vp-box').forEach(el=>{{
+   const layerKey=String(el.dataset.ownerLayerKey||'');
+   el.style.display=isLayerVisible(layerKey)?'':'none';
+ }});
+ pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
+   const layerKey=String(el.dataset.ownerLayerKey||'');
+   const baseVisible=String(el.dataset.visible||'1')==='1';
+   const layerVisible=isLayerVisible(layerKey);
+   let shouldShow=layerVisible && baseVisible;
+   if (el.classList.contains('vp-btn')) {{
+     const vpIndex=Number(el.dataset.vp||0);
+     const frames=activePageState().vpFrames||[];
+     const pageFrames=frames[vpIndex]||[];
+     if (!pageFrames.length) {{
+       shouldShow=false;
+     }} else {{
+       const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+       const activeFrame=pageFrames[currentIndex];
+       shouldShow=layerVisible && Number(el.dataset.frame)===activeFrame;
+     }}
+   }}
+   el.style.display=shouldShow?'':'none';
+ }});
 }}
 function syncHeader() {{
  const headerEl=document.querySelector('#topControls .header');
@@ -438,18 +579,14 @@ function applyViewportState() {{
  const state=activePageState();
  const frames=state.vpFrames||[];
  if (!pageEl) return;
- if (!(frames.length && frames[0].length)) return;
  const dots=[...document.querySelectorAll('#vpIndicator .dot')];
  frames.forEach((pageFrames, vpIndex)=>{{
    if (!pageFrames.length) return;
    const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
    currentViewportIndexes[vpIndex]=currentIndex;
-   const frame=pageFrames[currentIndex];
-   pageEl.querySelectorAll(`.vp-btn[data-vp="${{vpIndex}}"]`).forEach(el=>{{
-     el.style.display=(Number(el.dataset.frame)===frame)?'':'none';
-   }});
    if (vpIndex===0) dots.forEach((d,i)=>d.classList.toggle('active',i===currentIndex));
  }});
+ applyLayerVisibility();
 }}
 function applyRtiLayout() {{
  const appCanvas=document.getElementById('appCanvas');
@@ -457,11 +594,13 @@ function applyRtiLayout() {{
  const bottomControls=document.getElementById('bottomControls');
  const leftControls=document.getElementById('leftControls');
  const rightControls=document.getElementById('rightControls');
+ const layerControls=document.getElementById('layerControls');
+ const layerPanel=document.getElementById('layerPanel');
  const zoomControls=document.getElementById('zoomControls');
  const rtiCanvas=document.getElementById('rtiCanvas');
  const rtiContent=document.getElementById('rtiContent');
  const rtiDeviceCanvas=document.getElementById('rtiDeviceCanvas');
- if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !zoomControls || !rtiCanvas || !rtiContent || !rtiDeviceCanvas) return;
+ if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !layerControls || !zoomControls || !rtiCanvas || !rtiContent || !rtiDeviceCanvas) return;
 
  const controls={{
    top:Number(APP_UI_CONTROLS.top||0),
@@ -479,6 +618,11 @@ function applyRtiLayout() {{
  rightControls.style.top=`${{controls.top}}px`;
  rightControls.style.bottom=`${{controls.bottom}}px`;
  rightControls.style.width=`${{controls.right}}px`;
+ layerControls.style.top=`${{controls.top}}px`;
+ layerControls.style.bottom=`${{controls.bottom}}px`;
+ layerControls.style.width=`${{controls.right}}px`;
+ layerControls.style.left='auto';
+ layerControls.style.right='0';
 
  const rtiCanvasWidth=Math.max(appWidth-controls.left-controls.right,1);
  const rtiCanvasHeight=Math.max(appHeight-controls.top-controls.bottom,1);
@@ -544,6 +688,15 @@ function applyRtiLayout() {{
  rightControls.style.bottom='auto';
  rightControls.style.right='auto';
 
+ layerControls.style.height=`${{Math.max(appHeight-controls.top-controls.bottom,1)}}px`;
+ layerControls.style.justifyContent=(LAYER_PANEL.placement?.centerVertically===false)?'flex-start':'center';
+ layerControls.style.alignItems='center';
+ if (layerPanel) {{
+   const layerPanelWidth=Math.max(Math.min(controls.right-Number(LAYER_PANEL.panel?.sidePadding||32), Number(LAYER_PANEL.panel?.maxWidth||240)), Number(LAYER_PANEL.panel?.minWidth||160));
+   layerPanel.style.width=`${{layerPanelWidth}}px`;
+   layerPanel.style.maxHeight=`${{Math.max(appHeight-controls.top-controls.bottom-Number(LAYER_PANEL.panel?.verticalPadding||24), 120)}}px`;
+ }}
+
  if (ZOOM_CONTROLS.enabled) {{
    const zoomWidth = zoomControls.offsetWidth || 176;
    const zoomLeft = Math.max((controls.left - zoomWidth) / 2, 0);
@@ -570,14 +723,10 @@ function applyRtiLayout() {{
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
    const height=Number(el.dataset.height||0)*totalScale;
-   const visible=String(el.dataset.visible||'1')==='1';
    el.style.left=`${{left}}px`;
    el.style.top=`${{top}}px`;
    el.style.width=`${{width}}px`;
    el.style.height=`${{height}}px`;
-   if (!el.classList.contains('vp-btn')) {{
-     el.style.display=visible?'':'none';
-   }}
    const button=el.querySelector('.test-btn');
    if (button) {{
      const sourceFont=Number(el.dataset.fontSize||APP_UI.buttonPresentation?.fallbackFontSize||10);
@@ -605,6 +754,12 @@ function applyRtiLayout() {{
    }}
  }});
  syncHeader();
+ if (LAYER_PANEL.enabled===false) {{
+   const panel=document.getElementById('layerPanel');
+   if (panel) panel.setAttribute('hidden','hidden');
+ }} else {{
+   renderLayerPanel();
+ }}
  syncViewportControls();
  applyViewportState();
 }}
@@ -974,6 +1129,7 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
             {
                 "deviceName": uf.get("displayName", ""),
                 "pageName": payload["page_name"],
+                "layers": payload.get("layers", []),
                 "vpFrames": payload["vp_frames"],
             }
         )

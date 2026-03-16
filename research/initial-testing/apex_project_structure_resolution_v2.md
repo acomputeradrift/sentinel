@@ -867,20 +867,32 @@ Rule boundary:
 - use the file-backed page name only
 - do not invent fallback page titles
 
-### Pages: Button Categories
+### Pages: Layers
 
 Status: `locked for the current v2 user-facing shape`
+
+Approved user-facing fields:
+- `pages[].layers[].layerName`
+- `pages[].layers[].buttonCategories`
+- `pages[].layers[].viewports`
+
+Method:
+1. resolve page-level layer rows from:
+   - `RTIDevicePageData.PageId -> Layers.PageId`
+2. exclude child viewport layers from `pages[].layers[]`:
+   - only include rows where `Layers.ViewPortButtonId` is null for page-level layers
+3. resolve `pages[].layers[].layerName` from:
+   - `Layers.SharedLayerId -> SharedLayers.Name`
+4. resolve each page layer's button rows from:
+   - `Layers.SharedLayerId -> RTIDeviceButtonData.SharedLayerId`
+5. exclude viewport container buttons from the owning page layer's `buttonCategories`
+6. classify each remaining page-layer button row into exactly one category
+7. resolve any viewport container button owned by that page layer into `pages[].layers[].viewports[]`
 
 Approved user-facing categories:
 - `screenLabels`
 - `screenButtons`
 - `hardButtons`
-
-Method:
-1. resolve page-level button rows from:
-   - `RTIDevicePageData.PageId -> Layers.PageId -> RTIDeviceButtonData.SharedLayerId`
-2. exclude viewport container buttons from the page-level button categories
-3. classify each remaining button row into exactly one category
 
 Category rules:
 - `hardButtons`
@@ -898,6 +910,8 @@ Category rules:
   - all remaining non-hard user-facing buttons
 
 Rule boundary:
+- page UI ownership is layer-first:
+  - no page-level user-facing button or viewport may exist outside a `pages[].layers[]` entry
 - category assignment is derived from file-backed button structure plus resolved user-facing test targets
 - do not place a button in multiple user-facing categories
 
@@ -935,6 +949,7 @@ Source field:
 Approved style mapping:
 - `9` -> `Slider`
 - `7` -> `Toggle`
+- `10` -> `Toggle`
 - `11` -> `LevelIndicatorBar`
 - otherwise -> `null`
 
@@ -1008,17 +1023,78 @@ Method:
    - `Visible`
      - true when any `Variables.VisibleData` is non-empty
    - `Value`
-     - true when any `Variables.ObjectData` token contains `@DDL`
+     - true when:
+       - `buttonIdentity.buttonType = Slider`
+       - and any `Variables.ObjectData` token is non-empty
+     - also true when:
+       - `buttonIdentity.buttonType = LevelIndicatorBar`
+       - and any `Variables.ObjectData` token is non-empty
    - `State`
-     - true when any `Variables.ObjectData` token contains `@DDS`
+     - true when:
+       - `buttonIdentity.buttonType = Toggle`
+       - and any `Variables.ObjectData` token is non-empty
    - `Command`
      - true only when:
        - `buttonIdentity.buttonType = Slider`
-       - and `Value = true`
+       - the button variable resolves through `Variables.VariableId`
+       - and a matching `MacroDeviceCommand.VariableId` row exists
+       - and `MacroDeviceCommand.MacroStepId` is null
+     - this is variable-side command evidence, not macro-step command evidence
 
 Rule boundary:
 - variable target flags are presence indicators only
 - do not infer more specific user-facing meaning beyond the proven field tests above
+- for `ObjectData`, use a strict proven control-type allowlist:
+  - `Slider` controls -> `Value`
+  - `Toggle` controls -> `State`
+  - `LevelIndicatorBar` controls -> `Value`
+  - all other object types remain unresolved by default
+- for variable-side `Command`, use the variable-side command path:
+  - `Variables.VariableId -> MacroDeviceCommand.VariableId`
+  - require `MacroDeviceCommand.MacroStepId = null`
+- do not use driver-specific `ObjectData` wording as the general method
+- do not assign `State` to slider controls
+- do not assign `State` to `LevelIndicatorBar` controls
+- do not use macro-step command rows to prove variable-side `Command`
+- do not assign `Command` to `LevelIndicatorBar` controls
+- do not assign `Value`, `State`, or `Command` to unknown future object types by fallback
+
+Validated evidence:
+- `Verrier Home FEENY EDIT v49.apex`
+  - `Lights/Home (Pool)`
+    - `Office Main [Toggle]`
+      - RTI shows `Variable -> State`
+      - current object is a non-slider control
+      - backing `Variables.ObjectData` is non-empty
+    - `Office Main [Slide]`
+      - RTI shows `Variable -> Value`
+      - current object is a slider control
+      - backing `Variables.ObjectData` is non-empty
+      - backing variable-side command row exists through:
+        - `Variables.VariableId = 1270`
+        - `MacroDeviceCommand.VariableId = 1270`
+        - `MacroDeviceCommand.MacroStepId = null`
+    - same split is also present for:
+      - `Change Room [Toggle]` vs `Change Room [Slide]`
+    - `Change Room [Slide]`
+      - backing variable-side command rows exist through:
+        - `Variables.VariableId = 343` / `1572`
+        - matching `MacroDeviceCommand.VariableId`
+        - `MacroDeviceCommand.MacroStepId = null`
+  - `AudioGauge`
+    - `buttonIdentity.buttonType = LevelIndicatorBar`
+    - backing `Variables.ObjectData` is non-empty
+    - no matching variable-side `MacroDeviceCommand` row exists
+- `Sung Residence v207.2.apex`
+  - `NP Progress`
+    - `buttonIdentity.buttonType = LevelIndicatorBar`
+    - backing `Variables.ObjectData` is non-empty
+    - no matching variable-side `MacroDeviceCommand` row exists
+  - read-only comparison across Verrier and Sung showed:
+    - `Slider` controls are value-backed and command-capable only when the file-backed variable-side command row exists
+    - `Toggle` controls are state-backed
+    - `LevelIndicatorBar` controls are value-backed and not command-backed
+    - additional `ObjectData` styles exist and must remain unresolved until proven
 
 #### Page-link target
 
@@ -1065,12 +1141,20 @@ Locked method:
    - resolve effective macro for the pressed button
    - inspect `MacroStepsView`
    - for rows where `Type = 8`, resolve targets through `MacroPageLinkView`
+   - when `MacroPageLinkView.TargetRTIAddress` and `MacroPageLinkView.TargetPageId` contain comma-separated values:
+     - treat them as ordered positional pairs
+     - preserve duplicate page ids
+     - do not deduplicate either list before pairing
    - if a valid target is found for the properly scoped button instance, set `resolvedPageLink` with `resolutionPath = macroStep`
 4. Resolve room-selection follow-up links:
    - only continue if `resolvedPageLink` is still null
    - when the pressed button resolves to `Type 24` `Select Room`
    - use `MacroSelectRoom.SelectRoomId`
    - inspect room-level `RoomEvents` macros for the selected room
+   - when room-event page-link rows expose comma-separated `TargetRTIAddress` and `TargetPageId` values:
+     - treat them as ordered positional pairs
+     - preserve duplicate page ids
+     - select the page id whose paired RTI address matches the current pressed device instance
    - if those room-event macros contain a valid target for the properly scoped button instance, set `resolvedPageLink` with `resolutionPath = roomSelectEvent`
 5. Resolve activity-selection links:
    - only continue if `resolvedPageLink` is still null
@@ -1120,15 +1204,25 @@ Validated Verrier examples:
   - approved fallback for this method: use current room context from the pressed page instance
   - `Activities(RoomId = 6, DeviceId = 314)` -> `PagelinkMacroId = 6988`
   - `Type = 8` target includes iPhone `PageId = 761` -> `AV Overview`
+- iPhone `Room Select`, `ButtonTagName = Room: Pool`
+  - button macro `MacroId = 5874`
+  - `Type = 24` -> `SelectRoomId = 9` (`Pool`)
+  - room-event page-link row contains:
+    - `TargetRTIAddress = 4,5,9,1,2,3,7`
+    - `TargetPageId = 607,607,607,606,606,606,606`
+  - these are ordered positional pairs and duplicates are meaningful
+  - iPhone current device is `RTIAddress = 3`
+  - correct resolved target is iPhone `PageId = 606` -> `Lights/Home (Pool)`
 
-### Viewports: Identity + Frames
+### Viewports: Identity + Layers + Frames
 
 Status: `locked for the current v2 user-facing shape`
 
 Approved user-facing fields:
 - `viewportIdentity.viewportButtonId`
-- `frames[].frameId`
-- `frames[].buttonCategories`
+- `viewports[].layers[].layerName`
+- `viewports[].layers[].frames[].frameId`
+- `viewports[].layers[].frames[].buttonCategories`
 
 #### `viewportIdentity.viewportButtonId`
 
@@ -1137,7 +1231,20 @@ Method:
    - `Layers.ViewPortButtonId`
 2. use the referenced button id as `viewportIdentity.viewportButtonId`
 
-#### `frames[].frameId`
+#### `viewports[].layers[].layerName`
+
+Method:
+1. resolve child viewport layers through:
+   - `Layers.ViewPortButtonId = viewportButtonId`
+2. resolve each child viewport layer name from:
+   - `Layers.SharedLayerId -> SharedLayers.Name`
+3. use the resolved shared-layer name as `viewports[].layers[].layerName`
+
+Rule boundary:
+- viewport child UI is layer-owned
+- do not flatten viewport child buttons directly onto the viewport root when a child layer exists
+
+#### `viewports[].layers[].frames[].frameId`
 
 Method:
 1. resolve child layers through:
@@ -1145,15 +1252,17 @@ Method:
 2. resolve child-layer button rows through:
    - `RTIDeviceButtonData.SharedLayerId = Layers.SharedLayerId`
 3. group rows by `RTIDeviceButtonData.FrameNumber`
-4. use `FrameNumber` as `frames[].frameId`
+4. group frame rows inside the owning viewport child layer
+5. use `FrameNumber` as `viewports[].layers[].frames[].frameId`
 
-#### `frames[].buttonCategories`
+#### `viewports[].layers[].frames[].buttonCategories`
 
 Method:
 - apply the same locked `screenLabels` / `screenButtons` / `hardButtons` categorization rules used for page-level buttons to each frame's grouped button set
 
 Rule boundary:
 - viewport frames are reconstructed from child-layer button rows only
+- viewport frame button categories belong to the owning viewport child layer
 - do not invent synthetic frame ids or frame ordering beyond the stored `FrameNumber`
 
 This document starts a standalone page-resolution track focused on:
