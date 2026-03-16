@@ -260,6 +260,28 @@ Test results are append-only.
 
 ---
 
+# 12. Frontend Session State
+
+Temporary viewer state that is not file-backed should remain separate from extracted project JSON.
+
+Current frontend session example:
+
+- layer visibility overrides for the testing viewer
+
+Current static-frontend method:
+
+- store layer visibility in browser `sessionStorage`
+- key by project + device + page + layer
+- survive page changes and cross-device viewer navigation within the same browser session
+- reset on browser session end
+
+Future implementation target:
+
+- replace browser `sessionStorage` with server-backed session state once the commissioning panel and server are active
+- keep the same logical state shape so the storage backend can change without changing the UI model
+
+---
+
 # 12. Data Persistence
 
 Test data must survive:

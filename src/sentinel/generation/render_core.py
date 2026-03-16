@@ -497,7 +497,6 @@ let currentDeviceLeft=0;
 let currentDeviceTop=0;
 let activePageIndex=0;
 let currentViewportIndexes=VP_FRAMES.map(()=>0);
-const sessionLayerVisibility={{}};
 const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
@@ -518,15 +517,28 @@ function activePageState() {{
 function layerScopeKey(state) {{
  return [PROJECT_SESSION_KEY, state?.deviceName||'', state?.pageName||''].join('::');
 }}
+function loadLayerVisibility(scopeKey) {{
+ try {{
+   const raw=sessionStorage.getItem(scopeKey);
+   return raw ? JSON.parse(raw) : null;
+ }} catch (_err) {{
+   return null;
+ }}
+}}
+function saveLayerVisibility(scopeKey, visibility) {{
+ try {{
+   sessionStorage.setItem(scopeKey, JSON.stringify(visibility));
+ }} catch (_err) {{}}
+}}
 function ensureLayerVisibility(state) {{
  const scopeKey=layerScopeKey(state);
- if (!sessionLayerVisibility[scopeKey]) {{
-   sessionLayerVisibility[scopeKey]=Object.fromEntries((state?.layers||[]).map(layer=>[layer.key,true]));
- }}
+ const stored=loadLayerVisibility(scopeKey);
+ const visibility=(stored && typeof stored==='object') ? stored : Object.fromEntries((state?.layers||[]).map(layer=>[layer.key,true]));
  (state?.layers||[]).forEach(layer=>{{
-   if (!(layer.key in sessionLayerVisibility[scopeKey])) sessionLayerVisibility[scopeKey][layer.key]=true;
+   if (!(layer.key in visibility)) visibility[layer.key]=true;
  }});
- return sessionLayerVisibility[scopeKey];
+ saveLayerVisibility(scopeKey, visibility);
+ return visibility;
 }}
 function activeLayerVisibility() {{
  return ensureLayerVisibility(activePageState());
@@ -548,8 +560,11 @@ function renderLayerPanel() {{
  panel.removeAttribute('hidden');
  list.querySelectorAll('.layer-toggle').forEach(button=>button.addEventListener('click',()=>{{
    const key=button.dataset.layerKey||'';
-   const visibility=activeLayerVisibility();
+   const state=activePageState();
+   const scopeKey=layerScopeKey(state);
+   const visibility=ensureLayerVisibility(state);
    visibility[key]=!(visibility[key] !== false);
+   saveLayerVisibility(scopeKey, visibility);
    renderLayerPanel();
    applyLayerVisibility();
  }}));

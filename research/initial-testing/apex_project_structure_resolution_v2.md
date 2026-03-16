@@ -921,9 +921,11 @@ Rule boundary:
   - display the layer list in descending `layerOrder` so visually top layers appear first
   - paint higher `layerOrder` above lower `layerOrder` in the rendered device view
 - generated layer-visibility overrides are frontend session state only:
+  - store in `sessionStorage`
   - key by project + device + page + layer
-  - survive in-app page changes
-  - reset on refresh or new upload
+  - survive in-app page changes and cross-device file navigation within the same browser session
+  - reset on browser session end
+  - do not live in extracted JSON
 - category assignment is derived from file-backed button structure plus resolved user-facing test targets
 - do not place a button in multiple user-facing categories
 
