@@ -1433,6 +1433,16 @@ Observed constraints:
 
 - `LinkType 0` commonly resolves to `RTIDevicePageData.PageId` and usually returns `PageName`
 - `LinkType 1` can resolve `Devices.Name` as `PageGroupName` without resolving `PageName`, which is strong evidence that some links target a device/group context instead of a single page row
+- verified `LinkType 1` example:
+  - `Verrier Home FEENY EDIT v49.apex`
+  - tag `Activity: Home`
+  - RK3-V Bedroom1 row: `DeviceId = 196`, `LinkType = 1`, `PageId = 115`
+  - RK3-V Bedroom2 row: `DeviceId = 197`, `LinkType = 1`, `PageId = 116`
+  - `115` / `116` are not real `RTIDevicePageData.PageId` targets
+  - the runtime target is the first page in the selected page group
+  - in this sample that resolves to the device first page:
+    - Bedroom1 -> `PageId = 380`, `PageName = Home`
+    - Bedroom2 -> `PageId = 381`, `PageName = Home`
 - `LinkType 2`, `LinkType 3`, and `LinkType 254` are present in both current samples and commonly use `PageId = -1`, so they remain explicit-but-ambiguous navigation/control cases
 - many `MacroPageLinkView` rows contain comma-separated target lists, so multi-target navigation is confirmed rather than hypothetical
 
@@ -2336,6 +2346,23 @@ Practical extraction position:
 
 - treat all three macro pointers as configured behavior hooks
 - do not hardcode execution ordering unless confirmed by direct runtime evidence
+- for a proven narrow family where the same button macro contains:
+  - `Type 26` `Select Source`
+  - followed by `Type 8` page-link targets for the current device
+  - and the selected source resolves to an `Activities` row whose `PagelinkMacroId` target is also present in that same button-macro page list
+  - prefer that activity-derived target page instead of the first page in the button-macro page list
+
+Verified example:
+
+- `Verrier Home FEENY EDIT v49.apex`
+  - button tag `Activity: Apple TV 1 (Bed 2)`
+  - button macro `7565`:
+    - `SelectSourceId = 248`
+    - same-macro page list includes `381,391,392,393,394,395,396,397,398,399`
+  - room `23` activity row for source `248` points through `PagelinkMacroId = 6541`
+  - that activity macro resolves for RK3-V Bed 2 (`RTIAddress = 6`) to `PageId = 397`
+  - `PageId = 397` is in the same button-macro page list
+  - correct target is therefore `Apple TV 1`, not `Home`
 
 #### B. Example activity deep dive: Office `Rogers #1` (`ActivitiesId = 93`)
 

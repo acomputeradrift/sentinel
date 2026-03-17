@@ -1259,6 +1259,11 @@ Locked method:
      - `PageLinks.DeviceId = current device DeviceId`
      - `PageLinks.ButtonTagId = RTIDeviceButtonData.ButtonTagId`
    - only fall back to tag-only matching when no device-scoped row exists for that button tag
+   - when the matched direct page-link row has `PageLinks.LinkType = 1`:
+     - do not treat `PageLinks.PageId` as the final target page id
+     - resolve instead to the current device's first page:
+       - lowest `RTIDevicePageData.PageOrder`
+       - tie-break by lowest `RTIDevicePageData.PageId`
    - if a valid target is found for the properly scoped button instance, set:
      - `resolvedPageLink.targetPageId`
      - `resolvedPageLink.targetPageName`
@@ -1267,6 +1272,18 @@ Locked method:
    - only continue if `resolvedPageLink` is still null
    - resolve effective macro for the pressed button
    - inspect `MacroStepsView`
+   - when the same macro contains both:
+     - `Type = 26` `Select Source`
+     - and `Type = 8` page-link targets
+   - and the `Type = 8` page-link targets expose multiple targets for the current device RTI address
+   - first try the activity-scoped source match:
+     - use `SelectSourceId`
+     - use `SelectSourceRoomId` when it is greater than `0`, otherwise use current room context
+     - resolve the matching `Activities.RoomId + Activities.DeviceId` row
+     - inspect that activity row's `PagelinkMacroId`
+     - resolve its `Type = 8` target for the current device RTI address
+     - only use that resolved page when it is also present in the original button macro's own page-link target list
+   - if that narrow gated match succeeds, use that page as the `macroStep` target
    - for rows where `Type = 8`, resolve targets through `MacroPageLinkView`
    - when `MacroPageLinkView.TargetRTIAddress` and `MacroPageLinkView.TargetPageId` contain comma-separated values:
      - treat them as ordered positional pairs
@@ -1319,6 +1336,33 @@ Verified direct-link scoping example:
     - `DeviceId = 82` -> `PageLinkId = 1175` -> `PageId = 509` (`Feeny Room Select`)
   - the iPad (`DeviceId = 82`) must resolve to `PageId = 509`
   - using tag-only direct page-link matching incorrectly bleeds the iPhone target onto the iPad
+
+Verified `LinkType = 1` direct-link example:
+
+- `Verrier Home FEENY EDIT v49.apex`
+  - button tag: `Activity: Home`
+  - device-scoped direct-link rows:
+    - `DeviceId = 196` -> `LinkType = 1` -> `PageId = 115`
+    - `DeviceId = 197` -> `LinkType = 1` -> `PageId = 116`
+  - `115` / `116` are not real `RTIDevicePageData.PageId` targets
+  - the actual device first pages are:
+    - `DeviceId = 196` -> `PageId = 380` -> `PageName = Home`
+    - `DeviceId = 197` -> `PageId = 381` -> `PageName = Home`
+  - therefore `LinkType = 1` must resolve to the current device first page, not the raw `PageLinks.PageId`
+
+Verified select-source macro-step example:
+
+- `Verrier Home FEENY EDIT v49.apex`
+  - button tag: `Activity: Apple TV 1 (Bed 2)`
+  - button macro `7565` contains:
+    - `Type = 26` -> `SelectSourceId = 248`, `SelectSourceRoomId = 23`
+    - `Type = 8` -> target list `381,391,392,393,394,395,396,397,398,399` for RTI `6`
+  - room `23` activity row:
+    - `Activities.DeviceId = 248`
+    - `Activities.PagelinkMacroId = 6541`
+  - that activity page-link macro resolves for RTI `6` to page `397`
+  - `397` is also present in the button macro's own page-link list
+  - therefore the correct `macroStep` target is `PageId = 397` (`Apple TV 1`), not the first page `381` (`Home`)
    - resolve the activity row through `Activities.RoomId` + `Activities.DeviceId`
    - inspect that activity row's `PagelinkMacroId`
    - resolve `Type = 8` targets through `MacroStepsView` + `MacroPageLinkView`

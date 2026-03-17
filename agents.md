@@ -8,6 +8,8 @@ These rules apply to all work in this workspace unless the user explicitly overr
 
 ## Investigation and Discovery Workflow
 
+- The AI must explicitly state when it is operating within this workflow.
+
 During investigation or discovery sessions, the process must follow this workflow:
 
 1. A working `.md` document will be created or explicitly referenced.
@@ -32,9 +34,9 @@ Until such confirmation is given, results must remain temporary and displayed on
 - Do not treat a question as permission to edit files.
 - If the user asks for analysis, review, explanation, or suggestions, remain in review mode until explicit approval to edit is given.
 - Do not redirect the task into a different task the AI assumes is more useful without first getting approval.
+- When presenting findings from new data, the AI must also propose a concrete next step or solution in the same response.
 
 ---
-
 
 ## Forward Progress Rule
 
@@ -56,6 +58,7 @@ Required behavior:
   - the user explicitly says they want analysis only
   - the next step is genuinely unclear
   - multiple materially different paths exist and need user choice first
+- The AI must not stop at observation; a proposed solution or next action is required in the same response.
 
 Example expected behavior:
 1. investigate and display findings
@@ -63,6 +66,18 @@ Example expected behavior:
 3. immediately present the scoped file list and purpose
 4. wait for `approved`
 
+---
+
+## Test Method Enforcement
+
+- All implementation must follow test-first methodology.
+- Tests must be created before implementation changes.
+- The AI must use the test framework already present in the project.
+- If `unittest` is present, `pytest` must not be used.
+- The AI must verify the existing test framework before writing tests.
+- No implementation is allowed without first creating tests.
+
+---
 
 ## Approval Scope
 
@@ -129,6 +144,16 @@ All outputs must be derived strictly from verified inputs and approved methods.
 
 ---
 
+## Directive File Awareness
+
+- The AI must check and follow directive files located in:
+  `\\mac\Home\Desktop\Development\Sentinel\docs`
+- These files are equal to root-level directives.
+- If a directive exists in these files, it must be followed.
+- The AI must not ignore these files when making decisions.
+
+---
+
 ## Communication Rules
 
 - Keep responses concise and directly relevant to the request.
@@ -136,6 +161,22 @@ All outputs must be derived strictly from verified inputs and approved methods.
 - Do not produce long multi-step plans unless they are necessary for the task.
 - Avoid padded explanations, unnecessary recap, or broad unsolicited advice.
 - Proposed changes should be presented briefly, with enough context to support a single approval decision.
+- The current workflow state must be declared at the start of each response when operating under Investigation and Discovery Workflow.
+
+---
+
+## Understanding Confirmation (UYNSE)
+
+When the user includes `UYNSE`, the AI must:
+
+- Respond with `Yes` or `No` only.
+- Provide exactly one sentence explaining the answer.
+- Produce no additional content before or after the sentence.
+
+Rules:
+- This requirement overrides all other communication rules.
+- The AI must not proceed with analysis, suggestions, scope, or execution.
+- The AI must wait for the next user message before continuing.
 
 ---
 
