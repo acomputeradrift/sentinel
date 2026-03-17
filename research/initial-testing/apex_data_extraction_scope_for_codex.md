@@ -1823,6 +1823,21 @@ Approved extraction implication:
 - do not use a deduplicating integer parser for `TargetRTIAddress` / `TargetPageId`
 - preserve duplicates and pair by index before selecting the current device target
 
+### Proven device-scoped direct page-link matching
+
+Status: `approved for direct button page-link resolution`
+
+Verified in `Verrier Home FEENY EDIT v49.apex`:
+
+- the same button tag can have different direct page-link rows per device
+- `NAVIGATION - to Room Select` has:
+  - `DeviceId = 81` -> `PageLinkId = 1178` -> `PageId = 513` -> `Room Select`
+  - `DeviceId = 82` -> `PageLinkId = 1175` -> `PageId = 509` -> `Feeny Room Select`
+- therefore direct button page-link resolution must scope by:
+  - current `DeviceId`
+  - current `ButtonTagId`
+- tag-only direct page-link matching is unsafe when shared tags exist across controllers
+
 ### Corrected schema-backed hierarchy
 
 Status: `partially supported / incomplete`
@@ -3084,6 +3099,41 @@ Status: `partially supported / incomplete`
 - current proven boundary:
   - this pass proves `RoomOffId = -1` only
   - `RoomOffId = -2` and explicit room-id room-off targets are not yet normalized into page-link resolution
+
+### G. Macro emptiness must follow `MacroSteps` existence
+
+- proven rule:
+  - if a macro has one or more `MacroSteps` rows, it is `not empty`
+  - only macros with zero `MacroSteps` rows may be marked `empty`
+- do not collapse a macro into `empty` just because its step types do not currently resolve to a page link, command summary, or other named action
+- validated example in `Verrier Home FEENY EDIT v49.apex`:
+  - `ButtonTagName = AV - Select Apple TV 1`
+  - extracted iPad button points to `MacroId = 6951`
+  - `MacroSteps` rows:
+    - `11808`, `11809`, `11810`, `11807`
+  - all four steps are `Type = 15`
+  - all four resolve in `MacroFlag`
+  - therefore that macro is real and must not be marked `isEmpty = true`
+
+### H. Raw `MacroFlag` step summaries are extractable
+
+- confirmed file-backed fields:
+  - `MacroStepsView.Type = 15`
+  - `MacroStepsView.FlagIndex`
+  - `MacroStepsView.FlagType`
+- safe extraction rule:
+  - emit raw ordered summaries from those fields without inventing semantic labels
+- validated example in `Verrier Home FEENY EDIT v49.apex`:
+  - `ButtonTagName = AV - Select Apple TV 1`
+  - wrapper `MacroId = 6951`
+  - ordered step summaries:
+    - `FlagIndex=253, FlagType=0`
+    - `FlagIndex=254, FlagType=0`
+    - `FlagIndex=255, FlagType=0`
+    - `FlagIndex=252, FlagType=1`
+- current boundary:
+  - this proves raw step resolution
+  - full semantic naming for every `FlagType` value is not yet proven and should not be guessed
 
 ### Known schema paths that exist but are not fully explored
 

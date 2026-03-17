@@ -1200,7 +1200,10 @@ Allowed `resolutionPath` values for the current locked method:
 Locked method:
 1. Start with `resolvedPageLink = null`.
 2. Resolve direct button page links:
-   - `PageLinks.ButtonTagId = RTIDeviceButtonData.ButtonTagId`
+   - first require the current pressed device context:
+     - `PageLinks.DeviceId = current device DeviceId`
+     - `PageLinks.ButtonTagId = RTIDeviceButtonData.ButtonTagId`
+   - only fall back to tag-only matching when no device-scoped row exists for that button tag
    - if a valid target is found for the properly scoped button instance, set:
      - `resolvedPageLink.targetPageId`
      - `resolvedPageLink.targetPageName`
@@ -1251,6 +1254,16 @@ Locked method:
     - use that room id for the activity lookup
     - this fallback applies only to activity page-link resolution
     - do not rewrite extracted page, layer, or diagnostics room truth
+
+Verified direct-link scoping example:
+
+- `Verrier Home FEENY EDIT v49.apex`
+  - button tag: `NAVIGATION - to Room Select`
+  - device-scoped page-link rows:
+    - `DeviceId = 81` -> `PageLinkId = 1178` -> `PageId = 513` (`Room Select`)
+    - `DeviceId = 82` -> `PageLinkId = 1175` -> `PageId = 509` (`Feeny Room Select`)
+  - the iPad (`DeviceId = 82`) must resolve to `PageId = 509`
+  - using tag-only direct page-link matching incorrectly bleeds the iPhone target onto the iPad
    - resolve the activity row through `Activities.RoomId` + `Activities.DeviceId`
    - inspect that activity row's `PagelinkMacroId`
    - resolve `Type = 8` targets through `MacroStepsView` + `MacroPageLinkView`
@@ -1575,8 +1588,49 @@ Use this method when inventorying a layer before resolved action mapping:
 - for each referenced macro (`GlobalMacroId` / `DeviceMacroId`), count steps in `MacroSteps` by `MacroId`
 - if step count is `0`, tag macro as `empty`
 - if step count is `>0`, tag macro as `not empty`
+- do not mark a macro `empty` just because its step types are not yet resolved into page-link or command summaries
+- `MacroFlag`-only macros are `not empty` because they have real `MacroSteps`
 5. Presentation rule:
 - after text-label review, hide `Label Type = Text` rows from main non-text action table
+
+Validated example:
+- `Verrier Home FEENY EDIT v49.apex`
+  - `ButtonTagName = AV - Select Apple TV 1`
+  - iPad `AV Overview` uses `MacroId = 6951`
+  - `MacroSteps` contains four rows (`11808`, `11809`, `11810`, `11807`)
+  - all four are `Type = 15` and resolve through `MacroFlag`
+  - therefore `isEmpty = true` is incorrect for this button
+
+### Button macro diagnostics: `MacroFlag` summaries
+
+Status: `locked for raw file-backed flag summaries`
+
+Method:
+- when a button's direct button-step wrapper macro contains `MacroStepsView.Type = 15`
+- read:
+  - `MacroStepsView.FlagIndex`
+  - `MacroStepsView.FlagType`
+- build one raw summary per step in step order:
+  - `FlagIndex=<n>, FlagType=<m>`
+- if multiple `MacroFlag` steps exist on the same wrapper macro:
+  - join them in order with ` | `
+- store that joined summary in:
+  - `diagnostics.buttons[].testTargets.macro.resolvedCommand`
+
+Rule boundary:
+- this is a raw schema-backed resolution path
+- do not guess semantic names for `FlagType` values that are not already proven
+- for current button diagnostics, raw `FlagIndex` / `FlagType` output is preferred over invented action wording
+
+Validated example:
+- `Verrier Home FEENY EDIT v49.apex`
+  - `ButtonTagName = AV - Select Apple TV 1`
+  - wrapper `MacroId = 6951`
+  - ordered `MacroFlag` steps:
+    - `FlagIndex=253, FlagType=0`
+    - `FlagIndex=254, FlagType=0`
+    - `FlagIndex=255, FlagType=0`
+    - `FlagIndex=252, FlagType=1`
 
 ---
 
