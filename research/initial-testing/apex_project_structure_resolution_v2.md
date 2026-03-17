@@ -1271,19 +1271,16 @@ Locked method:
 3. Resolve macro-step page links:
    - only continue if `resolvedPageLink` is still null
    - resolve effective macro for the pressed button
-   - inspect `MacroStepsView`
+   - inspect raw `MacroPageLink` first for `Type = 8` steps
+   - when a `Type = 8` step has `MacroPageLink.Page` equal to a real `RTIDevicePageData.PageId`:
+     - treat that raw page id as the exact target page
+     - set `resolvedPageLink` from that page id/name with `resolutionPath = macroStep`
+   - do not reinterpret that row through `MacroPageLinkView` when the raw `Page` is already a real page id
+   - when raw `MacroPageLink.Page` is not a real page id:
+     - continue with the existing view-based target handling below
    - when the same macro contains both:
      - `Type = 26` `Select Source`
      - and `Type = 8` page-link targets
-   - and the `Type = 8` page-link targets expose multiple targets for the current device RTI address
-   - first try the activity-scoped source match:
-     - use `SelectSourceId`
-     - use `SelectSourceRoomId` when it is greater than `0`, otherwise use current room context
-     - resolve the matching `Activities.RoomId + Activities.DeviceId` row
-     - inspect that activity row's `PagelinkMacroId`
-     - resolve its `Type = 8` target for the current device RTI address
-     - only use that resolved page when it is also present in the original button macro's own page-link target list
-   - if that narrow gated match succeeds, use that page as the `macroStep` target
    - for rows where `Type = 8`, resolve targets through `MacroPageLinkView`
    - when `MacroPageLinkView.TargetRTIAddress` and `MacroPageLinkView.TargetPageId` contain comma-separated values:
      - treat them as ordered positional pairs
@@ -1350,19 +1347,23 @@ Verified `LinkType = 1` direct-link example:
     - `DeviceId = 197` -> `PageId = 381` -> `PageName = Home`
   - therefore `LinkType = 1` must resolve to the current device first page, not the raw `PageLinks.PageId`
 
-Verified select-source macro-step example:
+Verified exact raw-page macro-step examples:
 
 - `Verrier Home FEENY EDIT v49.apex`
   - button tag: `Activity: Apple TV 1 (Bed 2)`
   - button macro `7565` contains:
     - `Type = 26` -> `SelectSourceId = 248`, `SelectSourceRoomId = 23`
-    - `Type = 8` -> target list `381,391,392,393,394,395,396,397,398,399` for RTI `6`
-  - room `23` activity row:
-    - `Activities.DeviceId = 248`
-    - `Activities.PagelinkMacroId = 6541`
-  - that activity page-link macro resolves for RTI `6` to page `397`
-  - `397` is also present in the button macro's own page-link list
-  - therefore the correct `macroStep` target is `PageId = 397` (`Apple TV 1`), not the first page `381` (`Home`)
+    - `Type = 8` raw `MacroPageLink` row:
+      - `Device = 197`
+      - `Page = 397`
+  - `RTIDevicePageData.PageId = 397` -> `PageName = Apple TV 1`
+  - therefore the correct `macroStep` target is `PageId = 397` (`Apple TV 1`)
+- same proven family:
+  - `Activity: Sat 1 (Bed 2)` -> raw `MacroPageLink.Page = 396` -> `Sat TV 1`
+  - `Activity: Samsung TV (Bed 2)` -> raw `MacroPageLink.Page = 395` -> `TV Controls`
+- boundary on the same project:
+  - `Activities.PagelinkMacroId` macros for Bed 1 / Bed 2 activities use raw `MacroPageLink.Page = 0`
+  - those rows do not directly identify a final page id and must keep using the existing `activityEvent` / `MacroPageLinkView` path
    - resolve the activity row through `Activities.RoomId` + `Activities.DeviceId`
    - inspect that activity row's `PagelinkMacroId`
    - resolve `Type = 8` targets through `MacroStepsView` + `MacroPageLinkView`

@@ -2346,11 +2346,9 @@ Practical extraction position:
 
 - treat all three macro pointers as configured behavior hooks
 - do not hardcode execution ordering unless confirmed by direct runtime evidence
-- for a proven narrow family where the same button macro contains:
-  - `Type 26` `Select Source`
-  - followed by `Type 8` page-link targets for the current device
-  - and the selected source resolves to an `Activities` row whose `PagelinkMacroId` target is also present in that same button-macro page list
-  - prefer that activity-derived target page instead of the first page in the button-macro page list
+- for button-macro navigation, inspect raw `MacroPageLink` before relying on `MacroPageLinkView`
+- when raw `MacroPageLink.Page` is a real `RTIDevicePageData.PageId`, that raw page id is the exact target
+- when raw `MacroPageLink.Page = 0`, the row does not directly identify a final page id and the existing activity/view-based path is still required
 
 Verified example:
 
@@ -2358,11 +2356,17 @@ Verified example:
   - button tag `Activity: Apple TV 1 (Bed 2)`
   - button macro `7565`:
     - `SelectSourceId = 248`
-    - same-macro page list includes `381,391,392,393,394,395,396,397,398,399`
-  - room `23` activity row for source `248` points through `PagelinkMacroId = 6541`
-  - that activity macro resolves for RK3-V Bed 2 (`RTIAddress = 6`) to `PageId = 397`
-  - `PageId = 397` is in the same button-macro page list
-  - correct target is therefore `Apple TV 1`, not `Home`
+    - raw `MacroPageLink` row: `Device = 197`, `Page = 397`
+  - `RTIDevicePageData.PageId = 397` -> `Apple TV 1`
+  - correct target is therefore the raw page id `397`, not a name-derived guess
+- same family:
+  - `Activity: Sat 1 (Bed 2)`
+  - raw `MacroPageLink.Page = 396` -> `Sat TV 1`
+  - `Activity: Samsung TV (Bed 2)` -> raw `MacroPageLink.Page = 395` -> `TV Controls`
+- contrasting activity rows:
+  - `Activities.PagelinkMacroId` macros `6541`, `6542`, `6543`, `6544`, `7393`
+  - raw `MacroPageLink.Page = 0`
+  - these remain structural activity hooks, not direct final page ids
 
 #### B. Example activity deep dive: Office `Rogers #1` (`ActivitiesId = 93`)
 

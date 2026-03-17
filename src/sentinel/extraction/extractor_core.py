@@ -705,6 +705,7 @@ def _resolve_button(
     page_links_by_tag: dict[int, sqlite3.Row],
     first_page_target_by_device_id: dict[int, tuple[int, str | None]],
     page_name_by_page_id: dict[int, str],
+    macro_step_exact_page_by_macro: dict[int, int],
     macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
     room_event_targets_by_room: dict[int, list[tuple[int, int]]],
     select_rooms_by_macro: dict[int, list[int]],
@@ -818,15 +819,17 @@ def _resolve_button(
 
     if resolved_page_link is None:
         for macro_id in candidate_macro_ids:
-            macro_target_page_id = _pick_select_source_macro_target(
-                macro_id,
-                current_rti_address,
-                page_room_id,
-                select_sources_by_macro,
-                activity_target_pages_by_room_and_device,
-                macro_step_targets_by_macro,
-                global_room_fallback_id=global_room_fallback_id,
-            )
+            macro_target_page_id = macro_step_exact_page_by_macro.get(macro_id)
+            if macro_target_page_id is None:
+                macro_target_page_id = _pick_select_source_macro_target(
+                    macro_id,
+                    current_rti_address,
+                    page_room_id,
+                    select_sources_by_macro,
+                    activity_target_pages_by_room_and_device,
+                    macro_step_targets_by_macro,
+                    global_room_fallback_id=global_room_fallback_id,
+                )
             if macro_target_page_id is None:
                 macro_target_page_id = _pick_target_for_rti(macro_step_targets_by_macro.get(macro_id, []), current_rti_address)
             if macro_target_page_id is not None:
@@ -1021,6 +1024,22 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
     for row in cur.fetchall():
         page_name_by_page_id[int(row["PageId"])] = str(row["PageName"] or "").strip()
         page_room_id_by_page_id[int(row["PageId"])] = int(row["RoomId"] or 0)
+    cur.execute("select MacroStepId, MacroId from MacroSteps where Type = 8")
+    macro_id_by_step_id: dict[int, int] = {}
+    for row in cur.fetchall():
+        macro_id_by_step_id[int(row["MacroStepId"] or 0)] = int(row["MacroId"] or 0)
+
+    macro_step_exact_page_by_macro: dict[int, int] = {}
+    table_names = {row[0] for row in cur.execute("select name from sqlite_master where type='table'").fetchall()}
+    if "MacroPageLink" in table_names:
+        cur.execute("select MacroStepId, Page from MacroPageLink")
+        for row in cur.fetchall():
+            page_id = int(row["Page"] or 0)
+            if page_id <= 0 or page_id not in page_name_by_page_id:
+                continue
+            macro_id = macro_id_by_step_id.get(int(row["MacroStepId"] or 0), 0)
+            if macro_id > 0:
+                macro_step_exact_page_by_macro[macro_id] = page_id
 
     cur.execute(
         """
@@ -1369,6 +1388,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         page_links_by_tag,
                         first_page_target_by_device_id,
                         page_name_by_page_id,
+                        macro_step_exact_page_by_macro,
                         macro_step_targets_by_macro,
                         room_event_targets_by_room,
                         select_rooms_by_macro,
@@ -1397,6 +1417,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                             page_links_by_tag,
                             first_page_target_by_device_id,
                             page_name_by_page_id,
+                            macro_step_exact_page_by_macro,
                             macro_step_targets_by_macro,
                             room_event_targets_by_room,
                             select_rooms_by_macro,
@@ -1505,6 +1526,7 @@ def _resolve_viewport_frames(
     page_links_by_tag: dict[int, sqlite3.Row],
     first_page_target_by_device_id: dict[int, tuple[int, str | None]],
     page_name_by_page_id: dict[int, str],
+    macro_step_exact_page_by_macro: dict[int, int],
     macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
     room_event_targets_by_room: dict[int, list[tuple[int, int]]],
     select_rooms_by_macro: dict[int, list[int]],
@@ -1559,6 +1581,7 @@ def _resolve_viewport_frames(
                 page_links_by_tag,
                 first_page_target_by_device_id,
                 page_name_by_page_id,
+                macro_step_exact_page_by_macro,
                 macro_step_targets_by_macro,
                 room_event_targets_by_room,
                 select_rooms_by_macro,

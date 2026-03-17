@@ -135,6 +135,7 @@ def create_test_apex(
         create table MacroSelectRoom (MacroStepId integer primary key, SelectRoomId integer);
         create table MacroSelectSource (MacroStepId integer primary key, SelectSourceId integer, SelectSourceRoomId integer);
         create table MacroRoomOff (MacroStepId integer primary key, RoomOffId integer);
+        create table MacroPageLink (MacroStepId integer primary key, Device integer, Page integer, Frame integer, SaveHistory integer, WakeDevice integer, SendToAll integer);
         create table MacroPageLinkView (MacroStepId integer primary key, TargetPageId text, TargetRTIAddress text);
         create table Activities (ActivitiesId integer primary key, RoomId integer, DeviceId integer, ActivityOrder integer, Checked integer, PagelinkMacroId integer);
         create table RoomEvents (RoomEventId integer primary key, RoomId integer, EventType integer, SelectedMacroId integer);
@@ -152,6 +153,8 @@ def create_test_apex(
     cur.execute("insert into Devices values (2,23,2,5,'RK3-V','','','','',0,0,'RK3-V (Bed 2)')")
     cur.execute("insert into Devices values (116,23,3,5,'Lights/Home (Bed 2)','','','','',0,2,'Lights/Home (Bed 2)')")
     cur.execute("insert into Devices values (248,23,4,5,'Apple TV 1 (Bed 2)','','','','',0,2,'Apple TV 1 (Bed 2)')")
+    cur.execute("insert into Devices values (249,23,5,5,'Samsung TV (Bed 2)','','','','',0,2,'Samsung TV (Bed 2)')")
+    cur.execute("insert into Devices values (250,23,5,5,'Sat 1 (Bed 2)','','','','',0,2,'Sat 1 (Bed 2)')")
     cur.execute(
         "insert into RTIDeviceData values (1,1,0,?,?,?,?,?, ?,?)",
         (
@@ -179,10 +182,14 @@ def create_test_apex(
     cur.execute("insert into PageNames values (10,'Lights')")
     cur.execute("insert into PageNames values (11,'Home')")
     cur.execute("insert into PageNames values (12,'Apple TV 1')")
+    cur.execute("insert into PageNames values (13,'Sat TV 1')")
+    cur.execute("insert into PageNames values (14,'TV Controls')")
     cur.execute("insert into PagesView values (100,'Lights',0)")
     cur.execute("insert into PagesView values (101,'Home',0)")
     cur.execute("insert into PagesView values (381,'Home',23)")
     cur.execute("insert into PagesView values (397,'Apple TV 1',23)")
+    cur.execute("insert into PagesView values (396,'Sat TV 1',23)")
+    cur.execute("insert into PagesView values (395,'TV Controls',23)")
     cur.execute("insert into Rooms values (0,'Global',0,0)")
     cur.execute("insert into Rooms values (23,'Bed 2',116,1)")
     cur.execute("insert into ControllerRoomList values (1,1,0,0)")
@@ -190,7 +197,9 @@ def create_test_apex(
     cur.execute("insert into RTIDevicePageData values (100,1,10,1,0)")
     cur.execute("insert into RTIDevicePageData values (101,1,11,1,1)")
     cur.execute("insert into RTIDevicePageData values (381,116,11,6,0)")
+    cur.execute("insert into RTIDevicePageData values (396,116,13,6,1)")
     cur.execute("insert into RTIDevicePageData values (397,116,12,6,1)")
+    cur.execute("insert into RTIDevicePageData values (395,116,14,6,2)")
     cur.execute("insert into Layers values (200,100,1,300,0,1,'',0,null,0)")
     cur.execute("insert into Layers values (201,101,1,301,0,1,'',0,null,0)")
     cur.execute("insert into Layers values (202,381,2,302,0,1,'',0,null,23)")
@@ -212,6 +221,8 @@ def create_test_apex(
     cur.execute("insert into ButtonTagNames values (153,'Browse')")
     cur.execute("insert into ButtonTagNames values (154,'Activity: Home')")
     cur.execute("insert into ButtonTagNames values (155,'Activity: Apple TV 1 (Bed 2)')")
+    cur.execute("insert into ButtonTagNames values (156,'Activity: Sat 1 (Bed 2)')")
+    cur.execute("insert into ButtonTagNames values (157,'Activity: Samsung TV (Bed 2)')")
 
     cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,20,320,46,284,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (247,300,1,129,0,140,334,46,76,'',10,7,20,620,46,76,2,0)")
@@ -221,6 +232,8 @@ def create_test_apex(
     cur.execute("insert into RTIDeviceButtonData values (251,300,5,153,0,360,30,120,220,'',10,8,240,320,120,220,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (252,300,6,154,0,40,30,46,120,'',10,0,40,320,46,120,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (260,302,0,155,0,53,88,112,160,'1',12,0,160,200,112,160,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (261,302,1,156,0,213,88,112,160,'2',12,0,320,200,112,160,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (262,302,2,157,0,373,88,112,160,'',12,0,480,200,112,160,1,0)")
 
     cur.execute("insert into Variables values (1,0,-1,114,'$%VARIABLE!x@DDL002%$','token@DDL002',null,null,null)")
     cur.execute("insert into Variables values (2,0,-1,129,null,'token@DDS002',null,null,null)")
@@ -240,10 +253,16 @@ def create_test_apex(
     cur.execute("insert into Macros values (601,600,0,99,0,0)")
     cur.execute("insert into Macros values (700,700,23,-1,155,0)")
     cur.execute("insert into Macros values (701,701,23,-1,0,0)")
+    cur.execute("insert into Macros values (702,702,23,-1,156,0)")
+    cur.execute("insert into Macros values (703,703,23,-1,157,0)")
     cur.execute("insert into MacroSteps values (1,362,0,1,0,0)")
     cur.execute("insert into MacroSteps values (2,700,0,26,0,0)")
     cur.execute("insert into MacroSteps values (3,700,1,8,0,0)")
     cur.execute("insert into MacroSteps values (4,701,0,8,0,0)")
+    cur.execute("insert into MacroSteps values (5,702,0,26,0,0)")
+    cur.execute("insert into MacroSteps values (6,702,1,8,0,0)")
+    cur.execute("insert into MacroSteps values (7,703,0,26,0,0)")
+    cur.execute("insert into MacroSteps values (8,703,1,8,0,0)")
     cur.execute("insert into MacroStepsView values (10,501,0,14,140,null,null,null,null,null,null,null,null,null,null,null)")
     cur.execute("insert into MacroStepsView values (11,501,1,14,141,null,null,null,null,null,null,null,null,null,null,null)")
     cur.execute("insert into MacroStepsView values (12,502,0,14,142,null,null,null,null,null,null,null,null,null,null,null)")
@@ -251,9 +270,20 @@ def create_test_apex(
     cur.execute("insert into MacroStepsView values (2,700,0,26,null,null,null,null,null,null,null,null,null,null,null,null)")
     cur.execute("insert into MacroStepsView values (3,700,1,8,null,null,null,null,null,null,null,null,null,'6,6',null,null)")
     cur.execute("insert into MacroStepsView values (4,701,0,8,null,null,null,null,null,null,null,null,null,'6',null,null)")
+    cur.execute("insert into MacroStepsView values (5,702,0,26,null,null,null,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (6,702,1,8,null,null,null,null,null,null,null,null,null,'6,6,6',null,null)")
+    cur.execute("insert into MacroStepsView values (7,703,0,26,null,null,null,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (8,703,1,8,null,null,null,null,null,null,null,null,null,'6,6,6',null,null)")
     cur.execute("insert into MacroSelectSource values (2,248,23)")
+    cur.execute("insert into MacroSelectSource values (5,250,23)")
+    cur.execute("insert into MacroSelectSource values (7,249,23)")
+    cur.execute("insert into MacroPageLink values (3,2,397,1,1,0,0)")
+    cur.execute("insert into MacroPageLink values (6,2,396,1,1,0,0)")
+    cur.execute("insert into MacroPageLink values (8,2,395,1,1,0,0)")
     cur.execute("insert into MacroPageLinkView values (3,'381,397','6,6')")
     cur.execute("insert into MacroPageLinkView values (4,'397','6')")
+    cur.execute("insert into MacroPageLinkView values (6,'381,396,397','6,6,6')")
+    cur.execute("insert into MacroPageLinkView values (8,'381,395,397','6,6,6')")
     cur.execute("insert into PortLabels values (1,0,-65024,'Gate')")
     cur.execute("insert into PortLabels values (3,0,-65023,'Driveway')")
     cur.execute("insert into PortLabels values (2,0,66048,'Sense 1')")
@@ -322,6 +352,8 @@ class ScriptContractsTest(unittest.TestCase):
             rk3_layer = rk3_page["layers"][0]
             rk3_buttons = {btn["buttonIdentity"]["buttonTagName"]: btn for btn in rk3_layer["buttonCategories"]["screenButtons"]}
             activity_apple = rk3_buttons["Activity: Apple TV 1 (Bed 2)"]
+            activity_sat = rk3_buttons["Activity: Sat 1 (Bed 2)"]
+            activity_samsung = rk3_buttons["Activity: Samsung TV (Bed 2)"]
             self.assertEqual(system_event["userFacing"]["description"], "Sense Test")
             self.assertEqual(system_event["userFacing"]["resolvedTrigger"], "When Gate closes")
             self.assertEqual(system_event["userFacing"]["macroName"], "SENSE - Gate Open")
@@ -390,6 +422,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertTrue(activity_apple["testTargets"]["pageLink"])
             self.assertTrue(activity_apple["testTargets"]["macroSteps"])
             self.assertEqual(activity_apple["resolvedPageLink"], {"targetPageId": 397, "targetPageName": "Apple TV 1", "resolutionPath": "macroStep"})
+            self.assertTrue(activity_sat["testTargets"]["pageLink"])
+            self.assertEqual(activity_sat["resolvedPageLink"], {"targetPageId": 396, "targetPageName": "Sat TV 1", "resolutionPath": "macroStep"})
+            self.assertTrue(activity_samsung["testTargets"]["pageLink"])
+            self.assertEqual(activity_samsung["resolvedPageLink"], {"targetPageId": 395, "targetPageName": "TV Controls", "resolutionPath": "macroStep"})
             diag_buttons = {btn["buttonTagName"]: btn for btn in data["devices"][0]["diagnostics"]["pages"][0]["buttons"] if btn["buttonTagName"]}
             browse_diag = diag_buttons["Browse"]
             self.assertEqual(browse_diag["buttonTagName"], "Browse")
