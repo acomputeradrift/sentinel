@@ -131,7 +131,7 @@ def create_test_apex(
         create table ControllerRoomList (ControllerRoomListId integer primary key, RTIAddress integer, RoomId integer, ControllerRoomOrder integer);
         create table Macros (MacroId integer primary key, SystemMacroId integer, RoomId integer, DeviceId integer, ButtonTagId integer, OutputType integer);
         create table MacroSteps (MacroStepId integer primary key, MacroId integer, StepIndex integer, Type integer, Level integer, InElseSection integer);
-        create table MacroStepsView (MacroStepId integer primary key, MacroId integer, StepIndex integer, Type integer, CommandTagId integer, CommentText text, Name text, Function text, Parameter1 text, Parameter2 text, Parameter3 text, Parameter4 text, DeviceId integer, TargetRTIAddress text);
+        create table MacroStepsView (MacroStepId integer primary key, MacroId integer, StepIndex integer, Type integer, CommandTagId integer, CommentText text, Name text, Function text, Parameter1 text, Parameter2 text, Parameter3 text, Parameter4 text, DeviceId integer, TargetRTIAddress text, FlagIndex integer, FlagType integer);
         create table MacroSelectRoom (MacroStepId integer primary key, SelectRoomId integer);
         create table MacroSelectSource (MacroStepId integer primary key, SelectSourceId integer, SelectSourceRoomId integer);
         create table MacroRoomOff (MacroStepId integer primary key, RoomOffId integer);
@@ -182,12 +182,24 @@ def create_test_apex(
     cur.execute("insert into ButtonTagNames values (141,'Driver Action B')")
     cur.execute("insert into ButtonTagNames values (142,'Driver Action Leak')")
     cur.execute("insert into ButtonTagNames values (143,'SENSE - Driveway High')")
+    cur.execute("insert into ButtonTagNames values (150,'Old Slider')")
+    cur.execute("insert into ButtonTagNames values (151,'Condition Graphic')")
+    cur.execute("insert into ButtonTagNames values (152,'Shop [Preview]')")
+    cur.execute("insert into ButtonTagNames values (153,'Browse')")
 
     cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,20,320,46,284,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (247,300,1,129,0,140,334,46,76,'',10,7,20,620,46,76,2,0)")
+    cur.execute("insert into RTIDeviceButtonData values (248,300,2,150,0,210,30,46,120,'',10,5,90,320,46,120,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (249,300,3,151,0,260,30,46,120,'',10,6,140,320,46,120,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (250,300,4,152,0,310,30,46,120,'',10,14,190,320,46,120,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (251,300,5,153,0,360,30,120,220,'',10,8,240,320,120,220,1,0)")
 
     cur.execute("insert into Variables values (1,0,-1,114,'$%VARIABLE!x@DDL002%$','token@DDL002',null,null,null)")
     cur.execute("insert into Variables values (2,0,-1,129,null,'token@DDS002',null,null,null)")
+    cur.execute("insert into Variables values (3,0,-1,150,null,'slider5@DDL003',null,null,null)")
+    cur.execute("insert into Variables values (4,0,-1,151,null,'image6@IMG001',null,null,null)")
+    cur.execute("insert into Variables values (5,0,-1,152,null,'image14@IMG014',null,null,null)")
+    cur.execute("insert into Variables values (6,0,-1,153,null,'browse8@LIST001',null,null,null)")
 
     cur.execute("insert into Macros values (362,362,0,-1,129,0)")
     cur.execute("insert into Macros values (400,400,0,-1,130,0)")
@@ -199,10 +211,10 @@ def create_test_apex(
     cur.execute("insert into Macros values (600,600,0,-1,0,0)")
     cur.execute("insert into Macros values (601,600,0,99,0,0)")
     cur.execute("insert into MacroSteps values (1,362,0,1,0,0)")
-    cur.execute("insert into MacroStepsView values (10,501,0,14,140,null,null,null,null,null,null,null,null,null)")
-    cur.execute("insert into MacroStepsView values (11,501,1,14,141,null,null,null,null,null,null,null,null,null)")
-    cur.execute("insert into MacroStepsView values (12,502,0,14,142,null,null,null,null,null,null,null,null,null)")
-    cur.execute("insert into MacroStepsView values (13,601,0,1,null,null,null,'setSelLyr:1','G1L0','','','',1,null)")
+    cur.execute("insert into MacroStepsView values (10,501,0,14,140,null,null,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (11,501,1,14,141,null,null,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (12,502,0,14,142,null,null,null,null,null,null,null,null,null,null,null)")
+    cur.execute("insert into MacroStepsView values (13,601,0,1,null,null,null,'setSelLyr:1','G1L0','','','',1,null,null,null)")
     cur.execute("insert into PortLabels values (1,0,-65024,'Gate')")
     cur.execute("insert into PortLabels values (3,0,-65023,'Driveway')")
     cur.execute("insert into PortLabels values (2,0,66048,'Sense 1')")
@@ -257,8 +269,13 @@ class ScriptContractsTest(unittest.TestCase):
             driver_command = data["events"]["driver"][2]
             page = data["devices"][0]["userFacing"]["pages"][0]
             layer = page["layers"][0]
-            slider = layer["buttonCategories"]["screenButtons"][0]
-            toggle = layer["buttonCategories"]["screenButtons"][1]
+            buttons = {btn["buttonIdentity"]["buttonTagName"]: btn for btn in layer["buttonCategories"]["screenButtons"]}
+            slider = buttons["LIGHTS - Load 2 Level"]
+            toggle = buttons["LIGHTS - Load 2 TOGGLE"]
+            old_slider = buttons["Old Slider"]
+            image6 = buttons["Condition Graphic"]
+            image14 = buttons["Shop [Preview]"]
+            browse = buttons["Browse"]
             self.assertEqual(system_event["userFacing"]["description"], "Sense Test")
             self.assertEqual(system_event["userFacing"]["resolvedTrigger"], "When Gate closes")
             self.assertEqual(system_event["userFacing"]["macroName"], "SENSE - Gate Open")
@@ -310,6 +327,25 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertFalse(slider["testTargets"]["pageLink"])
             self.assertTrue(toggle["testTargets"]["pageLink"])
             self.assertEqual(toggle["resolvedPageLink"], {"targetPageId": 101, "targetPageName": "Home", "resolutionPath": "directPageLink"})
+            self.assertEqual(old_slider["buttonIdentity"]["buttonType"], "Slider")
+            self.assertTrue(old_slider["testTargets"]["variables"]["Value"])
+            self.assertFalse(old_slider["testTargets"]["variables"]["Command"])
+            self.assertEqual(image6["buttonIdentity"]["buttonType"], "Image")
+            self.assertTrue(image6["testTargets"]["variables"]["Image"])
+            self.assertEqual(image14["buttonIdentity"]["buttonType"], "Image")
+            self.assertTrue(image14["testTargets"]["variables"]["Image"])
+            self.assertIsNone(browse["buttonIdentity"]["buttonType"])
+            self.assertFalse(browse["testTargets"]["variables"]["Value"])
+            self.assertFalse(browse["testTargets"]["variables"]["State"])
+            self.assertFalse(browse["testTargets"]["variables"]["Command"])
+            self.assertTrue(browse["testTargets"]["variables"]["List"])
+            browse_diag = data["devices"][0]["diagnostics"]["pages"][0]["buttons"][-1]
+            self.assertEqual(browse_diag["buttonTagName"], "Browse")
+            self.assertTrue(browse_diag["testTargets"]["variableDetails"]["List"]["enabled"])
+            self.assertEqual(browse_diag["testTargets"]["variableDetails"]["List"]["source"], "ObjectData")
+            self.assertEqual(browse_diag["testTargets"]["variableDetails"]["List"]["objectRef"], "browse8@LIST001")
+            self.assertFalse(browse_diag["testTargets"]["variableDetails"]["Command"]["enabled"])
+            self.assertIsNone(browse_diag["testTargets"]["variableDetails"]["Command"]["driverFunction"])
 
     def test_extract_single_size_device_uses_fallback_dimensions(self):
         with tempfile.TemporaryDirectory() as td:
@@ -364,7 +400,7 @@ class ScriptContractsTest(unittest.TestCase):
                                                 "testTargets": {
                                                     "text": True,
                                                     "macro": False,
-                                                    "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": True, "State": False, "Command": True},
+                                                    "variables": {"Text": False, "Reversed": False, "Inactive": False, "Visible": False, "Value": True, "State": False, "Command": True, "Image": False, "List": False},
                                                     "pageLink": {"enabled": False, "targetPageId": None},
                                                 },
                                             }

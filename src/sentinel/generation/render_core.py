@@ -85,7 +85,7 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
         out.append("Macro")
     if t.get("macroSteps"):
         out.append("MacroStep")
-    for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command"):
+    for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(variable_label_template.replace("{variableType}", name))
     if _page_link_enabled(t):
@@ -97,7 +97,7 @@ def _is_ui_only_button(btn: dict[str, Any]) -> bool:
     identity = btn.get("buttonIdentity", {})
     t = btn.get("testTargets", {})
     vars_t = t.get("variables", {})
-    has_any_var = any(bool(vars_t.get(k)) for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command"))
+    has_any_var = any(bool(vars_t.get(k)) for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"))
     return (
         not str(identity.get("buttonTagName") or "").strip()
         and not str(identity.get("text") or "").strip()
@@ -383,7 +383,7 @@ def _render_button_control(
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
-        f"<button class='test-btn' data-meta='{meta_attr}'>{_btn_text(identity)}</button>"
+        f"<button class='test-btn' data-meta='{meta_attr}'>{escape(_btn_text(identity))}</button>"
         f"{link_html}</div>"
     )
 

@@ -104,7 +104,9 @@
                       "Visible": false,
                       "Value": false,
                       "State": false,
-                      "Command": false
+                      "Command": false,
+                      "Image": false,
+                      "List": false
                     },
                     "pageLink": {
                       "enabled": false,
@@ -139,7 +141,9 @@
                       "Visible": false,
                       "Value": false,
                       "State": false,
-                      "Command": false
+                      "Command": false,
+                      "Image": false,
+                      "List": false
                     },
                     "pageLink": {
                       "enabled": false,
@@ -257,6 +261,16 @@
                       "controlType": null,
                       "driverFunction": null,
                       "pairedMacroFunction": null
+                    },
+                    "Image": {
+                      "enabled": false,
+                      "source": "ObjectData",
+                      "objectRef": null
+                    },
+                    "List": {
+                      "enabled": false,
+                      "source": "ObjectData",
+                      "objectRef": null
                     }
                   },
                   "pageLink": {
@@ -339,6 +353,16 @@
                               "controlType": null,
                               "driverFunction": null,
                               "pairedMacroFunction": null
+                            },
+                            "Image": {
+                              "enabled": false,
+                              "source": "ObjectData",
+                              "objectRef": null
+                            },
+                            "List": {
+                              "enabled": false,
+                              "source": "ObjectData",
+                              "objectRef": null
                             }
                           },
                           "pageLink": {

@@ -1004,8 +1004,24 @@ Method:
 #### `buttonIdentity.text`
 
 Method:
-- use `RTIDeviceButtonData.Text`
-- preserve the stored text exactly, including empty text
+- start from `RTIDeviceButtonData.Text`
+- if empty, keep empty text
+- for display identity, replace each text token in the stored text while preserving all surrounding literal text:
+  - `$%TAG!<value>%$` -> `<Text Tag: <value>>`
+  - `$%VARIABLE!<value>%$` -> `<Text Variable: <value>>`
+- preserve all non-token literal text exactly as stored, including mixed token+literal strings and line breaks
+
+Validated examples:
+- `$%TAG!SYSTEM - Room Name%$`
+  - `<Text Tag: SYSTEM - Room Name>`
+- `$%TAG!Stat [Temp In]%$°`
+  - `<Text Tag: Stat [Temp In]>°`
+- `Setpoint: $%TAG!Stat [Setpoint]%$°`
+  - `Setpoint: <Text Tag: Stat [Setpoint]>°`
+
+Render requirement:
+- when `buttonIdentity.text` is written into HTML output, it must be HTML-escaped before rendering
+- otherwise display strings like `<Text Tag: ...>` will be interpreted as markup and appear blank on screen
 
 #### `buttonIdentity.buttonType`
 
@@ -1015,10 +1031,13 @@ Source field:
 - `RTIDeviceButtonData.ButtonStyle`
 
 Approved style mapping:
+- `5` -> `Slider`
+- `6` -> `Image`
 - `9` -> `Slider`
 - `7` -> `Toggle`
 - `10` -> `Toggle`
 - `11` -> `LevelIndicatorBar`
+- `14` -> `Image`
 - otherwise -> `null`
 
 Rule boundary:
@@ -1047,6 +1066,8 @@ Approved user-facing fields:
 - `testTargets.variables.Value`
 - `testTargets.variables.State`
 - `testTargets.variables.Command`
+- `testTargets.variables.Image`
+- `testTargets.variables.List`
 - `testTargets.pageLink`
 - `resolvedPageLink`
 
@@ -1108,6 +1129,16 @@ Method:
        - and a matching `MacroDeviceCommand.VariableId` row exists
        - and `MacroDeviceCommand.MacroStepId` is null
      - this is variable-side command evidence, not macro-step command evidence
+   - `Image`
+     - true when:
+       - `buttonIdentity.buttonType = Image`
+       - and any `Variables.ObjectData` token is non-empty
+   - `List`
+     - true when:
+       - `RTIDeviceButtonData.ButtonStyle = 8`
+       - and any `Variables.ObjectData` token is non-empty
+     - this is a user-facing list/browser presence target only
+     - it does not prove the downstream macro-step or diagnostics action chain
 
 Rule boundary:
 - variable target flags are presence indicators only
@@ -1116,6 +1147,8 @@ Rule boundary:
   - `Slider` controls -> `Value`
   - `Toggle` controls -> `State`
   - `LevelIndicatorBar` controls -> `Value`
+  - `Image` controls -> `Image`
+  - `ButtonStyle = 8` list/browser controls -> `List`
   - all other object types remain unresolved by default
 - for variable-side `Command`, use the variable-side command path:
   - `Variables.VariableId -> MacroDeviceCommand.VariableId`
@@ -1125,7 +1158,7 @@ Rule boundary:
 - do not assign `State` to `LevelIndicatorBar` controls
 - do not use macro-step command rows to prove variable-side `Command`
 - do not assign `Command` to `LevelIndicatorBar` controls
-- do not assign `Value`, `State`, or `Command` to unknown future object types by fallback
+- do not assign `Value`, `State`, `Command`, or `List` to unknown future object types by fallback
 
 Validated evidence:
 - `Verrier Home FEENY EDIT v49.apex`
@@ -1158,11 +1191,33 @@ Validated evidence:
     - `buttonIdentity.buttonType = LevelIndicatorBar`
     - backing `Variables.ObjectData` is non-empty
     - no matching variable-side `MacroDeviceCommand` row exists
-  - read-only comparison across Verrier and Sung showed:
+  - `NP Cover`
+    - `buttonIdentity.buttonType = Image`
+    - backing `Variables.ObjectData` is non-empty
+  - `Frame Indicator`
+    - `buttonIdentity.buttonType = Image`
+    - backing `Variables.ObjectData` is non-empty
+- `Dash OS v54.4 iPhone.apex`
+  - `Condition Graphic`
+    - `buttonIdentity.buttonType = Image`
+    - backing `Variables.ObjectData` is non-empty
+- `Verrier Home FEENY EDIT v49.apex`
+  - `Condition Graphic`
+    - `buttonIdentity.buttonType = Image`
+    - backing `Variables.ObjectData` is non-empty
+  - `Browse`
+    - `RTIDeviceButtonData.ButtonStyle = 8`
+    - backing `Variables.ObjectData` is non-empty
+    - user-facing target should be `Variable - List`
+    - diagnostics for the downstream action chain remain unresolved
+- read-only comparison across Verrier and Sung showed:
+    - old slider objects (`ButtonStyle = 5`) follow the same value/command path as current slider objects
     - `Slider` controls are value-backed and command-capable only when the file-backed variable-side command row exists
     - `Toggle` controls are state-backed
     - `LevelIndicatorBar` controls are value-backed and not command-backed
-    - additional `ObjectData` styles exist and must remain unresolved until proven
+    - `Image` controls are image-backed through `ObjectData`, including both `ButtonStyle = 6` and `ButtonStyle = 14`
+    - list/browser controls with `ButtonStyle = 8` are list-backed through `ObjectData` for user-facing test targets only
+    - additional `ObjectData` styles still exist and must remain unresolved until proven
 
 #### Page-link target
 

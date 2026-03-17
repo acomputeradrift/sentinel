@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Any
 
 
-_STYLE_TO_TYPE = {9: "Slider", 7: "Toggle", 10: "Toggle", 11: "LevelIndicatorBar"}
-_TOKEN_ONLY_RE = re.compile(r"^\s*\$%TAG!.*?%\$\s*$", re.IGNORECASE | re.DOTALL)
+_STYLE_TO_TYPE = {5: "Slider", 6: "Image", 9: "Slider", 7: "Toggle", 10: "Toggle", 11: "LevelIndicatorBar", 14: "Image"}
+_TOKEN_ONLY_RE = re.compile(r"^\s*(?:\$%(?:TAG|VARIABLE)!.*?%\$\s*)+$", re.IGNORECASE | re.DOTALL)
+_TEXT_TOKEN_RE = re.compile(r"\$%(TAG|VARIABLE)!(.*?)%\$", re.IGNORECASE | re.DOTALL)
 _DRIVER_TOKEN_RE = re.compile(r"%%([^%]+)%%")
 
 
@@ -72,6 +73,23 @@ def _device_resolution(
 
 def _is_token_only_text(text: str | None) -> bool:
     return bool(text and _TOKEN_ONLY_RE.match(text))
+
+
+def _display_button_text(text: str | None) -> str:
+    raw = str(text or "")
+    if not raw:
+        return raw
+
+    def replace_token(match: re.Match[str]) -> str:
+        token_type = str(match.group(1) or "").strip().upper()
+        token_value = str(match.group(2) or "")
+        if token_type == "TAG":
+            return f"<Text Tag: {token_value}>"
+        if token_type == "VARIABLE":
+            return f"<Text Variable: {token_value}>"
+        return match.group(0)
+
+    return _TEXT_TOKEN_RE.sub(replace_token, raw)
 
 
 def _empty(value: Any) -> bool:
@@ -666,6 +684,7 @@ def _resolve_button(
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
     text = button_row["Text"] or ""
+    display_text = _display_button_text(text)
     style = int(button_row["ButtonStyle"] or 0)
     button_type = _STYLE_TO_TYPE.get(style)
     tag_name = tag_name_by_id.get(tag_id)
@@ -683,9 +702,15 @@ def _resolve_button(
     is_slider = button_type == "Slider"
     is_toggle = button_type == "Toggle"
     is_level_indicator = button_type == "LevelIndicatorBar"
+    is_image = button_type == "Image"
+    is_style8_object = style == 8 and has_object_data
     value_enabled = bool(has_object_data and (is_slider or is_level_indicator))
     state_object_tokens = object_data_tokens if is_toggle else []
     state_enabled = bool(state_object_tokens)
+    image_object_tokens = object_data_tokens if is_image else []
+    image_enabled = bool(image_object_tokens)
+    list_object_tokens = object_data_tokens if is_style8_object else []
+    list_enabled = bool(list_object_tokens)
     variable_command_rows: list[sqlite3.Row] = []
     for variable_id in variable_ids:
         variable_command_rows.extend(variable_command_rows_by_variable_id.get(variable_id, []))
@@ -817,7 +842,7 @@ def _resolve_button(
     user_button = {
         "buttonIdentity": {
             "buttonTagName": tag_name,
-            "text": text,
+            "text": display_text,
             "buttonType": button_type,
         },
         "buttonUI": button_ui,
@@ -833,6 +858,8 @@ def _resolve_button(
                 "Value": value_enabled,
                 "State": state_enabled,
                 "Command": command_enabled,
+                "Image": image_enabled,
+                "List": list_enabled,
             },
             "pageLink": resolved_page_link is not None,
         },
@@ -861,11 +888,13 @@ def _resolve_button(
                 "State": {"enabled": state_enabled, "source": "ObjectData" if state_enabled else None, "objectRef": next(iter(state_object_tokens), None)},
                 "Command": {
                     "enabled": command_enabled,
-                    "source": "MacroDeviceCommand.VariableId" if command_enabled else None,
+                    "source": "MacroDeviceCommand.VariableId" if is_slider and variable_command_rows else None,
                     "controlType": button_type,
                     "driverFunction": next((str(r["Function"] or "").strip() or None for r in variable_command_rows), None),
                     "pairedMacroFunction": None,
                 },
+                "Image": {"enabled": image_enabled, "source": "ObjectData" if image_enabled else None, "objectRef": next(iter(image_object_tokens), None)},
+                "List": {"enabled": list_enabled, "source": "ObjectData" if list_enabled else None, "objectRef": next(iter(list_object_tokens), None)},
             },
             "pageLink": {"pageLinkId": page_link_id, "targetPageId": target_page_id, "targetPageName": None},
         },
@@ -879,6 +908,7 @@ def _resolve_button(
         or value_enabled
         or state_enabled
         or command_enabled
+        or list_enabled
     )
     is_ui_item = bool(tag_id <= 0 and _empty(text) and not has_macros_target and not has_any_variable_target)
     return user_button, diag_button, is_hard or is_ui_item

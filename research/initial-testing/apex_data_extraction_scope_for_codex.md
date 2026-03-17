@@ -1678,16 +1678,20 @@ Proven examples:
 Read-only classification test table:
 
 ```text
-buttonType         objectData   variableCmdLink   expectValue   expectState   expectCommand
-Slider             yes          yes               true          false         true
-Toggle             yes          no                false         true          false
-LevelIndicatorBar  yes          no                true          false         false
-UnknownFutureType  yes          unknown           unknown       unknown       unknown
+buttonType         objectData   variableCmdLink   expectValue   expectState   expectCommand   expectImage
+Slider             yes          yes               true          false         true            false
+Toggle             yes          no                false         true          false           false
+LevelIndicatorBar  yes          no                true          false         false           false
+Image              yes          no                false         false         false           true
+UnknownFutureType  yes          unknown           unknown       unknown       unknown         unknown
 ```
 
 Cross-file validation:
 
 - `Verrier Home FEENY EDIT v49.apex`
+  - `Bedroom 2 Main Light [Slide]` -> old slider variant (`ButtonStyle = 5`)
+  - `VIDEO - Apple TV 1 [Preview]` -> image object (`ButtonStyle = 14`)
+  - `Condition Graphic` -> image object (`ButtonStyle = 6`)
   - `Office Main [Slide]` -> `Slider`
   - `Office Main [Toggle]` -> proven toggle object
   - proven toggle objects also appear with `ButtonStyle = 10`
@@ -1697,6 +1701,10 @@ Cross-file validation:
   - `Circuit 1 - Toggle` -> `Toggle`
   - proven toggle objects appear with `ButtonStyle = 7`
   - `NP Progress` -> `LevelIndicatorBar`
+  - `NP Cover` -> image object (`ButtonStyle = 14`)
+  - `Frame Indicator` -> image object (`ButtonStyle = 6`)
+- `Dash OS v54.4 iPhone.apex`
+  - `Condition Graphic` -> image object (`ButtonStyle = 6`)
 
 Additional read-only findings:
 
@@ -1710,10 +1718,19 @@ Approved extraction implication:
 - `Slider` with non-empty `ObjectData` -> `Value`
 - `Toggle` with non-empty `ObjectData` -> `State`
 - `LevelIndicatorBar` with non-empty `ObjectData` -> `Value`
+- old slider variant (`ButtonStyle = 5`) with non-empty `ObjectData` -> same as `Slider`
+- image object (`ButtonStyle = 6`) with non-empty `ObjectData` -> `Image`
+- image object (`ButtonStyle = 14`) with non-empty `ObjectData` -> `Image`
+- list/browser object (`ButtonStyle = 8`) with non-empty `ObjectData` -> `List` for user-facing test targets only
 - do not assign `State` to `Slider` or `LevelIndicatorBar`
 - do not use driver-specific payload wording as the general extraction rule
 - unknown future object types must not be force-mapped by fallback logic
 - current proven toggle styles are `ButtonStyle = 7` and `ButtonStyle = 10`
+
+Current boundary for `ButtonStyle = 8`:
+
+- this proves only user-facing `Variable - List` presence
+- it does not yet prove the downstream diagnostics macro-step chain for the selected list item
 
 ### Proven variable-side command path for `ObjectData` sliders
 
@@ -3134,6 +3151,29 @@ Status: `partially supported / incomplete`
 - current boundary:
   - this proves raw step resolution
   - full semantic naming for every `FlagType` value is not yet proven and should not be guessed
+
+### I. Display identity text can safely normalize text tokens
+
+- confirmed token families in `RTIDeviceButtonData.Text`:
+  - `$%TAG!<value>%$`
+  - `$%VARIABLE!<value>%$`
+- safe display rule:
+  - convert tag tokens to `<Text Tag: <value>>`
+  - convert variable tokens to `<Text Variable: <value>>`
+  - preserve all surrounding literal text exactly
+- validated examples in `Verrier Home FEENY EDIT v49.apex`:
+  - `$%TAG!SYSTEM - Room Name%$`
+    - `<Text Tag: SYSTEM - Room Name>`
+  - `$%TAG!Stat [Temp In]%$°`
+    - `<Text Tag: Stat [Temp In]>°`
+  - `Setpoint: $%TAG!Stat [Setpoint]%$°`
+    - `Setpoint: <Text Tag: Stat [Setpoint]>°`
+- boundary:
+  - this is a display normalization rule for `buttonIdentity.text`
+  - it does not claim runtime value resolution
+- render caveat:
+  - normalized display strings such as `<Text Tag: ...>` and `<Text Variable: ...>` must be HTML-escaped by the renderer
+  - if they are injected into HTML unescaped, browsers interpret them as tags and the visible label disappears
 
 ### Known schema paths that exist but are not fully explored
 
