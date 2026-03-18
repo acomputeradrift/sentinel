@@ -76,6 +76,7 @@ Example expected behavior:
 - If `unittest` is present, `pytest` must not be used.
 - The AI must verify the existing test framework before writing tests.
 - No implementation is allowed without first creating tests.
+- HTML UI testing must use Playwright runtime UI tests.
 
 ---
 

@@ -355,6 +355,231 @@ class ViewportOrientationRenderingRegressionTest(unittest.TestCase):
         self.assertNotIn("currentViewportIndexes[0]--", html)
         self.assertNotIn("currentViewportIndexes[0]++", html)
 
+    def test_viewport_view_mode_emits_popup_scaffold(self):
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Test Device)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 10},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {"visible": True, "coordinates": {"top": 10, "left": 20, "height": 200, "width": 300}},
+                                                        "landscape": {"visible": True, "coordinates": {"top": 5, "left": 8, "height": 210, "width": 310}},
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {"screenLabels": [], "hardButtons": [], "screenButtons": []},
+                                                            }
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="sample_project_data", device_index=0)
+        self.assertIn("id='vpOverlay'", html)
+        self.assertIn("id='vpPopup'", html)
+        self.assertIn("id='vpPopupPanel'", html)
+        self.assertIn("id='vpPopupScroller'", html)
+        self.assertIn("id='vpPopupStage'", html)
+        self.assertIn("id='vpPopupClose'", html)
+        self.assertIn("function enterViewportMode", html)
+        self.assertIn("function exitViewportMode", html)
+        self.assertIn("viewportMode", html)
+
+    def test_viewport_view_mode_wires_handlers_and_matches_nav_mode_controls(self):
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Test Device)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Base Layer",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "Outside", "text": "Outside", "buttonType": None},
+                                                    "buttonUI": oriented_ui(
+                                                        portrait={"visible": True, "coordinates": {"top": 20, "left": 20, "height": 44, "width": 120}},
+                                                        landscape={"visible": True, "coordinates": {"top": 20, "left": 20, "height": 44, "width": 120}},
+                                                    ),
+                                                    "testTargets": {"text": True, "macros": False, "macroSteps": False, "variables": {}},
+                                                }
+                                            ],
+                                            "hardButtons": [],
+                                        },
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 123},
+                                                "viewportUI": {
+                                                    "navigationMode": "vertical",
+                                                    "orientations": {
+                                                        "portrait": {"visible": True, "coordinates": {"top": 100, "left": 50, "height": 200, "width": 300}},
+                                                        "landscape": {"visible": True, "coordinates": {"top": 80, "left": 30, "height": 180, "width": 320}},
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {
+                                                                                "buttonTagName": "VP Child",
+                                                                                "text": "VP Child",
+                                                                                "buttonType": None,
+                                                                            },
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={
+                                                                                    "visible": True,
+                                                                                    "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120},
+                                                                                },
+                                                                                landscape={
+                                                                                    "visible": True,
+                                                                                    "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120},
+                                                                                },
+                                                                            ),
+                                                                            "testTargets": {"text": True, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        }
+                                                                    ],
+                                                                },
+                                                            }
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="sample_project_data", device_index=0)
+
+        # Viewport click enters viewport view mode.
+        self.assertIn("enterViewportMode(el.dataset.vp", html)
+
+        # Close button exits viewport view mode.
+        self.assertIn("getElementById('vpPopupClose')", html)
+        self.assertIn("addEventListener('click',()=>exitViewportMode()", html)
+
+        # Escape key exits viewport view mode.
+        self.assertIn("addEventListener('keydown'", html)
+        self.assertIn("Escape", html)
+
+        # Overlay is visual, while pointer-events blocks interaction with the underlying rti canvas.
+        self.assertIn("rgba(255,255,255,0.05)", html)
+        self.assertIn("pointer-events:none", html)
+        self.assertIn(".viewport-mode #rtiCanvas", html)
+
+        # Viewport buttons are not clickable on the main canvas (viewport itself is the click target).
+        self.assertIn(".device-page .btn-wrap.vp-btn", html)
+        self.assertIn("pointer-events:none", html)
+        # Popup duplicates must be clickable.
+        self.assertIn(".vp-popup-stage .btn-wrap.vp-btn", html)
+        self.assertIn("pointer-events:auto", html)
+
+        # Clicking outside the popup panel closes it.
+        self.assertIn("getElementById('vpPopup')", html)
+        self.assertIn("e.target===vpPopup", html)
+
+        # Controls differ based on viewport navigation mode.
+        self.assertIn("id='vpPopupUp'", html)
+        self.assertIn("id='vpPopupDown'", html)
+        self.assertIn("id='vpPopupPrev'", html)
+        self.assertIn("id='vpPopupNext'", html)
+        self.assertIn("data-nav-mode", html)
+
 
 if __name__ == "__main__":
     unittest.main()

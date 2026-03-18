@@ -266,17 +266,32 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
         landscape_vp_c = _ui_coordinates(viewport_ui, "landscape")
         off_top = int(vp_c.get("top") or 0)
         off_left = int(vp_c.get("left") or 0)
-        frames: list[dict[str, Any]] = []
+        frame_entries: list[dict[str, Any]] = []
         if viewport.get("layers"):
-            for layer in viewport.get("layers", []):
-                frames.extend(layer.get("frames", []))
+            for layer_index, layer in enumerate(viewport.get("layers", [])):
+                vp_layer_key = f"vp-layer-{layer_index}"
+                vp_layer_name = str(layer.get("layerName") or "").strip()
+                vp_layer_order = int(layer.get("layerOrder", 0) or 0)
+                for frame in layer.get("frames", []):
+                    frame_entries.append(
+                        {
+                            "frame": frame,
+                            "vp_layer_key": vp_layer_key,
+                            "vp_layer_name": vp_layer_name,
+                            "vp_layer_order": vp_layer_order,
+                        }
+                    )
         else:
-            frames = list(viewport.get("frames", []))
-        frames = sorted(frames, key=lambda f: int(f.get("frameId", 0)))
-        if not frames:
+            for frame in list(viewport.get("frames", [])):
+                frame_entries.append({"frame": frame, "vp_layer_key": "vp-layer-0", "vp_layer_name": "", "vp_layer_order": 0})
+
+        frame_entries = sorted(frame_entries, key=lambda e: int((e.get("frame") or {}).get("frameId", 0)))
+        frames = [e["frame"] for e in frame_entries]
+        if not frame_entries:
             continue
         default_frame_id = int(frames[0].get("frameId", 0))
-        for frame in frames:
+        for entry_frame in frame_entries:
+            frame = entry_frame["frame"]
             frame_id = int(frame.get("frameId", 0))
             cats = frame.get("buttonCategories", {})
             for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
@@ -297,6 +312,9 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
                             "vp_landscape_visible": vp_landscape_visible,
                             "vp_index": vp_index,
                             "frame_id": frame_id,
+                            "vp_layer_key": str(entry_frame.get("vp_layer_key") or ""),
+                            "vp_layer_name": str(entry_frame.get("vp_layer_name") or ""),
+                            "vp_layer_order": int(entry_frame.get("vp_layer_order") or 0),
                             "visible": frame_id == default_frame_id and bool(_orientation_ui(btn["buttonUI"], orientation).get("visible", True)),
                             "owner_layer_key": entry["layer_key"],
                             "owner_layer_order": entry["layer_order"],
@@ -464,6 +482,9 @@ def _page_payload(
                 extra_style=extra,
                 extra_attrs=(
                     f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+                    f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''))}' "
+                    f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''))}' "
+                    f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
                     f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
                     f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}' "
                     f"data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'"
@@ -494,8 +515,9 @@ def _page_payload(
         vp_frames.append(sorted({int(f.get("frameId", 0)) for f in frames}))
     viewport_boxes = "".join(
         [
-            "<div class='vp-box' style='z-index:{z};' data-vp='{vp_index}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
+            "<div class='vp-box' style='z-index:{z};' data-vp='{vp_index}' data-nav-mode='{nav_mode}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
                 z=50 + int(c["layer_order"]),
+                nav_mode=escape(str((c.get("viewport_ui") or {}).get("navigationMode") or "page")),
                 orientation_attrs=_orientation_data_attrs(c["viewport_ui"]),
                 **c,
             )
@@ -568,8 +590,33 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
-.vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:none;z-index:1;box-sizing:border-box;}}
+ .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:auto;cursor:pointer;z-index:1;box-sizing:border-box;}}
+ .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:9000;pointer-events:none;display:none;}}
+ .vp-close{{position:absolute;top:10px;right:10px;z-index:9600;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:#f7fbff;color:#29445a;font-size:26px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;box-sizing:border-box;}}
+ .vp-close{{display:none !important;}}
+ .viewport-mode .vp-overlay{{display:block;}}
+ .viewport-mode .vp-close{{display:flex;}}
+ .viewport-mode .vp-focus{{z-index:9500 !important;pointer-events:auto;}}
+ .viewport-mode .vp-box:not(.vp-focus){{pointer-events:none;}}
 .btn-wrap{{position:absolute;z-index:2;}}
+ .device-page .btn-wrap.vp-btn{{pointer-events:none;}}
+ .vp-popup-stage .btn-wrap.vp-btn{{pointer-events:auto;}}
+ .viewport-mode #rtiCanvas{{pointer-events:none;overflow:hidden;}}
+ .vp-popup{{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
+ .viewport-mode .vp-popup{{display:flex;}}
+ .vp-popup[hidden]{{display:none;}}
+ .vp-popup-panel{{position:relative;width:min(920px,calc(100vw - 56px));height:min(720px,calc(100vh - 56px));background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;}}
+ .vp-popup-scroller{{position:absolute;inset:0;overflow:hidden;}}
+ .vp-popup-stage{{position:relative;transform-origin:0 0;}}
+ .vp-popup-close{{position:absolute;top:12px;right:18px;z-index:20;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:#f7fbff;color:#29445a;font-size:26px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
+ .vp-popup-nav{{position:absolute;z-index:18;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:rgba(247,251,255,.94);color:#29445a;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
+ .vp-popup-prev{{left:14px;top:50%;transform:translateY(-50%);}}
+ .vp-popup-next{{right:14px;top:50%;transform:translateY(-50%);}}
+ .vp-popup-up{{left:50%;top:14px;transform:translateX(-50%);}}
+ .vp-popup-down{{left:50%;bottom:14px;transform:translateX(-50%);}}
+ .vp-popup-indicator{{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:18;}}
+ .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
+ .vp-popup-vcontent{{position:relative;left:0;top:0;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
 .page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:{'0' if link_hover_enabled else '1'};pointer-events:{'none' if link_hover_enabled else 'auto'};transition:opacity .15s ease;}}
 .btn-wrap:hover .page-link-hit{{opacity:1;pointer-events:auto;}}
@@ -611,7 +658,8 @@ textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'><div class='vp-indicator' id='vpIndicator'></div></div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
-<div class='rti-canvas' id='rtiCanvas'><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
+ <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><button class='vp-close' id='vpClose' type='button' aria-label='Close viewport view' hidden>&times;</button><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
+<div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
@@ -632,18 +680,27 @@ let currentZoomPercent=ZOOM_DEFAULT;
 let currentTotalScale=1;
 let currentDeviceLeft=0;
 let currentDeviceTop=0;
-let activePageIndex=0;
-let currentViewportIndexes=VP_FRAMES.map(()=>0);
-let currentOrientation=ORIENTATION_STATE.current;
-const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
+ let activePageIndex=0;
+ let currentViewportIndexes=VP_FRAMES.map(()=>0);
+ let currentOrientation=ORIENTATION_STATE.current;
+ const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupNavMode:'page',popupScrollY:0}};
+ const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
-document.querySelectorAll('.test-btn').forEach(b=>b.addEventListener('click',()=>{{
- const m=JSON.parse(b.dataset.meta||'{{}}');
- const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
- pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
- rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
-ov.classList.add('open');
-}}));
+function bindTestButtonClicks(root) {{
+ const scope=root||document;
+ scope.querySelectorAll('.test-btn').forEach(b=>{{
+  if (b.dataset.boundTestBtn) return;
+  b.dataset.boundTestBtn='1';
+  b.addEventListener('click',()=>{{
+   const m=JSON.parse(b.dataset.meta||'{{}}');
+   const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
+   pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+   rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+   ov.classList.add('open');
+  }});
+ }});
+}}
+bindTestButtonClicks(document);
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
  function activePageEl() {{
@@ -653,6 +710,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
   return PAGE_STATE[activePageIndex] || {{pageName:'',vpFrames:[],layers:[]}};
  }}
  function activeViewportIndex() {{
+  if (viewportMode.active) return Number(viewportMode.vpIndex||0);
   const pageEl=activePageEl();
   const frames=(activePageState().vpFrames||[]);
   if (!pageEl || !frames.length) return 0;
@@ -661,6 +719,299 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
    if (box && String(box.dataset.visible||'1')==='1') return i;
   }}
   return 0;
+ }}
+ function focusedViewportBox() {{
+  const pageEl=activePageEl();
+  if (!pageEl) return null;
+  const vpIndex=Number(viewportMode.vpIndex||0);
+  return pageEl.querySelector(`.vp-box[data-vp="${{vpIndex}}"]`);
+ }}
+ function viewportSupportsOrientation(vpBox, orientation) {{
+  if (!vpBox) return true;
+  const short = (orientation==='landscape') ? 'l' : 'p';
+  const key = short+'Visible';
+  return String(vpBox.dataset[key]||'1')==='1';
+ }}
+ function focusViewportElements() {{
+  const pageEl=activePageEl();
+  if (!pageEl) return;
+  const vpIndex=Number(viewportMode.vpIndex||0);
+  pageEl.querySelectorAll('.vp-box, .vp-btn').forEach(el=>{{
+   const match=Number(el.dataset.vp||-1)===vpIndex;
+   el.classList.toggle('vp-focus', viewportMode.active && match);
+  }});
+ }}
+ function zoomToFocusedViewport() {{
+  const rtiCanvas=document.getElementById('rtiCanvas');
+  const vpBox=focusedViewportBox();
+  if (!rtiCanvas || !vpBox) return;
+  const vw=Number(vpBox.dataset.width||0);
+  const vh=Number(vpBox.dataset.height||0);
+  if (vw<=0 || vh<=0) return;
+  const targetW=(rtiCanvas.clientWidth||1)*0.88;
+  const targetH=(rtiCanvas.clientHeight||1)*0.88;
+  const curW=vw*(currentTotalScale||1);
+  const curH=vh*(currentTotalScale||1);
+  if (curW<=0 || curH<=0) return;
+  const mul=Math.min(targetW/curW, targetH/curH);
+  if (!Number.isFinite(mul) || mul<=0) return;
+  const nextZoom=clamp(currentZoomPercent*mul, ZOOM_DEFAULT, ZOOM_MAX);
+  currentZoomPercent=nextZoom;
+ }}
+ function centerFocusedViewport() {{
+  const rtiCanvas=document.getElementById('rtiCanvas');
+  const vpBox=focusedViewportBox();
+  if (!rtiCanvas || !vpBox) return;
+  const left=Number(vpBox.dataset.left||0)*(currentTotalScale||1);
+  const top=Number(vpBox.dataset.top||0)*(currentTotalScale||1);
+  const width=Number(vpBox.dataset.width||0)*(currentTotalScale||1);
+  const height=Number(vpBox.dataset.height||0)*(currentTotalScale||1);
+  const cx=(currentDeviceLeft||0)+left+(width/2);
+  const cy=(currentDeviceTop||0)+top+(height/2);
+  const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
+  const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
+  rtiCanvas.scrollLeft=clamp(cx-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
+  rtiCanvas.scrollTop=clamp(cy-(rtiCanvas.clientHeight/2),0,maxScrollTop);
+ }}
+ function popupElements() {{
+  return {{
+   popup: document.getElementById('vpPopup'),
+   panel: document.getElementById('vpPopupPanel'),
+   scroller: document.getElementById('vpPopupScroller'),
+   stage: document.getElementById('vpPopupStage'),
+   close: document.getElementById('vpPopupClose'),
+   prev: document.getElementById('vpPopupPrev'),
+   next: document.getElementById('vpPopupNext'),
+   up: document.getElementById('vpPopupUp'),
+   down: document.getElementById('vpPopupDown'),
+   indicator: document.getElementById('vpPopupIndicator')
+  }};
+ }}
+ function activeViewportFrameId(vpIndex) {{
+  const frames=activePageState().vpFrames||[];
+  const pageFrames=frames[vpIndex]||[];
+  if (!pageFrames.length) return null;
+  const idx=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+  currentViewportIndexes[vpIndex]=idx;
+  return pageFrames[idx];
+ }}
+ function popupNavMode() {{
+  const vpBox=focusedViewportBox();
+  const nav=(vpBox && vpBox.dataset.navMode) ? String(vpBox.dataset.navMode||'page') : 'page';
+  return nav;
+ }}
+ function syncPopupControls() {{
+  const els=popupElements();
+  if (!els.popup) return;
+  const nav=viewportMode.popupNavMode||'page';
+  const isPage=(nav==='page');
+  if (els.prev) els.prev.style.display=isPage?'':'none';
+  if (els.next) els.next.style.display=isPage?'':'none';
+  if (els.indicator) els.indicator.style.display=isPage?'':'none';
+  if (els.up) els.up.style.display=isPage?'none':'';
+  if (els.down) els.down.style.display=isPage?'none':'';
+ }}
+ function renderPopupIndicator() {{
+  const els=popupElements();
+  if (!els.indicator) return;
+  if ((viewportMode.popupNavMode||'page')!=='page') {{
+   els.indicator.innerHTML='';
+   return;
+  }}
+  const vpIndex=Number(viewportMode.vpIndex||0);
+  const frames=(activePageState().vpFrames||[]);
+  const pageFrames=frames[vpIndex]||[];
+  if (!pageFrames.length) {{
+   els.indicator.innerHTML='';
+   return;
+  }}
+  const idx=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+  els.indicator.innerHTML=pageFrames.map((_,i)=>`<span class="dot${{i===idx?' active':''}}" data-dot="${{i}}"></span>`).join('');
+ }}
+  function applyViewportPopupLayout() {{
+   if (!viewportMode.active) return;
+   const els=popupElements();
+   const stage=els.stage;
+   const scroller=els.scroller;
+   const vpBox=focusedViewportBox();
+   if (!stage || !scroller || !vpBox) return;
+   const nav=viewportMode.popupNavMode||'page';
+   const vw=Number(vpBox.dataset.width||0);
+   const vh=Number(vpBox.dataset.height||0);
+   if (vw<=0 || vh<=0) return;
+   const isPage=(nav==='page');
+   // Reserve the real control space so the viewport box can be centered between the buttons.
+   let topReserve=0;
+   let bottomReserve=0;
+   if (!isPage) {{
+    const sr=scroller.getBoundingClientRect();
+    const ur=els.up ? els.up.getBoundingClientRect() : null;
+    const dr=els.down ? els.down.getBoundingClientRect() : null;
+    if (ur) topReserve=Math.max(0, (ur.bottom - sr.top)) + 8;
+    if (dr) bottomReserve=Math.max(0, (sr.bottom - dr.top)) + 8;
+   }}
+   scroller.style.display='flex';
+   scroller.style.alignItems='center';
+   scroller.style.justifyContent='center';
+   scroller.style.boxSizing='border-box';
+   scroller.style.paddingTop=`${{topReserve}}px`;
+   scroller.style.paddingBottom=`${{bottomReserve}}px`;
+  const availW=Math.max(scroller.clientWidth||1,1);
+  const availH=Math.max((scroller.clientHeight||1)-topReserve-bottomReserve,1);
+  const fit=Math.min(availW/vw, availH/vh);
+  viewportMode.popupFitScale=(Number.isFinite(fit) && fit>0) ? fit : 1;
+  const zoom=clamp(Number(viewportMode.popupZoomPercent||ZOOM_DEFAULT), ZOOM_DEFAULT, ZOOM_MAX);
+  viewportMode.popupZoomPercent=zoom;
+  const scale=viewportMode.popupFitScale*(zoom/100);
+  stage.dataset.popupScale=String(scale);
+  stage.style.width=`${{vw*scale}}px`;
+  stage.style.height=`${{vh*scale}}px`;
+
+  const viewportWindow=stage.querySelector('.vp-popup-viewport');
+  if (viewportWindow) {{
+   viewportWindow.style.width=`${{vw*scale}}px`;
+   viewportWindow.style.height=`${{vh*scale}}px`;
+  }}
+
+  const content=stage.querySelector('.vp-popup-vcontent');
+  const contentW=Number(stage.dataset.contentW||vw);
+  const contentH=Number(stage.dataset.contentH||vh);
+  if (content) {{
+   content.style.width=`${{contentW*scale}}px`;
+   content.style.height=`${{contentH*scale}}px`;
+  }}
+
+  stage.querySelectorAll('.btn-wrap.vp-btn[data-src-left]').forEach(el=>{{
+   const left=Number(el.dataset.srcLeft||0)*scale;
+   const top=Number(el.dataset.srcTop||0)*scale;
+   const width=Number(el.dataset.srcWidth||0)*scale;
+   const height=Number(el.dataset.srcHeight||0)*scale;
+   el.style.left=`${{left}}px`;
+   el.style.top=`${{top}}px`;
+   el.style.width=`${{width}}px`;
+   el.style.height=`${{height}}px`;
+   const btn=el.querySelector('.test-btn');
+   if (btn) {{
+    const sourceFont=Number(el.dataset.fontSize||APP_UI.buttonPresentation?.fallbackFontSize||10);
+    if (APP_UI.buttonPresentation?.scaleRtiDerivedFontSizes) btn.style.fontSize=`${{Math.max(1, sourceFont*scale)}}px`;
+    else btn.style.fontSize=`${{sourceFont}}px`;
+    btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+   }}
+  }});
+
+  // Virtual scrolling for vertical scroll viewports (no native scrollbars).
+  if (!isPage && content) {{
+   const maxScroll=Math.max(0, contentH - vh);
+   const next=clamp(Number(viewportMode.popupScrollY||0), 0, maxScroll);
+   viewportMode.popupScrollY=next;
+   content.style.transform=`translateY(-${{next*scale}}px)`;
+  }} else if (content) {{
+   viewportMode.popupScrollY=0;
+   content.style.transform='';
+  }}
+ }}
+  function renderViewportPopup() {{
+   if (!viewportMode.active) return;
+   const els=popupElements();
+   const stage=els.stage;
+   const scroller=els.scroller;
+   const pageEl=activePageEl();
+   const vpBox=focusedViewportBox();
+   if (!stage || !scroller || !pageEl || !vpBox) return;
+   const vpIndex=Number(viewportMode.vpIndex||0);
+   viewportMode.popupNavMode=popupNavMode();
+   syncPopupControls();
+   stage.innerHTML='';
+   const nav=viewportMode.popupNavMode||'page';
+   const vw=Number(vpBox.dataset.width||0);
+   const vh=Number(vpBox.dataset.height||0);
+   const vpLeft=Number(vpBox.dataset.left||0);
+   const vpTop=Number(vpBox.dataset.top||0);
+   const short=currentOrientation==='landscape' ? 'l' : 'p';
+   const activeFrame=activeViewportFrameId(vpIndex);
+   let contentBottom=vh;
+   let contentRight=vw;
+   const btnNodes=[...pageEl.querySelectorAll(`.btn-wrap.vp-btn[data-vp="${{vpIndex}}"]`)];
+   btnNodes.forEach(node=>{{
+    // Popup uses viewport-relative coordinates; source nodes store device-absolute coords.
+    const relTop=Number(node.dataset.top||0) - vpTop;
+    const relLeft=Number(node.dataset.left||0) - vpLeft;
+    const b=relTop + Number(node.dataset.height||0);
+    const r=relLeft + Number(node.dataset.width||0);
+    if (b>contentBottom) contentBottom=b;
+    if (r>contentRight) contentRight=r;
+   }});
+   stage.dataset.contentW=String(Math.max(vw, contentRight));
+   stage.dataset.contentH=String(nav==='page' ? vh : Math.max(vh, contentBottom));
+
+  const viewportWindow=document.createElement('div');
+  viewportWindow.className='vp-popup-viewport';
+  const viewportContent=document.createElement('div');
+  viewportContent.className='vp-popup-vcontent';
+  viewportWindow.appendChild(viewportContent);
+  stage.appendChild(viewportWindow);
+
+   viewportMode.popupScrollY=0;
+   btnNodes.forEach(node=>{{
+    const clone=node.cloneNode(true);
+    clone.style.display='';
+    // Convert from device-absolute (source) to viewport-relative (popup).
+    clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
+    clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
+    clone.dataset.srcWidth=String(Number(node.dataset.width||0));
+    clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+    let show=true;
+    if (activeFrame!=null) show = show && (Number(clone.dataset.frame)===Number(activeFrame));
+    const vpVisible=(short==='l' ? (clone.dataset.vpLv||'1') : (clone.dataset.vpPv||'1'))==='1';
+   if (!vpVisible) show=false;
+   const vpLayerKey=String(clone.dataset.vpLayerKey||'');
+   if (vpLayerKey && activeLayerVisibility()[vpLayerKey]===false) show=false;
+   clone.style.display=show?'':'none';
+   viewportContent.appendChild(clone);
+  }});
+  bindTestButtonClicks(viewportContent);
+  renderPopupIndicator();
+  viewportMode.popupZoomPercent=ZOOM_DEFAULT;
+  applyViewportPopupLayout();
+ }}
+ function enterViewportMode(vpIndex) {{
+  const overlay=document.getElementById('vpOverlay');
+  const closeBtn=document.getElementById('vpPopupClose');
+  const appCanvas=document.getElementById('appCanvas');
+  const viewportRoot=document.body || appCanvas;
+  const popup=document.getElementById('vpPopup');
+  if (!overlay || !closeBtn || !viewportRoot || !popup) return;
+  viewportMode.active=true;
+  viewportMode.vpIndex=Number(vpIndex||0);
+  viewportMode.preZoom=currentZoomPercent;
+  overlay.removeAttribute('hidden');
+  popup.removeAttribute('hidden');
+  viewportRoot.classList.add('viewport-mode');
+  focusViewportElements();
+  renderViewportPopup();
+  renderLayerPanel();
+  applyLayerVisibility();
+ }}
+ function exitViewportMode() {{
+  const overlay=document.getElementById('vpOverlay');
+  const closeBtn=document.getElementById('vpPopupClose');
+  const appCanvas=document.getElementById('appCanvas');
+  const viewportRoot=document.body || appCanvas;
+  const popup=document.getElementById('vpPopup');
+  const stage=document.getElementById('vpPopupStage');
+  if (!overlay || !closeBtn || !viewportRoot || !popup) return;
+  viewportMode.active=false;
+  viewportRoot.classList.remove('viewport-mode');
+  overlay.setAttribute('hidden','hidden');
+  popup.setAttribute('hidden','hidden');
+  if (stage) stage.innerHTML='';
+  if (viewportMode.preZoom!=null) currentZoomPercent=viewportMode.preZoom;
+  viewportMode.preZoom=null;
+  focusViewportElements();
+  applyRtiLayout();
+  renderLayerPanel();
+  syncViewportControls();
+  applyLayerVisibility();
  }}
 function layerScopeKey(state) {{
  return [PROJECT_SESSION_KEY, state?.deviceName||'', state?.pageName||''].join('::');
@@ -688,8 +1039,39 @@ function ensureLayerVisibility(state) {{
  saveLayerVisibility(scopeKey, visibility);
  return visibility;
 }}
+function activeViewportLayers() {{
+ const pageEl=activePageEl();
+ if (!pageEl) return [];
+ const vpIndex=Number(viewportMode.vpIndex||0);
+ const map=new Map();
+ pageEl.querySelectorAll(`.vp-btn[data-vp="${{vpIndex}}"]`).forEach(el=>{{
+   const key=String(el.dataset.vpLayerKey||'').trim();
+   if (!key) return;
+   const name=(String(el.dataset.vpLayerName||'').trim() || key);
+   const order=Number(el.dataset.vpLayerOrder||0);
+   if (!map.has(key)) map.set(key, {{key, name, layerOrder: order}});
+ }});
+ return [...map.values()].sort((a,b)=>Number(b.layerOrder||0)-Number(a.layerOrder||0));
+}}
+function activeLayerList() {{
+ const state=activePageState();
+ return viewportMode.active ? activeViewportLayers() : (state.layers||[]);
+}}
+function activeLayerScopeKey() {{
+ const base=layerScopeKey(activePageState());
+ return viewportMode.active ? (base+`::viewport:${{Number(viewportMode.vpIndex||0)}}`) : base;
+}}
+function ensureActiveLayerVisibility() {{
+ const layers=activeLayerList();
+ const scopeKey=activeLayerScopeKey();
+ const stored=loadLayerVisibility(scopeKey);
+ const visibility=(stored && typeof stored==='object') ? stored : Object.fromEntries((layers||[]).map(layer=>[layer.key,true]));
+ (layers||[]).forEach(layer=>{{ if (!(layer.key in visibility)) visibility[layer.key]=true; }});
+ saveLayerVisibility(scopeKey, visibility);
+ return visibility;
+}}
 function activeLayerVisibility() {{
- return ensureLayerVisibility(activePageState());
+ return ensureActiveLayerVisibility();
 }}
 function currentOrientationSize() {{
  const size=(ORIENTATION_STATE.sizes && ORIENTATION_STATE.sizes[currentOrientation]) || SOURCE_DEVICE_SIZE;
@@ -723,16 +1105,22 @@ function renderOrientationToggle() {{
   button.classList.toggle('active', button.dataset.orientation===currentOrientation);
   if (!button.dataset.bound) {{
    button.dataset.bound='1';
-   button.addEventListener('click', ()=>{{
-    const next=button.dataset.orientation||'portrait';
-    if (next===currentOrientation || !options.includes(next)) return;
-    currentOrientation=next;
-    applyOrientationState();
-    applyRtiLayout();
-    applyLayerVisibility();
-   }});
-  }}
- }});
+    button.addEventListener('click', ()=>{{
+     const next=button.dataset.orientation||'portrait';
+     if (next===currentOrientation || !options.includes(next)) return;
+     if (viewportMode.active) {{
+      const vpBox=focusedViewportBox();
+      if (vpBox && !viewportSupportsOrientation(vpBox, next)) return;
+     }}
+     currentOrientation=next;
+     applyOrientationState();
+     focusViewportElements();
+     applyRtiLayout();
+     applyLayerVisibility();
+     if (viewportMode.active) renderViewportPopup();
+    }});
+   }}
+  }});
 }}
 function isLayerVisible(layerKey) {{
  return activeLayerVisibility()[layerKey] !== false;
@@ -741,32 +1129,36 @@ function renderLayerPanel() {{
  const panel=document.getElementById('layerPanel');
  const list=document.getElementById('layerList');
  if (!panel || !list) return;
- const layers=activePageState().layers||[];
- if (!layers.length) {{
-   list.innerHTML='';
-   panel.setAttribute('hidden','hidden');
-   return;
- }}
+  const layers=activeLayerList();
+  if (!layers.length) {{
+    list.innerHTML='';
+    panel.setAttribute('hidden','hidden');
+    return;
+  }}
  list.innerHTML=layers.map(layer=>`<button class="layer-toggle${{isLayerVisible(layer.key)?'':' is-inactive'}}" type="button" data-layer-key="${{esc(layer.key)}}" aria-pressed="${{isLayerVisible(layer.key)?'true':'false'}}">${{esc(layer.name)}}</button>`).join('');
  panel.removeAttribute('hidden');
- list.querySelectorAll('.layer-toggle').forEach(button=>button.addEventListener('click',()=>{{
-   const key=button.dataset.layerKey||'';
-   const state=activePageState();
-   const scopeKey=layerScopeKey(state);
-   const visibility=ensureLayerVisibility(state);
-   visibility[key]=!(visibility[key] !== false);
-   saveLayerVisibility(scopeKey, visibility);
-   renderLayerPanel();
-   applyLayerVisibility();
- }}));
+  list.querySelectorAll('.layer-toggle').forEach(button=>button.addEventListener('click',()=>{{
+    const key=button.dataset.layerKey||'';
+    const scopeKey=activeLayerScopeKey();
+    const visibility=ensureActiveLayerVisibility();
+    visibility[key]=!(visibility[key] !== false);
+    saveLayerVisibility(scopeKey, visibility);
+    renderLayerPanel();
+    applyLayerVisibility();
+  }}));
 }}
 function applyLayerVisibility() {{
  const pageEl=activePageEl();
  if (!pageEl) return;
  pageEl.querySelectorAll('.vp-box').forEach(el=>{{
-   const layerKey=String(el.dataset.ownerLayerKey||'');
    const baseVisible=String(el.dataset.visible||'1')==='1';
-   el.style.display=(isLayerVisible(layerKey) && baseVisible)?'':'none';
+   if (viewportMode.active) {{
+    const match=Number(el.dataset.vp||-1)===Number(viewportMode.vpIndex||0);
+    el.style.display=(match && baseVisible)?'':'none';
+   }} else {{
+    const layerKey=String(el.dataset.ownerLayerKey||'');
+    el.style.display=(isLayerVisible(layerKey) && baseVisible)?'':'none';
+   }}
  }});
  pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
@@ -774,9 +1166,16 @@ function applyLayerVisibility() {{
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
    if (el.classList.contains('vp-btn')) {{
+     if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
+      shouldShow=false;
+     }}
      const short=currentOrientation==='landscape' ? 'l' : 'p';
      const vpVisible=(short==='l' ? (el.dataset.vpLv||'1') : (el.dataset.vpPv||'1'))==='1';
      if (!vpVisible) shouldShow=false;
+     if (viewportMode.active) {{
+      const vpLayerKey=String(el.dataset.vpLayerKey||'');
+      if (vpLayerKey && activeLayerVisibility()[vpLayerKey]===false) shouldShow=false;
+     }}
      const vpIndex=Number(el.dataset.vp||0);
      const frames=activePageState().vpFrames||[];
      const pageFrames=frames[vpIndex]||[];
@@ -800,6 +1199,15 @@ function syncHeader() {{
  function syncViewportControls() {{
   const state=activePageState();
   const frames=state.vpFrames||[];
+  if (!viewportMode.active) {{
+   const prev=document.getElementById('vpPrev');
+   const next=document.getElementById('vpNext');
+   const indicator=document.getElementById('vpIndicator');
+   if (prev) prev.style.display='none';
+   if (next) next.style.display='none';
+   if (indicator) indicator.innerHTML='';
+   return;
+  }}
   const vpIndex=activeViewportIndex();
   const pageFrames=frames[vpIndex]||[];
   const hasViewportNav=Boolean(VIEWPORT_NAV.enabled && pageFrames.length);
@@ -914,8 +1322,15 @@ function applyRtiLayout() {{
   let viewportRight=viewportLeft+fittedWidth;
   let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;
   let viewportBottom=viewportTop+fittedHeight;
+  const firstViewport=pageEl ? pageEl.querySelector('.vp-box') : null;
    const vpIndex=activeViewportIndex();
    const vpBox=pageEl ? pageEl.querySelector(`.vp-box[data-vp="${{vpIndex}}"]`) : null;
+   if (firstViewport && !vpBox) {{
+     viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
+     viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
+     viewportRight=viewportLeft+(Number(firstViewport.dataset.width||0)*totalScale);
+     viewportBottom=viewportTop+(Number(firstViewport.dataset.height||0)*totalScale);
+   }}
    if (vpBox) {{
      viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(vpBox.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
      viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(vpBox.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
@@ -961,7 +1376,7 @@ function applyRtiLayout() {{
    zoomControls.style.left = `${{zoomLeft}}px`;
    zoomControls.style.top = `${{controls.top}}px`;
    const zoomReset = zoomControls.querySelector('.zoom-reset');
-   if (zoomReset) zoomReset.textContent = `${{currentZoomPercent}}%`;
+   if (zoomReset) zoomReset.textContent = viewportMode.active ? `${{Number(viewportMode.popupZoomPercent||ZOOM_DEFAULT)}}%` : `${{currentZoomPercent}}%`;
  }}
 
  document.querySelectorAll('.device-page').forEach(page=>page.classList.toggle('active', Number(page.dataset.pageIndex)===activePageIndex));
@@ -1023,6 +1438,11 @@ function applyRtiLayout() {{
 }}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
 function updateZoom(nextPercent){{
+ if (viewportMode.active) {{
+  viewportMode.popupZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
+  applyViewportPopupLayout();
+  return;
+ }}
  const rtiCanvas=document.getElementById('rtiCanvas');
  if (!rtiCanvas) return;
  const oldScale=currentTotalScale||1;
@@ -1069,6 +1489,60 @@ const zoomReset=document.querySelector('.zoom-reset');
 if (zoomDec) zoomDec.addEventListener('click',()=>updateZoom(currentZoomPercent-ZOOM_STEP));
 if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(currentZoomPercent+ZOOM_STEP));
 if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
+const vpPopupClose=document.getElementById('vpPopupClose');
+if (vpPopupClose) vpPopupClose.addEventListener('click',()=>exitViewportMode());
+const vpPopup=document.getElementById('vpPopup');
+if (vpPopup) vpPopup.addEventListener('click', e=>{{
+ if (e && e.target===vpPopup) exitViewportMode();
+}});
+document.addEventListener('keydown', e=>{{
+ if (!viewportMode.active) return;
+ if ((e && e.key)==='Escape') exitViewportMode();
+}});
+document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
+ if (el.dataset.boundVpClick) return;
+ el.dataset.boundVpClick='1';
+ el.addEventListener('click', ()=>{{
+  if (viewportMode.active) return;
+  enterViewportMode(el.dataset.vp);
+ }});
+}});
+const popupUp=document.getElementById('vpPopupUp');
+const popupDown=document.getElementById('vpPopupDown');
+if (popupUp) popupUp.addEventListener('click',()=>{{
+ const scroller=document.getElementById('vpPopupScroller');
+ if (!scroller) return;
+ scroller.scrollBy({{top: -Math.max(80, (scroller.clientHeight||0)*0.8), left:0, behavior:'smooth'}});
+}});
+if (popupDown) popupDown.addEventListener('click',()=>{{
+ const scroller=document.getElementById('vpPopupScroller');
+ if (!scroller) return;
+ scroller.scrollBy({{top: Math.max(80, (scroller.clientHeight||0)*0.8), left:0, behavior:'smooth'}});
+}});
+const popupPrev=document.getElementById('vpPopupPrev');
+const popupNext=document.getElementById('vpPopupNext');
+if (popupPrev) popupPrev.addEventListener('click',()=>{{
+ if (!viewportMode.active) return;
+ if ((viewportMode.popupNavMode||'page')!=='page') return;
+ const vpIndex=Number(viewportMode.vpIndex||0);
+ const frames=activePageState().vpFrames||[];
+ const pageFrames=frames[vpIndex]||[];
+ if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)>0) {{
+  currentViewportIndexes[vpIndex]--;
+  renderViewportPopup();
+ }}
+}});
+if (popupNext) popupNext.addEventListener('click',()=>{{
+ if (!viewportMode.active) return;
+ if ((viewportMode.popupNavMode||'page')!=='page') return;
+ const vpIndex=Number(viewportMode.vpIndex||0);
+ const frames=activePageState().vpFrames||[];
+ const pageFrames=frames[vpIndex]||[];
+ if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)<pageFrames.length-1) {{
+  currentViewportIndexes[vpIndex]++;
+  renderViewportPopup();
+ }}
+}});
  const prev=document.getElementById('vpPrev');
  const next=document.getElementById('vpNext');
  if (prev && next) {{
