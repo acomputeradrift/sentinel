@@ -164,6 +164,17 @@ def _orientation_ui(ui: dict[str, Any], orientation: str) -> dict[str, Any]:
     return ui
 
 
+def _visible_in_any_orientation(ui: dict[str, Any]) -> bool:
+    orientations = ui.get("orientations", {})
+    if isinstance(orientations, dict) and orientations:
+        portrait = orientations.get("portrait")
+        landscape = orientations.get("landscape")
+        portrait_visible = bool(portrait.get("visible", True)) if isinstance(portrait, dict) else False
+        landscape_visible = bool(landscape.get("visible", True)) if isinstance(landscape, dict) else False
+        return portrait_visible or landscape_visible
+    return bool(ui.get("visible", True))
+
+
 def _ui_coordinates(ui: dict[str, Any], orientation: str) -> dict[str, int]:
     if "coordinates" in ui:
         return ui.get("coordinates", {})
@@ -208,21 +219,22 @@ def _iter_viewport_boxes(page: dict[str, Any], orientation: str) -> list[dict[st
                 page_viewports.append({"viewport": viewport, "layer_key": layer_key, "layer_order": layer_order})
     else:
         page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0), "layer_order": 0} for viewport in page.get("viewports", [])]
-    for entry in page_viewports:
+    for vp_index, entry in enumerate(page_viewports):
         viewport = entry["viewport"]
-        viewport_ui = _orientation_ui(viewport.get("viewportUI", {}), orientation)
-        if not bool(viewport_ui.get("visible", True)):
+        viewport_ui = viewport.get("viewportUI", {})
+        if not _visible_in_any_orientation(viewport_ui):
             continue
-        c = _ui_coordinates(viewport.get("viewportUI", {}), orientation)
+        c = _ui_coordinates(viewport_ui, orientation)
         out.append(
             {
                 "left": int(c.get("left") or 0),
                 "top": int(c.get("top") or 0),
                 "width": int(c.get("width") or 0),
                 "height": int(c.get("height") or 0),
-                "viewport_ui": viewport.get("viewportUI", {}),
+                "viewport_ui": viewport_ui,
                 "layer_key": entry["layer_key"],
                 "layer_order": entry["layer_order"],
+                "vp_index": vp_index,
             }
         )
     return out
@@ -242,12 +254,16 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
         page_viewports = [{"viewport": viewport, "layer_key": _layer_key(0), "layer_order": 0} for viewport in page.get("viewports", [])]
     for vp_index, entry in enumerate(page_viewports):
         viewport = entry["viewport"]
-        viewport_ui = _orientation_ui(viewport.get("viewportUI", {}), orientation)
-        if not bool(viewport_ui.get("visible", True)):
+        viewport_ui = viewport.get("viewportUI", {})
+        if not _visible_in_any_orientation(viewport_ui):
             continue
-        vp_c = _ui_coordinates(viewport.get("viewportUI", {}), orientation)
-        portrait_vp_c = _ui_coordinates(viewport.get("viewportUI", {}), "portrait")
-        landscape_vp_c = _ui_coordinates(viewport.get("viewportUI", {}), "landscape")
+        # Viewport-child buttons must inherit the container viewport's orientation visibility.
+        vp_orientations = viewport_ui.get("orientations", {})
+        vp_portrait_visible = bool((vp_orientations.get("portrait") or {}).get("visible", True))
+        vp_landscape_visible = bool((vp_orientations.get("landscape") or {}).get("visible", True))
+        vp_c = _ui_coordinates(viewport_ui, orientation)
+        portrait_vp_c = _ui_coordinates(viewport_ui, "portrait")
+        landscape_vp_c = _ui_coordinates(viewport_ui, "landscape")
         off_top = int(vp_c.get("top") or 0)
         off_left = int(vp_c.get("left") or 0)
         frames: list[dict[str, Any]] = []
@@ -277,6 +293,8 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
                             "portrait_off_left": int(portrait_vp_c.get("left") or 0),
                             "landscape_off_top": int(landscape_vp_c.get("top") or 0),
                             "landscape_off_left": int(landscape_vp_c.get("left") or 0),
+                            "vp_portrait_visible": vp_portrait_visible,
+                            "vp_landscape_visible": vp_landscape_visible,
                             "vp_index": vp_index,
                             "frame_id": frame_id,
                             "visible": frame_id == default_frame_id and bool(_orientation_ui(btn["buttonUI"], orientation).get("visible", True)),
@@ -444,7 +462,12 @@ def _page_payload(
                 page_target_indexes,
                 extra_classes="vp-btn",
                 extra_style=extra,
-                extra_attrs=f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'",
+                extra_attrs=(
+                    f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+                    f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+                    f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}' "
+                    f"data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'"
+                ),
                 orientation=orientation,
                 portrait_offset_left=int(vb["portrait_off_left"]),
                 portrait_offset_top=int(vb["portrait_off_top"]),
@@ -471,7 +494,7 @@ def _page_payload(
         vp_frames.append(sorted({int(f.get("frameId", 0)) for f in frames}))
     viewport_boxes = "".join(
         [
-            "<div class='vp-box' style='z-index:{z};' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
+            "<div class='vp-box' style='z-index:{z};' data-vp='{vp_index}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
                 z=50 + int(c["layer_order"]),
                 orientation_attrs=_orientation_data_attrs(c["viewport_ui"]),
                 **c,
@@ -623,12 +646,22 @@ ov.classList.add('open');
 }}));
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
-function activePageEl() {{
- return document.querySelector(`.device-page[data-page-index="${{activePageIndex}}"]`);
-}}
-function activePageState() {{
- return PAGE_STATE[activePageIndex] || {{pageName:'',vpFrames:[],layers:[]}};
-}}
+ function activePageEl() {{
+  return document.querySelector(`.device-page[data-page-index="${{activePageIndex}}"]`);
+ }}
+ function activePageState() {{
+  return PAGE_STATE[activePageIndex] || {{pageName:'',vpFrames:[],layers:[]}};
+ }}
+ function activeViewportIndex() {{
+  const pageEl=activePageEl();
+  const frames=(activePageState().vpFrames||[]);
+  if (!pageEl || !frames.length) return 0;
+  for (let i=0;i<frames.length;i++) {{
+   const box=pageEl.querySelector(`.vp-box[data-vp="${{i}}"]`);
+   if (box && String(box.dataset.visible||'1')==='1') return i;
+  }}
+  return 0;
+ }}
 function layerScopeKey(state) {{
  return [PROJECT_SESSION_KEY, state?.deviceName||'', state?.pageName||''].join('::');
 }}
@@ -669,12 +702,14 @@ function applyOrientationState() {{
  const short=currentOrientation==='landscape' ? 'l' : 'p';
  document.querySelectorAll('.orientation-btn').forEach(button=>button.classList.toggle('active', button.dataset.orientation===currentOrientation));
  document.querySelectorAll('.device-page .vp-box, .device-page .btn-wrap').forEach(el=>{{
+  const visKey=`${{short}}Visible`;
   el.dataset.left=String(Number(el.dataset[`${{short}}Left`]||0));
   el.dataset.top=String(Number(el.dataset[`${{short}}Top`]||0));
   el.dataset.width=String(Number(el.dataset[`${{short}}Width`]||0));
   el.dataset.height=String(Number(el.dataset[`${{short}}Height`]||0));
-  if ('visible' in el.dataset) {{
-   el.dataset.visible=String(el.dataset[`${{short}}Visible`]||'1');
+  if (visKey in el.dataset) {{
+   // vp-box elements previously only had data-p-visible/data-l-visible; normalize to data-visible too.
+   el.dataset.visible=String(el.dataset[visKey]||'1');
   }}
  }});
 }}
@@ -730,7 +765,8 @@ function applyLayerVisibility() {{
  if (!pageEl) return;
  pageEl.querySelectorAll('.vp-box').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
-   el.style.display=isLayerVisible(layerKey)?'':'none';
+   const baseVisible=String(el.dataset.visible||'1')==='1';
+   el.style.display=(isLayerVisible(layerKey) && baseVisible)?'':'none';
  }});
  pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
@@ -738,6 +774,9 @@ function applyLayerVisibility() {{
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
    if (el.classList.contains('vp-btn')) {{
+     const short=currentOrientation==='landscape' ? 'l' : 'p';
+     const vpVisible=(short==='l' ? (el.dataset.vpLv||'1') : (el.dataset.vpPv||'1'))==='1';
+     if (!vpVisible) shouldShow=false;
      const vpIndex=Number(el.dataset.vp||0);
      const frames=activePageState().vpFrames||[];
      const pageFrames=frames[vpIndex]||[];
@@ -746,7 +785,7 @@ function applyLayerVisibility() {{
      }} else {{
        const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
        const activeFrame=pageFrames[currentIndex];
-       shouldShow=layerVisible && Number(el.dataset.frame)===activeFrame;
+       shouldShow=shouldShow && Number(el.dataset.frame)===activeFrame;
      }}
    }}
   el.style.display=shouldShow?'':'none';
@@ -758,36 +797,40 @@ function syncHeader() {{
  const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
  headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
 }}
-function syncViewportControls() {{
- const state=activePageState();
- const frames=state.vpFrames||[];
- const hasViewportNav=Boolean(VIEWPORT_NAV.enabled && frames.length && frames[0]?.length);
- const prev=document.getElementById('vpPrev');
- const next=document.getElementById('vpNext');
- const indicator=document.getElementById('vpIndicator');
- if (prev) prev.style.display=hasViewportNav?'':'none';
- if (next) next.style.display=hasViewportNav?'':'none';
- if (!indicator) return;
- if (!hasViewportNav) {{
-   indicator.innerHTML='';
-   return;
+ function syncViewportControls() {{
+  const state=activePageState();
+  const frames=state.vpFrames||[];
+  const vpIndex=activeViewportIndex();
+  const pageFrames=frames[vpIndex]||[];
+  const hasViewportNav=Boolean(VIEWPORT_NAV.enabled && pageFrames.length);
+  const prev=document.getElementById('vpPrev');
+  const next=document.getElementById('vpNext');
+  const indicator=document.getElementById('vpIndicator');
+  if (prev) prev.style.display=hasViewportNav?'':'none';
+  if (next) next.style.display=hasViewportNav?'':'none';
+  if (!indicator) return;
+  if (!hasViewportNav) {{
+    indicator.innerHTML='';
+    return;
+  }}
+  const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+  indicator.innerHTML=pageFrames.map((_,i)=>`<span class="dot${{i===currentIndex?' active':''}}" data-dot="${{i}}"></span>`).join('');
  }}
- indicator.innerHTML=frames[0].map((_,i)=>`<span class="dot${{i===0?' active':''}}" data-dot="${{i}}"></span>`).join('');
-}}
-function applyViewportState() {{
- const pageEl=activePageEl();
- const state=activePageState();
- const frames=state.vpFrames||[];
- if (!pageEl) return;
- const dots=[...document.querySelectorAll('#vpIndicator .dot')];
- frames.forEach((pageFrames, vpIndex)=>{{
-   if (!pageFrames.length) return;
-   const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
-   currentViewportIndexes[vpIndex]=currentIndex;
-   if (vpIndex===0) dots.forEach((d,i)=>d.classList.toggle('active',i===currentIndex));
- }});
- applyLayerVisibility();
-}}
+ function applyViewportState() {{
+  const pageEl=activePageEl();
+  const state=activePageState();
+  const frames=state.vpFrames||[];
+  if (!pageEl) return;
+  const dots=[...document.querySelectorAll('#vpIndicator .dot')];
+  const activeVpIndex=activeViewportIndex();
+  frames.forEach((pageFrames, vpIndex)=>{{
+    if (!pageFrames.length) return;
+    const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+    currentViewportIndexes[vpIndex]=currentIndex;
+    if (vpIndex===activeVpIndex) dots.forEach((d,i)=>d.classList.toggle('active',i===currentIndex));
+  }});
+  applyLayerVisibility();
+ }}
 function applyRtiLayout() {{
  const appCanvas=document.getElementById('appCanvas');
  const topControls=document.getElementById('topControls');
@@ -871,13 +914,14 @@ function applyRtiLayout() {{
   let viewportRight=viewportLeft+fittedWidth;
   let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;
   let viewportBottom=viewportTop+fittedHeight;
-  const firstViewport=pageEl ? pageEl.querySelector('.vp-box') : null;
-  if (firstViewport) {{
-    viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
-    viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
-    viewportRight=viewportLeft+(Number(firstViewport.dataset.width||0)*totalScale);
-    viewportBottom=viewportTop+(Number(firstViewport.dataset.height||0)*totalScale);
-  }}
+   const vpIndex=activeViewportIndex();
+   const vpBox=pageEl ? pageEl.querySelector(`.vp-box[data-vp="${{vpIndex}}"]`) : null;
+   if (vpBox) {{
+     viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(vpBox.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
+     viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(vpBox.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
+     viewportRight=viewportLeft+(Number(vpBox.dataset.width||0)*totalScale);
+     viewportBottom=viewportTop+(Number(vpBox.dataset.height||0)*totalScale);
+   }}
   const leftArrowLeft=Math.max(viewportLeft-navEdgeOffset-44,0);
   const rightArrowLeft=Math.max(viewportRight+navEdgeOffset,0);
   const arrowTop=Math.max(viewportTop+(((viewportBottom-viewportTop)-44)/2),0);
@@ -1025,24 +1069,28 @@ const zoomReset=document.querySelector('.zoom-reset');
 if (zoomDec) zoomDec.addEventListener('click',()=>updateZoom(currentZoomPercent-ZOOM_STEP));
 if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(currentZoomPercent+ZOOM_STEP));
 if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
-const prev=document.getElementById('vpPrev');
-const next=document.getElementById('vpNext');
-if (prev && next) {{
-  prev.addEventListener('click',()=>{{
-    const frames=activePageState().vpFrames||[];
-    if (frames.length && currentViewportIndexes[0]>0) {{
-      currentViewportIndexes[0]--;
-      applyViewportState();
-    }}
-  }});
-  next.addEventListener('click',()=>{{
-    const frames=activePageState().vpFrames||[];
-    if (frames.length && currentViewportIndexes[0]<frames[0].length-1) {{
-      currentViewportIndexes[0]++;
-      applyViewportState();
-    }}
-  }});
-}}
+ const prev=document.getElementById('vpPrev');
+ const next=document.getElementById('vpNext');
+ if (prev && next) {{
+   prev.addEventListener('click',()=>{{
+     const frames=activePageState().vpFrames||[];
+     const vpIndex=activeViewportIndex();
+     const pageFrames=frames[vpIndex]||[];
+     if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)>0) {{
+       currentViewportIndexes[vpIndex]--;
+       applyViewportState();
+     }}
+   }});
+   next.addEventListener('click',()=>{{
+     const frames=activePageState().vpFrames||[];
+     const vpIndex=activeViewportIndex();
+     const pageFrames=frames[vpIndex]||[];
+     if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)<pageFrames.length-1) {{
+       currentViewportIndexes[vpIndex]++;
+       applyViewportState();
+     }}
+   }});
+ }}
 </script></body></html>"""
 
 
