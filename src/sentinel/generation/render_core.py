@@ -592,10 +592,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:auto;cursor:pointer;z-index:1;box-sizing:border-box;}}
  .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:9000;pointer-events:none;display:none;}}
- .vp-close{{position:absolute;top:10px;right:10px;z-index:9600;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:#f7fbff;color:#29445a;font-size:26px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;box-sizing:border-box;}}
- .vp-close{{display:none !important;}}
  .viewport-mode .vp-overlay{{display:block;}}
- .viewport-mode .vp-close{{display:flex;}}
  .viewport-mode .vp-focus{{z-index:9500 !important;pointer-events:auto;}}
  .viewport-mode .vp-box:not(.vp-focus){{pointer-events:none;}}
 .btn-wrap{{position:absolute;z-index:2;}}
@@ -614,7 +611,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup-next{{right:14px;top:50%;transform:translateY(-50%);}}
  .vp-popup-up{{left:50%;top:14px;transform:translateX(-50%);}}
  .vp-popup-down{{left:50%;bottom:14px;transform:translateX(-50%);}}
- .vp-popup-indicator{{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:18;}}
+ .vp-popup-indicator{{position:absolute;left:0;top:0;transform:translateY(-50%);z-index:18;pointer-events:none;}}
  .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
@@ -658,7 +655,7 @@ textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'><div class='vp-indicator' id='vpIndicator'></div></div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
- <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><button class='vp-close' id='vpClose' type='button' aria-label='Close viewport view' hidden>&times;</button><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
+ <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
 <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
@@ -800,34 +797,62 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
   const nav=(vpBox && vpBox.dataset.navMode) ? String(vpBox.dataset.navMode||'page') : 'page';
   return nav;
  }}
- function syncPopupControls() {{
-  const els=popupElements();
-  if (!els.popup) return;
-  const nav=viewportMode.popupNavMode||'page';
-  const isPage=(nav==='page');
-  if (els.prev) els.prev.style.display=isPage?'':'none';
-  if (els.next) els.next.style.display=isPage?'':'none';
-  if (els.indicator) els.indicator.style.display=isPage?'':'none';
-  if (els.up) els.up.style.display=isPage?'none':'';
-  if (els.down) els.down.style.display=isPage?'none':'';
- }}
- function renderPopupIndicator() {{
-  const els=popupElements();
-  if (!els.indicator) return;
-  if ((viewportMode.popupNavMode||'page')!=='page') {{
-   els.indicator.innerHTML='';
-   return;
+  function syncPopupControls() {{
+   const els=popupElements();
+   if (!els.popup) return;
+   const nav=viewportMode.popupNavMode||'page';
+   const isPage=(nav==='page');
+   const vpIndex=Number(viewportMode.vpIndex||0);
+   const frames=(activePageState().vpFrames||[]);
+   const pageFrames=frames[vpIndex]||[];
+   const hasFrameNav=pageFrames.length>1;
+   if (els.prev) els.prev.style.display=(hasFrameNav && isPage)?'':'none';
+   if (els.next) els.next.style.display=(hasFrameNav && isPage)?'':'none';
+   if (els.indicator) els.indicator.style.display=hasFrameNav?'':'none';
+   if (els.up) els.up.style.display=(hasFrameNav && !isPage)?'':'none';
+   if (els.down) els.down.style.display=(hasFrameNav && !isPage)?'':'none';
   }}
-  const vpIndex=Number(viewportMode.vpIndex||0);
-  const frames=(activePageState().vpFrames||[]);
-  const pageFrames=frames[vpIndex]||[];
-  if (!pageFrames.length) {{
-   els.indicator.innerHTML='';
-   return;
+  function renderPopupIndicator() {{
+   const els=popupElements();
+   if (!els.indicator) return;
+   const vpIndex=Number(viewportMode.vpIndex||0);
+   const frames=(activePageState().vpFrames||[]);
+   const pageFrames=frames[vpIndex]||[];
+   if (pageFrames.length<=1) {{
+    els.indicator.innerHTML='';
+    return;
+   }}
+   const idx=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+   els.indicator.innerHTML=pageFrames.map((_,i)=>`<span class="dot${{i===idx?' active':''}}" data-dot="${{i}}"></span>`).join('');
   }}
-  const idx=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
-  els.indicator.innerHTML=pageFrames.map((_,i)=>`<span class="dot${{i===idx?' active':''}}" data-dot="${{i}}"></span>`).join('');
- }}
+  function positionPopupIndicator() {{
+   const els=popupElements();
+   const indicator=els.indicator;
+   const panel=els.panel;
+   const stage=els.stage;
+   if (!indicator || !panel || !stage) return;
+   if (indicator.style.display==='none') return;
+   const viewportWindow=stage.querySelector('.vp-popup-viewport');
+   if (!viewportWindow) return;
+   const pr=panel.getBoundingClientRect();
+   const vr=viewportWindow.getBoundingClientRect();
+   const nav=viewportMode.popupNavMode||'page';
+   const isPage=(nav==='page');
+   const gap=14;
+   if (isPage) {{
+    const cx=(vr.left - pr.left) + (vr.width/2);
+    const top=(vr.bottom - pr.top) + gap;
+    indicator.style.left=`${{cx}}px`;
+    indicator.style.top=`${{top}}px`;
+    indicator.style.transform='translateX(-50%)';
+   }} else {{
+    const left=(vr.right - pr.left) + gap;
+    const cy=(vr.top - pr.top) + (vr.height/2);
+    indicator.style.left=`${{left}}px`;
+    indicator.style.top=`${{cy}}px`;
+    indicator.style.transform='translateY(-50%)';
+   }}
+  }}
   function applyViewportPopupLayout() {{
    if (!viewportMode.active) return;
    const els=popupElements();
@@ -899,17 +924,18 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
    }}
   }});
 
-  // Virtual scrolling for vertical scroll viewports (no native scrollbars).
-  if (!isPage && content) {{
+   // Virtual scrolling for vertical scroll viewports (no native scrollbars).
+   if (!isPage && content) {{
    const maxScroll=Math.max(0, contentH - vh);
    const next=clamp(Number(viewportMode.popupScrollY||0), 0, maxScroll);
    viewportMode.popupScrollY=next;
    content.style.transform=`translateY(-${{next*scale}}px)`;
-  }} else if (content) {{
-   viewportMode.popupScrollY=0;
-   content.style.transform='';
+   }} else if (content) {{
+    viewportMode.popupScrollY=0;
+    content.style.transform='';
+   }}
+   positionPopupIndicator();
   }}
- }}
   function renderViewportPopup() {{
    if (!viewportMode.active) return;
    const els=popupElements();
@@ -1491,14 +1517,7 @@ if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(currentZoomPercent+
 if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
 const vpPopupClose=document.getElementById('vpPopupClose');
 if (vpPopupClose) vpPopupClose.addEventListener('click',()=>exitViewportMode());
-const vpPopup=document.getElementById('vpPopup');
-if (vpPopup) vpPopup.addEventListener('click', e=>{{
- if (e && e.target===vpPopup) exitViewportMode();
-}});
-document.addEventListener('keydown', e=>{{
- if (!viewportMode.active) return;
- if ((e && e.key)==='Escape') exitViewportMode();
-}});
+// Only the X closes the popup. Backdrop click and Escape are ignored on purpose.
 document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
  if (el.dataset.boundVpClick) return;
  el.dataset.boundVpClick='1';
@@ -1510,14 +1529,28 @@ document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
 const popupUp=document.getElementById('vpPopupUp');
 const popupDown=document.getElementById('vpPopupDown');
 if (popupUp) popupUp.addEventListener('click',()=>{{
- const scroller=document.getElementById('vpPopupScroller');
- if (!scroller) return;
- scroller.scrollBy({{top: -Math.max(80, (scroller.clientHeight||0)*0.8), left:0, behavior:'smooth'}});
+ if (!viewportMode.active) return;
+ if ((viewportMode.popupNavMode||'page')==='page') return;
+ const vpIndex=Number(viewportMode.vpIndex||0);
+ const frames=activePageState().vpFrames||[];
+ const pageFrames=frames[vpIndex]||[];
+ if (pageFrames.length<=1) return;
+ const idx=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+ if (idx<=0) return;
+ currentViewportIndexes[vpIndex]=idx-1;
+ renderViewportPopup();
 }});
 if (popupDown) popupDown.addEventListener('click',()=>{{
- const scroller=document.getElementById('vpPopupScroller');
- if (!scroller) return;
- scroller.scrollBy({{top: Math.max(80, (scroller.clientHeight||0)*0.8), left:0, behavior:'smooth'}});
+ if (!viewportMode.active) return;
+ if ((viewportMode.popupNavMode||'page')==='page') return;
+ const vpIndex=Number(viewportMode.vpIndex||0);
+ const frames=activePageState().vpFrames||[];
+ const pageFrames=frames[vpIndex]||[];
+ if (pageFrames.length<=1) return;
+ const idx=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+ if (idx>=pageFrames.length-1) return;
+ currentViewportIndexes[vpIndex]=idx+1;
+ renderViewportPopup();
 }});
 const popupPrev=document.getElementById('vpPopupPrev');
 const popupNext=document.getElementById('vpPopupNext');
@@ -1527,6 +1560,7 @@ if (popupPrev) popupPrev.addEventListener('click',()=>{{
  const vpIndex=Number(viewportMode.vpIndex||0);
  const frames=activePageState().vpFrames||[];
  const pageFrames=frames[vpIndex]||[];
+ if (pageFrames.length<=1) return;
  if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)>0) {{
   currentViewportIndexes[vpIndex]--;
   renderViewportPopup();
@@ -1538,6 +1572,7 @@ if (popupNext) popupNext.addEventListener('click',()=>{{
  const vpIndex=Number(viewportMode.vpIndex||0);
  const frames=activePageState().vpFrames||[];
  const pageFrames=frames[vpIndex]||[];
+ if (pageFrames.length<=1) return;
  if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)<pageFrames.length-1) {{
   currentViewportIndexes[vpIndex]++;
   renderViewportPopup();

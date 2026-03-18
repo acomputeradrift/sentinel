@@ -39,6 +39,7 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             cls._pw.stop()
 
     def _write_fixture_html(self) -> Path:
+        # Minimal fixture: a single page with one viewport and one button inside that viewport.
         project_data = {
             "devices": [
                 {
@@ -76,10 +77,10 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
                                                     {
                                                         "layerName": "Viewport Layer",
                                                         "layerOrder": 0,
-                                                        "frames": [
-                                                            {
-                                                                "frameId": 0,
-                                                                "buttonCategories": {
+                                                         "frames": [
+                                                             {
+                                                                 "frameId": 0,
+                                                                 "buttonCategories": {
                                                                     "screenLabels": [],
                                                                     "hardButtons": [],
                                                                     "screenButtons": [
@@ -99,15 +100,48 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
                                                                                     "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120},
                                                                                 },
                                                                             ),
-                                                                            "testTargets": {"text": True, "macros": False, "macroSteps": False, "variables": {}},
+                                                                            "testTargets": {
+                                                                                "text": True,
+                                                                                "macros": False,
+                                                                                "macroSteps": False,
+                                                                                "variables": {},
+                                                                            },
+                                                                        }
+                                                                     ],
+                                                                 },
+                                                             }
+                                                            ,
+                                                            {
+                                                                "frameId": 1,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {
+                                                                                "buttonTagName": "DUMMY_FRAME1",
+                                                                                "text": "DUMMY_FRAME1",
+                                                                                "buttonType": None,
+                                                                            },
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={
+                                                                                    "visible": True,
+                                                                                    "coordinates": {"top": 260, "left": 10, "height": 44, "width": 120},
+                                                                                },
+                                                                                landscape={
+                                                                                    "visible": True,
+                                                                                    "coordinates": {"top": 260, "left": 10, "height": 44, "width": 120},
+                                                                                },
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
                                                                         }
                                                                     ],
                                                                 },
-                                                            }
-                                                        ],
-                                                    }
-                                                ],
-                                            }
+                                                            },
+                                                         ],
+                                                     }
+                                                 ],
+                                             }
                                         ],
                                     }
                                 ],
@@ -158,6 +192,8 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             # Clicking the viewport opens the popup.
             page.locator(".vp-box").first.click()
             expect(page.locator("#vpPopup")).to_be_visible()
+            # No separate close control should exist outside the popup; only the X closes.
+            expect(page.locator("#vpClose")).to_have_count(0)
 
             # In viewport view mode, the underlying RTI canvas must not show scrollbars.
             # This avoids "mystery scroll wheels" that look like the popup itself is scrollable.
@@ -232,10 +268,18 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             page.locator("#vpPopupClose").click()
             expect(page.locator("#vpPopup")).to_be_hidden()
 
-            # Re-open, then close by clicking backdrop (outside panel).
+            # Re-open. Backdrop click should NOT close; only the X closes.
             page.locator(".vp-box").first.click()
             expect(page.locator("#vpPopup")).to_be_visible()
             page.locator("#vpPopup").click(position={"x": 5, "y": 5})
+            expect(page.locator("#vpPopup")).to_be_visible()
+
+            # Escape should not close (only X).
+            page.keyboard.press("Escape")
+            expect(page.locator("#vpPopup")).to_be_visible()
+
+            # Close via X again.
+            page.locator("#vpPopupClose").click()
             expect(page.locator("#vpPopup")).to_be_hidden()
         finally:
             page.close()
@@ -294,13 +338,41 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
                                                                             ),
                                                                             "testTargets": {"text": True, "macros": False, "macroSteps": False, "variables": {}},
                                                                         }
+                                                                     ],
+                                                                 },
+                                                             }
+                                                            ,
+                                                            {
+                                                                "frameId": 1,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {
+                                                                                "buttonTagName": "DUMMY_FRAME1",
+                                                                                "text": "DUMMY_FRAME1",
+                                                                                "buttonType": None,
+                                                                            },
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={
+                                                                                    "visible": True,
+                                                                                    "coordinates": {"top": 260, "left": 10, "height": 44, "width": 120},
+                                                                                },
+                                                                                landscape={
+                                                                                    "visible": True,
+                                                                                    "coordinates": {"top": 260, "left": 10, "height": 44, "width": 120},
+                                                                                },
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        }
                                                                     ],
                                                                 },
-                                                            }
-                                                        ],
-                                                    }
-                                                ],
-                                            }
+                                                            },
+                                                         ],
+                                                     }
+                                                 ],
+                                             }
                                         ],
                                     }
                                 ],
@@ -506,6 +578,320 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             # Expect the button at (left=15, top=0) relative to viewport origin (within rounding).
             self.assertLessEqual(abs(pos["dx"] - (15 * scale)), 2.0)
             self.assertLessEqual(abs(pos["dy"] - (0 * scale)), 2.0)
+        finally:
+            page.close()
+
+    def test_vertical_scroll_popup_shows_frame_nav_and_indicator_is_right_centered(self):
+        from playwright.sync_api import expect
+
+        # Fixture: verticalScroll viewport with 2 frames.
+        # Frame 0 has TOP only; Frame 1 has TOP + FRAME1_ONLY.
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Popup Frame Nav Test Device)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Viewport Layer",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 10},
+                                                "viewportUI": {
+                                                    "navigationMode": "verticalScroll",
+                                                    "orientations": {
+                                                        "portrait": {"visible": True, "coordinates": {"top": 10, "left": 20, "height": 220, "width": 180}},
+                                                        "landscape": {"visible": True, "coordinates": {"top": 30, "left": 10, "height": 240, "width": 200}},
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Inner Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {"buttonTagName": "TOP", "text": "TOP", "buttonType": None},
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={"visible": True, "coordinates": {"top": 0, "left": 10, "height": 44, "width": 120}},
+                                                                                landscape={"visible": True, "coordinates": {"top": 0, "left": 10, "height": 44, "width": 120}},
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        }
+                                                                    ],
+                                                                },
+                                                            },
+                                                            {
+                                                                "frameId": 1,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {"buttonTagName": "TOP", "text": "TOP", "buttonType": None},
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={"visible": True, "coordinates": {"top": 0, "left": 10, "height": 44, "width": 120}},
+                                                                                landscape={"visible": True, "coordinates": {"top": 0, "left": 10, "height": 44, "width": 120}},
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        },
+                                                                        {
+                                                                            "buttonIdentity": {
+                                                                                "buttonTagName": "FRAME1_ONLY",
+                                                                                "text": "FRAME1_ONLY",
+                                                                                "buttonType": None,
+                                                                            },
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={"visible": True, "coordinates": {"top": 120, "left": 10, "height": 44, "width": 150}},
+                                                                                landscape={"visible": True, "coordinates": {"top": 120, "left": 10, "height": 44, "width": 150}},
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            },
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="popup_frame_nav_test", device_index=0)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel-ui-"))
+        html_path = tmp_dir / "popup_frame_nav_test.html"
+        html_path.write_text(html, encoding="utf-8")
+
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            page.locator("button.orientation-btn[data-orientation='landscape']").click()
+            page.locator(".vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+
+            # In verticalScroll, frame navigation uses up/down (prev/next are hidden).
+            expect(page.locator("#vpPopupPrev")).to_be_hidden()
+            expect(page.locator("#vpPopupNext")).to_be_hidden()
+            expect(page.locator("#vpPopupUp")).to_be_visible()
+            expect(page.locator("#vpPopupDown")).to_be_visible()
+            expect(page.locator("#vpPopupIndicator")).to_be_visible()
+
+            # Indicator should show 2 dots.
+            expect(page.locator("#vpPopupIndicator .dot")).to_have_count(2)
+
+            # Indicator must be to the right of the viewport box and vertically centered.
+            pos = page.evaluate(
+                """() => {
+                  const win=document.querySelector('.vp-popup-viewport');
+                  const ind=document.getElementById('vpPopupIndicator');
+                  if (!win || !ind) return null;
+                  const wr=win.getBoundingClientRect();
+                  const ir=ind.getBoundingClientRect();
+                  return {
+                    rightGap: ir.left - wr.right,
+                    centerDeltaY: ((ir.top+ir.bottom)/2) - ((wr.top+wr.bottom)/2),
+                  };
+                }"""
+            )
+            self.assertIsNotNone(pos)
+            self.assertGreaterEqual(pos["rightGap"], 6)
+            self.assertLessEqual(abs(pos["centerDeltaY"]), 8)
+
+            # Frame1-only element should appear after clicking Down.
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='FRAME1_ONLY']")).to_be_hidden()
+            page.locator("#vpPopupDown").click()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='FRAME1_ONLY']")).to_be_visible()
+        finally:
+            page.close()
+
+    def test_page_mode_popup_shows_frame_indicator_below_and_prev_next_changes_frame(self):
+        from playwright.sync_api import expect
+
+        # Fixture: page-mode viewport with 2 frames.
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Popup Page Frame Nav Test Device)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Viewport Layer",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 10},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {"visible": True, "coordinates": {"top": 10, "left": 20, "height": 220, "width": 300}},
+                                                        "landscape": {"visible": True, "coordinates": {"top": 30, "left": 10, "height": 240, "width": 360}},
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Inner Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {"buttonTagName": "FRAME0", "text": "FRAME0", "buttonType": None},
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}},
+                                                                                landscape={"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}},
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        }
+                                                                    ],
+                                                                },
+                                                            },
+                                                            {
+                                                                "frameId": 1,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {"buttonTagName": "FRAME1", "text": "FRAME1", "buttonType": None},
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}},
+                                                                                landscape={"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}},
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        }
+                                                                    ],
+                                                                },
+                                                            },
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="popup_page_frame_nav_test", device_index=0)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel-ui-"))
+        html_path = tmp_dir / "popup_page_frame_nav_test.html"
+        html_path.write_text(html, encoding="utf-8")
+
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            page.locator("button.orientation-btn[data-orientation='landscape']").click()
+            page.locator(".vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+
+            expect(page.locator("#vpPopupPrev")).to_be_visible()
+            expect(page.locator("#vpPopupNext")).to_be_visible()
+            expect(page.locator("#vpPopupUp")).to_be_hidden()
+            expect(page.locator("#vpPopupDown")).to_be_hidden()
+            expect(page.locator("#vpPopupIndicator")).to_be_visible()
+            expect(page.locator("#vpPopupIndicator .dot")).to_have_count(2)
+
+            # Indicator must be below the viewport box and horizontally centered.
+            pos = page.evaluate(
+                """() => {
+                  const win=document.querySelector('.vp-popup-viewport');
+                  const ind=document.getElementById('vpPopupIndicator');
+                  if (!win || !ind) return null;
+                  const wr=win.getBoundingClientRect();
+                  const ir=ind.getBoundingClientRect();
+                  return {
+                    belowGap: ir.top - wr.bottom,
+                    centerDeltaX: ((ir.left+ir.right)/2) - ((wr.left+wr.right)/2),
+                  };
+                }"""
+            )
+            self.assertIsNotNone(pos)
+            self.assertGreaterEqual(pos["belowGap"], 6)
+            self.assertLessEqual(abs(pos["centerDeltaX"]), 10)
+
+            # Frame 0 visible at start.
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='FRAME0']")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='FRAME1']")).to_be_hidden()
+            page.locator("#vpPopupNext").click()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='FRAME0']")).to_be_hidden()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='FRAME1']")).to_be_visible()
         finally:
             page.close()
 
