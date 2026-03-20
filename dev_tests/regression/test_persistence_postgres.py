@@ -2,6 +2,7 @@ import os
 import unittest
 from pathlib import Path
 import sys
+from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,8 +33,9 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
 
         db.apply_migrations(database_url)
 
-        client_id = queries.create_client(database_url, name="Test Client")
-        project_id = queries.create_project(database_url, client_id=client_id, name="Test Project")
+        suffix = uuid4().hex
+        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        project_id = queries.create_project(database_url, client_id=client_id, name=f"Test Project {suffix}")
 
         clients = queries.list_clients(database_url)
         self.assertTrue(any(c["clientId"] == client_id for c in clients))
@@ -79,4 +81,3 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
 
         status = queries.get_target_status(database_url, project_id=project_id, target_key="event:126:Trigger")
         self.assertEqual(status["currentOutcome"], "PASS")
-
