@@ -599,19 +599,26 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .device-page .btn-wrap.vp-btn{{pointer-events:none;}}
  .vp-popup-stage .btn-wrap.vp-btn{{pointer-events:auto;}}
  .viewport-mode #rtiCanvas{{pointer-events:none;overflow:hidden;}}
- .vp-popup{{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
+ .vp-popup{{position:fixed;left:0;top:0;width:0;height:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
  .viewport-mode .vp-popup{{display:flex;}}
  .vp-popup[hidden]{{display:none;}}
- .vp-popup-panel{{position:relative;width:min(920px,calc(100vw - 56px));height:min(720px,calc(100vh - 56px));background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;}}
- .vp-popup-scroller{{position:absolute;inset:0;overflow:hidden;}}
- .vp-popup-stage{{position:relative;transform-origin:0 0;}}
- .vp-popup-close{{position:absolute;top:12px;right:18px;z-index:20;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:#f7fbff;color:#29445a;font-size:26px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
- .vp-popup-nav{{position:absolute;z-index:18;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:rgba(247,251,255,.94);color:#29445a;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
+ .vp-popup-panel{{position:relative;width:min(920px,calc(100% - 56px));height:min(720px,calc(100% - 56px));background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;isolation:isolate;}}
+ .vp-popup-scroller{{position:absolute;inset:0;overflow:hidden;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;z-index:1;}}
+ .vp-popup-scroller.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
+ .vp-popup-scroller::-webkit-scrollbar{{width:10px;height:10px;}}
+ .vp-popup-scroller::-webkit-scrollbar-thumb{{background:transparent;}}
+ .vp-popup-scroller::-webkit-scrollbar-track{{background:transparent;}}
+ .vp-popup-scroller.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
+ .vp-popup-stage{{position:relative;transform-origin:0 0;z-index:1;}}
+ .vp-popup-scrollpad{{min-width:100%;min-height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
+ .vp-popup-close{{position:absolute;top:12px;right:18px;z-index:220;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:#f7fbff;color:#29445a;font-size:26px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
+ .vp-popup-nav{{position:absolute;z-index:210;width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:rgba(247,251,255,.94);color:#29445a;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
  .vp-popup-prev{{left:14px;top:50%;transform:translateY(-50%);}}
  .vp-popup-next{{right:14px;top:50%;transform:translateY(-50%);}}
  .vp-popup-up{{left:50%;top:14px;transform:translateX(-50%);}}
  .vp-popup-down{{left:50%;bottom:14px;transform:translateX(-50%);}}
- .vp-popup-indicator{{position:absolute;left:0;top:0;transform:translateY(-50%);z-index:18;pointer-events:none;}}
+ .vp-popup-indicator{{position:absolute;left:0;top:0;transform:translateY(-50%);z-index:205;pointer-events:none;width:fit-content;}}
+ .vp-popup-indicator.is-vertical{{flex-direction:column;}}
  .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
@@ -623,7 +630,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .orientation-toggle{{display:flex;flex-direction:column;gap:8px;align-items:stretch;justify-content:center;max-width:120px;}}
 .orientation-btn{{min-width:96px;height:40px;border-radius:12px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:0 10px;}}
 .orientation-btn.active{{background:#29445a;color:#fff;}}
-.zoom-controls{{position:absolute;display:flex;gap:8px;z-index:21;}}
+ .zoom-controls{{position:absolute;display:flex;gap:8px;z-index:30;}}
 .zoom-btn{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box;}}
 .zoom-btn.zoom-reset{{min-width:72px;width:auto;padding:0 12px;font-size:14px;}}
 .layer-panel{{width:min(100%,{int(layer_panel_panel_cfg.get("maxWidth", 240))}px);max-height:100%;display:flex;flex-direction:column;gap:{int(layer_panel_panel_cfg.get("gap", 12))}px;padding:{int(layer_panel_panel_cfg.get("padding", 14))}px;border:1px solid #b9cad8;border-radius:{int(layer_panel_panel_cfg.get("borderRadius", 18))}px;background:rgba(247,251,255,.94);box-shadow:0 10px 30px rgba(20,50,75,.10);box-sizing:border-box;}}
@@ -633,7 +640,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .layer-toggle{{width:100%;min-height:{int(layer_panel_button_cfg.get("minHeight", 44))}px;border-radius:{int(layer_panel_button_cfg.get("borderRadius", 12))}px;border:0;box-shadow:inset 0 0 0 1px {str(layer_button_active_cfg.get("border", "#154665"))};background:{str(layer_button_active_cfg.get("background", "#1e5f86"))};color:{str(layer_button_active_cfg.get("text", "#ffffff"))};font-size:{int(layer_panel_button_cfg.get("fontSize", 13))}px;line-height:1.15;padding:10px 12px;cursor:pointer;text-align:center;}}
 .layer-toggle.is-inactive{{background:{str(layer_button_inactive_cfg.get("background", "#f7fbff"))};color:{str(layer_button_inactive_cfg.get("text", "#14324b"))};box-shadow:inset 0 0 0 1px {str(layer_button_inactive_cfg.get("border", "#a9bccd"))};}}
 .layer-toggle:hover{{filter:brightness(0.98);}}
-.vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;position:relative;z-index:21;}}
+.vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;}}
 .dot{{width:10px;height:10px;border-radius:50%;border:1px solid #9fb4c6;background:#e2ebf2;}}
 .dot.active{{background:#2d5f81;border-color:#2d5f81;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
@@ -656,7 +663,7 @@ textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1
 <div class='app-ui-controls bottom-controls' id='bottomControls'><div class='vp-indicator' id='vpIndicator'></div></div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
  <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
-<div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div>
+ <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
 <div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
@@ -680,7 +687,7 @@ let currentDeviceTop=0;
  let activePageIndex=0;
  let currentViewportIndexes=VP_FRAMES.map(()=>0);
  let currentOrientation=ORIENTATION_STATE.current;
- const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupNavMode:'page',popupScrollY:0}};
+	 const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
 function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
 function bindTestButtonClicks(root) {{
@@ -770,20 +777,31 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
   rtiCanvas.scrollLeft=clamp(cx-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
   rtiCanvas.scrollTop=clamp(cy-(rtiCanvas.clientHeight/2),0,maxScrollTop);
  }}
- function popupElements() {{
-  return {{
-   popup: document.getElementById('vpPopup'),
-   panel: document.getElementById('vpPopupPanel'),
-   scroller: document.getElementById('vpPopupScroller'),
-   stage: document.getElementById('vpPopupStage'),
-   close: document.getElementById('vpPopupClose'),
-   prev: document.getElementById('vpPopupPrev'),
-   next: document.getElementById('vpPopupNext'),
-   up: document.getElementById('vpPopupUp'),
-   down: document.getElementById('vpPopupDown'),
-   indicator: document.getElementById('vpPopupIndicator')
-  }};
- }}
+  function popupElements() {{
+   return {{
+    popup: document.getElementById('vpPopup'),
+    panel: document.getElementById('vpPopupPanel'),
+    scroller: document.getElementById('vpPopupScroller'),
+    scrollpad: document.getElementById('vpPopupScrollpad'),
+    stage: document.getElementById('vpPopupStage'),
+    close: document.getElementById('vpPopupClose'),
+    prev: document.getElementById('vpPopupPrev'),
+    next: document.getElementById('vpPopupNext'),
+    up: document.getElementById('vpPopupUp'),
+    down: document.getElementById('vpPopupDown'),
+    indicator: document.getElementById('vpPopupIndicator')
+   }};
+  }}
+  function syncViewportPopupBounds() {{
+   const rtiCanvas=document.getElementById('rtiCanvas');
+   const popup=document.getElementById('vpPopup');
+   if (!rtiCanvas || !popup) return;
+   const rr=rtiCanvas.getBoundingClientRect();
+   popup.style.left=`${{rr.left}}px`;
+   popup.style.top=`${{rr.top}}px`;
+   popup.style.width=`${{rr.width}}px`;
+   popup.style.height=`${{rr.height}}px`;
+  }}
  function activeViewportFrameId(vpIndex) {{
   const frames=activePageState().vpFrames||[];
   const pageFrames=frames[vpIndex]||[];
@@ -792,26 +810,45 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
   currentViewportIndexes[vpIndex]=idx;
   return pageFrames[idx];
  }}
- function popupNavMode() {{
-  const vpBox=focusedViewportBox();
-  const nav=(vpBox && vpBox.dataset.navMode) ? String(vpBox.dataset.navMode||'page') : 'page';
-  return nav;
- }}
-  function syncPopupControls() {{
-   const els=popupElements();
-   if (!els.popup) return;
-   const nav=viewportMode.popupNavMode||'page';
-   const isPage=(nav==='page');
-   const vpIndex=Number(viewportMode.vpIndex||0);
-   const frames=(activePageState().vpFrames||[]);
-   const pageFrames=frames[vpIndex]||[];
-   const hasFrameNav=pageFrames.length>1;
-   if (els.prev) els.prev.style.display=(hasFrameNav && isPage)?'':'none';
-   if (els.next) els.next.style.display=(hasFrameNav && isPage)?'':'none';
-   if (els.indicator) els.indicator.style.display=hasFrameNav?'':'none';
-   if (els.up) els.up.style.display=(hasFrameNav && !isPage)?'':'none';
-   if (els.down) els.down.style.display=(hasFrameNav && !isPage)?'':'none';
+  function popupNavMode() {{
+   const vpBox=focusedViewportBox();
+   const nav=(vpBox && vpBox.dataset.navMode) ? String(vpBox.dataset.navMode||'page') : 'page';
+   return nav;
   }}
+   function syncPopupControls() {{
+    const els=popupElements();
+    if (!els.popup) return;
+    const nav=viewportMode.popupNavMode||'page';
+    const isPage=(nav==='page');
+    const vpIndex=Number(viewportMode.vpIndex||0);
+    const frames=(activePageState().vpFrames||[]);
+    const pageFrames=frames[vpIndex]||[];
+    const hasFrameNav=pageFrames.length>1;
+    if (els.prev) els.prev.style.display=(hasFrameNav && isPage)?'':'none';
+    if (els.next) els.next.style.display=(hasFrameNav && isPage)?'':'none';
+    if (els.indicator) els.indicator.style.display=hasFrameNav?'':'none';
+    if (els.up) els.up.style.display=(hasFrameNav && !isPage)?'':'none';
+    if (els.down) els.down.style.display=(hasFrameNav && !isPage)?'':'none';
+    if (els.indicator) els.indicator.classList.toggle('is-vertical', hasFrameNav && !isPage);
+   }}
+   function applyViewportPopupLayerVisibility() {{
+    if (!viewportMode.active) return;
+    const stage=document.getElementById('vpPopupStage');
+    if (!stage) return;
+    const vpIndex=Number(viewportMode.vpIndex||0);
+    const activeFrame=activeViewportFrameId(vpIndex);
+    const short=currentOrientation==='landscape' ? 'l' : 'p';
+    const vis=activeLayerVisibility();
+    stage.querySelectorAll('.vp-popup-vcontent .btn-wrap.vp-btn').forEach(clone=>{{
+     let show=true;
+     if (activeFrame!=null) show = show && (Number(clone.dataset.frame)===Number(activeFrame));
+     const vpVisible=(short==='l' ? (clone.dataset.vpLv||'1') : (clone.dataset.vpPv||'1'))==='1';
+     if (!vpVisible) show=false;
+     const vpLayerKey=String(clone.dataset.vpLayerKey||'');
+     if (vpLayerKey && vis[vpLayerKey]===false) show=false;
+     clone.style.display=show?'':'none';
+    }});
+   }}
   function renderPopupIndicator() {{
    const els=popupElements();
    if (!els.indicator) return;
@@ -853,41 +890,77 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
     indicator.style.transform='translateY(-50%)';
    }}
   }}
-  function applyViewportPopupLayout() {{
-   if (!viewportMode.active) return;
-   const els=popupElements();
-   const stage=els.stage;
-   const scroller=els.scroller;
-   const vpBox=focusedViewportBox();
-   if (!stage || !scroller || !vpBox) return;
-   const nav=viewportMode.popupNavMode||'page';
-   const vw=Number(vpBox.dataset.width||0);
-   const vh=Number(vpBox.dataset.height||0);
-   if (vw<=0 || vh<=0) return;
-   const isPage=(nav==='page');
-   // Reserve the real control space so the viewport box can be centered between the buttons.
-   let topReserve=0;
-   let bottomReserve=0;
-   if (!isPage) {{
-    const sr=scroller.getBoundingClientRect();
-    const ur=els.up ? els.up.getBoundingClientRect() : null;
-    const dr=els.down ? els.down.getBoundingClientRect() : null;
-    if (ur) topReserve=Math.max(0, (ur.bottom - sr.top)) + 8;
-    if (dr) bottomReserve=Math.max(0, (sr.bottom - dr.top)) + 8;
-   }}
-   scroller.style.display='flex';
-   scroller.style.alignItems='center';
-   scroller.style.justifyContent='center';
-   scroller.style.boxSizing='border-box';
-   scroller.style.paddingTop=`${{topReserve}}px`;
-   scroller.style.paddingBottom=`${{bottomReserve}}px`;
-  const availW=Math.max(scroller.clientWidth||1,1);
-  const availH=Math.max((scroller.clientHeight||1)-topReserve-bottomReserve,1);
-  const fit=Math.min(availW/vw, availH/vh);
-  viewportMode.popupFitScale=(Number.isFinite(fit) && fit>0) ? fit : 1;
-  const zoom=clamp(Number(viewportMode.popupZoomPercent||ZOOM_DEFAULT), ZOOM_DEFAULT, ZOOM_MAX);
-  viewportMode.popupZoomPercent=zoom;
-  const scale=viewportMode.popupFitScale*(zoom/100);
+	  function applyViewportPopupLayout() {{
+	    if (!viewportMode.active) return;
+	    syncViewportPopupBounds();
+	    const els=popupElements();
+	    const stage=els.stage;
+	    const scroller=els.scroller;
+	    const scrollpad=els.scrollpad;
+	    const vpBox=focusedViewportBox();
+	    if (!stage || !scroller || !vpBox) return;
+	   const nav=viewportMode.popupNavMode||'page';
+	   const vw=Number(vpBox.dataset.width||0);
+	   const vh=Number(vpBox.dataset.height||0);
+	   if (vw<=0 || vh<=0) return;
+	   const isPage=(nav==='page');
+		   // Reserve is sizing-only: used to compute the 100% baseline fit scale, but not applied
+		   // as real scroller insets (so zoom steps remain smooth from 100% upward).
+		   const CONTROL_GAP=10;
+	   let topReserve=0;
+	   let bottomReserve=0;
+	   let leftReserve=0;
+	   let rightReserve=0;
+		   let lr=null;
+		   let rr=null;
+		   let ur=null;
+		   let dr=null;
+	   const pr=els.panel ? els.panel.getBoundingClientRect() : null;
+	   if (!pr) return;
+	   if (!isPage) {{
+	    ur=(els.up && els.up.style.display!=='none') ? els.up.getBoundingClientRect() : null;
+	    dr=(els.down && els.down.style.display!=='none') ? els.down.getBoundingClientRect() : null;
+	    if (ur) topReserve=Math.max(0, (ur.bottom - pr.top)) + CONTROL_GAP;
+	    if (dr) bottomReserve=Math.max(0, (pr.bottom - dr.top)) + CONTROL_GAP;
+	   }} else {{
+	    lr=(els.prev && els.prev.style.display!=='none') ? els.prev.getBoundingClientRect() : null;
+	    rr=(els.next && els.next.style.display!=='none') ? els.next.getBoundingClientRect() : null;
+	    if (lr) leftReserve=Math.max(0, (lr.right - pr.left)) + CONTROL_GAP;
+	    if (rr) rightReserve=Math.max(0, (pr.right - rr.left)) + CONTROL_GAP;
+	   }}
+	    // Keep center stable while zooming by preserving the scroll center ratio.
+	    const prevScrollW=Math.max(scroller.scrollWidth||0, 1);
+	    const prevScrollH=Math.max(scroller.scrollHeight||0, 1);
+	    const prevCx=(scroller.scrollLeft + (scroller.clientWidth/2)) / prevScrollW;
+	    const prevCy=(scroller.scrollTop + (scroller.clientHeight/2)) / prevScrollH;
+	
+		    scroller.style.display='block';
+		    scroller.style.boxSizing='border-box';
+		    scroller.style.left='0px';
+		    scroller.style.right='0px';
+		    scroller.style.top='0px';
+		    scroller.style.bottom='0px';
+		    scroller.style.padding='0px';
+		   const availW=Math.max(scroller.clientWidth||1,1);
+		   const availH=Math.max(scroller.clientHeight||1,1);
+		   const zoom=clamp(Number(viewportMode.popupZoomPercent||ZOOM_DEFAULT), ZOOM_DEFAULT, ZOOM_MAX);
+		   viewportMode.popupZoomPercent=zoom;
+
+		   // Cache a baseline fit scale computed from the reserved available area (as-if the
+		   // scroller were inset), but keep the scroller full-panel for all zoom levels.
+		   const usableW=Math.max(1, (pr.width||availW) - leftReserve - rightReserve);
+		   const usableH=Math.max(1, (pr.height||availH) - topReserve - bottomReserve);
+		   const baseKey=`${{nav}}:${{Math.round(pr.width||availW)}}x${{Math.round(pr.height||availH)}}:${{vw}}x${{vh}}:${{Math.round(leftReserve)}}:${{Math.round(rightReserve)}}:${{Math.round(topReserve)}}:${{Math.round(bottomReserve)}}`;
+		   if (viewportMode.popupBaseFitScale==null || viewportMode.popupBaseKey!==baseKey) {{
+		    const fitReserved=Math.min(usableW/vw, usableH/vh);
+		    viewportMode.popupBaseFitScale=(Number.isFinite(fitReserved) && fitReserved>0) ? fitReserved : 1;
+		    viewportMode.popupBaseKey=baseKey;
+		   }}
+		   viewportMode.popupFitScale=Number(viewportMode.popupBaseFitScale||1);
+	    const allowPan = zoom > ZOOM_DEFAULT;
+    scroller.style.overflow = allowPan ? 'auto' : 'hidden';
+    scroller.classList.toggle('scroll-hover', allowPan);
+   const scale=viewportMode.popupFitScale*(zoom/100);
   stage.dataset.popupScale=String(scale);
   stage.style.width=`${{vw*scale}}px`;
   stage.style.height=`${{vh*scale}}px`;
@@ -905,6 +978,50 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
    content.style.width=`${{contentW*scale}}px`;
    content.style.height=`${{contentH*scale}}px`;
   }}
+
+  // When zoomed, ensure the scroll container's scrollWidth/scrollHeight actually reflect the
+  // zoomed stage size. Otherwise the left/top edge can appear "locked" on early zoom steps
+  // (the stage grows beyond the usable area, but scrollWidth doesn't grow, so scrollLeft stays 0).
+  //
+  // Also keep the viewport centered on any axis that doesn't overflow: if we force flex-start
+  // on both axes, the viewport pins to top-left and breaks the centering contract.
+	  if (scrollpad) {{
+	   const stageW=vw*scale;
+	   const stageH=vh*scale;
+	   if (!allowPan) {{
+	    scrollpad.style.width='100%';
+	    scrollpad.style.height='100%';
+	    scrollpad.style.boxSizing='border-box';
+	    scrollpad.style.paddingLeft='0px';
+	    scrollpad.style.paddingTop='0px';
+	    scrollpad.style.paddingRight='0px';
+	    scrollpad.style.paddingBottom='0px';
+	    scrollpad.style.justifyContent='center';
+	    scrollpad.style.alignItems='center';
+	   }} else {{
+	    // If the platform uses classic scrollbars (non-overlay), the gutter appears on the
+	    // right/bottom and shifts the visible center. To keep the viewport visually centered
+	    // relative to the popup controls, add symmetric padding on the opposite edges.
+	    const sbW=Math.max(0, (scroller.offsetWidth||0) - (scroller.clientWidth||0));
+	    const sbH=Math.max(0, (scroller.offsetHeight||0) - (scroller.clientHeight||0));
+	    const padLeft=sbW;
+	    const padTop=sbH;
+
+	    scrollpad.style.boxSizing='border-box';
+	    scrollpad.style.paddingLeft=`${{padLeft}}px`;
+	    scrollpad.style.paddingTop=`${{padTop}}px`;
+	    scrollpad.style.paddingRight='0px';
+	    scrollpad.style.paddingBottom='0px';
+
+	    // Grow the scrollpad to at least the stage size to make scrollWidth/scrollHeight expand with zoom.
+	    scrollpad.style.width=`${{Math.max(availW, stageW + padLeft)}}px`;
+	    scrollpad.style.height=`${{Math.max(availH, stageH + padTop)}}px`;
+	    const needsHScroll=stageW > (availW + 0.5);
+	    const needsVScroll=stageH > (availH + 0.5);
+	    scrollpad.style.justifyContent=needsHScroll ? 'flex-start' : 'center';
+	    scrollpad.style.alignItems=needsVScroll ? 'flex-start' : 'center';
+	   }}
+	  }}
 
   stage.querySelectorAll('.btn-wrap.vp-btn[data-src-left]').forEach(el=>{{
    const left=Number(el.dataset.srcLeft||0)*scale;
@@ -930,20 +1047,66 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
    const next=clamp(Number(viewportMode.popupScrollY||0), 0, maxScroll);
    viewportMode.popupScrollY=next;
    content.style.transform=`translateY(-${{next*scale}}px)`;
-   }} else if (content) {{
-    viewportMode.popupScrollY=0;
-    content.style.transform='';
+    }} else if (content) {{
+     viewportMode.popupScrollY=0;
+     content.style.transform='';
+    }}
+
+    // After layout changes, restore scroll position (or reset at fit).
+    if (!allowPan) {{
+     scroller.scrollLeft=0;
+     scroller.scrollTop=0;
+    }} else {{
+     const newScrollW=Math.max(scroller.scrollWidth||0, 1);
+     const newScrollH=Math.max(scroller.scrollHeight||0, 1);
+     const maxL=Math.max(0, newScrollW - scroller.clientWidth);
+     const maxT=Math.max(0, newScrollH - scroller.clientHeight);
+     scroller.scrollLeft=clamp((prevCx*newScrollW)-(scroller.clientWidth/2), 0, maxL);
+     scroller.scrollTop=clamp((prevCy*newScrollH)-(scroller.clientHeight/2), 0, maxT);
+
+	     // Snap-center: when zooming, keep the viewport window visually centered relative to the
+	     // nav arrows (user's reference), not relative to the scrollbar client area. This keeps the
+	     // viewport stable even when classic scrollbar gutters appear.
+	     // This avoids small accumulated drift from scrollWidth/clientWidth rounding and flex layout.
+	     const viewportWindow=stage.querySelector('.vp-popup-viewport');
+	     if (viewportWindow) {{
+	      const sr=scroller.getBoundingClientRect();
+	      const wr=viewportWindow.getBoundingClientRect();
+	      let desiredCx=(pr.left + pr.right)/2;
+	      let desiredCy=(pr.top + pr.bottom)/2;
+	      if (lr && rr) {{
+	       const lcx=(lr.left+lr.right)/2;
+	       const lcy=(lr.top+lr.bottom)/2;
+	       const rcx=(rr.left+rr.right)/2;
+	       const rcy=(rr.top+rr.bottom)/2;
+	       desiredCx=(lcx+rcx)/2;
+	       desiredCy=(lcy+rcy)/2;
+	      }} else if (ur && dr) {{
+	       const ucx=(ur.left+ur.right)/2;
+	       const ucy=(ur.top+ur.bottom)/2;
+	       const dcx=(dr.left+dr.right)/2;
+	       const dcy=(dr.top+dr.bottom)/2;
+	       desiredCx=(ucx+dcx)/2;
+	       desiredCy=(ucy+dcy)/2;
+	      }}
+	      const cx=(wr.left+wr.right)/2;
+	      const cy=(wr.top+wr.bottom)/2;
+	      const dx=cx-desiredCx;
+	      const dy=cy-desiredCy;
+	      if (Math.abs(dx) > 0.25) scroller.scrollLeft=clamp(scroller.scrollLeft + dx, 0, maxL);
+	      if (Math.abs(dy) > 0.25) scroller.scrollTop=clamp(scroller.scrollTop + dy, 0, maxT);
+	     }}
+	    }}
+    positionPopupIndicator();
    }}
-   positionPopupIndicator();
-  }}
-  function renderViewportPopup() {{
-   if (!viewportMode.active) return;
-   const els=popupElements();
-   const stage=els.stage;
-   const scroller=els.scroller;
-   const pageEl=activePageEl();
-   const vpBox=focusedViewportBox();
-   if (!stage || !scroller || !pageEl || !vpBox) return;
+	  function renderViewportPopup() {{
+	   if (!viewportMode.active) return;
+	   const els=popupElements();
+	   const stage=els.stage;
+	   const scroller=els.scroller;
+	   const pageEl=activePageEl();
+	   const vpBox=focusedViewportBox();
+	   if (!stage || !scroller || !pageEl || !vpBox) return;
    const vpIndex=Number(viewportMode.vpIndex||0);
    viewportMode.popupNavMode=popupNavMode();
    syncPopupControls();
@@ -978,29 +1141,40 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
   stage.appendChild(viewportWindow);
 
    viewportMode.popupScrollY=0;
-   btnNodes.forEach(node=>{{
-    const clone=node.cloneNode(true);
-    clone.style.display='';
-    // Convert from device-absolute (source) to viewport-relative (popup).
-    clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
-    clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
-    clone.dataset.srcWidth=String(Number(node.dataset.width||0));
-    clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+	   btnNodes.forEach(node=>{{
+	     const clone=node.cloneNode(true);
+	     clone.style.display='';
+	     // Ensure popup controls remain topmost regardless of source z-index.
+	     clone.style.zIndex='1';
+	     // Cloned buttons inherit data-bound markers from the main canvas; clear so the popup can bind clicks.
+	     clone.querySelectorAll('.test-btn').forEach(tb=>{{
+	      tb.removeAttribute('data-bound-test-btn');
+	      try {{ delete tb.dataset.boundTestBtn; }} catch (_) {{}}
+	     }});
+	    // Convert from device-absolute (source) to viewport-relative (popup).
+	    clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
+	    clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
+	    clone.dataset.srcWidth=String(Number(node.dataset.width||0));
+	    clone.dataset.srcHeight=String(Number(node.dataset.height||0));
     let show=true;
     if (activeFrame!=null) show = show && (Number(clone.dataset.frame)===Number(activeFrame));
     const vpVisible=(short==='l' ? (clone.dataset.vpLv||'1') : (clone.dataset.vpPv||'1'))==='1';
    if (!vpVisible) show=false;
-   const vpLayerKey=String(clone.dataset.vpLayerKey||'');
-   if (vpLayerKey && activeLayerVisibility()[vpLayerKey]===false) show=false;
-   clone.style.display=show?'':'none';
-   viewportContent.appendChild(clone);
-  }});
-  bindTestButtonClicks(viewportContent);
-  renderPopupIndicator();
-  viewportMode.popupZoomPercent=ZOOM_DEFAULT;
-  applyViewportPopupLayout();
- }}
- function enterViewportMode(vpIndex) {{
+    const vpLayerKey=String(clone.dataset.vpLayerKey||'');
+    if (vpLayerKey && activeLayerVisibility()[vpLayerKey]===false) show=false;
+    clone.style.display=show?'':'none';
+    viewportContent.appendChild(clone);
+   }});
+   bindTestButtonClicks(viewportContent);
+   renderPopupIndicator();
+	   applyViewportPopupLayerVisibility();
+	   viewportMode.popupZoomPercent=ZOOM_DEFAULT;
+	   viewportMode.popupBaseFitScale=null;
+	   viewportMode.popupBaseKey='';
+	   syncZoomResetText();
+	   applyViewportPopupLayout();
+	  }}
+  function enterViewportMode(vpIndex) {{
   const overlay=document.getElementById('vpOverlay');
   const closeBtn=document.getElementById('vpPopupClose');
   const appCanvas=document.getElementById('appCanvas');
@@ -1010,15 +1184,16 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
   viewportMode.active=true;
   viewportMode.vpIndex=Number(vpIndex||0);
   viewportMode.preZoom=currentZoomPercent;
-  overlay.removeAttribute('hidden');
-  popup.removeAttribute('hidden');
+   syncViewportPopupBounds();
+   overlay.removeAttribute('hidden');
+   popup.removeAttribute('hidden');
   viewportRoot.classList.add('viewport-mode');
   focusViewportElements();
   renderViewportPopup();
   renderLayerPanel();
   applyLayerVisibility();
  }}
- function exitViewportMode() {{
+  function exitViewportMode() {{
   const overlay=document.getElementById('vpOverlay');
   const closeBtn=document.getElementById('vpPopupClose');
   const appCanvas=document.getElementById('appCanvas');
@@ -1028,9 +1203,13 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
   if (!overlay || !closeBtn || !viewportRoot || !popup) return;
   viewportMode.active=false;
   viewportRoot.classList.remove('viewport-mode');
-  overlay.setAttribute('hidden','hidden');
-  popup.setAttribute('hidden','hidden');
-  if (stage) stage.innerHTML='';
+   overlay.setAttribute('hidden','hidden');
+   popup.setAttribute('hidden','hidden');
+   popup.style.left='';
+   popup.style.top='';
+   popup.style.width='';
+   popup.style.height='';
+   if (stage) stage.innerHTML='';
   if (viewportMode.preZoom!=null) currentZoomPercent=viewportMode.preZoom;
   viewportMode.preZoom=null;
   focusViewportElements();
@@ -1173,9 +1352,9 @@ function renderLayerPanel() {{
     applyLayerVisibility();
   }}));
 }}
-function applyLayerVisibility() {{
- const pageEl=activePageEl();
- if (!pageEl) return;
+ function applyLayerVisibility() {{
+  const pageEl=activePageEl();
+  if (!pageEl) return;
  pageEl.querySelectorAll('.vp-box').forEach(el=>{{
    const baseVisible=String(el.dataset.visible||'1')==='1';
    if (viewportMode.active) {{
@@ -1186,7 +1365,7 @@ function applyLayerVisibility() {{
     el.style.display=(isLayerVisible(layerKey) && baseVisible)?'':'none';
    }}
  }});
- pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
+  pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
    const baseVisible=String(el.dataset.visible||'1')==='1';
    const layerVisible=isLayerVisible(layerKey);
@@ -1213,9 +1392,13 @@ function applyLayerVisibility() {{
        shouldShow=shouldShow && Number(el.dataset.frame)===activeFrame;
      }}
    }}
-  el.style.display=shouldShow?'':'none';
- }});
-}}
+    el.style.display=shouldShow?'':'none';
+  }});
+  // In viewport mode the viewer uses cloned nodes; keep them in sync when viewport-layer toggles change.
+  if (viewportMode.active) {{
+   applyViewportPopupLayerVisibility();
+  }}
+ }}
 function syncHeader() {{
  const headerEl=document.querySelector('#topControls .header');
  if (!headerEl) return;
@@ -1250,11 +1433,11 @@ function syncHeader() {{
   const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
   indicator.innerHTML=pageFrames.map((_,i)=>`<span class="dot${{i===currentIndex?' active':''}}" data-dot="${{i}}"></span>`).join('');
  }}
- function applyViewportState() {{
-  const pageEl=activePageEl();
-  const state=activePageState();
-  const frames=state.vpFrames||[];
-  if (!pageEl) return;
+  function applyViewportState() {{
+   const pageEl=activePageEl();
+   const state=activePageState();
+   const frames=state.vpFrames||[];
+   if (!pageEl) return;
   const dots=[...document.querySelectorAll('#vpIndicator .dot')];
   const activeVpIndex=activeViewportIndex();
   frames.forEach((pageFrames, vpIndex)=>{{
@@ -1263,8 +1446,18 @@ function syncHeader() {{
     currentViewportIndexes[vpIndex]=currentIndex;
     if (vpIndex===activeVpIndex) dots.forEach((d,i)=>d.classList.toggle('active',i===currentIndex));
   }});
-  applyLayerVisibility();
- }}
+   applyLayerVisibility();
+  }}
+  function activeZoomPercent() {{
+   return Number(viewportMode.active ? (viewportMode.popupZoomPercent||ZOOM_DEFAULT) : (currentZoomPercent||ZOOM_DEFAULT));
+  }}
+  function syncZoomResetText() {{
+   const zoomControls=document.getElementById('zoomControls');
+   if (!zoomControls) return;
+   const zoomReset=zoomControls.querySelector('.zoom-reset');
+   if (!zoomReset) return;
+   zoomReset.textContent = `${{activeZoomPercent()}}%`;
+  }}
 function applyRtiLayout() {{
  const appCanvas=document.getElementById('appCanvas');
  const topControls=document.getElementById('topControls');
@@ -1294,8 +1487,8 @@ function applyRtiLayout() {{
  leftControls.style.bottom=`${{controls.bottom}}px`;
  leftControls.style.width=`${{controls.left}}px`;
  if (orientationControls) {{
-  orientationControls.style.top=`${{controls.top}}px`;
-  orientationControls.style.bottom='auto';
+  orientationControls.style.top='auto';
+  orientationControls.style.bottom=`${{Math.max(controls.bottom + 16, 16)}}px`;
   orientationControls.style.width=`${{controls.left}}px`;
  }}
  rightControls.style.top=`${{controls.top}}px`;
@@ -1374,11 +1567,12 @@ function applyRtiLayout() {{
  leftControls.style.right='auto';
 
  if (orientationControls) {{
-  orientationControls.style.left='0';
-  orientationControls.style.right='auto';
-  orientationControls.style.height='auto';
-  orientationControls.style.top=`${{Math.max(controls.top + 8, 8)}}px`;
- }}
+   orientationControls.style.left='0';
+   orientationControls.style.right='auto';
+   orientationControls.style.height='auto';
+   orientationControls.style.top='auto';
+   orientationControls.style.bottom=`${{Math.max(controls.bottom + 16, 16)}}px`;
+  }}
 
  rightControls.style.left=`${{rightArrowLeft}}px`;
  rightControls.style.width='44px';
@@ -1396,14 +1590,13 @@ function applyRtiLayout() {{
    layerPanel.style.maxHeight=`${{Math.max(appHeight-controls.top-controls.bottom-Number(LAYER_PANEL.panel?.verticalPadding||24), 120)}}px`;
  }}
 
- if (ZOOM_CONTROLS.enabled) {{
-   const zoomWidth = zoomControls.offsetWidth || 176;
-   const zoomLeft = Math.max((controls.left - zoomWidth) / 2, 0);
-   zoomControls.style.left = `${{zoomLeft}}px`;
-   zoomControls.style.top = `${{controls.top}}px`;
-   const zoomReset = zoomControls.querySelector('.zoom-reset');
-   if (zoomReset) zoomReset.textContent = viewportMode.active ? `${{Number(viewportMode.popupZoomPercent||ZOOM_DEFAULT)}}%` : `${{currentZoomPercent}}%`;
- }}
+  if (ZOOM_CONTROLS.enabled) {{
+    const zoomWidth = zoomControls.offsetWidth || 176;
+    const zoomLeft = Math.max((controls.left - zoomWidth) / 2, 0);
+    zoomControls.style.left = `${{zoomLeft}}px`;
+    zoomControls.style.top = `${{controls.top}}px`;
+    syncZoomResetText();
+  }}
 
  document.querySelectorAll('.device-page').forEach(page=>page.classList.toggle('active', Number(page.dataset.pageIndex)===activePageIndex));
  document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
@@ -1456,16 +1649,18 @@ function applyRtiLayout() {{
  if (LAYER_PANEL.enabled===false) {{
    const panel=document.getElementById('layerPanel');
    if (panel) panel.setAttribute('hidden','hidden');
- }} else {{
-   renderLayerPanel();
+  }} else {{
+    renderLayerPanel();
+  }}
+  syncViewportControls();
+  applyViewportState();
+  if (viewportMode.active) applyViewportPopupLayout();
  }}
- syncViewportControls();
- applyViewportState();
-}}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
 function updateZoom(nextPercent){{
  if (viewportMode.active) {{
   viewportMode.popupZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
+  syncZoomResetText();
   applyViewportPopupLayout();
   return;
  }}
@@ -1478,6 +1673,7 @@ function updateZoom(nextPercent){{
  const centerY=(rtiCanvas.scrollTop+(rtiCanvas.clientHeight/2)-oldTop)/oldScale;
  currentZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
  applyRtiLayout();
+ syncZoomResetText();
  const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
  const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
  rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(centerX*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
@@ -1501,19 +1697,20 @@ applyOrientationState();
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
-document.addEventListener('click', e=>{{
- const link=e.target.closest('.page-link-hit');
- if (!link) return;
- const targetPageIndex=link.dataset.targetPageIndex;
- if (targetPageIndex==null || targetPageIndex==='') return;
- e.preventDefault();
- setActivePage(targetPageIndex);
-}});
+	document.addEventListener('click', e=>{{
+	 const link=e.target.closest('.page-link-hit');
+	 if (!link) return;
+	 const targetPageIndex=link.dataset.targetPageIndex;
+	 if (targetPageIndex==null || targetPageIndex==='') return;
+	 e.preventDefault();
+	 if (viewportMode.active) exitViewportMode();
+	 setActivePage(targetPageIndex);
+	}});
 const zoomDec=document.querySelector('.zoom-dec');
 const zoomInc=document.querySelector('.zoom-inc');
 const zoomReset=document.querySelector('.zoom-reset');
-if (zoomDec) zoomDec.addEventListener('click',()=>updateZoom(currentZoomPercent-ZOOM_STEP));
-if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(currentZoomPercent+ZOOM_STEP));
+if (zoomDec) zoomDec.addEventListener('click',()=>updateZoom(activeZoomPercent()-ZOOM_STEP));
+if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(activeZoomPercent()+ZOOM_STEP));
 if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
 const vpPopupClose=document.getElementById('vpPopupClose');
 if (vpPopupClose) vpPopupClose.addEventListener('click',()=>exitViewportMode());

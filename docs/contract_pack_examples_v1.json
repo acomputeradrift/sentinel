@@ -1,0 +1,84 @@
+{
+  "contractPackVersion": "v1",
+  "generatedAtUtc": null,
+  "sources": [
+    {
+      "type": "extracted_project_json",
+      "path": "output/Verrier Home FEENY EDIT v49_project_data.json"
+    }
+  ],
+  "techLinkExamples": [
+    {
+      "label": "Jamie (remote)",
+      "exampleTechLink": { "techLinkId": "uuid", "token": "opaque-string" },
+      "exampleTechUrl": "/testing/{techToken}"
+    },
+    {
+      "label": "Onsite Tech",
+      "exampleTechLink": { "techLinkId": "uuid", "token": "opaque-string" },
+      "exampleTechUrl": "/testing/{techToken}"
+    }
+  ],
+  "targetKeyExamples": [
+    {
+      "kind": "BUTTON",
+      "refs": { "deviceId": 81, "pageId": 513, "buttonId": 48551 },
+      "extractedEvidence": {
+        "testTargets": {
+          "macro": { "isEmpty": false },
+          "macroStepsCount": 0,
+          "enabledVariables": [],
+          "pageLinkTargetPageId": null
+        }
+      },
+      "derivedTargetNames": ["Macro"],
+      "derivedTargetKeys": ["btn:81:513:48551:Macro"]
+    },
+    {
+      "kind": "VIEWPORT_BUTTON",
+      "refs": { "deviceId": 81, "pageId": 513, "viewportButtonId": 48248, "frameId": 0, "buttonId": 48249 },
+      "extractedEvidence": {
+        "testTargets": {
+          "macro": { "isEmpty": false },
+          "macroStepsCount": 0,
+          "enabledVariables": ["Reversed"],
+          "pageLinkTargetPageId": null
+        }
+      },
+      "derivedTargetNames": ["Macro", "Var.Reversed"],
+      "derivedTargetKeys": [
+        "vpbtn:81:513:48248:0:48249:Macro",
+        "vpbtn:81:513:48248:0:48249:Var.Reversed"
+      ]
+    },
+    {
+      "kind": "EVENT",
+      "refs": { "eventId": 126 },
+      "extractedEvidence": {
+        "userFacing": {
+          "eventType": "Scheduled",
+          "resolvedTrigger": "At Sunrise",
+          "testTargets": { "Trigger": true, "Macro": true }
+        }
+      },
+      "derivedTargetNames": ["Trigger", "Macro"],
+      "derivedTargetKeys": ["event:126:Trigger", "event:126:Macro"]
+    }
+  ],
+  "testResultExamples": [
+    {
+      "postedTo": "/api/v1/testing/{techToken}/results",
+      "recordedBy": { "role": "PROGRAMMER", "techLinkId": "uuid" },
+      "target": { "kind": "EVENT", "targetKey": "event:126:Trigger", "targetName": "Trigger" },
+      "outcome": "PASS",
+      "failNote": null
+    },
+    {
+      "postedTo": "/api/v1/testing/{techToken}/results",
+      "recordedBy": { "role": "TECHNICIAN", "techLinkId": "uuid" },
+      "target": { "kind": "VIEWPORT_BUTTON", "targetKey": "vpbtn:81:513:48248:0:48249:Var.Reversed", "targetName": "Var.Reversed" },
+      "outcome": "FAIL",
+      "failNote": "Button reverses incorrectly."
+    }
+  ]
+}
