@@ -26,4 +26,18 @@
 7. Hiding critical failures behind warnings, passive messages, or dismissible notices when the correct action is to abort the load or stop the app.
 8. Duplicating logic across extraction, generation, rendering, or session handling when a single shared function or module can enforce the behavior correctly.
 
+## Deployment topology (MVP)
+
+1. A single Sentinel server is the MVP deployment target:
+   - Commissioning/diagnostics APIs under `/api/v1/commissioning/...`
+   - Technician testing APIs under `/api/v1/testing/{techToken}/...`
+   - Technician entrypoint HTML under `/testing/{techToken}`
+2. The commissioning UI and technician UI are web surfaces that may be served:
+   - directly by the Sentinel server, or
+   - by your public website while reverse-proxying requests to the Sentinel server (so URLs remain on your domain).
+3. Interoperability is contract-first:
+   - canonical contract: `docs/api_contract_v1.md`
+   - canonical examples: `docs/contract_pack_examples_v1.json`
+   - compatibility rule: additive-only changes for v1
+
 ---

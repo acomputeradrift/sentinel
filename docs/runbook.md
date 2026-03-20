@@ -24,4 +24,20 @@
 5. If one interface becomes unavailable during a session, recorded test history and diagnostics context must remain recoverable when the session reconnects.
 6. Recovery should favor fast continuation of commissioning work rather than requiring the entire testing process to restart.
 
+## Development workflow (parallel work; non-conflicting)
+
+1. The canonical interoperability contract is `docs/api_contract_v1.md` plus examples in `docs/contract_pack_examples_v1.json`.
+2. Each sub-agent or major task must work in its own branch and worktree to avoid polluting `main`.
+   - Branch naming convention: `codex/<agent>-<task>`.
+   - Worktree location convention: `.worktrees/<agent>-<task>/`.
+3. Work is merged back to `main` only after tests pass and the contract remains compatible (additive-only changes).
+
+## Deployment workflow (single-server MVP; website-friendly)
+
+1. The Sentinel server hosts:
+   - the API under `/api/v1/...`
+   - the technician entrypoint HTML under `/testing/{techToken}`
+   - generated testing artifacts per project (served as static files)
+2. Your public website can still “host” the panels by reverse-proxying to the Sentinel server (or by using a dedicated subdomain such as `sentinel.<domain>`).
+
 ---

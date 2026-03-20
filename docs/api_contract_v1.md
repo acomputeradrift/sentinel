@@ -12,6 +12,30 @@ This document defines the **minimum shared contract** that lets the server, Tech
 4) Test history is **append-only** and must remain queryable across regenerations.
 5) `targetKey` is **deterministic** from extracted stable IDs + a non-inferred `targetName`.
 
+## Contract pack (v1)
+
+The contract pack is the minimum set of agreed artifacts that lets panels and server be built independently.
+
+- Canonical contract: `docs/api_contract_v1.md` (this document)
+- Canonical examples: `docs/contract_pack_examples_v1.json`
+
+Compatibility rule (normative):
+- v1 changes must be additive-only (new fields optional, new routes ok, no enum meaning reuse).
+
+## Shared identifiers + enums (v1 minimum)
+
+Identifiers (stable across the system):
+- `clientId`, `projectId`, `uploadId`, `extractionRunId`, `generationRunId`
+- `techLinkId`, `techToken`
+- `targetKey`, `testResultId`
+
+Enums (shared meanings; never reuse meanings within v1):
+- `ProjectStatus`: `EMPTY|STALE|READY|FAILED`
+- `RunStatus`: `QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELED`
+- `Outcome`: `PASS|FAIL`
+- `ActorRole`: `TECHNICIAN|PROGRAMMER`
+- `TargetKind`: `EVENT|BUTTON|VIEWPORT_BUTTON`
+
 ## Surfaces
 
 - **Technician Testing UI**: single active session, no diagnostics displayed.
@@ -250,9 +274,15 @@ Definitions:
   "asOfGenerationRunId": "uuid",
   "counts": { "totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0 },
   "lastTestedAtUtc": "2026-03-19T12:05:00Z|null",
-  "events": {
-    "counts": { "totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0 },
-    "lastTestedAtUtc": "2026-03-19T12:05:00Z|null"
+  "eventSections": {
+    "system": {
+      "counts": { "totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0 },
+      "lastTestedAtUtc": "2026-03-19T12:05:00Z|null"
+    },
+    "driver": {
+      "counts": { "totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0 },
+      "lastTestedAtUtc": "2026-03-19T12:05:00Z|null"
+    }
   },
   "devices": [
     {
@@ -272,6 +302,15 @@ Definitions:
   ]
 }
 ```
+
+Event section rollup rule:
+- `eventSections.system` is computed from extracted `events.system`.
+- `eventSections.driver` is computed from extracted `events.driver`.
+- For each extracted event item, expected targets are the labels in `userFacing.testTargets` with `true` values, producing `event:{eventId}:{label}` targetKeys.
+
+Progress shape note:
+- `/api/v1/testing/{techToken}/progress` may include pages.
+- `/api/v1/commissioning/projects/{projectId}/progress` should omit pages (device-level rollups only) to match commissioning UI needs.
 
 ## API v1 (minimum)
 

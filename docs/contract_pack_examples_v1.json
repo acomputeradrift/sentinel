@@ -7,6 +7,26 @@
       "path": "output/Verrier Home FEENY EDIT v49_project_data.json"
     }
   ],
+  "idsAndEnums": {
+    "ids": [
+      "clientId",
+      "projectId",
+      "uploadId",
+      "extractionRunId",
+      "generationRunId",
+      "techLinkId",
+      "techToken",
+      "targetKey",
+      "testResultId"
+    ],
+    "enums": {
+      "ProjectStatus": ["EMPTY", "STALE", "READY", "FAILED"],
+      "RunStatus": ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED"],
+      "Outcome": ["PASS", "FAIL"],
+      "ActorRole": ["TECHNICIAN", "PROGRAMMER"],
+      "TargetKind": ["EVENT", "BUTTON", "VIEWPORT_BUTTON"]
+    }
+  },
   "techLinkExamples": [
     {
       "label": "Jamie (remote)",
