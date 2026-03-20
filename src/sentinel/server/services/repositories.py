@@ -6,6 +6,9 @@ import threading
 from typing import Any, Protocol
 from uuid import uuid4
 
+from sentinel.server.persistence import db as persistence_db
+from sentinel.server.persistence import queries as persistence_queries
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -171,4 +174,73 @@ class InMemoryRepository:
                 "lastTestedAtUtc": last.recordedAtUtc,
                 "lastFailNote": last.failNote,
             }
+
+
+class PostgresRepository:
+    def __init__(self, *, database_url: str) -> None:
+        self._database_url = database_url
+        persistence_db.apply_migrations(database_url)
+
+    def create_client(self, *, name: str) -> Client:
+        client_id = persistence_queries.create_client(self._database_url, name=name)
+        return Client(clientId=client_id, name=name, createdAtUtc=utc_now())
+
+    def create_project(self, *, clientId: str, name: str) -> Project:
+        project_id = persistence_queries.create_project(self._database_url, client_id=clientId, name=name)
+        return Project(projectId=project_id, clientId=clientId, name=name, createdAtUtc=utc_now(), status="EMPTY")
+
+    def create_tech_link(self, *, projectId: str, label: str | None) -> tuple[TechLink, ActiveToken]:
+        link_row = persistence_queries.create_tech_link(self._database_url, project_id=projectId, label=label)
+        token_row = persistence_queries.rotate_tech_link_token(self._database_url, tech_link_id=link_row["techLinkId"])
+        link = TechLink(techLinkId=link_row["techLinkId"], projectId=projectId, label=label)
+        token = ActiveToken(techToken=token_row["techToken"], techLinkId=link.techLinkId, projectId=projectId)
+        return link, token
+
+    def rotate_tech_link_token(self, *, projectId: str, techLinkId: str) -> ActiveToken:  # noqa: ARG002
+        token_row = persistence_queries.rotate_tech_link_token(self._database_url, tech_link_id=techLinkId)
+        # Validate token is tied to the expected project by resolving it.
+        resolved = persistence_queries.resolve_active_tech_token(self._database_url, tech_token=token_row["techToken"])
+        return ActiveToken(techToken=token_row["techToken"], techLinkId=resolved["techLinkId"], projectId=resolved["projectId"])
+
+    def resolve_active_token(self, *, techToken: str) -> ActiveToken:
+        resolved = persistence_queries.resolve_active_tech_token(self._database_url, tech_token=techToken)
+        return ActiveToken(techToken=techToken, techLinkId=resolved["techLinkId"], projectId=resolved["projectId"])
+
+    def append_test_result(
+        self,
+        *,
+        techToken: str,
+        target: dict[str, Any],
+        outcome: str,
+        failNote: str | None,
+    ) -> TestResultRecord:
+        tok = self.resolve_active_token(techToken=techToken)
+        generation_run_id = persistence_queries.ensure_generation_run(self._database_url, project_id=tok.projectId)
+
+        persistence_queries.append_test_result(
+            self._database_url,
+            project_id=tok.projectId,
+            generation_run_id=generation_run_id,
+            recorded_by_tech_link_id=tok.techLinkId,
+            target_key=str(target.get("targetKey") or ""),
+            target_kind=str(target.get("kind") or target.get("targetKind") or ""),
+            target_name=str(target.get("targetName") or ""),
+            refs=dict(target.get("refs") or {}),
+            outcome=outcome,
+            fail_note=failNote,
+        )
+
+        return TestResultRecord(
+            testResultId=new_uuid(),
+            projectId=tok.projectId,
+            recordedAtUtc=utc_now(),
+            recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+            target=target,
+            outcome=outcome,
+            failNote=failNote,
+        )
+
+    def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
+        tok = self.resolve_active_token(techToken=techToken)
+        return persistence_queries.get_target_status(self._database_url, project_id=tok.projectId, target_key=targetKey)
 

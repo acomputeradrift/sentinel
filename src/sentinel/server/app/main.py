@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -7,12 +9,17 @@ from fastapi.responses import JSONResponse
 from sentinel.server.api.commissioning import router as commissioning_router
 from sentinel.server.api.events import router as events_router
 from sentinel.server.api.testing import router as testing_router
-from sentinel.server.services.repositories import InMemoryRepository
+from sentinel.server.services.repositories import InMemoryRepository, PostgresRepository, Repository
 
 
-def create_app() -> FastAPI:
+def create_app(repo: Repository | None = None) -> FastAPI:
     app = FastAPI(title="Sentinel", version="0.1.0")
-    app.state.repo = InMemoryRepository()
+
+    if repo is not None:
+        app.state.repo = repo
+    else:
+        database_url = os.environ.get("DATABASE_URL")
+        app.state.repo = PostgresRepository(database_url=database_url) if database_url else InMemoryRepository()
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_: Request, exc: HTTPException):  # type: ignore[override]
