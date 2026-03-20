@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -73,10 +74,20 @@ def fetch_all(con: pg8000.dbapi.Connection, sql: str, params: tuple[Any, ...]) -
     cur = con.cursor()
     cur.execute(sql, params)
     cols = [c[0] for c in cur.description] if cur.description else []
-    return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    return [dict(zip(cols, [_normalize(v) for v in row], strict=False)) for row in cur.fetchall()]
+
+
+def _normalize(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    # pg8000 returns uuid.UUID for uuid columns
+    if value.__class__.__name__ == "UUID":  # pragma: no cover
+        return str(value)
+    return value
 
 
 def fetch_one(con: pg8000.dbapi.Connection, sql: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
     rows = fetch_all(con, sql, params)
     return rows[0] if rows else None
-
