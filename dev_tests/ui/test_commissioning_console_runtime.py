@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import time
+import re
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -93,10 +94,14 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         state: dict[str, object] = {
             "clients": [],
             "projects_by_client": {},
+            "projects_by_id": {},
+            "tech_links_by_project": {},
             "last_upload_content_type": None,
             "expected_upload_filename": "TEST - System Manager v11.3.apex",
             "last_upload_body_contains_expected": None,
             "upload_counter": 0,
+            "tech_link_counter": 0,
+            "tech_link_revoke_counter": 0,
         }
 
         def fulfill_json(route, payload, status: int = 200):
@@ -139,9 +144,24 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                     "activeTechLinkIds": [],
                 }
                 state["projects_by_client"][client_id] = [proj]
+                state["projects_by_id"][proj["projectId"]] = proj
+                state["tech_links_by_project"][proj["projectId"]] = []
                 fulfill_json(route, proj)
                 return
             route.fulfill(status=405, body="method not allowed")
+
+        def handle_project_detail(route, request):
+            project_id = request.url.split("/commissioning/projects/")[-1].split("?")[0].strip("/")
+            if request.method != "GET":
+                route.fulfill(status=405, body="method not allowed")
+                return
+            proj = dict(state["projects_by_id"].get(project_id, {}))
+            if not proj:
+                route.fulfill(status=404, body="not found")
+                return
+            active_links = [link for link in state["tech_links_by_project"].get(project_id, []) if not link.get("revokedAtUtc")]
+            proj["activeTechLinks"] = active_links
+            fulfill_json(route, proj)
 
         def handle_upload(route, request):
             headers = {k.lower(): v for k, v in request.headers.items()}
@@ -178,8 +198,47 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             )
 
         def handle_tech_links(route, request):
-            self.assertEqual(request.method, "POST")
-            fulfill_json(route, {"techLinkId": "tl-1", "techUrl": "/testing/token-abc"})
+            path = request.url.split("?")[0]
+            project_id = path.split("/commissioning/projects/")[-1].split("/tech-links")[0].strip("/")
+
+            if request.method == "GET":
+                active_links = [link for link in state["tech_links_by_project"].get(project_id, []) if not link.get("revokedAtUtc")]
+                fulfill_json(route, active_links)
+                return
+
+            if request.method == "POST" and path.endswith("/tech-links"):
+                data = json.loads(request.post_data or "{}")
+                state["tech_link_counter"] = int(state.get("tech_link_counter") or 0) + 1
+                tech_link_id = f"tl-{state['tech_link_counter']}"
+                link = {
+                    "techLinkId": tech_link_id,
+                    "label": data.get("label") or "Onsite Tech",
+                    "techUrl": "/testing/token-abc",
+                    "revokedAtUtc": None,
+                }
+                state["tech_links_by_project"].setdefault(project_id, []).append(link)
+                proj = state["projects_by_id"].get(project_id)
+                if proj is not None:
+                    proj["activeTechLinkIds"] = [item["techLinkId"] for item in state["tech_links_by_project"][project_id] if not item.get("revokedAtUtc")]
+                fulfill_json(route, {"techLinkId": tech_link_id, "techUrl": link["techUrl"], "label": link["label"]})
+                return
+
+            if request.method in {"DELETE", "POST"} and "/tech-links/" in path:
+                suffix = path.split("/tech-links/", 1)[1]
+                tech_link_id = suffix.split("/")[0]
+                links = state["tech_links_by_project"].get(project_id, [])
+                for link in links:
+                    if link.get("techLinkId") == tech_link_id and not link.get("revokedAtUtc"):
+                        state["tech_link_revoke_counter"] = int(state.get("tech_link_revoke_counter") or 0) + 1
+                        link["revokedAtUtc"] = f"2026-03-21T00:0{state['tech_link_revoke_counter']}:00Z"
+                        break
+                proj = state["projects_by_id"].get(project_id)
+                if proj is not None:
+                    proj["activeTechLinkIds"] = [item["techLinkId"] for item in links if not item.get("revokedAtUtc")]
+                route.fulfill(status=204, body="")
+                return
+
+            route.fulfill(status=405, body="method not allowed")
 
         def handle_progress(route, request):
             self.assertEqual(request.method, "GET")
@@ -225,22 +284,32 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             route.fulfill(
                 status=200,
                 headers={"Content-Type": "text/event-stream; charset=utf-8"},
-                body="data: "
-                + json.dumps(
-                    {
-                        "tsUtc": "2026-03-21T00:00:01Z",
-                        "type": "result.recorded",
-                        "data": {"targetKey": "btn:81:513:48551:Macro", "outcome": "PASS"},
-                    }
-                )
-                + "\n\n",
+                body=(
+                    "event: test_result\n"
+                    "data: "
+                    + json.dumps(
+                        {
+                            "tsUtc": "2026-03-21T00:00:01Z",
+                            "type": "test_result",
+                            "data": {
+                                "recordedAtUtc": "2026-03-21T00:00:01Z",
+                                "targetKey": "btn:81:513:48551:Macro",
+                                "targetName": "Macro",
+                                "outcome": "PASS",
+                                "refs": {"deviceName": "Device A", "pageName": "Home", "buttonName": "Button 1"},
+                            },
+                        }
+                    )
+                    + "\n\n"
+                ),
             )
 
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
+        page.route("**/api/v1/commissioning/projects/*", handle_project_detail)
         page.route("**/api/v1/commissioning/projects/*/uploads", handle_upload)
         page.route("**/api/v1/commissioning/projects/*/regenerate", handle_regenerate)
-        page.route("**/api/v1/commissioning/projects/*/tech-links", handle_tech_links)
+        page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
         page.route("**/api/v1/commissioning/projects/*/events", handle_events)
@@ -254,6 +323,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Manage")).to_be_visible()
         expect(page.get_by_role("button", name="Commission")).to_be_visible()
         expect(page.get_by_role("button", name="Diagnostics")).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
         expect(page.locator("#panel-manage")).to_be_visible()
         expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Regenerate")).to_be_visible()
 
@@ -286,6 +356,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
+        expect(page.get_by_text("Onsite Tech")).to_be_visible()
+        expect(page.get_by_role("button", name="Revoke")).to_be_visible()
+        page.get_by_role("button", name="Revoke").click()
+        expect(page.get_by_text("Onsite Tech")).to_have_count(0)
 
         # Tab switching
         page.get_by_role("button", name="Commission").click()
@@ -294,6 +368,12 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("commission-kpi-tested")).to_be_visible()
         expect(page.get_by_test_id("commission-kpi-untested")).to_be_visible()
         expect(page.get_by_test_id("commission-activity")).to_be_visible()
+        expect(page.locator("#commissionActivityBody tr")).to_have_count(1)
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Device A")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Home")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Button 1")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Macro")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("PASS")
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
