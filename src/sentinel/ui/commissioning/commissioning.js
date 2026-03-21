@@ -8,6 +8,19 @@ function api(path) {
   return `/api/v1${path}`;
 }
 
+function setActiveTab(tabName) {
+  const tabs = ["manage", "commission", "diagnostics"];
+  for (const t of tabs) {
+    const btn = document.getElementById(`tab-${t}`);
+    const panel = document.getElementById(`panel-${t}`);
+    if (!btn || !panel) continue;
+    const active = t === tabName;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+    panel.hidden = !active;
+  }
+}
+
 async function jsonFetch(url, options) {
   const res = await fetch(url, options);
   const ct = res.headers.get("content-type") || "";
@@ -63,52 +76,6 @@ const state = {
   generationReadyByProject: {},
   lastUploadFilenameByProject: {},
 };
-
-const projectEvents = {
-  source: null,
-  projectId: null,
-  refreshTimer: null,
-};
-
-function scheduleProjectRefresh() {
-  if (projectEvents.refreshTimer) return;
-  projectEvents.refreshTimer = setTimeout(async () => {
-    projectEvents.refreshTimer = null;
-    try {
-      await refreshFails();
-    } catch (_e) {}
-    try {
-      await refreshProgress();
-    } catch (_e) {}
-  }, 250);
-}
-
-function disconnectProjectEvents() {
-  if (projectEvents.source) {
-    try {
-      projectEvents.source.close();
-    } catch (_e) {}
-  }
-  projectEvents.source = null;
-  projectEvents.projectId = null;
-}
-
-function connectProjectEvents(projectId) {
-  const pid = String(projectId || "").trim();
-  if (!pid) {
-    disconnectProjectEvents();
-    return;
-  }
-  if (projectEvents.source && projectEvents.projectId === pid) return;
-
-  disconnectProjectEvents();
-  projectEvents.projectId = pid;
-  const url = api(`/commissioning/projects/${encodeURIComponent(pid)}/events`);
-  const es = new EventSource(url);
-  es.addEventListener("test_result", () => scheduleProjectRefresh());
-  es.onmessage = () => scheduleProjectRefresh();
-  projectEvents.source = es;
-}
 
 function setProgressHidden(el, hidden) {
   el.style.display = hidden ? "none" : "";
@@ -296,11 +263,8 @@ async function regenerate() {
     } else {
       setStatus($("regenStatus"), "Regenerated.");
     }
-    try {
-      await refreshProgress();
-    } catch (_e) {
-      // Keep generationReady false until a successful progress fetch.
-    }
+    state.generationReadyByProject[projectId] = true;
+    updateTechLinkEnabled();
   } finally {
     setProgressHidden($("regenProgress"), true);
     setStatus($("regenProgressLabel"), "");
@@ -319,111 +283,6 @@ async function createTechLink() {
     body: JSON.stringify({ label }),
   });
   $("techUrl").textContent = out.techUrl || "";
-}
-
-async function refreshProgress() {
-  const projectId = currentProjectId();
-  if (!projectId) return;
-  try {
-    const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-    const pct = Math.round(((out?.counts?.percentComplete || 0) * 100) * 10) / 10;
-    $("progress").textContent = `${pct}% complete\n\n` + JSON.stringify(out, null, 2);
-    state.generationReadyByProject[projectId] = true;
-    updateTechLinkEnabled();
-    await refreshFails();
-  } catch (e) {
-    state.generationReadyByProject[projectId] = false;
-    updateTechLinkEnabled();
-    throw e;
-  }
-}
-
-function formatFailIdentity(targetKey) {
-  const raw = String(targetKey || "").trim();
-  if (!raw) return "";
-  const parts = raw.split(":");
-  const kind = parts[0] || "";
-  if (kind === "event" && parts.length >= 3) {
-    const eventId = parts[1];
-    const targetName = parts.slice(2).join(":");
-    return `Event ${eventId} — ${targetName}`;
-  }
-  if (kind === "btn" && parts.length >= 5) {
-    const deviceId = parts[1];
-    const pageId = parts[2];
-    const buttonId = parts[3];
-    const targetName = parts.slice(4).join(":");
-    return `Button d${deviceId} p${pageId} b${buttonId} — ${targetName}`;
-  }
-  if (kind === "vpbtn" && parts.length >= 7) {
-    const deviceId = parts[1];
-    const pageId = parts[2];
-    const viewportButtonId = parts[3];
-    const frameId = parts[4];
-    const buttonId = parts[5];
-    const targetName = parts.slice(6).join(":");
-    return `Viewport d${deviceId} p${pageId} vp${viewportButtonId} f${frameId} b${buttonId} — ${targetName}`;
-  }
-  return raw;
-}
-
-function renderFails(items) {
-  const list = $("failsList");
-  const count = $("failsCount");
-  const status = $("failsStatus");
-  const rows = Array.isArray(items) ? items : [];
-
-  count.textContent = String(rows.length);
-  setStatus(status, "");
-  list.innerHTML = "";
-
-  if (!rows.length) {
-    const empty = document.createElement("div");
-    empty.className = "fails-empty";
-    empty.textContent = "No current failures.";
-    list.appendChild(empty);
-    return;
-  }
-
-  for (const rec of rows) {
-    const targetKey = String(rec?.targetKey || "");
-    const identity = formatFailIdentity(targetKey);
-    const note = String(rec?.lastFailNote || "").trim();
-    const at = String(rec?.lastTestedAtUtc || "").trim();
-    const role = String(rec?.recordedBy?.role || "").trim();
-
-    const row = document.createElement("div");
-    row.className = "fails-row";
-
-    const head = document.createElement("div");
-    head.className = "fails-identity";
-    head.textContent = identity || targetKey || "(missing targetKey)";
-
-    const meta = document.createElement("div");
-    meta.className = "fails-meta mono";
-    const when = at ? at : "(unknown time)";
-    const who = role ? role : "(unknown)";
-    meta.textContent = `${when} • ${who}`;
-
-    const noteEl = document.createElement("div");
-    noteEl.className = "fails-note";
-    noteEl.textContent = note || "(no note recorded)";
-
-    row.appendChild(head);
-    row.appendChild(meta);
-    row.appendChild(noteEl);
-    list.appendChild(row);
-  }
-}
-
-async function refreshFails() {
-  const projectId = currentProjectId();
-  if (!projectId) {
-    renderFails([]);
-    return;
-  }
-  const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/fails`));
-  renderFails(out);
 }
 
 async function run() {
@@ -445,27 +304,27 @@ async function run() {
     safe(async () => {
       const projectId = currentProjectId();
       if (projectId) state.generationReadyByProject[projectId] = false;
-      connectProjectEvents(projectId);
       updateRegenerateEnabled();
       updateTechLinkEnabled();
-      await refreshFails();
     }, $("projectStatus"))
   );
+
+  $("tab-manage").addEventListener("click", () => setActiveTab("manage"));
+  $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
+  $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
 
   $("createClientBtn").addEventListener("click", () => safe(createClient, $("clientStatus")));
   $("createProjectBtn").addEventListener("click", () => safe(createProject, $("projectStatus")));
   $("uploadBtn").addEventListener("click", () => safe(uploadApex, $("uploadStatus")));
   $("regenerateBtn").addEventListener("click", () => safe(regenerate, $("regenStatus")));
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("projectStatus")));
-  $("refreshProgressBtn").addEventListener("click", () => safe(refreshProgress, $("projectStatus")));
-  $("refreshFailsBtn").addEventListener("click", () => safe(refreshFails, $("projectStatus")));
 
   await safe(refreshClients, $("clientStatus"));
   setProgressHidden($("uploadProgress"), true);
   setProgressHidden($("regenProgress"), true);
   updateRegenerateEnabled();
   updateTechLinkEnabled();
-  await safe(refreshFails, $("projectStatus"));
+  setActiveTab("manage");
 }
 
 run();

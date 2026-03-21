@@ -7,110 +7,119 @@
     <link rel="stylesheet" href="./commissioning.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="header">
-        <h1>Commissioning Console</h1>
-        <p class="sub">Local MVP UI skeleton (contract-driven).</p>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <h1>Commissioning Console</h1>
+          <p class="sub">Local MVP UI skeleton (contract-driven).</p>
+        </div>
       </header>
 
-      <section class="card">
-        <h2>Client</h2>
-        <div class="row">
-          <label class="field">
-            <span>New client name</span>
-            <input id="newClientName" type="text" placeholder="e.g. Verrier Home" />
-          </label>
-          <button id="createClientBtn" type="button">Create client</button>
-        </div>
-        <div class="row">
-          <label class="field grow">
-            <span>Client</span>
-            <select id="clientSelect" aria-label="Client"></select>
-          </label>
-          <button id="refreshClientsBtn" type="button">Refresh</button>
-        </div>
-        <div class="status" id="clientStatus"></div>
-      </section>
+      <div class="layout">
+        <nav class="sidenav" aria-label="Console tabs">
+          <button id="tab-manage" class="tab active" type="button" aria-selected="true" data-tab="manage">Manage</button>
+          <button id="tab-commission" class="tab" type="button" aria-selected="false" data-tab="commission">Commission</button>
+          <button id="tab-diagnostics" class="tab" type="button" aria-selected="false" data-tab="diagnostics">Diagnostics</button>
+        </nav>
 
-      <section class="card">
-        <h2>Project</h2>
-        <div class="row">
-          <label class="field grow">
-            <span>New project name</span>
-            <input id="newProjectName" type="text" placeholder="e.g. iPhone v55.2" />
-          </label>
-          <button id="createProjectBtn" type="button">Create project</button>
-        </div>
-        <div class="row">
-          <label class="field grow">
-            <span>Project</span>
-            <select id="projectSelect" aria-label="Project"></select>
-          </label>
-          <button id="refreshProjectsBtn" type="button">Refresh</button>
-        </div>
-        <div class="status" id="projectStatus"></div>
-      </section>
+        <main class="content">
+          <section id="panel-manage" class="panel">
+            <section class="card">
+              <h2>Client</h2>
+              <div class="row">
+                <label class="field">
+                  <span>New client name</span>
+                  <input id="newClientName" type="text" placeholder="e.g. Verrier Home" />
+                </label>
+                <button id="createClientBtn" type="button">Create client</button>
+              </div>
+              <div class="row">
+                <label class="field grow">
+                  <span>Client</span>
+                  <select id="clientSelect" aria-label="Client"></select>
+                </label>
+                <button id="refreshClientsBtn" type="button">Refresh</button>
+              </div>
+              <div class="status" id="clientStatus"></div>
+            </section>
 
-      <section class="card">
-        <h2>Upload + Regenerate</h2>
-        <div class="row">
-          <label class="field grow">
-            <span>.apex file</span>
-            <input type="file" name="apex" id="apexFile" accept=".apex" />
-          </label>
-          <button id="uploadBtn" type="button">Upload .apex</button>
-        </div>
-        <div class="row progress-row">
-          <progress id="uploadProgress" class="progress" max="100" value="0"></progress>
-          <div class="progress-label" id="uploadProgressLabel"></div>
-        </div>
-        <div class="status" data-testid="upload-status" id="uploadStatus"></div>
+            <section class="card">
+              <h2>Project</h2>
+              <div class="row">
+                <label class="field grow">
+                  <span>New project name</span>
+                  <input id="newProjectName" type="text" placeholder="e.g. iPhone v55.2" />
+                </label>
+                <button id="createProjectBtn" type="button">Create project</button>
+              </div>
+              <div class="row">
+                <label class="field grow">
+                  <span>Project</span>
+                  <select id="projectSelect" aria-label="Project"></select>
+                </label>
+                <button id="refreshProjectsBtn" type="button">Refresh</button>
+              </div>
+              <div class="status" id="projectStatus"></div>
+            </section>
 
-        <div class="row">
-          <button id="regenerateBtn" type="button">Regenerate</button>
-        </div>
-        <div class="row progress-row">
-          <progress id="regenProgress" class="progress"></progress>
-          <div class="progress-label" id="regenProgressLabel"></div>
-        </div>
-        <div class="status" data-testid="regen-status" id="regenStatus"></div>
-      </section>
+            <section class="card">
+              <h2>Upload + Regenerate</h2>
+              <div class="row">
+                <label class="field grow">
+                  <span>.apex file</span>
+                  <input type="file" name="apex" id="apexFile" accept=".apex" />
+                </label>
+                <button id="uploadBtn" type="button">Upload .apex</button>
+              </div>
+              <div class="row progress-row">
+                <progress id="uploadProgress" class="progress" max="100" value="0"></progress>
+                <div class="progress-label" id="uploadProgressLabel"></div>
+              </div>
+              <div class="status" data-testid="upload-status" id="uploadStatus"></div>
 
-      <section class="card">
-        <h2>Tech links</h2>
-        <div class="row">
-          <label class="field grow">
-            <span>Tech label</span>
-            <input id="techLabel" type="text" placeholder="e.g. Onsite Tech" />
-          </label>
-          <button id="createTechLinkBtn" type="button" disabled>Create tech link</button>
-        </div>
-        <div class="status">
-          <div class="mono" data-testid="tech-url" id="techUrl"></div>
-        </div>
-      </section>
+              <div class="row">
+                <button id="regenerateBtn" type="button">Regenerate</button>
+              </div>
+              <div class="row progress-row">
+                <progress id="regenProgress" class="progress"></progress>
+                <div class="progress-label" id="regenProgressLabel"></div>
+              </div>
+              <div class="status" data-testid="regen-status" id="regenStatus"></div>
+            </section>
 
-      <section class="card">
-        <h2>Progress</h2>
-        <div class="row">
-          <button id="refreshProgressBtn" type="button">Refresh progress</button>
-        </div>
-        <pre class="mono" data-testid="progress" id="progress"></pre>
-      </section>
+            <section class="card">
+              <h2>Tech links</h2>
+              <div class="row">
+                <label class="field grow">
+                  <span>Tech label</span>
+                  <input id="techLabel" type="text" placeholder="e.g. Onsite Tech" />
+                </label>
+                <button id="createTechLinkBtn" type="button" disabled>Create tech link</button>
+              </div>
+              <div class="status">
+                <div class="mono" data-testid="tech-url" id="techUrl"></div>
+              </div>
+            </section>
+          </section>
 
-      <section class="card">
-        <h2>Fails (placeholder)</h2>
-        <div class="row fails-head">
-          <div class="sub">
-            Current failures:
-            <span class="mono" data-testid="fails-count" id="failsCount">0</span>
-          </div>
-          <button id="refreshFailsBtn" type="button">Refresh fails</button>
-        </div>
-        <div class="status" id="failsStatus"></div>
-        <div class="fails-list" data-testid="fails-list" id="failsList"></div>
-      </section>
-    </main>
+          <!-- PLACEHOLDER: Commission tab container (owned by other workstreams). -->
+          <section id="panel-commission" class="panel" hidden>
+            <section class="card">
+              <h2>Commission</h2>
+              <p class="sub">Placeholder container. Commission tab content will be implemented in another stream.</p>
+            </section>
+          </section>
+
+          <!-- PLACEHOLDER: Diagnostics tab container (owned by other workstreams). -->
+          <section id="panel-diagnostics" class="panel" hidden>
+            <section class="card">
+              <h2>Diagnostics</h2>
+              <p class="sub">Placeholder container. Diagnostics tab content will be implemented in another stream.</p>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
 
     <script src="./commissioning.js"></script>
   </body>
