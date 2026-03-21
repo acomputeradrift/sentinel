@@ -336,3 +336,27 @@ def list_fail_tags_for_project(database_url: str, *, project_id: str) -> list[di
         )
     finally:
         con.close()
+
+
+def count_first_time_fail_targets(database_url: str, *, project_id: str) -> int:
+    """
+    Counts targets where the first ever recorded outcome for that target is FAIL.
+
+    "First" is determined by:
+    - recorded_at_utc ASC
+    - test_result_id ASC (deterministic tie-breaker)
+    """
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select count(*) as \"count\" from ("
+            "  select distinct on (target_key) target_key, outcome "
+            "  from test_results where project_id=%s "
+            "  order by target_key, recorded_at_utc asc, test_result_id asc"
+            ") firsts where outcome='FAIL'",
+            (project_id,),
+        )
+        return int(row["count"]) if row else 0
+    finally:
+        con.close()

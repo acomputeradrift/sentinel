@@ -240,6 +240,45 @@ def project_progress(request: Request, projectId: str) -> dict:
         raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
 
 
+@router.get("/projects/{projectId}/rollups")
+def project_rollups(request: Request, projectId: str) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+
+    latest = _repo(request).get_latest_results_for_project(projectId=projectId)
+    try:
+        prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
+    except FileNotFoundError:
+        raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
+
+    tags = _repo(request).get_fail_tags_for_project(projectId=projectId)
+    by_target: dict[str, int] = {}
+    by_tag = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "DONE": 0}
+    total = 0
+    for rec in latest.values():
+        if rec.outcome != "FAIL":
+            continue
+        target = rec.target if isinstance(rec.target, dict) else {}
+        target_key = str(target.get("targetKey") or "").strip()
+        if not target_key:
+            continue
+        total += 1
+        name = str(target.get("targetName") or "").strip() or "(unknown)"
+        by_target[name] = by_target.get(name, 0) + 1
+        tag = str(tags.get(target_key, "NOT_STARTED") or "NOT_STARTED").strip().upper()
+        if tag not in by_tag:
+            tag = "NOT_STARTED"
+        by_tag[tag] += 1
+
+    return {
+        "projectId": projectId,
+        "progress": prog,
+        "firstTimeFailTargets": _repo(request).count_first_time_fail_targets(projectId=projectId),
+        "currentFailures": {"total": total, "byTargetName": by_target, "byTag": by_tag},
+    }
+
+
 @router.get("/projects/{projectId}/events")
 async def project_events(request: Request, projectId: str, once: bool = False):
     proj = _repo(request).get_project(projectId=projectId)
