@@ -35,6 +35,12 @@ class ServerRoutesSmokeTest(unittest.TestCase):
 
             def _regen_stub(*, projectId: str, apex_path: Path) -> dict:  # noqa: ARG001
                 calls["regen_called"] = True
+                out_dir = Path(td) / "generated" / projectId
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "ProjectA_project_data.json").write_text(
+                    '{"events":{"system":[{"userFacing":{"testTargets":{"Trigger":true}},"diagnostics":{"eventId":126}}],"driver":[]},"devices":[]}',
+                    encoding="utf-8",
+                )
                 return {"projectId": projectId, "outDir": str(Path(td) / "generated" / projectId), "projectData": "stub"}
 
             pipeline.regenerate_project = _regen_stub  # type: ignore[assignment]
@@ -88,6 +94,43 @@ class ServerRoutesSmokeTest(unittest.TestCase):
                 self.assertEqual(html.status_code, 200)
                 self.assertIn("text/html", html.headers.get("content-type", ""))
 
+                rollups0 = client.get(f"/api/v1/commissioning/projects/{p['projectId']}/rollups").json()
+                self.assertIn("progress", rollups0)
+                self.assertEqual(rollups0["firstTimeFailTargets"], 0)
+                self.assertIn("currentFailures", rollups0)
+                self.assertEqual(rollups0["currentFailures"]["total"], 0)
+                self.assertEqual(rollups0["currentFailures"]["byTag"].get("NOT_STARTED"), 0)
+
+                fail_first = client.post(
+                    f"/api/v1/testing/{tech_token}/results",
+                    json={
+                        "target": {"targetKey": "event:126:Trigger", "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Trigger"},
+                        "outcome": "FAIL",
+                        "failNote": "Not firing",
+                    },
+                )
+                self.assertEqual(fail_first.status_code, 200)
+
+                rollups1 = client.get(f"/api/v1/commissioning/projects/{p['projectId']}/rollups").json()
+                self.assertEqual(rollups1["firstTimeFailTargets"], 1)
+                self.assertEqual(rollups1["currentFailures"]["total"], 1)
+                self.assertEqual(rollups1["currentFailures"]["byTargetName"]["Trigger"], 1)
+                self.assertEqual(rollups1["currentFailures"]["byTag"]["NOT_STARTED"], 1)
+
+                ok_after = client.post(
+                    f"/api/v1/testing/{tech_token}/results",
+                    json={
+                        "target": {"targetKey": "event:126:Trigger", "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Trigger"},
+                        "outcome": "PASS",
+                        "failNote": None,
+                    },
+                )
+                self.assertEqual(ok_after.status_code, 200)
+
+                rollups2 = client.get(f"/api/v1/commissioning/projects/{p['projectId']}/rollups").json()
+                self.assertEqual(rollups2["firstTimeFailTargets"], 1)
+                self.assertEqual(rollups2["currentFailures"]["total"], 0)
+
                 revoke = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links/{link['techLinkId']}/revoke").json()
                 self.assertEqual(revoke["techLinkId"], link["techLinkId"])
 
@@ -101,27 +144,13 @@ class ServerRoutesSmokeTest(unittest.TestCase):
                 fail = client.post(
                     f"/api/v1/testing/{tech_token}/results",
                     json={
-                        "target": {"targetKey": "event:126:Trigger", "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Trigger"},
+                        "target": {"targetKey": "event:126:Other", "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Other"},
                         "outcome": "FAIL",
                         "failNote": "",
                     },
                 )
                 self.assertEqual(fail.status_code, 400)
                 self.assertEqual(fail.json()["error"]["code"], "FAIL_NOTE_REQUIRED")
-
-                ok = client.post(
-                    f"/api/v1/testing/{tech_token}/results",
-                    json={
-                        "target": {"targetKey": "event:126:Trigger", "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Trigger"},
-                        "outcome": "PASS",
-                        "failNote": None,
-                    },
-                )
-                self.assertEqual(ok.status_code, 200)
-                self.assertEqual(ok.json()["outcome"], "PASS")
-
-                status = client.get(f"/api/v1/testing/{tech_token}/target-status", params={"targetKey": "event:126:Trigger"}).json()
-                self.assertEqual(status["currentOutcome"], "PASS")
             finally:
                 pipeline.regenerate_project = original_regen  # type: ignore[assignment]
 

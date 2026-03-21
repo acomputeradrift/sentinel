@@ -99,6 +99,8 @@ class Repository(Protocol):
 
     def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]: ...
 
+    def count_first_time_fail_targets(self, *, projectId: str) -> int: ...
+
 
 class InMemoryRepository:
     def __init__(self) -> None:
@@ -119,6 +121,12 @@ class InMemoryRepository:
         # - primary: recordedAtUtc
         # - tie-break: testResultId (lexicographic)
         return max(items, key=lambda r: (r.recordedAtUtc, r.testResultId))
+
+    @staticmethod
+    def _earliest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
+        if not items:
+            return None
+        return min(items, key=lambda r: (r.recordedAtUtc, r.testResultId))
 
     def create_client(self, *, name: str) -> Client:
         with self._lock:
@@ -258,6 +266,17 @@ class InMemoryRepository:
                 if pid == projectId:
                     out[target_key] = tag
             return out
+
+    def count_first_time_fail_targets(self, *, projectId: str) -> int:
+        with self._lock:
+            count = 0
+            for (pid, _target_key), items in self._results_by_project_target.items():
+                if pid != projectId or not items:
+                    continue
+                first = self._earliest_record(items)
+                if first is not None and first.outcome == "FAIL":
+                    count += 1
+            return count
 
 
 class PostgresRepository:
@@ -436,4 +455,7 @@ class PostgresRepository:
         for r in rows:
             out[str(r.get("targetKey") or "")] = str(r.get("tag") or "")
         return out
+
+    def count_first_time_fail_targets(self, *, projectId: str) -> int:
+        return int(self._q.count_first_time_fail_targets(self._database_url, project_id=projectId))
 
