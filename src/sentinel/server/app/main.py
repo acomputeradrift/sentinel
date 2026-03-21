@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from sentinel.server.api.commissioning import router as commissioning_router
 from sentinel.server.api.events import router as events_router
@@ -30,6 +31,11 @@ def create_app(repo: Repository | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    ui_root = os.path.join(os.path.dirname(__file__), "..", "..", "ui")
+    commissioning_dir = os.path.join(ui_root, "commissioning")
+    if os.path.isdir(commissioning_dir):
+        app.mount("/commissioning", StaticFiles(directory=commissioning_dir, html=True), name="commissioning-ui")
 
     app.include_router(commissioning_router)
     app.include_router(events_router)
