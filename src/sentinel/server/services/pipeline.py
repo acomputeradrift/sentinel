@@ -3,10 +3,15 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+import sys
 
 
 class PipelineNotImplementedError(RuntimeError):
     pass
+
+
+def _python_exe() -> str:
+    return os.environ.get("PYTHON") or sys.executable
 
 
 def _repo_root() -> Path:
@@ -52,7 +57,7 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
     try:
         subprocess.run(
             [
-                os.environ.get("PYTHON") or "python",
+                _python_exe(),
                 str(extract),
                 "--apex",
                 str(apex_path),
@@ -78,7 +83,7 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
     try:
         subprocess.run(
             [
-                os.environ.get("PYTHON") or "python",
+                _python_exe(),
                 str(generate),
                 "--project-data",
                 str(project_data),
