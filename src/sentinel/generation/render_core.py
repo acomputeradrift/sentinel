@@ -67,6 +67,56 @@ def _button_tag_name(btn: dict[str, Any]) -> str:
     return str(btn.get("buttonIdentity", {}).get("buttonTagName") or "").strip()
 
 
+def _norm_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _diag_match_button_id(diag_buttons: list[dict[str, Any]], user_btn: dict[str, Any]) -> int | None:
+    user_identity = user_btn.get("buttonIdentity", {}) if isinstance(user_btn, dict) else {}
+    user_tag = _norm_text(user_identity.get("buttonTagName"))
+    user_text = _norm_text(user_identity.get("text"))
+    if not user_tag and not user_text:
+        return None
+
+    matches: list[int] = []
+    for diag in diag_buttons:
+        if not isinstance(diag, dict):
+            continue
+        diag_tag = _norm_text(diag.get("buttonTagName"))
+        diag_text = _norm_text((diag.get("identifiers") or {}).get("text"))
+        if diag_tag == user_tag and diag_text == user_text:
+            button_id = diag.get("buttonId")
+            if button_id is not None:
+                matches.append(int(button_id))
+
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _diag_match_viewport_button_ids(
+    diag_viewports: list[dict[str, Any]],
+    *,
+    vp_index: int,
+    frame_id: int,
+    user_btn: dict[str, Any],
+) -> tuple[int | None, int | None]:
+    if vp_index < 0 or vp_index >= len(diag_viewports):
+        return None, None
+    diag_vp = diag_viewports[vp_index]
+    if not isinstance(diag_vp, dict):
+        return None, None
+    viewport_button_id = diag_vp.get("viewportButtonId")
+    frames = diag_vp.get("frames", [])
+    if not isinstance(frames, list):
+        frames = []
+    diag_frame = next((f for f in frames if isinstance(f, dict) and int(f.get("frameId", -1)) == int(frame_id)), None)
+    diag_buttons = (diag_frame.get("buttons") if isinstance(diag_frame, dict) else None) or []
+    if not isinstance(diag_buttons, list):
+        diag_buttons = []
+    return (int(viewport_button_id) if viewport_button_id is not None else None), _diag_match_button_id(diag_buttons, user_btn)
+
+
 def _room_name_from_button_tag(tag_name: str) -> str | None:
     tag = str(tag_name or "").strip()
     if not tag.lower().startswith("room:"):
@@ -433,6 +483,18 @@ def _page_payload(
     orientation: str,
 ) -> dict[str, Any]:
     device = project_data["devices"][device_index]
+    diag = device.get("diagnostics", {}) if isinstance(device, dict) else {}
+    diag_device_id = diag.get("deviceId") if isinstance(diag, dict) else None
+    diag_pages = (diag.get("pages") if isinstance(diag, dict) else None) or []
+    diag_page = diag_pages[page_index] if isinstance(diag_pages, list) and page_index < len(diag_pages) else {}
+    diag_page_id = diag_page.get("pageId") if isinstance(diag_page, dict) else None
+    diag_buttons = (diag_page.get("buttons") if isinstance(diag_page, dict) else None) or []
+    diag_viewports = (diag_page.get("viewports") if isinstance(diag_page, dict) else None) or []
+    if not isinstance(diag_buttons, list):
+        diag_buttons = []
+    if not isinstance(diag_viewports, list):
+        diag_viewports = []
+
     uf = device["userFacing"]
     page = uf["pages"][page_index]
     variable_label = app_ui.get("testingPopup", {}).get("variableLabelTemplate", "Variable - {variableType}")
@@ -445,6 +507,14 @@ def _page_payload(
         if not bool(oriented_ui.get("visible", True)):
             continue
         c = _ui_coordinates(btn["buttonUI"], orientation)
+        diag_button_id = _diag_match_button_id(diag_buttons, btn)
+        diag_attrs = ""
+        if diag_device_id is not None:
+            diag_attrs += f" data-diag-device-id='{int(diag_device_id)}'"
+        if diag_page_id is not None:
+            diag_attrs += f" data-diag-page-id='{int(diag_page_id)}'"
+        if diag_button_id is not None:
+            diag_attrs += f" data-diag-button-id='{int(diag_button_id)}'"
         page_button_rows.append(
             _render_button_control(
                 btn,
@@ -456,7 +526,7 @@ def _page_payload(
                 page_targets,
                 page_target_indexes,
                 extra_style=f"z-index:{100 + layer_order};",
-                extra_attrs=f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'",
+                extra_attrs=f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'{diag_attrs}",
                 orientation=orientation,
             )
         )
@@ -468,6 +538,21 @@ def _page_payload(
         extra = f"z-index:{100 + int(vb['owner_layer_order'])};"
         if not vb["visible"]:
             extra = "display:none;" + extra
+        vp_button_id, vp_child_button_id = _diag_match_viewport_button_ids(
+            diag_viewports,
+            vp_index=int(vb["vp_index"]),
+            frame_id=int(vb["frame_id"]),
+            user_btn=btn,
+        )
+        diag_attrs = ""
+        if diag_device_id is not None:
+            diag_attrs += f" data-diag-device-id='{int(diag_device_id)}'"
+        if diag_page_id is not None:
+            diag_attrs += f" data-diag-page-id='{int(diag_page_id)}'"
+        if vp_button_id is not None:
+            diag_attrs += f" data-diag-viewport-button-id='{int(vp_button_id)}'"
+        if vp_child_button_id is not None:
+            diag_attrs += f" data-diag-button-id='{int(vp_child_button_id)}'"
         viewport_button_rows.append(
             _render_button_control(
                 btn,
@@ -487,7 +572,7 @@ def _page_payload(
                     f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
                     f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
                     f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}' "
-                    f"data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'"
+                    f"data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'{diag_attrs}"
                 ),
                 orientation=orientation,
                 portrait_offset_left=int(vb["portrait_off_left"]),
@@ -687,23 +772,97 @@ let currentDeviceTop=0;
  let activePageIndex=0;
  let currentViewportIndexes=VP_FRAMES.map(()=>0);
  let currentOrientation=ORIENTATION_STATE.current;
-	 const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
+ const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
-function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
-function bindTestButtonClicks(root) {{
- const scope=root||document;
- scope.querySelectorAll('.test-btn').forEach(b=>{{
-  if (b.dataset.boundTestBtn) return;
-  b.dataset.boundTestBtn='1';
-  b.addEventListener('click',()=>{{
-   const m=JSON.parse(b.dataset.meta||'{{}}');
-   const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
-   pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-   rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
-   ov.classList.add('open');
+ function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
+ function techTokenFromLocation() {{
+  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
+  const i=parts.indexOf('testing');
+  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
+ }}
+ function normalizeTargetName(label) {{
+  const s=String(label??'').trim();
+  if (s.toLowerCase().startsWith('variable - ')) {{
+   const tail=s.slice('variable - '.length).trim();
+   return tail ? ('Var.'+tail) : s;
+  }}
+  return s;
+ }}
+ async function postResult(ctxBtn, meta, targetLabel, outcome, failNote) {{
+  const techToken=techTokenFromLocation();
+  if (!techToken) return;
+
+  const targetName=normalizeTargetName(targetLabel);
+  const isFail=String(outcome||'').toUpperCase()==='FAIL';
+  const note=isFail ? String(failNote||'').trim() : null;
+  if (isFail && !note) return;
+
+  let kind='BUTTON';
+  let refs={{}};
+  let targetKey='';
+
+  if (meta && meta.kind==='EVENT' && meta.refs && meta.refs.eventId!=null) {{
+   const eventId=Number(meta.refs.eventId);
+   kind='EVENT';
+   refs={{eventId}};
+   targetKey=`event:${{eventId}}:${{targetName}}`;
+  }} else {{
+   const wrap=ctxBtn && ctxBtn.closest ? ctxBtn.closest('.btn-wrap') : null;
+   const deviceId=Number(wrap?.dataset.diagDeviceId||0);
+   const pageId=Number((activePageState()?.pageId)||wrap?.dataset.diagPageId||0);
+   const buttonId=Number(wrap?.dataset.diagButtonId||0);
+   const isVp=!!(wrap && wrap.classList && wrap.classList.contains('vp-btn'));
+   if (isVp) {{
+    const viewportButtonId=Number(wrap?.dataset.diagViewportButtonId||0);
+    const frameId=Number(wrap?.dataset.frame||0);
+    kind='VIEWPORT_BUTTON';
+    refs={{deviceId,pageId,viewportButtonId,frameId,buttonId}};
+    targetKey=`vpbtn:${{deviceId}}:${{pageId}}:${{viewportButtonId}}:${{frameId}}:${{buttonId}}:${{targetName}}`;
+    if (!deviceId || !pageId || !viewportButtonId || !buttonId) return;
+   }} else {{
+    kind='BUTTON';
+    refs={{deviceId,pageId,buttonId}};
+    targetKey=`btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{targetName}}`;
+    if (!deviceId || !pageId || !buttonId) return;
+   }}
+  }}
+
+  const payload={{target:{{targetKey,kind,refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
+  const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
+  if (!r.ok) return;
+ }}
+ function bindResultRows(ctxBtn, meta) {{
+  rows.querySelectorAll('.row').forEach(row=>{{
+   const label=row.querySelector('.n')?.textContent||'';
+   const buttons=row.querySelectorAll('.actions button');
+   if (buttons.length<2) return;
+   const passBtn=buttons[0];
+   const failBtn=buttons[1];
+   const noteEl=row.querySelector('textarea');
+   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'PASS', null);}});
+   failBtn.addEventListener('click', e=>{{
+    e.stopPropagation();
+    const note=noteEl ? String(noteEl.value||'') : '';
+    if (!note.trim()) {{ if (noteEl) noteEl.focus(); return; }}
+    postResult(ctxBtn, meta, label, 'FAIL', note);
+   }});
   }});
- }});
-}}
+ }}
+ function bindTestButtonClicks(root) {{
+  const scope=root||document;
+  scope.querySelectorAll('.test-btn').forEach(b=>{{
+   if (b.dataset.boundTestBtn) return;
+   b.dataset.boundTestBtn='1';
+   b.addEventListener('click',()=>{{
+    const m=JSON.parse(b.dataset.meta||'{{}}');
+    const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
+    pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+    rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+    ov.classList.add('open');
+    bindResultRows(b, m);
+   }});
+  }});
+ }}
 bindTestButtonClicks(document);
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
@@ -1921,6 +2080,8 @@ def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
 
 def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
     user = item.get("userFacing", {}) if isinstance(item, dict) else {}
+    diag = item.get("diagnostics", {}) if isinstance(item, dict) else {}
+    event_id = diag.get("eventId") if isinstance(diag, dict) else None
     if event_kind == "driver":
         identity = str(user.get("driverName") or "Driver Event").strip()
     else:
@@ -1936,6 +2097,8 @@ def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
         "identity": identity,
         "buttonType": "",
         "targets": targets,
+        "kind": "EVENT",
+        "refs": {"eventId": int(event_id) if event_id is not None else None},
     }
 
 
@@ -2064,19 +2227,65 @@ function toggleSection(btn){{
  }} else {{
   target.removeAttribute('hidden');
  }}
-}}
-var popupConfig=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
-Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
- b.addEventListener('click', function(){{
-  const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
-  const suffix=(popupConfig.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
-  const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
-  pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-  const targets=Array.isArray(m.targets) ? m.targets : [];
-  rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
-  ov.classList.add('open');
+ }}
+ var popupConfig=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
+ function techTokenFromLocation() {{
+  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
+  const i=parts.indexOf('testing');
+  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
+ }}
+ function normalizeTargetName(label) {{
+  const s=String(label??'').trim();
+  if (s.toLowerCase().startsWith('variable - ')) {{
+   const tail=s.slice('variable - '.length).trim();
+   return tail ? ('Var.'+tail) : s;
+  }}
+  return s;
+ }}
+ async function postResult(meta, targetLabel, outcome, failNote) {{
+  const techToken=techTokenFromLocation();
+  if (!techToken) return;
+  if (!meta || meta.kind!=='EVENT' || !meta.refs || meta.refs.eventId==null) return;
+
+  const targetName=normalizeTargetName(targetLabel);
+  const isFail=String(outcome||'').toUpperCase()==='FAIL';
+  const note=isFail ? String(failNote||'').trim() : null;
+  if (isFail && !note) return;
+
+  const eventId=Number(meta.refs.eventId);
+  const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs:{{eventId}},targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
+  const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
+  if (!r.ok) return;
+ }}
+ function bindResultRows(meta) {{
+  rows.querySelectorAll('.row').forEach(function(row){{
+   const label=(row.querySelector('.n')||{{}}).textContent||'';
+   const buttons=row.querySelectorAll('.actions button');
+   if (buttons.length<2) return;
+   const passBtn=buttons[0];
+   const failBtn=buttons[1];
+   const noteEl=row.querySelector('textarea');
+   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'PASS', null);}});
+   failBtn.addEventListener('click', function(e){{
+    e.stopPropagation();
+    const note=noteEl ? String(noteEl.value||'') : '';
+    if (!note.trim()) {{ if (noteEl) noteEl.focus(); return; }}
+    postResult(meta, label, 'FAIL', note);
+   }});
+  }});
+ }}
+ Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
+  b.addEventListener('click', function(){{
+   const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
+   const suffix=(popupConfig.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
+   const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
+   pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+   const targets=Array.isArray(m.targets) ? m.targets : [];
+   rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+   ov.classList.add('open');
+   bindResultRows(m);
+  }});
  }});
-}});
 document.getElementById('close').addEventListener('click', function(){{ov.classList.remove('open');}});
 ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('open');}});
 </script></body></html>"""
