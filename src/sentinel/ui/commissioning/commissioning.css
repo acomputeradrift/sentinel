@@ -226,3 +226,60 @@ pre.mono {
   font-size: 13px;
 }
 
+.table-wrap {
+  margin-top: 10px;
+}
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #d4dee8;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fbfdff;
+}
+
+.mini-table th,
+.mini-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid #e1ebf3;
+  font-size: 13px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.mini-table th {
+  background: #f5f8fb;
+  color: #4e6a7f;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.mini-table tr:last-child td {
+  border-bottom: none;
+}
+
+.mini-table .mono {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+  display: inline-block;
+}
+
+.empty {
+  margin-top: 10px;
+  border: 1px dashed #a9bccd;
+  border-radius: 14px;
+  padding: 12px 12px;
+  background: #f5f8fb;
+  color: #4e6a7f;
+  font-size: 13px;
+}
+
+button.danger {
+  border-color: #7f1d1d;
+  background: #b91c1c;
+}
+

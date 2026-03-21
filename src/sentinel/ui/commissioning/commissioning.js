@@ -60,10 +60,12 @@ async function refreshProjects() {
   const clientId = $("clientSelect").value;
   if (!clientId) {
     setSelectOptions($("projectSelect"), [], () => "", () => "");
+    $("projectSelect").dispatchEvent(new Event("change"));
     return [];
   }
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
+  $("projectSelect").dispatchEvent(new Event("change"));
   return projects;
 }
 
@@ -75,6 +77,7 @@ const state = {
   lastUploadIdByProject: {},
   generationReadyByProject: {},
   lastUploadFilenameByProject: {},
+  techLinksByProject: {},
 };
 
 function setProgressHidden(el, hidden) {
@@ -99,6 +102,80 @@ function updateTechLinkEnabled() {
   const projectId = currentProjectId();
   const ready = projectId ? !!state.generationReadyByProject[projectId] : false;
   $("createTechLinkBtn").disabled = !projectId || !ready;
+}
+
+function techLinksForProject(projectId) {
+  return state.techLinksByProject[projectId] || [];
+}
+
+function renderTechLinks() {
+  const body = $("techLinksBody");
+  const empty = $("techLinksEmpty");
+  const table = body.closest("table");
+  body.innerHTML = "";
+
+  const projectId = currentProjectId();
+  if (!projectId) {
+    empty.textContent = "Select a project to manage tech links.";
+    empty.style.display = "";
+    if (table) table.style.display = "none";
+    return;
+  }
+
+  const items = techLinksForProject(projectId);
+  if (table) table.style.display = "";
+  if (!items.length) {
+    empty.textContent = "No active tech links for this project.";
+    empty.style.display = "";
+    return;
+  }
+
+  empty.style.display = "none";
+  for (const link of items) {
+    const tr = document.createElement("tr");
+
+    const tdLabel = document.createElement("td");
+    tdLabel.textContent = link.label || "(no label)";
+
+    const tdCreated = document.createElement("td");
+    tdCreated.textContent = link.createdAtUtc || "";
+
+    const tdUrl = document.createElement("td");
+    const url = document.createElement("span");
+    url.className = "mono";
+    url.textContent = link.techUrl || "";
+    tdUrl.appendChild(url);
+
+    const tdActions = document.createElement("td");
+    const revoke = document.createElement("button");
+    revoke.type = "button";
+    revoke.className = "danger";
+    revoke.textContent = "Revoke";
+    revoke.addEventListener("click", () => {
+      const projectIdNow = currentProjectId();
+      if (!projectIdNow) return;
+      const statusEl = document.getElementById("techLinkStatus");
+      const set = (msg) => statusEl && (statusEl.textContent = msg || "");
+      set("");
+      jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectIdNow)}/tech-links/${encodeURIComponent(link.techLinkId)}/rotate`), {
+        method: "POST",
+      })
+        .then(() => {
+          state.techLinksByProject[projectIdNow] = techLinksForProject(projectIdNow).filter((x) => x.techLinkId !== link.techLinkId);
+          if ($("techUrl").textContent === (link.techUrl || "")) $("techUrl").textContent = "";
+          renderTechLinks();
+          set("Revoked (rotated token).");
+        })
+        .catch((e) => set(String(e?.message || e)));
+    });
+    tdActions.appendChild(revoke);
+
+    tr.appendChild(tdLabel);
+    tr.appendChild(tdCreated);
+    tr.appendChild(tdUrl);
+    tr.appendChild(tdActions);
+    body.appendChild(tr);
+  }
 }
 
 function _stripExtension(filename) {
@@ -283,6 +360,14 @@ async function createTechLink() {
     body: JSON.stringify({ label }),
   });
   $("techUrl").textContent = out.techUrl || "";
+  const createdAtUtc = new Date().toISOString();
+  state.techLinksByProject[projectId] = [
+    { techLinkId: out.techLinkId, label: label || "", createdAtUtc, techUrl: out.techUrl || "" },
+    ...techLinksForProject(projectId),
+  ];
+  renderTechLinks();
+  const statusEl = document.getElementById("techLinkStatus");
+  if (statusEl) statusEl.textContent = "Created tech link.";
 }
 
 async function run() {
@@ -297,8 +382,6 @@ async function run() {
     }
   };
 
-  $("refreshClientsBtn").addEventListener("click", () => safe(refreshClients, $("clientStatus")));
-  $("refreshProjectsBtn").addEventListener("click", () => safe(refreshProjects, $("projectStatus")));
   $("clientSelect").addEventListener("change", () => safe(refreshProjects, $("projectStatus")));
   $("projectSelect").addEventListener("change", () =>
     safe(async () => {
@@ -306,6 +389,7 @@ async function run() {
       if (projectId) state.generationReadyByProject[projectId] = false;
       updateRegenerateEnabled();
       updateTechLinkEnabled();
+      renderTechLinks();
     }, $("projectStatus"))
   );
 
@@ -317,13 +401,14 @@ async function run() {
   $("createProjectBtn").addEventListener("click", () => safe(createProject, $("projectStatus")));
   $("uploadBtn").addEventListener("click", () => safe(uploadApex, $("uploadStatus")));
   $("regenerateBtn").addEventListener("click", () => safe(regenerate, $("regenStatus")));
-  $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("projectStatus")));
+  $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
 
   await safe(refreshClients, $("clientStatus"));
   setProgressHidden($("uploadProgress"), true);
   setProgressHidden($("regenProgress"), true);
   updateRegenerateEnabled();
   updateTechLinkEnabled();
+  renderTechLinks();
   setActiveTab("manage");
 }
 

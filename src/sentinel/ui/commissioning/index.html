@@ -42,7 +42,6 @@
                   <span>Client</span>
                   <select id="clientSelect" aria-label="Client"></select>
                 </label>
-                <button id="refreshClientsBtn" type="button">Refresh</button>
               </div>
               <div class="status" id="clientStatus"></div>
             </section>
@@ -61,7 +60,6 @@
                   <span>Project</span>
                   <select id="projectSelect" aria-label="Project"></select>
                 </label>
-                <button id="refreshProjectsBtn" type="button">Refresh</button>
               </div>
               <div class="status" id="projectStatus"></div>
             </section>
@@ -102,6 +100,22 @@
               </div>
               <div class="status">
                 <div class="mono" data-testid="tech-url" id="techUrl"></div>
+                <div id="techLinkStatus"></div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="mini-table" aria-label="Active tech links">
+                  <thead>
+                    <tr>
+                      <th style="width: 220px">Label</th>
+                      <th style="width: 190px">Created (UTC)</th>
+                      <th>Tech URL</th>
+                      <th style="width: 110px"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="techLinksBody"></tbody>
+                </table>
+                <div class="empty" id="techLinksEmpty">No active tech links for this project.</div>
               </div>
             </section>
           </section>
@@ -168,7 +182,6 @@
               <div class="row" style="align-items: center">
                 <h2 style="margin: 0">Diagnostics</h2>
                 <div class="grow"></div>
-                <button id="refreshDiagnosticsBtn" type="button">Refresh diagnostics</button>
               </div>
 
               <div class="diag-grid">
