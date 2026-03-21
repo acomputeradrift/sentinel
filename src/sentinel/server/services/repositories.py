@@ -101,6 +101,15 @@ class InMemoryRepository:
         self._active_token_by_link: dict[str, str] = {}
         self._results_by_project_target: dict[tuple[str, str], list[TestResultRecord]] = {}
 
+    @staticmethod
+    def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
+        if not items:
+            return None
+        # Deterministic "latest" selection:
+        # - primary: recordedAtUtc
+        # - tie-break: testResultId (lexicographic)
+        return max(items, key=lambda r: (r.recordedAtUtc, r.testResultId))
+
     def create_client(self, *, name: str) -> Client:
         with self._lock:
             client = Client(clientId=new_uuid(), name=name, createdAtUtc=utc_now())
@@ -184,9 +193,9 @@ class InMemoryRepository:
         with self._lock:
             key = (tok.projectId, targetKey)
             items = self._results_by_project_target.get(key, [])
-            if not items:
+            last = self._latest_record(items)
+            if last is None:
                 return {"targetKey": targetKey, "currentOutcome": "UNTESTED", "lastTestedAtUtc": None, "lastFailNote": None}
-            last = items[-1]
             return {
                 "targetKey": targetKey,
                 "currentOutcome": last.outcome,
@@ -200,7 +209,9 @@ class InMemoryRepository:
             for (pid, target_key), items in self._results_by_project_target.items():
                 if pid != projectId or not items:
                     continue
-                out[target_key] = items[-1]
+                last = self._latest_record(items)
+                if last is not None:
+                    out[target_key] = last
             return out
 
 
