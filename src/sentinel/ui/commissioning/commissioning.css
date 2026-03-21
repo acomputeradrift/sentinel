@@ -56,6 +56,35 @@ body {
   margin: 0 auto;
 }
 
+.panel-context {
+  margin: 0 auto 12px;
+  padding: 12px 14px;
+  max-width: 980px;
+  border: 1px solid #c6d2dd;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
+}
+
+.panel-context-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: #173246;
+  margin-bottom: 4px;
+}
+
+.panel-context-sub {
+  font-size: 13px;
+  color: #4e6a7f;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.panel-context-sub .sep {
+  opacity: 0.7;
+}
+
 .tab {
   height: 40px;
   padding: 0 12px;

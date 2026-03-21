@@ -77,6 +77,7 @@ const state = {
   lastUploadIdByProject: {},
   generationReadyByProject: {},
   lastUploadFilenameByProject: {},
+  lastGeneratedFilenameByProject: {},
   techLinksByProject: {},
 };
 
@@ -92,12 +93,6 @@ function setProgress(el, pct) {
   el.value = Math.max(0, Math.min(100, pct));
 }
 
-function updateRegenerateEnabled() {
-  const projectId = currentProjectId();
-  const uploadId = projectId ? state.lastUploadIdByProject[projectId] : null;
-  $("regenerateBtn").disabled = !projectId || !uploadId;
-}
-
 function updateTechLinkEnabled() {
   const projectId = currentProjectId();
   const ready = projectId ? !!state.generationReadyByProject[projectId] : false;
@@ -106,6 +101,44 @@ function updateTechLinkEnabled() {
 
 function techLinksForProject(projectId) {
   return state.techLinksByProject[projectId] || [];
+}
+
+function formatUtc(ts) {
+  const raw = String(ts || "").trim();
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+}
+
+function setLastGeneratedLabel() {
+  const el = document.getElementById("lastGeneratedLabel");
+  if (!el) return;
+  const projectId = currentProjectId();
+  if (!projectId) {
+    el.textContent = "";
+    return;
+  }
+  const gen = state.lastGeneratedFilenameByProject[projectId];
+  const up = state.lastUploadFilenameByProject[projectId];
+  const name = gen || up;
+  el.textContent = name ? `Last generated: ${name}` : "";
+}
+
+function setPanelContext() {
+  const clientSel = document.getElementById("clientSelect");
+  const projectSel = document.getElementById("projectSelect");
+  const clientName = clientSel && clientSel.selectedOptions && clientSel.selectedOptions[0] ? clientSel.selectedOptions[0].textContent : "";
+  const projectName = projectSel && projectSel.selectedOptions && projectSel.selectedOptions[0] ? projectSel.selectedOptions[0].textContent : "";
+
+  const c1 = document.getElementById("panelContextClient");
+  const p1 = document.getElementById("panelContextProject");
+  const c2 = document.getElementById("panelContextClient2");
+  const p2 = document.getElementById("panelContextProject2");
+  if (c1) c1.textContent = clientName || "";
+  if (p1) p1.textContent = projectName || "";
+  if (c2) c2.textContent = clientName || "";
+  if (p2) p2.textContent = projectName || "";
 }
 
 function renderTechLinks() {
@@ -138,13 +171,7 @@ function renderTechLinks() {
     tdLabel.textContent = link.label || "(no label)";
 
     const tdCreated = document.createElement("td");
-    tdCreated.textContent = link.createdAtUtc || "";
-
-    const tdUrl = document.createElement("td");
-    const url = document.createElement("span");
-    url.className = "mono";
-    url.textContent = link.techUrl || "";
-    tdUrl.appendChild(url);
+    tdCreated.textContent = formatUtc(link.createdAtUtc || "");
 
     const tdActions = document.createElement("td");
     const revoke = document.createElement("button");
@@ -157,14 +184,17 @@ function renderTechLinks() {
       const statusEl = document.getElementById("techLinkStatus");
       const set = (msg) => statusEl && (statusEl.textContent = msg || "");
       set("");
-      jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectIdNow)}/tech-links/${encodeURIComponent(link.techLinkId)}/rotate`), {
-        method: "POST",
-      })
+      const revokeUrl = api(`/commissioning/projects/${encodeURIComponent(projectIdNow)}/tech-links/${encodeURIComponent(link.techLinkId)}/revoke`);
+      jsonFetch(revokeUrl, { method: "POST" })
+        .catch(() =>
+          jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectIdNow)}/tech-links/${encodeURIComponent(link.techLinkId)}/rotate`), {
+            method: "POST",
+          })
+        )
         .then(() => {
           state.techLinksByProject[projectIdNow] = techLinksForProject(projectIdNow).filter((x) => x.techLinkId !== link.techLinkId);
-          if ($("techUrl").textContent === (link.techUrl || "")) $("techUrl").textContent = "";
           renderTechLinks();
-          set("Revoked (rotated token).");
+          set("Revoked.");
         })
         .catch((e) => set(String(e?.message || e)));
     });
@@ -172,9 +202,27 @@ function renderTechLinks() {
 
     tr.appendChild(tdLabel);
     tr.appendChild(tdCreated);
-    tr.appendChild(tdUrl);
     tr.appendChild(tdActions);
     body.appendChild(tr);
+  }
+}
+
+async function loadTechLinks() {
+  const projectId = currentProjectId();
+  if (!projectId) return;
+  try {
+    const rows = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links`));
+    if (!Array.isArray(rows)) return;
+    state.techLinksByProject[projectId] = rows
+      .filter((r) => r && (r.active === undefined || !!r.active))
+      .map((r) => ({
+        techLinkId: r.techLinkId,
+        label: r.label || "",
+        createdAtUtc: r.createdAtUtc || "",
+      }));
+    renderTechLinks();
+  } catch (_e) {
+    // Server may not support listing yet; fall back to in-memory UI list.
   }
 }
 
@@ -220,6 +268,7 @@ async function createClient() {
   });
   await refreshClients();
   $("clientSelect").value = client.clientId;
+  $("clientSelect").dispatchEvent(new Event("change"));
   await refreshProjects();
   setStatus($("clientStatus"), `Created client: ${client.name}`);
 }
@@ -235,13 +284,47 @@ async function createProject() {
   });
   await refreshProjects();
   $("projectSelect").value = proj.projectId;
+  $("projectSelect").dispatchEvent(new Event("change"));
   state.generationReadyByProject[proj.projectId] = false;
-  updateRegenerateEnabled();
   updateTechLinkEnabled();
   setStatus($("projectStatus"), `Created project: ${proj.name}`);
 }
 
-async function uploadApex() {
+function _xhrPostFormData(url, fd, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    if (xhr.upload && typeof onProgress === "function") {
+      xhr.upload.onprogress = (evt) => {
+        if (!evt.lengthComputable) return;
+        onProgress(evt.loaded, evt.total);
+      };
+    }
+    xhr.onerror = () => reject(new Error("Request failed."));
+    xhr.onload = () => {
+      const ct = xhr.getResponseHeader("content-type") || "";
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      if (!ok) {
+        try {
+          if (ct.includes("application/json")) {
+            const body = JSON.parse(xhr.responseText || "{}");
+            if (body && typeof body === "object" && body.error && body.error.message) return reject(new Error(String(body.error.message)));
+            return reject(new Error(JSON.stringify(body)));
+          }
+        } catch (_e) {}
+        return reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
+      }
+      try {
+        resolve(ct.includes("application/json") ? JSON.parse(xhr.responseText || "{}") : xhr.responseText);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    xhr.send(fd);
+  });
+}
+
+async function uploadAndRegenerate() {
   const projectId = currentProjectId();
   const file = $("apexFile").files && $("apexFile").files[0];
   if (!projectId || !file) return;
@@ -252,52 +335,64 @@ async function uploadApex() {
   setProgressHidden($("uploadProgress"), false);
   setProgress($("uploadProgress"), 0);
   setStatus($("uploadProgressLabel"), "Uploading...");
+  setProgressHidden($("regenProgress"), true);
+  setStatus($("regenProgressLabel"), "");
+  setStatus($("regenStatus"), "");
 
   const fd = new FormData();
   fd.append("apex", file, file.name);
 
   try {
-    const upload = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", api(`/commissioning/projects/${encodeURIComponent(projectId)}/uploads`));
-      xhr.upload.onprogress = (evt) => {
-        if (!evt.lengthComputable) return;
-        const pct = (evt.loaded / evt.total) * 100;
+    state.generationReadyByProject[projectId] = false;
+    updateTechLinkEnabled();
+
+    // Preferred server endpoint: upload + extract + generate in one step.
+    // Assumption: server supports multipart upload with `apex` form part.
+    const combinedUrl = api(`/commissioning/projects/${encodeURIComponent(projectId)}/upload-and-regenerate`);
+    let combined;
+    try {
+      combined = await _xhrPostFormData(combinedUrl, fd, (loaded, total) => {
+        const pct = (loaded / total) * 100;
         setProgress($("uploadProgress"), pct);
         setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
-      };
-      xhr.onerror = () => reject(new Error("Upload failed."));
-      xhr.onload = () => {
-        const ct = xhr.getResponseHeader("content-type") || "";
-        if (xhr.status < 200 || xhr.status >= 300) {
-          try {
-            if (ct.includes("application/json")) {
-              const body = JSON.parse(xhr.responseText || "{}");
-              if (body && body.error && body.error.message) return reject(new Error(String(body.error.message)));
-              return reject(new Error(JSON.stringify(body)));
-            }
-          } catch (_e) {}
-          return reject(new Error(xhr.responseText || `HTTP ${xhr.status}`));
-        }
-        try {
-          resolve(ct.includes("application/json") ? JSON.parse(xhr.responseText || "{}") : xhr.responseText);
-        } catch (e) {
-          reject(e);
-        }
-      };
-      xhr.send(fd);
-    });
+      });
+    } catch (e) {
+      // Back-compat fallback: upload then regenerate.
+      setStatus($("uploadProgressLabel"), "Uploading (fallback)...");
+      const upload = await _xhrPostFormData(api(`/commissioning/projects/${encodeURIComponent(projectId)}/uploads`), fd, (loaded, total) => {
+        const pct = (loaded / total) * 100;
+        setProgress($("uploadProgress"), pct);
+        setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
+      });
+      state.lastUploadIdByProject[projectId] = upload.uploadId;
+      setProgress($("uploadProgress"), 100);
+      setStatus($("uploadProgressLabel"), "Upload done");
 
-    state.lastUploadIdByProject[projectId] = upload.uploadId;
+      setProgressHidden($("regenProgress"), false);
+      setProgress($("regenProgress"), null);
+      setStatus($("regenProgressLabel"), "Generating...");
+      const regenOut = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/regenerate`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ uploadId: upload.uploadId }),
+      });
+      combined = { upload, regeneration: regenOut };
+    }
+
+    const uploadObj = combined?.upload || combined?.uploadResult || combined;
+    const originalFilename = uploadObj?.originalFilename || file.name;
+    const uploadId = uploadObj?.uploadId || state.lastUploadIdByProject[projectId] || null;
+    if (uploadId) state.lastUploadIdByProject[projectId] = uploadId;
     state.generationReadyByProject[projectId] = false;
     const prevName = state.lastUploadFilenameByProject[projectId];
-    const nextName = upload.originalFilename;
+    const nextName = originalFilename;
     state.lastUploadFilenameByProject[projectId] = nextName;
-    updateRegenerateEnabled();
-    updateTechLinkEnabled();
+    state.lastGeneratedFilenameByProject[projectId] = nextName;
+    setLastGeneratedLabel();
+
     setProgress($("uploadProgress"), 100);
     setStatus($("uploadProgressLabel"), "Done");
-    let msg = `Uploaded: ${upload.uploadId} (${upload.originalFilename})`;
+    let msg = uploadId ? `Uploaded: ${uploadId} (${nextName})` : `Uploaded: ${nextName}`;
     if (prevName && nextName) {
       const sim = _baseSimilarity(prevName, nextName);
       if (sim < 0.6) {
@@ -305,48 +400,22 @@ async function uploadApex() {
       }
     }
     setStatus($("uploadStatus"), msg);
-  } finally {
-    uploadBtn.disabled = false;
-  }
-}
 
-async function regenerate() {
-  const projectId = currentProjectId();
-  if (!projectId) return;
-  const uploadId = state.lastUploadIdByProject[projectId];
-  if (!uploadId) {
-    throw new Error("Upload an .apex first (no uploadId available).");
-  }
-  state.generationReadyByProject[projectId] = false;
-  updateTechLinkEnabled();
-  const regenBtn = $("regenerateBtn");
-  regenBtn.disabled = true;
-  setStatus($("regenStatus"), "");
-  setProgressHidden($("regenProgress"), false);
-  setProgress($("regenProgress"), null);
-  setStatus($("regenProgressLabel"), "Regenerating...");
-  try {
-    const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/regenerate`), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ uploadId }),
-    });
-    const genId = out?.generationRun?.generationRunId;
-    const status = out?.status;
-    if (genId) {
-      setStatus($("regenStatus"), `Regenerated: ${genId}`);
-    } else if (status) {
-      setStatus($("regenStatus"), `Regenerated: ${status}`);
-    } else {
-      setStatus($("regenStatus"), "Regenerated.");
-    }
+    setProgressHidden($("regenProgress"), false);
+    setProgress($("regenProgress"), null);
+    setStatus($("regenProgressLabel"), "Generating...");
+    // If server already waited for generation, this still provides useful feedback.
+    const genId = combined?.generationRun?.generationRunId || combined?.regeneration?.generationRun?.generationRunId || "";
+    if (genId) setStatus($("regenStatus"), `Generated: ${genId}`);
+    else setStatus($("regenStatus"), "Generated.");
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
   } finally {
+    setProgressHidden($("uploadProgress"), true);
     setProgressHidden($("regenProgress"), true);
+    setStatus($("uploadProgressLabel"), "");
     setStatus($("regenProgressLabel"), "");
-    regenBtn.disabled = false;
-    updateRegenerateEnabled();
+    uploadBtn.disabled = false;
   }
 }
 
@@ -377,19 +446,26 @@ async function run() {
       await fn();
     } catch (e) {
       setStatus(statusEl, String(e?.message || e));
-      updateRegenerateEnabled();
       updateTechLinkEnabled();
     }
   };
 
-  $("clientSelect").addEventListener("change", () => safe(refreshProjects, $("projectStatus")));
+  $("clientSelect").addEventListener("change", () =>
+    safe(async () => {
+      await refreshProjects();
+      setPanelContext();
+      setLastGeneratedLabel();
+    }, $("projectStatus"))
+  );
   $("projectSelect").addEventListener("change", () =>
     safe(async () => {
       const projectId = currentProjectId();
       if (projectId) state.generationReadyByProject[projectId] = false;
-      updateRegenerateEnabled();
       updateTechLinkEnabled();
       renderTechLinks();
+      setPanelContext();
+      setLastGeneratedLabel();
+      await loadTechLinks();
     }, $("projectStatus"))
   );
 
@@ -399,16 +475,16 @@ async function run() {
 
   $("createClientBtn").addEventListener("click", () => safe(createClient, $("clientStatus")));
   $("createProjectBtn").addEventListener("click", () => safe(createProject, $("projectStatus")));
-  $("uploadBtn").addEventListener("click", () => safe(uploadApex, $("uploadStatus")));
-  $("regenerateBtn").addEventListener("click", () => safe(regenerate, $("regenStatus")));
+  $("uploadBtn").addEventListener("click", () => safe(uploadAndRegenerate, $("uploadStatus")));
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
 
   await safe(refreshClients, $("clientStatus"));
   setProgressHidden($("uploadProgress"), true);
   setProgressHidden($("regenProgress"), true);
-  updateRegenerateEnabled();
   updateTechLinkEnabled();
   renderTechLinks();
+  setPanelContext();
+  setLastGeneratedLabel();
   setActiveTab("manage");
 }
 

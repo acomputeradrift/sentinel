@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sentinel • Commissioning Console</title>
+    <title>Sentinel Console</title>
     <link rel="stylesheet" href="./commissioning.css" />
     <!-- commission-tab:css -->
     <link rel="stylesheet" href="./commission_tab.css" />
@@ -14,7 +14,7 @@
     <div class="app">
       <header class="topbar">
         <div class="topbar-inner">
-          <h1>Commissioning Console</h1>
+          <h1>Sentinel Console</h1>
           <p class="sub">Local MVP UI skeleton (contract-driven).</p>
         </div>
       </header>
@@ -65,23 +65,22 @@
             </section>
 
             <section class="card">
-              <h2>Upload + Regenerate</h2>
+              <h2>Upload + Generate</h2>
               <div class="row">
                 <label class="field grow">
                   <span>.apex file</span>
                   <input type="file" name="apex" id="apexFile" accept=".apex" />
                 </label>
-                <button id="uploadBtn" type="button">Upload .apex</button>
+                <button id="uploadBtn" type="button">Upload + Generate</button>
+              </div>
+              <div class="status">
+                <div id="lastGeneratedLabel"></div>
               </div>
               <div class="row progress-row">
                 <progress id="uploadProgress" class="progress" max="100" value="0"></progress>
                 <div class="progress-label" id="uploadProgressLabel"></div>
               </div>
               <div class="status" data-testid="upload-status" id="uploadStatus"></div>
-
-              <div class="row">
-                <button id="regenerateBtn" type="button">Regenerate</button>
-              </div>
               <div class="row progress-row">
                 <progress id="regenProgress" class="progress"></progress>
                 <div class="progress-label" id="regenProgressLabel"></div>
@@ -109,7 +108,6 @@
                     <tr>
                       <th style="width: 220px">Label</th>
                       <th style="width: 190px">Created (UTC)</th>
-                      <th>Tech URL</th>
                       <th style="width: 110px"></th>
                     </tr>
                   </thead>
@@ -121,6 +119,12 @@
           </section>
 
           <section id="panel-commission" class="panel" hidden>
+            <div class="panel-context">
+              <div class="panel-context-title">Commission</div>
+              <div class="panel-context-sub">
+                <span id="panelContextClient"></span><span class="sep">•</span><span id="panelContextProject"></span>
+              </div>
+            </div>
             <div class="commission-shell">
               <div class="commission-kpis">
                 <div class="kpi" data-testid="commission-kpi-complete" id="commissionKpiComplete">
@@ -178,6 +182,12 @@
           </section>
 
           <section id="panel-diagnostics" class="panel" hidden>
+            <div class="panel-context">
+              <div class="panel-context-title">Diagnostics</div>
+              <div class="panel-context-sub">
+                <span id="panelContextClient2"></span><span class="sep">•</span><span id="panelContextProject2"></span>
+              </div>
+            </div>
             <section class="card" id="diagnosticsCard">
               <div class="row" style="align-items: center">
                 <h2 style="margin: 0">Diagnostics</h2>
