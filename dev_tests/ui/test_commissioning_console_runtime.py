@@ -260,13 +260,16 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 {
                     "projectId": "proj-1",
                     "asOfGenerationRunId": "gen-1",
-                    "counts": {"totalTargets": 10, "testedTargets": 3, "pass": 2, "fail": 1, "untested": 7, "percentComplete": 0.3},
+                    "counts": {"totalTargets": 12, "testedTargets": 3, "pass": 2, "fail": 1, "untested": 9, "percentComplete": 0.25},
                     "lastTestedAtUtc": "2026-03-21T00:00:00Z",
                     "eventSections": {
                         "system": {"counts": {"totalTargets": 4, "testedTargets": 1, "pass": 1, "fail": 0, "untested": 3, "percentComplete": 0.25}, "lastTestedAtUtc": "2026-03-21T00:00:00Z"},
-                        "driver": {"counts": {"totalTargets": 2, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 2, "percentComplete": 0.0}, "lastTestedAtUtc": None},
+                        "driver": {"counts": {"totalTargets": 4, "testedTargets": 2, "pass": 1, "fail": 1, "untested": 2, "percentComplete": 0.5}, "lastTestedAtUtc": "2026-03-21T00:00:00Z"},
                     },
-                    "devices": [],
+                    "devices": [
+                        {"deviceId": "dev-1", "deviceName": "Device A", "counts": {"totalTargets": 2, "testedTargets": 1, "pass": 1, "fail": 0, "untested": 1, "percentComplete": 0.5}, "lastTestedAtUtc": "2026-03-21T00:00:00Z"},
+                        {"deviceId": "dev-2", "deviceName": "Device B", "counts": {"totalTargets": 2, "testedTargets": 1, "pass": 0, "fail": 1, "untested": 1, "percentComplete": 0.5}, "lastTestedAtUtc": "2026-03-21T00:00:00Z"},
+                    ],
                 },
             )
 
@@ -277,16 +280,30 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 [
                     {
                         "targetKey": "btn:81:513:48551:Macro",
+                        "targetName": "Macro",
+                        "deviceName": "Device A",
+                        "pageName": "Home",
+                        "buttonName": "Button 1",
+                        "scope": "BUTTON",
+                        "tag": "TARGET",
                         "currentOutcome": "FAIL",
                         "lastTestedAtUtc": "2026-03-21T00:00:00Z",
                         "lastFailNote": "Macro did not run",
+                        "resolvedData": {"reason": "Macro did not run"},
                         "recordedBy": {"role": "TECHNICIAN", "actorId": None},
                     },
                     {
                         "targetKey": "event:126:Trigger",
+                        "targetName": "Trigger",
+                        "deviceName": "Device B",
+                        "pageName": "Scene",
+                        "buttonName": "",
+                        "scope": "EVENT_SECTION",
+                        "tag": "DATA",
                         "currentOutcome": "FAIL",
                         "lastTestedAtUtc": "2026-03-20T23:00:00Z",
                         "lastFailNote": "Trigger not firing",
+                        "resolvedData": {"reason": "Trigger not firing"},
                         "recordedBy": {"role": "TECHNICIAN", "actorId": None},
                     },
                 ],
@@ -304,6 +321,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                         {
                             "tsUtc": "2026-03-21T00:00:01Z",
                             "type": "test_result",
+                            "scope": {"scopeType": "DEVICE", "deviceId": "dev-1", "pageId": "page-1"},
+                            "target": {"targetKey": "btn:81:513:48551:Macro", "kind": "BUTTON", "refs": {"deviceName": "Device A", "pageName": "Home", "buttonName": "Button 1"}},
+                            "tag": "TARGET",
+                            "resolvedData": {"reason": "Macro did not run"},
                             "data": {
                                 "recordedAtUtc": "2026-03-21T00:00:01Z",
                                 "targetKey": "btn:81:513:48551:Macro",
@@ -382,12 +403,16 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         # Tab switching
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
-        expect(page.locator("#panel-commission")).to_contain_text("Client A")
-        expect(page.locator("#panel-commission")).to_contain_text("Project 1")
-        expect(page.get_by_test_id("commission-kpi-complete")).to_be_visible()
-        expect(page.get_by_test_id("commission-kpi-tested")).to_be_visible()
-        expect(page.get_by_test_id("commission-kpi-untested")).to_be_visible()
-        expect(page.get_by_test_id("commission-activity")).to_be_visible()
+        commission_line = page.get_by_test_id("commission-client-project-line")
+        expect(commission_line).to_be_visible()
+        expect(commission_line).to_contain_text("Client A")
+        expect(commission_line).to_contain_text("Project 1")
+        self.assertGreater(commission_line.evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 18)
+        expect(page.locator("[data-testid='commission-pie-project'], [data-testid='commission-pie-system-events'], [data-testid='commission-pie-driver-events']")).to_have_count(3)
+        expect(page.get_by_test_id("commission-pie-project")).to_contain_text("4/12")
+        expect(page.locator("[data-testid^='commission-pie-device-']")).to_have_count(2)
+        expect(page.get_by_test_id("commission-pie-device-dev-1")).to_be_visible()
+        expect(page.get_by_test_id("commission-pie-device-dev-2")).to_be_visible()
         expect(page.locator("#commissionActivityBody tr")).to_have_count(1)
         expect(page.locator("#commissionActivityBody")).to_contain_text("Device A")
         expect(page.locator("#commissionActivityBody")).to_contain_text("Home")
@@ -397,8 +422,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
-        expect(page.locator("#panel-diagnostics")).to_contain_text("Client A")
-        expect(page.locator("#panel-diagnostics")).to_contain_text("Project 1")
+        diagnostics_line = page.get_by_test_id("diagnostics-client-project-line")
+        expect(diagnostics_line).to_be_visible()
+        expect(diagnostics_line).to_contain_text("Client A")
+        expect(diagnostics_line).to_contain_text("Project 1")
+        self.assertGreater(diagnostics_line.evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 18)
+        expect(page.locator("[data-testid='diagnostics-pie-failure-rate'], [data-testid='diagnostics-pie-failure-types'], [data-testid='diagnostics-pie-task-completion']")).to_have_count(3)
+        expect(page.get_by_test_id("diagnostics-summary-block")).to_have_count(0)
         expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Tag")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
