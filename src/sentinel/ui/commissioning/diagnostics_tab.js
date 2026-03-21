@@ -29,6 +29,66 @@ function setDiagStatus(msg) {
   if (el) el.textContent = msg || "";
 }
 
+function _selectedText(selectId) {
+  const sel = document.getElementById(selectId);
+  const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+  return opt ? String(opt.textContent || "").trim() : "";
+}
+
+function updateDiagnosticsTitle() {
+  const card = document.getElementById("diagnosticsCard");
+  if (!card) return;
+  const h2 = card.querySelector("h2");
+  if (!h2) return;
+  const clientName = _selectedText("clientSelect");
+  const projectName = _selectedText("projectSelect");
+  const suffix = clientName || projectName ? ` — ${clientName || "(client)"} / ${projectName || "(project)"}` : "";
+  h2.textContent = `Diagnostics${suffix}`;
+}
+
+const diagAuto = {
+  source: null,
+  projectId: null,
+  refreshTimer: null,
+};
+
+function scheduleDiagnosticsRefresh(delayMs = 150) {
+  if (diagAuto.refreshTimer) return;
+  diagAuto.refreshTimer = setTimeout(() => {
+    diagAuto.refreshTimer = null;
+    setDiagStatus("");
+    refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
+  }, Math.max(0, Number(delayMs) || 0));
+}
+
+function disconnectDiagnosticsSse() {
+  if (diagAuto.source) {
+    try {
+      diagAuto.source.close();
+    } catch (_e) {}
+  }
+  diagAuto.source = null;
+  diagAuto.projectId = null;
+}
+
+function connectDiagnosticsSse(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) {
+    disconnectDiagnosticsSse();
+    return;
+  }
+  if (diagAuto.source && diagAuto.projectId === pid) return;
+
+  disconnectDiagnosticsSse();
+  diagAuto.projectId = pid;
+  const url = diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/events`);
+  const es = new EventSource(url);
+  es.addEventListener("test_result", () => scheduleDiagnosticsRefresh());
+  es.addEventListener("result_saved", () => scheduleDiagnosticsRefresh());
+  es.onmessage = () => scheduleDiagnosticsRefresh();
+  diagAuto.source = es;
+}
+
 function _targetNameFromTargetKey(targetKey) {
   const raw = String(targetKey || "").trim();
   if (!raw) return "";
@@ -71,6 +131,21 @@ function normalizeTargetLabel(targetName) {
   if (lower.startsWith("variable - ")) return `variable - ${lower.slice("variable - ".length)}`;
   if (lower.startsWith("var.")) return `variable - ${lower.slice(4)}`;
   return lower;
+}
+
+function formatUtcTimestamp(ts) {
+  const raw = String(ts || "").trim();
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const mm = pad2(d.getUTCMonth() + 1);
+  const dd = pad2(d.getUTCDate());
+  const hh = pad2(d.getUTCHours());
+  const mi = pad2(d.getUTCMinutes());
+  const ss = pad2(d.getUTCSeconds());
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}Z`;
 }
 
 function renderSummary(progress, fails) {
@@ -137,7 +212,7 @@ function renderTaskList(projectId, fails) {
     const targetKey = String(rec?.targetKey || "");
     const ident = parseIdentity(targetKey);
     const tag = tagDisplayFromEnum(rec?.tag || "NOT_STARTED");
-    const at = String(rec?.lastTestedAtUtc || "");
+    const at = formatUtcTimestamp(rec?.lastTestedAtUtc);
     const resolved = rec?.resolvedData;
     const note = String((resolved == null ? "" : resolved) || rec?.lastFailNote || "");
 
@@ -166,7 +241,7 @@ function renderTaskList(projectId, fails) {
     tdTag.appendChild(sel);
 
     const tdAt = document.createElement("td");
-    tdAt.className = "mono";
+    tdAt.className = "mono diag-ts";
     tdAt.textContent = at || "";
 
     const tdDevice = document.createElement("td");
@@ -201,6 +276,7 @@ function renderTaskList(projectId, fails) {
 }
 
 async function refreshDiagnostics() {
+  updateDiagnosticsTitle();
   const projectId = currentDiagProjectId();
   if (!projectId) {
     diag$("diagnosticsSummary").textContent = "";
@@ -222,18 +298,21 @@ async function refreshDiagnostics() {
 function initDiagnosticsTab() {
   const refreshBtn = document.getElementById("refreshDiagnosticsBtn");
   if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => {
-      setDiagStatus("");
-      refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
-    });
+    refreshBtn.style.display = "none";
   }
 
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
-      setDiagStatus("");
-      refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
+      const projectId = currentDiagProjectId();
+      connectDiagnosticsSse(projectId);
+      updateDiagnosticsTitle();
+      scheduleDiagnosticsRefresh(0);
     });
+    const initialProjectId = currentDiagProjectId();
+    connectDiagnosticsSse(initialProjectId);
+    updateDiagnosticsTitle();
+    scheduleDiagnosticsRefresh(0);
   }
 }
 
