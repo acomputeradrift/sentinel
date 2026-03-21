@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+import time
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,4 +54,36 @@ class TestingUiServingTest(unittest.TestCase):
             f = client.get(f"/testing/{tech_token}/files/device.html")
             self.assertEqual(f.status_code, 200)
             self.assertIn("Device", f.text)
+
+    def test_testing_ui_serves_newest_project_home_by_mtime(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = td
+
+            from sentinel.server.app.main import create_app
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            link = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links", json={"label": "Onsite"}).json()
+            tech_token = link["techUrl"].split("/testing/")[1]
+
+            project_dir = Path(td) / p["projectId"]
+            project_dir.mkdir(parents=True, exist_ok=True)
+
+            older = project_dir / "aaa__project-home.html"
+            newer = project_dir / "zzz__project-home.html"
+            older.write_text("<!doctype html><html><head><title>OLDER</title></head><body></body></html>", encoding="utf-8")
+            newer.write_text("<!doctype html><html><head><title>NEWER</title></head><body></body></html>", encoding="utf-8")
+
+            now = int(time.time())
+            os.utime(older, (now - 10, now - 10))
+            os.utime(newer, (now, now))
+
+            r = client.get(f"/testing/{tech_token}")
+            self.assertEqual(r.status_code, 200)
+            self.assertIn("<title>NEWER</title>", r.text)
 
