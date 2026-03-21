@@ -23,4 +23,11 @@
 5. Generating outputs that lose traceability back to the uploaded `.apex` file and the generation session that produced them.
 6. Deleting, replacing, or collapsing prior historical test results when new results are recorded.
 
+## Derived Read Models
+1. Current test state is derived from append-only test history, not stored as a separate mutable truth.
+2. For each `targetKey`, the latest record determines `currentOutcome`, `lastTestedAtUtc`, and `lastFailNote`.
+3. Commissioning `progress` and `fails` views are read models derived from the latest extracted project model plus the latest result per target.
+4. The commissioning fail/task-list view may surface `targetKey`, `currentOutcome`, `lastTestedAtUtc`, `lastFailNote`, and `recordedBy` for operator triage.
+5. Page-level progress is optional/future; current implementation requires device-level and event-section rollups at minimum.
+
 ---

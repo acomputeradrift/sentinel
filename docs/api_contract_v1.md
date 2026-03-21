@@ -230,14 +230,14 @@ For a given `projectId + targetKey`:
 Tie-breaker rule:
 - If two records have the same `recordedAtUtc`, the server uses `testResultId` as a deterministic tie-breaker.
 
-### Progress rollups (page/device/project)
+### Progress rollups (device/project + event sections)
 
 Progress is computed from:
 1) the **latest active extracted model** for the project (defines the set of expected targets), and
 2) the derived per-target current state above.
 
 Definitions:
-- `totalTargets`: count of expected targets for the scope (project, device, page, or events section).
+- `totalTargets`: count of expected targets for the scope (project, device, or events section).
 - `testedTargets`: count of expected targets whose currentOutcome is `PASS` or `FAIL`.
 - `untestedTargets = totalTargets - testedTargets`.
 - `percentComplete = testedTargets / totalTargets` (0 when `totalTargets == 0`).
@@ -267,11 +267,11 @@ Definitions:
 }
 ```
 
-`ProjectProgress` (token-scoped and commissioning-scoped shape)
+`ProjectProgress` (commissioning-scoped shape; current implementation)
 ```json
 {
   "projectId": "uuid",
-  "asOfGenerationRunId": "uuid",
+  "asOfGenerationRunId": "uuid|null",
   "counts": { "totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0 },
   "lastTestedAtUtc": "2026-03-19T12:05:00Z|null",
   "eventSections": {
@@ -289,15 +289,7 @@ Definitions:
       "deviceId": 0,
       "displayName": "string",
       "counts": { "totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0 },
-      "lastTestedAtUtc": "2026-03-19T12:05:00Z|null",
-      "pages": [
-        {
-          "pageId": 0,
-          "pageName": "string",
-          "counts": { "totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0 },
-          "lastTestedAtUtc": "2026-03-19T12:05:00Z|null"
-        }
-      ]
+      "lastTestedAtUtc": "2026-03-19T12:05:00Z|null"
     }
   ]
 }
@@ -309,36 +301,35 @@ Event section rollup rule:
 - For each extracted event item, expected targets are the labels in `userFacing.testTargets` with `true` values, producing `event:{eventId}:{label}` targetKeys.
 
 Progress shape note:
-- `/api/v1/testing/{techToken}/progress` may include pages.
-- `/api/v1/commissioning/projects/{projectId}/progress` should omit pages (device-level rollups only) to match commissioning UI needs.
+- Current implementation exposes commissioning progress only; it omits page-level rollups.
+- If a future tech-scoped progress endpoint is added, it should reuse the same core counts and target-state rules.
 
 ## API v1 (minimum)
 
 Base: `/api/v1`
 
 ### Commissioning Console UI
-- `GET /commissioning` → authenticated commissioning console UI (human interface)
+- Commissioning Console UI is website-hosted or reverse-proxied; Sentinel guarantees the API below.
 
 ### Commissioning API (authenticated; used by Commissioning Console UI)
 - Prefix: `/api/v1/commissioning/...`
 
-### Projects (Commissioning)
 ### Clients (Commissioning)
-- `POST /commissioning/clients` → create client
+- `POST /api/v1/commissioning/clients` -> create client
   - req: `{ "name": "string" }`
   - resp: `Client`
-- `GET /commissioning/clients` → list clients
-- `GET /commissioning/clients/{clientId}` → client details
+- `GET /api/v1/commissioning/clients` -> list clients
+- `GET /api/v1/commissioning/clients/{clientId}` -> client details
 
 ### Projects (Commissioning)
-- `POST /commissioning/clients/{clientId}/projects` → create project under client
+- `POST /api/v1/commissioning/clients/{clientId}/projects` -> create project under client
   - req: `{ "name": "string" }`
   - resp: `Project`
-- `GET /commissioning/clients/{clientId}/projects` → list projects for client
-- `GET /commissioning/projects/{projectId}` → project details
+- `GET /api/v1/commissioning/clients/{clientId}/projects` -> list projects for client
+- `GET /api/v1/commissioning/projects/{projectId}` -> project details
 
 ### Technician link issuance/rotation (Diagnostics)
-- `POST /commissioning/projects/{projectId}/tech-links`
+- `POST /api/v1/commissioning/projects/{projectId}/tech-links`
   - behavior: create a new tech link (new tester) under the project
   - req:
     ```json
@@ -349,7 +340,7 @@ Base: `/api/v1`
     { "techLinkId": "uuid", "techUrl": "/testing/{techToken}" }
     ```
 
-- `POST /commissioning/projects/{projectId}/tech-links/{techLinkId}/rotate`
+- `POST /api/v1/commissioning/projects/{projectId}/tech-links/{techLinkId}/rotate`
   - behavior: revoke prior token for this `techLinkId`, issue a new token (techLinkId remains stable)
   - resp:
     ```json
@@ -357,22 +348,26 @@ Base: `/api/v1`
     ```
 
 ### Uploads + regeneration (Diagnostics)
-- `POST /commissioning/projects/{projectId}/uploads` (multipart; file part name: `apex`) → `Upload`
-- `POST /commissioning/projects/{projectId}/regenerate`
-  - req: `{ "uploadId": "uuid|null" }` (null means “latest upload”)
-  - resp: `{ "extractionRun": {..}, "generationRun": {..} }`
+- `POST /api/v1/commissioning/projects/{projectId}/uploads` (multipart; file part name: `apex`) -> `Upload`
+- `POST /api/v1/commissioning/projects/{projectId}/regenerate`
+  - req: `{ "uploadId": "uuid" }`
+  - resp: `{ "projectId": "uuid", "status": "READY" }`
 
 ### Extracted model + generated UI artifact
-- `GET /commissioning/projects/{projectId}/model` → extracted project JSON (verbatim; no inference)
-- `GET /commissioning/projects/{projectId}/testing-ui` → static HTML for latest successful generation
+- `GET /api/v1/commissioning/projects/{projectId}/model` -> extracted project JSON (verbatim; no inference)
+- `GET /api/v1/commissioning/projects/{projectId}/testing-ui` -> static HTML for latest generated artifact, or an explicit not-ready shell when no generation exists yet
+
+### Commissioning reads for progress and failed-target triage
+- `GET /api/v1/commissioning/projects/{projectId}/progress` -> derived `ProjectProgress` for the commissioning console (device + event-section rollups; page detail optional/future)
+- `GET /api/v1/commissioning/projects/{projectId}/fails` -> current fail/task-list projection for the commissioning console
+  - each row includes `targetKey`, `currentOutcome`, `lastTestedAtUtc`, `lastFailNote`, and `recordedBy`
 
 ### Technician surface (token-scoped)
-- `GET /testing/{techToken}` → returns technician HTML (latest successful generation for the project)
-- `POST /testing/{techToken}/results` → append a `TestResultRecord`
-- `GET /testing/{techToken}/results` → list records (optionally filter by `targetKey`)
-- `GET /testing/{techToken}/results/summary` → derived summary (history is never collapsed)
-- `GET /testing/{techToken}/progress` → derived `ProjectProgress` (includes per-page/per-device/project completion + last tested timestamps)
-- `GET /testing/{techToken}/target-status?targetKey=...` → derived `TargetStatus`
+- `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
+- `POST /api/v1/testing/{techToken}/results` -> append a `TestResultRecord`
+- `GET /api/v1/testing/{techToken}/target-status?targetKey=...` -> derived `TargetStatus`
+
+Future tech-scoped read endpoints may be added later, but they are not required for the current MVP contract.
 
 ### Live progress/events (optional for technician; required for diagnostics)
 - `GET /api/v1/commissioning/projects/{projectId}/events` (SSE)
