@@ -37,6 +37,12 @@ class ServerRoutesSmokeTest(unittest.TestCase):
         self.assertIn("techLinkId", link)
         self.assertIn("techUrl", link)
 
+        links = client.get(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links").json()
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0]["techLinkId"], link["techLinkId"])
+        self.assertEqual(links[0]["label"], "Onsite")
+        self.assertIn("createdAtUtc", links[0])
+
         token = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links/{link['techLinkId']}/rotate").json()
         tech_url = token["techUrl"]
         self.assertTrue(tech_url.startswith("/testing/"))
@@ -45,6 +51,16 @@ class ServerRoutesSmokeTest(unittest.TestCase):
         html = client.get(f"/testing/{tech_token}")
         self.assertEqual(html.status_code, 200)
         self.assertIn("text/html", html.headers.get("content-type", ""))
+
+        revoke = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links/{link['techLinkId']}/revoke").json()
+        self.assertEqual(revoke["techLinkId"], link["techLinkId"])
+
+        links2 = client.get(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links").json()
+        self.assertEqual(links2, [])
+
+        revoked_html = client.get(f"/testing/{tech_token}")
+        self.assertEqual(revoked_html.status_code, 410)
+        self.assertEqual(revoked_html.json()["error"]["code"], "TECH_LINK_REVOKED")
 
         fail = client.post(
             f"/api/v1/testing/{tech_token}/results",

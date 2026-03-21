@@ -78,15 +78,53 @@ def list_projects_for_client(database_url: str, *, client_id: str) -> list[dict[
 
 def create_tech_link(database_url: str, *, project_id: str, label: str | None) -> dict[str, Any]:
     tech_link_id = _new_uuid()
+    created_at = _utc_now()
     con = db.connect(database_url)
     try:
         cur = con.cursor()
         cur.execute(
             "insert into tech_links (tech_link_id, project_id, label, created_at_utc) values (%s, %s, %s, %s)",
-            (tech_link_id, project_id, label, _utc_now()),
+            (tech_link_id, project_id, label, created_at),
         )
         con.commit()
-        return {"techLinkId": tech_link_id, "projectId": project_id, "label": label}
+        return {"techLinkId": tech_link_id, "projectId": project_id, "label": label, "createdAtUtc": created_at}
+    finally:
+        con.close()
+
+
+def list_active_tech_links(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select distinct tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\" "
+            "from tech_links tl join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
+            "where tl.project_id=%s and tlt.revoked_at_utc is null "
+            "order by tl.created_at_utc desc",
+            (project_id,),
+        )
+    finally:
+        con.close()
+
+
+def revoke_tech_link_tokens(database_url: str, *, project_id: str, tech_link_id: str) -> None:
+    revoked_at = _utc_now()
+    con = db.connect(database_url)
+    try:
+        exists = db.fetch_one(
+            con,
+            "select 1 from tech_links where tech_link_id=%s and project_id=%s",
+            (tech_link_id, project_id),
+        )
+        if exists is None:
+            raise KeyError("TECH_LINK_NOT_FOUND")
+        cur = con.cursor()
+        cur.execute(
+            "update tech_link_tokens set revoked_at_utc=%s "
+            "where tech_link_id=%s and revoked_at_utc is null",
+            (revoked_at, tech_link_id),
+        )
+        con.commit()
     finally:
         con.close()
 

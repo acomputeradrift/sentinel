@@ -90,6 +90,27 @@ def rotate_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
     return {"techLinkId": techLinkId, "techUrl": f"/testing/{token.techToken}"}
 
 
+@router.get("/projects/{projectId}/tech-links")
+def list_active_tech_links(request: Request, projectId: str) -> list[dict]:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    links = _repo(request).list_active_tech_links(projectId=projectId)
+    return [{"techLinkId": l.techLinkId, "label": l.label, "createdAtUtc": l.createdAtUtc} for l in links]
+
+
+@router.post("/projects/{projectId}/tech-links/{techLinkId}/revoke")
+def revoke_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    try:
+        _repo(request).revoke_tech_link(projectId=projectId, techLinkId=techLinkId)
+    except KeyError:
+        raise http_error(404, code="TECH_LINK_NOT_FOUND", message="Tech link not found.")
+    return {"projectId": projectId, "techLinkId": techLinkId, "revoked": True}
+
+
 @router.post("/projects/{projectId}/uploads")
 async def upload_apex(projectId: str, apex: UploadFile) -> dict:
     if not apex.filename:
