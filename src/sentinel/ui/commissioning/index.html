@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="./commissioning.css" />
     <!-- commission-tab:css -->
     <link rel="stylesheet" href="./commission_tab.css" />
+    <!-- diagnostics-tab:css -->
+    <link rel="stylesheet" href="./diagnostics_tab.css" />
   </head>
   <body>
     <div class="app">
@@ -162,9 +164,43 @@
           </section>
 
           <section id="panel-diagnostics" class="panel" hidden>
-            <section class="card">
-              <h2>Diagnostics</h2>
-              <p class="sub">Placeholder container. Diagnostics tab content will be implemented in another stream.</p>
+            <section class="card" id="diagnosticsCard">
+              <div class="row" style="align-items: center">
+                <h2 style="margin: 0">Diagnostics</h2>
+                <div class="grow"></div>
+                <button id="refreshDiagnosticsBtn" type="button">Refresh diagnostics</button>
+              </div>
+
+              <div class="diag-grid">
+                <div class="diag-box">
+                  <h3>Summary</h3>
+                  <pre class="mono" data-testid="diagnostics-summary" id="diagnosticsSummary"></pre>
+                </div>
+                <div class="diag-box">
+                  <h3>Failure types (current fails)</h3>
+                  <pre class="mono" data-testid="diagnostics-fail-type-breakdown" id="diagnosticsFailTypeBreakdown"></pre>
+                </div>
+              </div>
+
+              <h3>Task List</h3>
+              <div class="diag-table-wrap">
+                <table class="diag-table" data-testid="diagnostics-task-table" id="diagnosticsTaskTable">
+                  <thead>
+                    <tr>
+                      <th>Tag</th>
+                      <th>Timestamp</th>
+                      <th>Device</th>
+                      <th>Page Name</th>
+                      <th>Button Name</th>
+                      <th>Scope</th>
+                      <th>Test Target</th>
+                      <th>Resolved Data</th>
+                    </tr>
+                  </thead>
+                  <tbody id="diagnosticsTaskBody"></tbody>
+                </table>
+              </div>
+              <div class="status" id="diagnosticsStatus"></div>
             </section>
           </section>
         </main>
@@ -174,6 +210,8 @@
     <script src="./commissioning.js"></script>
     <!-- commission-tab:js -->
     <script src="./commission_tab.js"></script>
+    <!-- diagnostics-tab:js -->
+    <script src="./diagnostics_tab.js"></script>
   </body>
 </html>
 

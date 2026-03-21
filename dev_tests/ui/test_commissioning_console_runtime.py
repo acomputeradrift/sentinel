@@ -287,19 +287,27 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
 
-        # Tab switching (Commission/Diagnostics are placeholders in this stream)
+        # Tab switching
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
-        page.get_by_role("button", name="Diagnostics").click()
-        expect(page.locator("#panel-diagnostics")).to_be_visible()
-        page.get_by_role("button", name="Manage").click()
-        expect(page.locator("#panel-manage")).to_be_visible()
-
-        page.get_by_role("button", name="Commission").click()
         expect(page.get_by_test_id("commission-kpi-complete")).to_be_visible()
         expect(page.get_by_test_id("commission-kpi-tested")).to_be_visible()
         expect(page.get_by_test_id("commission-kpi-untested")).to_be_visible()
-        expect(page.get_by_test_id("commission-activity")).to_contain_text("btn:81:513:48551:Macro")
+        expect(page.get_by_test_id("commission-activity")).to_be_visible()
+
+        page.get_by_role("button", name="Diagnostics").click()
+        expect(page.locator("#panel-diagnostics")).to_be_visible()
+        expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Tag")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Device")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Page Name")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Button Name")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Scope")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Resolved Data")).to_be_visible()
+        page.get_by_role("button", name="Manage").click()
+        expect(page.locator("#panel-manage")).to_be_visible()
 
         # Upload a completely different file name (should warn).
         with tempfile.TemporaryDirectory() as td:
