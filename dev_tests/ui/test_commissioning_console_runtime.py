@@ -260,6 +260,17 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
 
         expect(page.get_by_test_id("fails-count")).to_contain_text("2")
+
+        expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Tag")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Device")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Page Name")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Button Name")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Scope")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Resolved Data")).to_be_visible()
+        expect(page.get_by_test_id("diagnostics-fail-type-breakdown")).to_contain_text("macro")
         expect(page.get_by_test_id("fails-list")).to_contain_text("Macro did not run")
         expect(page.get_by_test_id("fails-list")).to_contain_text("Trigger not firing")
         expect(page.get_by_test_id("fails-list")).to_contain_text("Button d81 p513 b48551 — Macro")

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sentinel • Commissioning Console</title>
     <link rel="stylesheet" href="./commissioning.css" />
+    <!-- diagnostics-tab:css -->
+    <link rel="stylesheet" href="./diagnostics_tab.css" />
   </head>
   <body>
     <main class="shell">
@@ -110,9 +112,48 @@
         <div class="status" id="failsStatus"></div>
         <div class="fails-list" data-testid="fails-list" id="failsList"></div>
       </section>
+
+      <section class="card" id="diagnosticsCard">
+        <h2>Diagnostics</h2>
+        <div class="row">
+          <button id="refreshDiagnosticsBtn" type="button">Refresh diagnostics</button>
+        </div>
+        <div class="diag-grid">
+          <div class="diag-box">
+            <h3>Summary</h3>
+            <pre class="mono" data-testid="diagnostics-summary" id="diagnosticsSummary"></pre>
+          </div>
+          <div class="diag-box">
+            <h3>Failure types (current fails)</h3>
+            <pre class="mono" data-testid="diagnostics-fail-type-breakdown" id="diagnosticsFailTypeBreakdown"></pre>
+          </div>
+        </div>
+
+        <h3>Task list</h3>
+        <div class="diag-table-wrap">
+          <table class="diag-table" data-testid="diagnostics-task-table" id="diagnosticsTaskTable">
+            <thead>
+              <tr>
+                <th>Tag</th>
+                <th>Timestamp</th>
+                <th>Device</th>
+                <th>Page Name</th>
+                <th>Button Name</th>
+                <th>Scope</th>
+                <th>Test Target</th>
+                <th>Resolved Data</th>
+              </tr>
+            </thead>
+            <tbody id="diagnosticsTaskBody"></tbody>
+          </table>
+        </div>
+        <div class="status" id="diagnosticsStatus"></div>
+      </section>
     </main>
 
     <script src="./commissioning.js"></script>
+    <!-- diagnostics-tab:js -->
+    <script src="./diagnostics_tab.js"></script>
   </body>
 </html>
 
