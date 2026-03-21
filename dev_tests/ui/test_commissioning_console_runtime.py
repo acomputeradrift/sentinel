@@ -93,6 +93,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         state: dict[str, object] = {
             "clients": [],
+            "clients_by_id": {},
             "projects_by_client": {},
             "projects_by_id": {},
             "tech_links_by_project": {},
@@ -119,6 +120,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 data = json.loads(request.post_data or "{}")
                 client = {"clientId": "client-1", "name": data.get("name", ""), "createdAtUtc": "2026-03-21T00:00:00Z"}
                 state["clients"] = [client]
+                state["clients_by_id"]["client-1"] = client
                 state["projects_by_client"]["client-1"] = []
                 fulfill_json(route, client)
                 return
@@ -135,6 +137,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 proj = {
                     "projectId": "proj-1",
                     "clientId": client_id,
+                    "clientName": state["clients_by_id"].get(client_id, {}).get("name", ""),
                     "name": data.get("name", ""),
                     "createdAtUtc": "2026-03-21T00:00:00Z",
                     "status": "EMPTY",
@@ -161,6 +164,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 return
             active_links = [link for link in state["tech_links_by_project"].get(project_id, []) if not link.get("revokedAtUtc")]
             proj["activeTechLinks"] = active_links
+            proj["lastGeneratedFilename"] = state.get("expected_upload_filename")
             fulfill_json(route, proj)
 
         def handle_upload(route, request):
@@ -324,6 +328,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Commission")).to_be_visible()
         expect(page.get_by_role("button", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
+        expect(page.get_by_role("heading", name="Sentinel Console")).to_be_visible()
         expect(page.locator("#panel-manage")).to_be_visible()
         expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Regenerate")).to_be_visible()
 
@@ -345,12 +350,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
         page.get_by_role("button", name="Upload .apex").click()
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
+        expect(page.locator("#panel-manage")).to_contain_text("Last generated")
+        expect(page.locator("#panel-manage")).to_contain_text(apex_path.name)
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
         self.assertEqual(state["last_upload_body_contains_expected"], True)
 
-        page.get_by_role("button", name="Regenerate").click()
-        expect(page.get_by_test_id("regen-status")).to_contain_text("READY")
+        expect(page.get_by_role("button", name="Regenerate")).to_have_count(0)
 
         page.get_by_label("Tech label").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
@@ -364,6 +370,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         # Tab switching
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
+        expect(page.locator("#panel-commission")).to_contain_text("Client A")
+        expect(page.locator("#panel-commission")).to_contain_text("Project 1")
         expect(page.get_by_test_id("commission-kpi-complete")).to_be_visible()
         expect(page.get_by_test_id("commission-kpi-tested")).to_be_visible()
         expect(page.get_by_test_id("commission-kpi-untested")).to_be_visible()
@@ -377,6 +385,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
+        expect(page.locator("#panel-diagnostics")).to_contain_text("Client A")
+        expect(page.locator("#panel-diagnostics")).to_contain_text("Project 1")
         expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Tag")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
@@ -386,6 +396,12 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Scope")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Resolved Data")).to_be_visible()
+        diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
+        self.assertEqual(diag_header_bg, "rgb(23, 123, 181)")
+        diag_timestamp_width = page.locator("#diagnosticsTaskTable th").nth(1).evaluate(
+            "el => el.getBoundingClientRect().width"
+        )
+        self.assertLess(diag_timestamp_width, 140)
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
 
