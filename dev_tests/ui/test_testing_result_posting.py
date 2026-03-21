@@ -15,8 +15,9 @@ if str(SRC) not in sys.path:
 
 
 class _CaptureServer:
-    def __init__(self, *, html_by_path: dict[str, str]) -> None:
+    def __init__(self, *, html_by_path: dict[str, str], post_mode: str = "ok") -> None:
         self._html_by_path = html_by_path
+        self._post_mode = post_mode  # "ok" | "error"
         self.posts: list[dict] = []
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -44,6 +45,14 @@ class _CaptureServer:
                 body = self.rfile.read(length) if length else b""
                 payload = json.loads(body.decode("utf-8") or "{}")
                 outer.posts.append({"path": self.path, "payload": payload})
+                if outer._post_mode == "error":
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(
+                        json.dumps({"error": {"code": "UNITTEST_ERROR", "message": "Unit test forced failure", "details": {}}}).encode("utf-8")
+                    )
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -88,6 +97,18 @@ class TestingResultPostingTest(unittest.TestCase):
             time.sleep(0.05)
         self.fail(f"Expected at least {min_posts} POST(s), got {len(server.posts)}")
 
+    def _wait_for_status_contains(self, page, text: str, *, timeout_s: float = 3.0) -> None:  # noqa: ANN001
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                status = page.locator("#postStatus").inner_text()
+            except Exception:
+                status = ""
+            if text in (status or ""):
+                return
+            time.sleep(0.05)
+        self.fail(f"Expected #postStatus to contain {text!r}")
+
     def test_event_pass_posts_result(self):
         from sentinel.generation.render_core import render_project_home_html, load_json
 
@@ -117,6 +138,7 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click(".event-row.test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_posts(server, min_posts=1)
+            self._wait_for_status_contains(page, "Saved")
             posted = server.posts[0]["payload"]
             self.assertEqual(posted["outcome"], "PASS")
             self.assertEqual(posted["target"]["kind"], "EVENT")
@@ -193,9 +215,43 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click(".btn-wrap .test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_posts(server, min_posts=1)
+            self._wait_for_status_contains(page, "Saved")
             posted = server.posts[0]["payload"]
             self.assertEqual(posted["outcome"], "PASS")
             self.assertEqual(posted["target"]["kind"], "BUTTON")
             self.assertEqual(posted["target"]["targetKey"], "btn:81:513:48551:Macro")
+        finally:
+            server.stop()
+
+    def test_event_post_failure_shows_error(self):
+        from sentinel.generation.render_core import render_project_home_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "events": {
+                "system": [
+                    {
+                        "diagnostics": {"eventId": 126},
+                        "userFacing": {"description": "Test Event", "testTargets": {"Trigger": True}},
+                    }
+                ],
+                "driver": [],
+            },
+            "devices": [],
+        }
+        html = render_project_home_html(project_data, app_ui, "unittest")
+
+        token = "techToken789"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html}, post_mode="error")
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click("button.section-toggle[data-target='system-events']")
+            page.click(".event-row.test-btn")
+            page.click("#rows .row .actions button")  # first "Pass"
+            self._wait_for_posts(server, min_posts=1)
+            self._wait_for_status_contains(page, "UNITTEST_ERROR")
         finally:
             server.stop()

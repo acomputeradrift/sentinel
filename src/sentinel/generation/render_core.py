@@ -734,10 +734,16 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .pop h3{{margin:0 0 16px;font-size:16px;line-height:1.1;font-weight:700;}}
 .row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;overflow:hidden;}}
 .n{{font-weight:600;margin-bottom:10px;font-size:14px;line-height:1.1;}}
-.actions{{display:flex;gap:10px;margin-bottom:10px;}}
-.actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
-textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
-#close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
+ .actions{{display:flex;gap:10px;margin-bottom:10px;}}
+ .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+ .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
+ textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
+ .post-status{{margin:2px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
+ .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
+ .post-status.is-success{{background:#eaf7ef;border-color:#3a9c5d;color:#1e6b3c;}}
+ .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
+ #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
+ #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
 <div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
@@ -749,7 +755,7 @@ textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
  <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
  <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
-<div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
+<div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
@@ -773,8 +779,33 @@ let currentDeviceTop=0;
  let currentViewportIndexes=VP_FRAMES.map(()=>0);
  let currentOrientation=ORIENTATION_STATE.current;
  const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
- const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
+ const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus');
+ let isPosting=false;
  function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
+ function setPostStatus(text, kind) {{
+  if (!postStatus) return;
+  const t=String(text||'').trim();
+  postStatus.textContent=t;
+  postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
+  if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
+ }}
+ function setPosting(on) {{
+  isPosting=!!on;
+  rows.querySelectorAll('.actions button').forEach(b=>{{ b.disabled=isPosting; }});
+  const closeBtn=document.getElementById('close');
+  if (closeBtn) closeBtn.disabled=isPosting;
+ }}
+ async function readErrorText(r) {{
+  try {{
+   const data=await r.json();
+   if (data && data.error) {{
+    const code=data.error.code ? String(data.error.code) : '';
+    const msg=data.error.message ? String(data.error.message) : '';
+    return (code && msg) ? (code + ' — ' + msg) : (code || msg || ('HTTP ' + r.status));
+   }}
+  }} catch (_e) {{}}
+  return 'HTTP ' + r.status + (r.statusText ? (' ' + r.statusText) : '');
+ }}
  function techTokenFromLocation() {{
   const parts=String(window.location.pathname||'').split('/').filter(Boolean);
   const i=parts.indexOf('testing');
@@ -796,6 +827,8 @@ let currentDeviceTop=0;
   const isFail=String(outcome||'').toUpperCase()==='FAIL';
   const note=isFail ? String(failNote||'').trim() : null;
   if (isFail && !note) return;
+  if (isPosting) return;
+  if (isPosting) return;
 
   let kind='BUTTON';
   let refs={{}};
@@ -828,8 +861,23 @@ let currentDeviceTop=0;
   }}
 
   const payload={{target:{{targetKey,kind,refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
-  const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
-  if (!r.ok) return;
+  try {{
+   setPosting(true);
+   setPostStatus('Saving…','saving');
+   const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
+   if (r.ok) {{
+    setPostStatus('Saved','success');
+    const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
+    if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
+    return;
+   }}
+   const err=await readErrorText(r);
+   setPostStatus('Error: ' + err,'error');
+  }} catch (e) {{
+   setPostStatus('Error: ' + String(e),'error');
+  }} finally {{
+   setPosting(false);
+  }}
  }}
  function bindResultRows(ctxBtn, meta) {{
   rows.querySelectorAll('.row').forEach(row=>{{
@@ -854,15 +902,16 @@ let currentDeviceTop=0;
    if (b.dataset.boundTestBtn) return;
    b.dataset.boundTestBtn='1';
    b.addEventListener('click',()=>{{
-    const m=JSON.parse(b.dataset.meta||'{{}}');
-    const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
-    pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-    rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
-    ov.classList.add('open');
-    bindResultRows(b, m);
+     const m=JSON.parse(b.dataset.meta||'{{}}');
+     const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
+     pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     setPostStatus('','');
+     ov.classList.add('open');
+     bindResultRows(b, m);
+    }});
    }});
-  }});
- }}
+  }}
 bindTestButtonClicks(document);
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
@@ -2183,10 +2232,16 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .pop h3{{margin:0 0 16px;font-size:16px;line-height:1.1;font-weight:700;}}
 .row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;overflow:hidden;}}
 .n{{font-weight:600;margin-bottom:10px;font-size:14px;line-height:1.1;}}
-.actions{{display:flex;gap:10px;margin-bottom:10px;}}
-.actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
-textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
-#close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
+ .actions{{display:flex;gap:10px;margin-bottom:10px;}}
+ .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+ .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
+ textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
+ .post-status{{margin:2px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
+ .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
+ .post-status.is-success{{background:#eaf7ef;border-color:#3a9c5d;color:#1e6b3c;}}
+ .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
+ #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
+ #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
 <body>
 <main class='home-shell'>
@@ -2208,11 +2263,36 @@ textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1
 <div class='home-list'>{device_content}</div>
 </section>
 </main>
-<div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><button id='close'>Close</button></div></div>
+<div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
-const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows');
-function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
+ const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus');
+ let isPosting=false;
+ function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
+ function setPostStatus(text, kind) {{
+  if (!postStatus) return;
+  const t=String(text||'').trim();
+  postStatus.textContent=t;
+  postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
+  if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
+ }}
+ function setPosting(on) {{
+  isPosting=!!on;
+  rows.querySelectorAll('.actions button').forEach(function(b){{ b.disabled=isPosting; }});
+  const closeBtn=document.getElementById('close');
+  if (closeBtn) closeBtn.disabled=isPosting;
+ }}
+ async function readErrorText(r) {{
+  try {{
+   const data=await r.json();
+   if (data && data.error) {{
+    const code=data.error.code ? String(data.error.code) : '';
+    const msg=data.error.message ? String(data.error.message) : '';
+    return (code && msg) ? (code + ' — ' + msg) : (code || msg || ('HTTP ' + r.status));
+   }}
+  }} catch (_e) {{}}
+  return 'HTTP ' + r.status + (r.statusText ? (' ' + r.statusText) : '');
+ }}
 function toggleSection(btn){{
  const target=document.getElementById(btn.getAttribute('data-target')||'');
  if (!target) return;
@@ -2254,8 +2334,23 @@ function toggleSection(btn){{
 
   const eventId=Number(meta.refs.eventId);
   const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs:{{eventId}},targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
-  const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
-  if (!r.ok) return;
+  try {{
+   setPosting(true);
+   setPostStatus('Saving…','saving');
+   const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
+   if (r.ok) {{
+    setPostStatus('Saved','success');
+    const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
+    if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
+    return;
+   }}
+   const err=await readErrorText(r);
+   setPostStatus('Error: ' + err,'error');
+  }} catch (e) {{
+   setPostStatus('Error: ' + String(e),'error');
+  }} finally {{
+   setPosting(false);
+  }}
  }}
  function bindResultRows(meta) {{
   rows.querySelectorAll('.row').forEach(function(row){{
@@ -2281,11 +2376,12 @@ function toggleSection(btn){{
    const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=Array.isArray(m.targets) ? m.targets : [];
-   rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
-   ov.classList.add('open');
-   bindResultRows(m);
+    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    setPostStatus('','');
+    ov.classList.add('open');
+    bindResultRows(m);
+   }});
   }});
- }});
 document.getElementById('close').addEventListener('click', function(){{ov.classList.remove('open');}});
 ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('open');}});
 </script></body></html>"""
