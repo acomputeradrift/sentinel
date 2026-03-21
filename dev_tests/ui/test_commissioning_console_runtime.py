@@ -204,11 +204,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_label("New client name").fill("Client A")
         page.get_by_role("button", name="Create client").click()
-        expect(page.get_by_label("Client")).to_have_value("client-1")
+        expect(page.get_by_label("Client", exact=True)).to_have_value("client-1")
 
         page.get_by_label("New project name").fill("Project 1")
         page.get_by_role("button", name="Create project").click()
-        expect(page.get_by_label("Project")).to_have_value("proj-1")
+        expect(page.get_by_label("Project", exact=True)).to_have_value("proj-1")
 
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
