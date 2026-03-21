@@ -50,6 +50,87 @@
   gap: 12px;
 }
 
+.commission-kpis--hidden {
+  display: none;
+}
+
+.commission-pies {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 980px) {
+  .commission-pies {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .commission-pies {
+    grid-template-columns: 1fr;
+  }
+}
+
+.piecard {
+  border: 1px solid #c6d2dd;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 16px;
+  box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
+  --pie-fill: #177bb5;
+  --pie-track: #d7e3ee;
+  --pie-bg: #f5f8fb;
+}
+
+.piecard-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4e6a7f;
+  margin-bottom: 12px;
+}
+
+.piecard-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pie {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: conic-gradient(var(--pie-fill) calc(var(--pct, 0) * 1%), var(--pie-track) 0);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.pie::before {
+  content: "";
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--pie-bg);
+  border: 1px solid #e1ebf3;
+}
+
+.piecard-value {
+  font-size: 30px;
+  line-height: 1.05;
+  font-weight: 900;
+  color: #173246;
+}
+
+.piecard-sub {
+  color: #4e6a7f;
+  font-size: 13px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
 .commission-selection {
   border: 1px solid #c6d2dd;
   border-radius: 16px;
