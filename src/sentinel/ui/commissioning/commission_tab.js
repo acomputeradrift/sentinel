@@ -27,23 +27,9 @@ function currentProjectId() {
   return sel ? sel.value : "";
 }
 
-function setSelectedTab(tab) {
-  const mainBtn = $("tabMainBtn");
-  const comBtn = $("tabCommissionBtn");
-  const main = $("tabMain");
-  const commission = $("tabCommission");
-
-  const isCommission = tab === "commission";
-  mainBtn.setAttribute("aria-selected", isCommission ? "false" : "true");
-  comBtn.setAttribute("aria-selected", isCommission ? "true" : "false");
-
-  if (isCommission) {
-    main.setAttribute("hidden", "hidden");
-    commission.removeAttribute("hidden");
-  } else {
-    commission.setAttribute("hidden", "hidden");
-    main.removeAttribute("hidden");
-  }
+function isCommissionVisible() {
+  const panel = document.getElementById("panel-commission");
+  return !!panel && !panel.hidden;
 }
 
 function pctStyle(pct01) {
@@ -80,16 +66,19 @@ function updateKpis(progress) {
 }
 
 function normalizeEventMessage(ev) {
-  const tsUtc = String(ev?.tsUtc || "");
-  const type = String(ev?.type || "");
-  const data = ev?.data && typeof ev.data === "object" ? ev.data : {};
+  const payload = ev && typeof ev === "object" ? ev : {};
+  const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+  const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
 
-  const targetKey = String(data.targetKey || ev?.targetKey || "");
-  const outcome = String(data.outcome || data.currentOutcome || "");
-
-  const identity = targetKey || "(unknown target)";
-  const detail = outcome ? `outcome=${outcome}` : JSON.stringify(data);
-  return { tsUtc, type, identity, detail };
+  return {
+    tsUtc: String(data?.recordedAtUtc || data?.tsUtc || ""),
+    device: String(refs?.deviceName || ""),
+    page: String(refs?.pageName || ""),
+    button: String(refs?.buttonName || ""),
+    testTarget: String(data?.targetName || ""),
+    status: String(data?.outcome || data?.currentOutcome || ""),
+    targetKey: String(data?.targetKey || ""),
+  };
 }
 
 function appendActivityRow(msg) {
@@ -99,24 +88,32 @@ function appendActivityRow(msg) {
 
   const tr = document.createElement("tr");
   const tdTime = document.createElement("td");
-  const tdType = document.createElement("td");
-  const tdIdentity = document.createElement("td");
-  const tdDetail = document.createElement("td");
+  const tdDevice = document.createElement("td");
+  const tdPage = document.createElement("td");
+  const tdButton = document.createElement("td");
+  const tdTarget = document.createElement("td");
+  const tdStatus = document.createElement("td");
 
   tdTime.className = "mono";
-  tdType.className = "mono";
-  tdIdentity.className = "mono";
-  tdDetail.className = "mono";
+  tdDevice.className = "mono";
+  tdPage.className = "mono";
+  tdButton.className = "mono";
+  tdTarget.className = "mono";
+  tdStatus.className = "mono";
 
   tdTime.textContent = msg.tsUtc || "";
-  tdType.textContent = msg.type || "";
-  tdIdentity.textContent = msg.identity || "";
-  tdDetail.textContent = msg.detail || "";
+  tdDevice.textContent = msg.device || "";
+  tdPage.textContent = msg.page || "";
+  tdButton.textContent = msg.button || "";
+  tdTarget.textContent = msg.testTarget || msg.targetKey || "";
+  tdStatus.textContent = msg.status || "";
 
   tr.appendChild(tdTime);
-  tr.appendChild(tdType);
-  tr.appendChild(tdIdentity);
-  tr.appendChild(tdDetail);
+  tr.appendChild(tdDevice);
+  tr.appendChild(tdPage);
+  tr.appendChild(tdButton);
+  tr.appendChild(tdTarget);
+  tr.appendChild(tdStatus);
 
   body.prepend(tr);
 
@@ -147,14 +144,16 @@ function startSse(projectId) {
   sse = new EventSource(url);
   sseProjectId = projectId;
 
-  sse.onmessage = (e) => {
+  const handle = (e) => {
     try {
       const payload = JSON.parse(String(e.data || "{}"));
       appendActivityRow(normalizeEventMessage(payload));
     } catch (_err) {
-      appendActivityRow({ tsUtc: "", type: "event.parseError", identity: "", detail: String(e.data || "") });
+      appendActivityRow({ tsUtc: "", device: "", page: "", button: "", testTarget: "", status: "", targetKey: String(e.data || "") });
     }
   };
+  sse.addEventListener("test_result", handle);
+  sse.onmessage = handle;
 }
 
 async function refreshCommission() {
@@ -166,17 +165,18 @@ async function refreshCommission() {
 }
 
 function runCommissionTab() {
-  $("tabMainBtn").addEventListener("click", () => setSelectedTab("main"));
-  $("tabCommissionBtn").addEventListener("click", () => {
-    setSelectedTab("commission");
-    void refreshCommission();
-  });
+  const tabCommission = document.getElementById("tab-commission");
+  if (tabCommission) tabCommission.addEventListener("click", () => void refreshCommission());
+  const tabManage = document.getElementById("tab-manage");
+  if (tabManage) tabManage.addEventListener("click", () => stopSse());
+  const tabDiagnostics = document.getElementById("tab-diagnostics");
+  if (tabDiagnostics) tabDiagnostics.addEventListener("click", () => stopSse());
 
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
       stopSse();
-      void refreshCommission();
+      if (isCommissionVisible()) void refreshCommission();
     });
   }
 
@@ -186,8 +186,6 @@ function runCommissionTab() {
       void refreshCommission();
     });
   }
-
-  setSelectedTab("main");
 
   const empty = document.createElement("div");
   empty.className = "activity-empty";

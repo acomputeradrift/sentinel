@@ -42,11 +42,7 @@ function _targetNameFromTargetKey(targetKey) {
 
 function targetLabelFromTargetKey(targetKey) {
   const name = _targetNameFromTargetKey(targetKey);
-  if (name === "Macro") return "macro";
-  if (name === "MacroSteps") return "macro step";
-  if (name === "PageLink") return "pageLink";
-  if (name.startsWith("Var.")) return `variable - ${name.slice(4)}`;
-  return name;
+  return normalizeTargetLabel(name);
 }
 
 function parseIdentity(targetKey) {
@@ -54,15 +50,27 @@ function parseIdentity(targetKey) {
   const parts = raw ? raw.split(":") : [];
   const kind = parts[0] || "";
   if (kind === "event" && parts.length >= 3) {
-    return { scope: "EVENT", device: "", page: "", button: "", testTarget: targetLabelFromTargetKey(raw) };
+    return { device: "", page: "", button: "", testTarget: targetLabelFromTargetKey(raw) };
   }
   if (kind === "btn" && parts.length >= 5) {
-    return { scope: "BUTTON", device: parts[1] || "", page: parts[2] || "", button: parts[3] || "", testTarget: targetLabelFromTargetKey(raw) };
+    return { device: parts[1] || "", page: parts[2] || "", button: parts[3] || "", testTarget: targetLabelFromTargetKey(raw) };
   }
   if (kind === "vpbtn" && parts.length >= 7) {
-    return { scope: "VIEWPORT_BUTTON", device: parts[1] || "", page: parts[2] || "", button: parts[5] || "", testTarget: targetLabelFromTargetKey(raw) };
+    return { device: parts[1] || "", page: parts[2] || "", button: parts[5] || "", testTarget: targetLabelFromTargetKey(raw) };
   }
-  return { scope: "", device: "", page: "", button: "", testTarget: targetLabelFromTargetKey(raw) };
+  return { device: "", page: "", button: "", testTarget: targetLabelFromTargetKey(raw) };
+}
+
+function normalizeTargetLabel(targetName) {
+  const raw = String(targetName || "").trim();
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  if (lower === "macro") return "macro";
+  if (lower === "macrosteps" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro step";
+  if (lower === "pagelink" || lower === "page link") return "pageLink";
+  if (lower.startsWith("variable - ")) return `variable - ${lower.slice("variable - ".length)}`;
+  if (lower.startsWith("var.")) return `variable - ${lower.slice(4)}`;
+  return lower;
 }
 
 function renderSummary(progress, fails) {
@@ -85,8 +93,7 @@ function renderFailTypeBreakdown(fails) {
   const rows = Array.isArray(fails) ? fails : [];
   const counts = new Map();
   for (const rec of rows) {
-    const key = String(rec?.targetKey || "");
-    const label = targetLabelFromTargetKey(key);
+    const label = normalizeTargetLabel(rec?.targetName || _targetNameFromTargetKey(rec?.targetKey || ""));
     counts.set(label, (counts.get(label) || 0) + 1);
   }
   const items = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
@@ -95,8 +102,8 @@ function renderFailTypeBreakdown(fails) {
 }
 
 async function updateFailTag(projectId, targetKey, tag) {
-  await diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/fails/tag`), {
-    method: "POST",
+  await diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/fail-tags`), {
+    method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ targetKey, tag }),
   });
@@ -104,6 +111,20 @@ async function updateFailTag(projectId, targetKey, tag) {
 
 function tagOptions() {
   return ["Not Started", "In Progress", "Done"];
+}
+
+function tagEnumFromDisplay(label) {
+  const s = String(label || "").trim().toLowerCase();
+  if (s === "in progress") return "IN_PROGRESS";
+  if (s === "done") return "DONE";
+  return "NOT_STARTED";
+}
+
+function tagDisplayFromEnum(tagEnum) {
+  const s = String(tagEnum || "").trim().toUpperCase();
+  if (s === "IN_PROGRESS") return "In Progress";
+  if (s === "DONE") return "Done";
+  return "Not Started";
 }
 
 function renderTaskList(projectId, fails) {
@@ -115,9 +136,10 @@ function renderTaskList(projectId, fails) {
   for (const rec of rows) {
     const targetKey = String(rec?.targetKey || "");
     const ident = parseIdentity(targetKey);
-    const tag = String(rec?.tag || "Not Started");
+    const tag = tagDisplayFromEnum(rec?.tag || "NOT_STARTED");
     const at = String(rec?.lastTestedAtUtc || "");
-    const note = String(rec?.resolvedData || rec?.lastFailNote || "");
+    const resolved = rec?.resolvedData;
+    const note = String((resolved == null ? "" : resolved) || rec?.lastFailNote || "");
 
     const tr = document.createElement("tr");
 
@@ -128,11 +150,11 @@ function renderTaskList(projectId, fails) {
       const opt = document.createElement("option");
       opt.value = optVal;
       opt.textContent = optVal;
-      sel.appendChild(opt);
+    sel.appendChild(opt);
     }
     sel.value = tagOptions().includes(tag) ? tag : "Not Started";
     sel.addEventListener("change", async () => {
-      const next = sel.value;
+      const next = tagEnumFromDisplay(sel.value);
       try {
         await updateFailTag(projectId, targetKey, next);
         setDiagStatus("");
@@ -148,19 +170,19 @@ function renderTaskList(projectId, fails) {
     tdAt.textContent = at || "";
 
     const tdDevice = document.createElement("td");
-    tdDevice.textContent = ident.device ? `d${ident.device}` : "";
+    tdDevice.textContent = String(rec?.deviceName || (ident.device ? `d${ident.device}` : ""));
 
     const tdPage = document.createElement("td");
-    tdPage.textContent = ident.page ? `p${ident.page}` : "";
+    tdPage.textContent = String(rec?.pageName || (ident.page ? `p${ident.page}` : ""));
 
     const tdButton = document.createElement("td");
-    tdButton.textContent = ident.button ? `b${ident.button}` : "";
+    tdButton.textContent = String(rec?.buttonName || (ident.button ? `b${ident.button}` : ""));
 
     const tdScope = document.createElement("td");
-    tdScope.textContent = ident.scope || "";
+    tdScope.textContent = String(rec?.scope || "");
 
     const tdTarget = document.createElement("td");
-    tdTarget.textContent = ident.testTarget || "";
+    tdTarget.textContent = normalizeTargetLabel(rec?.targetName || ident.testTarget || "");
 
     const tdResolved = document.createElement("td");
     tdResolved.className = "diag-muted";
