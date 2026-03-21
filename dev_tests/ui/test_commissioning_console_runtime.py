@@ -167,7 +167,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 route,
                 {
                     "extractionRun": {"extractionRunId": "ex-1", "projectId": "proj-1", "uploadId": "upload-1", "status": "SUCCEEDED"},
-                    "generationRun": {"generationRunId": "gen-1", "projectId": "proj-1", "extractionRunId": "ex-1", "status": "SUCCEEDED"},
+                    # Simulate current server response shape where generationRunId is not present.
+                    "generationRun": {"projectId": "proj-1", "extractionRunId": "ex-1", "status": "SUCCEEDED"},
                 },
             )
 
@@ -222,13 +223,17 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertEqual(state["last_upload_body_contains"], True)
 
         page.get_by_role("button", name="Regenerate").click()
-        expect(page.get_by_test_id("regen-status")).to_contain_text("gen-1")
+        expect(page.get_by_test_id("regen-status")).to_contain_text("SUCCEEDED")
+        expect(page.get_by_test_id("regen-status")).not_to_contain_text("(missing)")
 
         page.get_by_label("Tech label").fill("Onsite Tech")
-        page.get_by_role("button", name="Create tech link").click()
-        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
+        expect(page.get_by_role("button", name="Create tech link")).to_be_disabled()
 
         page.get_by_role("button", name="Refresh progress").click()
         expect(page.get_by_test_id("progress")).to_contain_text("30%")
+
+        expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
+        page.get_by_role("button", name="Create tech link").click()
+        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
 
         page.close()

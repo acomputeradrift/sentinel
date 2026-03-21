@@ -60,6 +60,7 @@ function currentProjectId() {
 
 const state = {
   lastUploadIdByProject: {},
+  generationReadyByProject: {},
 };
 
 function setProgressHidden(el, hidden) {
@@ -78,6 +79,12 @@ function updateRegenerateEnabled() {
   const projectId = currentProjectId();
   const uploadId = projectId ? state.lastUploadIdByProject[projectId] : null;
   $("regenerateBtn").disabled = !projectId || !uploadId;
+}
+
+function updateCreateTechLinkEnabled() {
+  const projectId = currentProjectId();
+  const ready = projectId ? Boolean(state.generationReadyByProject[projectId]) : false;
+  $("createTechLinkBtn").disabled = !projectId || !ready;
 }
 
 async function createClient() {
@@ -106,6 +113,8 @@ async function createProject() {
   await refreshProjects();
   $("projectSelect").value = proj.projectId;
   updateRegenerateEnabled();
+  state.generationReadyByProject[proj.projectId] = false;
+  updateCreateTechLinkEnabled();
   setStatus($("projectStatus"), `Created project: ${proj.name}`);
 }
 
@@ -158,6 +167,8 @@ async function uploadApex() {
 
     state.lastUploadIdByProject[projectId] = upload.uploadId;
     updateRegenerateEnabled();
+    state.generationReadyByProject[projectId] = false;
+    updateCreateTechLinkEnabled();
     setProgress($("uploadProgress"), 100);
     setStatus($("uploadProgressLabel"), "Done");
     setStatus($("uploadStatus"), `Uploaded: ${upload.uploadId} (${upload.originalFilename})`);
@@ -173,6 +184,11 @@ async function regenerate() {
   if (!uploadId) {
     throw new Error("Upload an .apex first (no uploadId available).");
   }
+
+  // Generation is not considered "ready" for link issuance until progress returns 200.
+  state.generationReadyByProject[projectId] = false;
+  updateCreateTechLinkEnabled();
+
   const regenBtn = $("regenerateBtn");
   regenBtn.disabled = true;
   setStatus($("regenStatus"), "");
@@ -185,8 +201,19 @@ async function regenerate() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ uploadId }),
     });
-    const genId = out?.generationRun?.generationRunId || "(missing)";
-    setStatus($("regenStatus"), `Regenerated: ${genId}`);
+    const generationRun = out?.generationRun || null;
+    const genId = generationRun?.generationRunId || null;
+    const genStatus = generationRun?.status || null;
+    const exId = out?.extractionRun?.extractionRunId || null;
+
+    if (genId) {
+      setStatus($("regenStatus"), `Regenerated: ${genId}`);
+    } else if (genStatus) {
+      const extra = exId ? ` (extraction ${exId})` : "";
+      setStatus($("regenStatus"), `Regenerated: ${genStatus}${extra}`);
+    } else {
+      setStatus($("regenStatus"), "Regenerated.");
+    }
   } finally {
     setProgressHidden($("regenProgress"), true);
     setStatus($("regenProgressLabel"), "");
@@ -199,6 +226,9 @@ async function createTechLink() {
   const projectId = currentProjectId();
   const label = $("techLabel").value.trim() || null;
   if (!projectId) return;
+  if (!state.generationReadyByProject[projectId]) {
+    throw new Error("Generation is not ready. Refresh progress first.");
+  }
   const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links`), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -211,6 +241,8 @@ async function refreshProgress() {
   const projectId = currentProjectId();
   if (!projectId) return;
   const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
+  state.generationReadyByProject[projectId] = true;
+  updateCreateTechLinkEnabled();
   const pct = Math.round(((out?.counts?.percentComplete || 0) * 100) * 10) / 10;
   $("progress").textContent = `${pct}% complete\n\n` + JSON.stringify(out, null, 2);
 }
@@ -229,7 +261,10 @@ async function run() {
   $("refreshClientsBtn").addEventListener("click", () => safe(refreshClients, $("clientStatus")));
   $("refreshProjectsBtn").addEventListener("click", () => safe(refreshProjects, $("projectStatus")));
   $("clientSelect").addEventListener("change", () => safe(refreshProjects, $("projectStatus")));
-  $("projectSelect").addEventListener("change", () => safe(updateRegenerateEnabled, $("projectStatus")));
+  $("projectSelect").addEventListener("change", () => safe(() => {
+    updateRegenerateEnabled();
+    updateCreateTechLinkEnabled();
+  }, $("projectStatus")));
 
   $("createClientBtn").addEventListener("click", () => safe(createClient, $("clientStatus")));
   $("createProjectBtn").addEventListener("click", () => safe(createProject, $("projectStatus")));
@@ -242,6 +277,7 @@ async function run() {
   setProgressHidden($("uploadProgress"), true);
   setProgressHidden($("regenProgress"), true);
   updateRegenerateEnabled();
+  updateCreateTechLinkEnabled();
 }
 
 run();
