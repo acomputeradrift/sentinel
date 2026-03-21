@@ -8,6 +8,15 @@ function api(path) {
   return `/api/v1${path}`;
 }
 
+function formatTimestampUtc(ts) {
+  const s = String(ts || "").trim();
+  if (!s) return "";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  // YYYY-MM-DD HH:MM:SSZ
+  return d.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "Z");
+}
+
 async function jsonFetch(url, options) {
   const res = await fetch(url, options);
   const ct = res.headers.get("content-type") || "";
@@ -71,7 +80,7 @@ function normalizeEventMessage(ev) {
   const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
 
   return {
-    tsUtc: String(data?.recordedAtUtc || data?.tsUtc || ""),
+    tsUtc: formatTimestampUtc(data?.recordedAtUtc || data?.tsUtc || ""),
     device: String(refs?.deviceName || ""),
     page: String(refs?.pageName || ""),
     button: String(refs?.buttonName || ""),
@@ -124,6 +133,7 @@ function appendActivityRow(msg) {
 
 let sse = null;
 let sseProjectId = null;
+let lastSseErrorAtMs = 0;
 
 function stopSse() {
   if (sse) {
@@ -133,6 +143,7 @@ function stopSse() {
   }
   sse = null;
   sseProjectId = null;
+  lastSseErrorAtMs = 0;
 }
 
 function startSse(projectId) {
@@ -144,7 +155,7 @@ function startSse(projectId) {
   sse = new EventSource(url);
   sseProjectId = projectId;
 
-  const handle = (e) => {
+  const handleTestResult = (e) => {
     try {
       const payload = JSON.parse(String(e.data || "{}"));
       appendActivityRow(normalizeEventMessage(payload));
@@ -152,16 +163,36 @@ function startSse(projectId) {
       appendActivityRow({ tsUtc: "", device: "", page: "", button: "", testTarget: "", status: "", targetKey: String(e.data || "") });
     }
   };
-  sse.addEventListener("test_result", handle);
-  sse.onmessage = handle;
+
+  sse.addEventListener("test_result", handleTestResult);
+
+  sse.addEventListener("error", () => {
+    const now = Date.now();
+    if (now - lastSseErrorAtMs < 10_000) return;
+    lastSseErrorAtMs = now;
+    appendActivityRow({
+      tsUtc: formatTimestampUtc(new Date().toISOString()),
+      device: "",
+      page: "",
+      button: "",
+      testTarget: "",
+      status: "SSE_ERROR",
+      targetKey: "",
+    });
+  });
 }
 
 async function refreshCommission() {
   const projectId = currentProjectId();
   if (!projectId) return;
-  const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-  updateKpis(progress);
   startSse(projectId);
+
+  try {
+    const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
+    updateKpis(progress);
+  } catch (_e) {
+    updateKpis({ counts: { totalTargets: 0, testedTargets: 0, untested: 0 } });
+  }
 }
 
 function runCommissionTab() {
@@ -181,11 +212,7 @@ function runCommissionTab() {
   }
 
   const refreshProgressBtn = document.getElementById("refreshProgressBtn");
-  if (refreshProgressBtn) {
-    refreshProgressBtn.addEventListener("click", () => {
-      void refreshCommission();
-    });
-  }
+  if (refreshProgressBtn) refreshProgressBtn.style.display = "none";
 
   const empty = document.createElement("div");
   empty.className = "activity-empty";
