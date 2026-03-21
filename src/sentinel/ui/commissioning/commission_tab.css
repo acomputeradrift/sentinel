@@ -1,0 +1,140 @@
+:root {
+  --commission-kpi-bg: #f5f8fb;
+  --commission-kpi-ring: #177bb5;
+  --commission-kpi-track: #d7e3ee;
+}
+
+.tabbar {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.tabbtn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #b6c7d6;
+  background: #ffffff;
+  color: #173246;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tabbtn[aria-selected="true"] {
+  border-color: #0f5d8a;
+  background: #e8f2f9;
+}
+
+.commission-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.commission-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.kpi {
+  border: 1px solid #c6d2dd;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 14px;
+  box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
+}
+
+.kpi-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4e6a7f;
+  margin-bottom: 10px;
+}
+
+.kpi-body {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.kpi-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: conic-gradient(var(--commission-kpi-ring) calc(var(--pct, 0) * 1%), var(--commission-kpi-track) 0);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.kpi-ring::before {
+  content: "";
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--commission-kpi-bg);
+  border: 1px solid #e1ebf3;
+}
+
+.kpi-value {
+  position: relative;
+  margin-left: -52px;
+  font-weight: 900;
+  color: #173246;
+}
+
+.kpi-sub {
+  color: #4e6a7f;
+  font-size: 13px;
+}
+
+.commission-activity {
+  border: 1px solid #c6d2dd;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 14px;
+  box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
+}
+
+.activity-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.activity-table th,
+.activity-table td {
+  border-top: 1px solid #e1ebf3;
+  padding: 10px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.activity-table th {
+  border-top: 0;
+  color: #4e6a7f;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.activity-empty {
+  border: 1px dashed #a9bccd;
+  border-radius: 14px;
+  padding: 12px 12px;
+  background: #f5f8fb;
+  color: #4e6a7f;
+  font-size: 13px;
+}
