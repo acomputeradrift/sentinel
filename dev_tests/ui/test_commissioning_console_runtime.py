@@ -220,6 +220,22 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 ],
             )
 
+        def handle_events(route, request):
+            self.assertEqual(request.method, "GET")
+            route.fulfill(
+                status=200,
+                headers={"Content-Type": "text/event-stream; charset=utf-8"},
+                body="data: "
+                + json.dumps(
+                    {
+                        "tsUtc": "2026-03-21T00:00:01Z",
+                        "type": "result.recorded",
+                        "data": {"targetKey": "btn:81:513:48551:Macro", "outcome": "PASS"},
+                    }
+                )
+                + "\n\n",
+            )
+
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
         page.route("**/api/v1/commissioning/projects/*/uploads", handle_upload)
@@ -227,6 +243,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.route("**/api/v1/commissioning/projects/*/tech-links", handle_tech_links)
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
+        page.route("**/api/v1/commissioning/projects/*/events", handle_events)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
         page.goto(url)
@@ -277,6 +294,12 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#panel-diagnostics")).to_be_visible()
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
+
+        page.get_by_role("button", name="Commission").click()
+        expect(page.get_by_test_id("commission-kpi-complete")).to_be_visible()
+        expect(page.get_by_test_id("commission-kpi-tested")).to_be_visible()
+        expect(page.get_by_test_id("commission-kpi-untested")).to_be_visible()
+        expect(page.get_by_test_id("commission-activity")).to_contain_text("btn:81:513:48551:Macro")
 
         # Upload a completely different file name (should warn).
         with tempfile.TemporaryDirectory() as td:

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sentinel • Commissioning Console</title>
     <link rel="stylesheet" href="./commissioning.css" />
+    <!-- commission-tab:css -->
+    <link rel="stylesheet" href="./commission_tab.css" />
   </head>
   <body>
     <div class="app">
@@ -102,15 +104,63 @@
             </section>
           </section>
 
-          <!-- PLACEHOLDER: Commission tab container (owned by other workstreams). -->
           <section id="panel-commission" class="panel" hidden>
-            <section class="card">
-              <h2>Commission</h2>
-              <p class="sub">Placeholder container. Commission tab content will be implemented in another stream.</p>
-            </section>
+            <div class="commission-shell">
+              <div class="commission-kpis">
+                <div class="kpi" data-testid="commission-kpi-complete" id="commissionKpiComplete">
+                  <div class="kpi-title">Complete</div>
+                  <div class="kpi-body">
+                    <div class="kpi-ring" id="commissionKpiCompleteRing"></div>
+                    <div>
+                      <div class="kpi-value" id="commissionKpiCompleteValue">0%</div>
+                      <div class="kpi-sub" id="commissionKpiCompleteSub">0/0 tested</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="kpi" data-testid="commission-kpi-tested" id="commissionKpiTested">
+                  <div class="kpi-title">Tested</div>
+                  <div class="kpi-body">
+                    <div class="kpi-ring" id="commissionKpiTestedRing"></div>
+                    <div>
+                      <div class="kpi-value" id="commissionKpiTestedValue">0</div>
+                      <div class="kpi-sub" id="commissionKpiTestedSub">tested targets</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="kpi" data-testid="commission-kpi-untested" id="commissionKpiUntested">
+                  <div class="kpi-title">Untested</div>
+                  <div class="kpi-body">
+                    <div class="kpi-ring" id="commissionKpiUntestedRing"></div>
+                    <div>
+                      <div class="kpi-value" id="commissionKpiUntestedValue">0</div>
+                      <div class="kpi-sub" id="commissionKpiUntestedSub">untested targets</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="commission-activity" data-testid="commission-activity" id="commissionActivity">
+                <div class="activity-head">
+                  <h2 style="margin: 0">Live Status</h2>
+                  <div class="sub">Chronological (newest first)</div>
+                </div>
+                <table class="activity-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 190px">Timestamp (UTC)</th>
+                      <th style="width: 160px">Device</th>
+                      <th style="width: 200px">Page Name</th>
+                      <th style="width: 200px">Button Name</th>
+                      <th style="width: 220px">Test Target</th>
+                      <th style="width: 90px">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="commissionActivityBody"></tbody>
+                </table>
+              </div>
+            </div>
           </section>
 
-          <!-- PLACEHOLDER: Diagnostics tab container (owned by other workstreams). -->
           <section id="panel-diagnostics" class="panel" hidden>
             <section class="card">
               <h2>Diagnostics</h2>
@@ -122,6 +172,8 @@
     </div>
 
     <script src="./commissioning.js"></script>
+    <!-- commission-tab:js -->
+    <script src="./commission_tab.js"></script>
   </body>
 </html>
 
