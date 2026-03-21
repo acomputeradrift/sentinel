@@ -35,6 +35,7 @@ Enums (shared meanings; never reuse meanings within v1):
 - `Outcome`: `PASS|FAIL`
 - `ActorRole`: `TECHNICIAN|PROGRAMMER`
 - `TargetKind`: `EVENT|BUTTON|VIEWPORT_BUTTON`
+- `FailTag`: `TARGET|SCOPE|DATA|RESOLUTION|UNKNOWN`
 
 ## Surfaces
 
@@ -267,6 +268,32 @@ Definitions:
 }
 ```
 
+`FailItem`
+```json
+{
+  "failId": "uuid",
+  "projectId": "uuid",
+  "tag": "TARGET|SCOPE|DATA|RESOLUTION|UNKNOWN",
+  "target": {
+    "targetKey": "string",
+    "kind": "EVENT|BUTTON|VIEWPORT_BUTTON",
+    "refs": {},
+    "targetName": "string"
+  },
+  "scope": {
+    "scopeType": "PROJECT|DEVICE|PAGE|EVENT_SECTION|TARGET",
+    "deviceId": 0,
+    "pageId": 0,
+    "eventSection": "system|driver|null"
+  },
+  "resolvedData": {},
+  "currentOutcome": "FAIL",
+  "lastTestedAtUtc": "2026-03-19T12:05:00Z|null",
+  "lastFailNote": "string|null",
+  "recordedBy": { "role": "TECHNICIAN|PROGRAMMER", "techLinkId": "uuid|null" }
+}
+```
+
 `ProjectProgress` (commissioning-scoped shape; current implementation)
 ```json
 {
@@ -358,9 +385,10 @@ Base: `/api/v1`
 - `GET /api/v1/commissioning/projects/{projectId}/testing-ui` -> static HTML for latest generated artifact, or an explicit not-ready shell when no generation exists yet
 
 ### Commissioning reads for progress and failed-target triage
+- `GET /api/v1/commissioning/projects/{projectId}/fail-tags` -> canonical `FailTag` catalog for the UI
 - `GET /api/v1/commissioning/projects/{projectId}/progress` -> derived `ProjectProgress` for the commissioning console (device + event-section rollups; page detail optional/future)
 - `GET /api/v1/commissioning/projects/{projectId}/fails` -> current fail/task-list projection for the commissioning console
-  - each row includes `targetKey`, `currentOutcome`, `lastTestedAtUtc`, `lastFailNote`, and `recordedBy`
+  - each row is a `FailItem`
 
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
@@ -374,7 +402,17 @@ Future tech-scoped read endpoints may be added later, but they are not required 
 
 Event envelope:
 ```json
-{ "eventId": "uuid", "projectId": "uuid", "tsUtc": "2026-03-19T12:01:15Z", "type": "string", "data": {} }
+{
+  "eventId": "uuid",
+  "projectId": "uuid",
+  "tsUtc": "2026-03-19T12:01:15Z",
+  "type": "string",
+  "scope": { "scopeType": "PROJECT|DEVICE|PAGE|EVENT_SECTION|TARGET", "deviceId": 0, "pageId": 0, "eventSection": "system|driver|null" },
+  "target": { "targetKey": "string", "kind": "EVENT|BUTTON|VIEWPORT_BUTTON", "refs": {}, "targetName": "string" },
+  "tag": "TARGET|SCOPE|DATA|RESOLUTION|UNKNOWN|null",
+  "resolvedData": {},
+  "data": {}
+}
 ```
 
 Minimum event types:
@@ -383,6 +421,8 @@ Minimum event types:
 - `extraction.started|progress|succeeded|failed` `{ "extractionRunId": "uuid", ... }`
 - `generation.started|progress|succeeded|failed` `{ "generationRunId": "uuid", ... }`
 - `result.recorded` `{ "testResultId": "uuid", "targetKey": "string", "outcome": "PASS|FAIL" }`
+- `fail.tagged` `{ "failId": "uuid", "tag": "TARGET|SCOPE|DATA|RESOLUTION|UNKNOWN", "target": { ... }, "scope": { ... }, "resolvedData": { ... } }`
+- `fail.resolved` `{ "failId": "uuid", "tag": "TARGET|SCOPE|DATA|RESOLUTION|UNKNOWN", "target": { ... }, "scope": { ... }, "resolvedData": { ... } }`
 
 ## Error codes (minimum set)
 
