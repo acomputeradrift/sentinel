@@ -1,0 +1,111 @@
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  background: #eef3f7;
+  color: #173246;
+}
+
+.shell {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 18px 60px;
+  box-sizing: border-box;
+}
+
+.header {
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0 0 6px 0;
+  font-size: 28px;
+}
+
+h2 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+}
+
+.sub {
+  margin: 0;
+  color: #4e6a7f;
+  font-size: 13px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #c6d2dd;
+  border-radius: 16px;
+  padding: 14px;
+  margin: 12px 0;
+  box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+}
+
+.grow {
+  flex: 1;
+}
+
+input,
+select {
+  height: 34px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #b6c7d6;
+  font-size: 14px;
+}
+
+button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #0f5d8a;
+  background: #177bb5;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.status {
+  font-size: 13px;
+  color: #335267;
+  min-height: 18px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+pre.mono {
+  background: #f5f8fb;
+  border: 1px solid #e1ebf3;
+  border-radius: 12px;
+  padding: 10px;
+  overflow: auto;
+}
+
