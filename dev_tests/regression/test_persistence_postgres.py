@@ -81,3 +81,75 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
 
         status = queries.get_target_status(database_url, project_id=project_id, target_key="event:126:Trigger")
         self.assertEqual(status["currentOutcome"], "PASS")
+
+    def test_latest_target_statuses_and_failures(self):
+        from sentinel.server.persistence import db, queries
+
+        database_url = _database_url()
+        assert database_url is not None
+
+        db.apply_migrations(database_url)
+
+        suffix = uuid4().hex
+        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        project_id = queries.create_project(database_url, client_id=client_id, name=f"Test Project {suffix}")
+
+        tech_link = queries.create_tech_link(database_url, project_id=project_id, label="Onsite Tech")
+        token = queries.rotate_tech_link_token(database_url, tech_link_id=tech_link["techLinkId"])
+        resolved = queries.resolve_active_tech_token(database_url, tech_token=token["techToken"])
+        self.assertEqual(resolved["projectId"], project_id)
+
+        generation_run_id = queries.ensure_generation_run(database_url, project_id=project_id)
+
+        # Target A ends PASS (FAIL then PASS).
+        queries.append_test_result(
+            database_url,
+            project_id=project_id,
+            generation_run_id=generation_run_id,
+            recorded_by_tech_link_id=tech_link["techLinkId"],
+            target_key="event:126:Trigger",
+            target_kind="EVENT",
+            target_name="Trigger",
+            refs={"eventId": 126},
+            outcome="FAIL",
+            fail_note="Did not trigger.",
+        )
+        queries.append_test_result(
+            database_url,
+            project_id=project_id,
+            generation_run_id=generation_run_id,
+            recorded_by_tech_link_id=tech_link["techLinkId"],
+            target_key="event:126:Trigger",
+            target_kind="EVENT",
+            target_name="Trigger",
+            refs={"eventId": 126},
+            outcome="PASS",
+            fail_note=None,
+        )
+
+        # Target B ends FAIL.
+        queries.append_test_result(
+            database_url,
+            project_id=project_id,
+            generation_run_id=generation_run_id,
+            recorded_by_tech_link_id=tech_link["techLinkId"],
+            target_key="btn:81:513:48551:Macro",
+            target_kind="BUTTON",
+            target_name="Macro",
+            refs={"deviceId": 81, "pageId": 513, "buttonId": 48551},
+            outcome="FAIL",
+            fail_note="Macro did not run.",
+        )
+
+        latest = queries.list_latest_target_statuses(database_url, project_id=project_id)
+        self.assertEqual({r["targetKey"] for r in latest}, {"event:126:Trigger", "btn:81:513:48551:Macro"})
+
+        by_key = {r["targetKey"]: r for r in latest}
+        self.assertEqual(by_key["event:126:Trigger"]["currentOutcome"], "PASS")
+        self.assertEqual(by_key["btn:81:513:48551:Macro"]["currentOutcome"], "FAIL")
+        self.assertEqual(by_key["btn:81:513:48551:Macro"]["lastFailNote"], "Macro did not run.")
+        self.assertEqual(by_key["btn:81:513:48551:Macro"]["recordedByTechLinkId"], tech_link["techLinkId"])
+        self.assertEqual(by_key["btn:81:513:48551:Macro"]["recordedByTechLabel"], "Onsite Tech")
+
+        failures = queries.list_latest_failed_targets(database_url, project_id=project_id)
+        self.assertEqual([r["targetKey"] for r in failures], ["btn:81:513:48551:Macro"])
