@@ -208,3 +208,67 @@ def get_target_status(database_url: str, *, project_id: str, target_key: str) ->
     finally:
         con.close()
 
+
+def list_latest_target_statuses(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    """
+    Returns one row per targetKey representing the latest recorded state for that target in the project.
+
+    Latest is determined by:
+    - recorded_at_utc DESC
+    - test_result_id DESC (deterministic tie-breaker)
+    """
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select distinct on (tr.target_key) "
+            "  tr.target_key as \"targetKey\", "
+            "  tr.outcome as \"currentOutcome\", "
+            "  tr.recorded_at_utc as \"lastTestedAtUtc\", "
+            "  tr.fail_note as \"lastFailNote\", "
+            "  tr.target_kind as \"targetKind\", "
+            "  tr.target_name as \"targetName\", "
+            "  tr.refs as \"refs\", "
+            "  tr.recorded_by_tech_link_id as \"recordedByTechLinkId\", "
+            "  tl.label as \"recordedByTechLabel\" "
+            "from test_results tr "
+            "left join tech_links tl on tl.tech_link_id=tr.recorded_by_tech_link_id "
+            "where tr.project_id=%s "
+            "order by tr.target_key, tr.recorded_at_utc desc, tr.test_result_id desc",
+            (project_id,),
+        )
+    finally:
+        con.close()
+
+
+def list_latest_failed_targets(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    """
+    Returns one row per targetKey where the latest recorded outcome is FAIL.
+
+    Ordering is by lastTestedAtUtc DESC then targetKey ASC for stable UI presentation.
+    """
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select * from ("
+            "  select distinct on (tr.target_key) "
+            "    tr.target_key as \"targetKey\", "
+            "    tr.outcome as \"currentOutcome\", "
+            "    tr.recorded_at_utc as \"lastTestedAtUtc\", "
+            "    tr.fail_note as \"lastFailNote\", "
+            "    tr.target_kind as \"targetKind\", "
+            "    tr.target_name as \"targetName\", "
+            "    tr.refs as \"refs\", "
+            "    tr.recorded_by_tech_link_id as \"recordedByTechLinkId\", "
+            "    tl.label as \"recordedByTechLabel\" "
+            "  from test_results tr "
+            "  left join tech_links tl on tl.tech_link_id=tr.recorded_by_tech_link_id "
+            "  where tr.project_id=%s "
+            "  order by tr.target_key, tr.recorded_at_utc desc, tr.test_result_id desc"
+            ") latest where latest.\"currentOutcome\"='FAIL' "
+            "order by latest.\"lastTestedAtUtc\" desc, latest.\"targetKey\" asc",
+            (project_id,),
+        )
+    finally:
+        con.close()
