@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 
 from sentinel.server.api.errors import http_error
+from sentinel.server.services import sse
 from sentinel.server.services.repositories import Repository
 
 
@@ -16,6 +17,14 @@ router = APIRouter(tags=["testing"])
 
 def _repo(request: Request) -> Repository:
     return request.app.state.repo
+
+
+def _broker(request: Request) -> sse.ProjectEventBroker:
+    broker = getattr(request.app.state, "project_event_broker", None)
+    if broker is None:
+        broker = sse.ProjectEventBroker()
+        request.app.state.project_event_broker = broker
+    return broker
 
 
 def _generated_root() -> Path:
@@ -106,6 +115,18 @@ def post_result(request: Request, techToken: str, payload: dict) -> dict:
         rec = _repo(request).append_test_result(techToken=techToken, target=target, outcome=outcome, failNote=(str(fail_note).strip() if fail_note is not None else None))
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+    target_key = str(rec.target.get("targetKey") or "")
+    _broker(request).publish(
+        projectId=rec.projectId,
+        event={
+            "type": "test_result",
+            "projectId": rec.projectId,
+            "recordedAtUtc": rec.recordedAtUtc,
+            "targetKey": target_key,
+            "outcome": rec.outcome,
+        },
+    )
 
     return {
         "testResultId": rec.testResultId,

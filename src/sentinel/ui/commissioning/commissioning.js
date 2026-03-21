@@ -64,6 +64,52 @@ const state = {
   lastUploadFilenameByProject: {},
 };
 
+const projectEvents = {
+  source: null,
+  projectId: null,
+  refreshTimer: null,
+};
+
+function scheduleProjectRefresh() {
+  if (projectEvents.refreshTimer) return;
+  projectEvents.refreshTimer = setTimeout(async () => {
+    projectEvents.refreshTimer = null;
+    try {
+      await refreshFails();
+    } catch (_e) {}
+    try {
+      await refreshProgress();
+    } catch (_e) {}
+  }, 250);
+}
+
+function disconnectProjectEvents() {
+  if (projectEvents.source) {
+    try {
+      projectEvents.source.close();
+    } catch (_e) {}
+  }
+  projectEvents.source = null;
+  projectEvents.projectId = null;
+}
+
+function connectProjectEvents(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) {
+    disconnectProjectEvents();
+    return;
+  }
+  if (projectEvents.source && projectEvents.projectId === pid) return;
+
+  disconnectProjectEvents();
+  projectEvents.projectId = pid;
+  const url = api(`/commissioning/projects/${encodeURIComponent(pid)}/events`);
+  const es = new EventSource(url);
+  es.addEventListener("test_result", () => scheduleProjectRefresh());
+  es.onmessage = () => scheduleProjectRefresh();
+  projectEvents.source = es;
+}
+
 function setProgressHidden(el, hidden) {
   el.style.display = hidden ? "none" : "";
 }
@@ -399,6 +445,7 @@ async function run() {
     safe(async () => {
       const projectId = currentProjectId();
       if (projectId) state.generationReadyByProject[projectId] = false;
+      connectProjectEvents(projectId);
       updateRegenerateEnabled();
       updateTechLinkEnabled();
       await refreshFails();
