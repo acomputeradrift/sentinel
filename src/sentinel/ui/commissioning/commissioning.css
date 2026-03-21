@@ -109,3 +109,20 @@ pre.mono {
   overflow: auto;
 }
 
+.progress-row {
+  align-items: center;
+  gap: 12px;
+}
+
+.progress {
+  width: 100%;
+  max-width: 520px;
+  height: 12px;
+}
+
+.progress-label {
+  min-width: 160px;
+  font-size: 13px;
+  color: #4e6a7f;
+}
+

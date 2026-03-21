@@ -60,10 +60,18 @@
           </label>
           <button id="uploadBtn" type="button">Upload .apex</button>
         </div>
+        <div class="row progress-row">
+          <progress id="uploadProgress" class="progress" max="100" value="0"></progress>
+          <div class="progress-label" id="uploadProgressLabel"></div>
+        </div>
         <div class="status" data-testid="upload-status" id="uploadStatus"></div>
 
         <div class="row">
           <button id="regenerateBtn" type="button">Regenerate</button>
+        </div>
+        <div class="row progress-row">
+          <progress id="regenProgress" class="progress"></progress>
+          <div class="progress-label" id="regenProgressLabel"></div>
         </div>
         <div class="status" data-testid="regen-status" id="regenStatus"></div>
       </section>

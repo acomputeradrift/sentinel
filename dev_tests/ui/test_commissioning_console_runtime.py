@@ -161,6 +161,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         def handle_regenerate(route, request):
             self.assertEqual(request.method, "POST")
+            data = json.loads(request.post_data or "{}")
+            self.assertEqual(data.get("uploadId"), "upload-1")
             fulfill_json(
                 route,
                 {
