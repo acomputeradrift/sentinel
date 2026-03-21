@@ -233,6 +233,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         expect(page.get_by_role("heading", name="Commissioning Console")).to_be_visible()
 
+        # Shell + tabs
+        expect(page.get_by_role("button", name="Manage")).to_be_visible()
+        expect(page.get_by_role("button", name="Commission")).to_be_visible()
+        expect(page.get_by_role("button", name="Diagnostics")).to_be_visible()
+        expect(page.locator("#panel-manage")).to_be_visible()
+        expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Regenerate")).to_be_visible()
+
+        # Manage must not render Progress/Fails sections.
+        expect(page.locator("#panel-manage [data-testid='progress']")).to_have_count(0)
+        expect(page.locator("#panel-manage [data-testid='fails-count']")).to_have_count(0)
+        expect(page.locator("#panel-manage [data-testid='fails-list']")).to_have_count(0)
+
         page.get_by_label("New client name").fill("Client A")
         page.get_by_role("button", name="Create client").click()
         expect(page.get_by_label("Client", exact=True)).to_have_value("client-1")
@@ -252,18 +264,19 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Regenerate").click()
         expect(page.get_by_test_id("regen-status")).to_contain_text("READY")
-        expect(page.get_by_test_id("progress")).to_contain_text("30%")
 
         page.get_by_label("Tech label").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
 
-        expect(page.get_by_test_id("fails-count")).to_contain_text("2")
-        expect(page.get_by_test_id("fails-list")).to_contain_text("Macro did not run")
-        expect(page.get_by_test_id("fails-list")).to_contain_text("Trigger not firing")
-        expect(page.get_by_test_id("fails-list")).to_contain_text("Button d81 p513 b48551 — Macro")
-        expect(page.get_by_test_id("fails-list")).to_contain_text("Event 126 — Trigger")
+        # Tab switching (Commission/Diagnostics are placeholders in this stream)
+        page.get_by_role("button", name="Commission").click()
+        expect(page.locator("#panel-commission")).to_be_visible()
+        page.get_by_role("button", name="Diagnostics").click()
+        expect(page.locator("#panel-diagnostics")).to_be_visible()
+        page.get_by_role("button", name="Manage").click()
+        expect(page.locator("#panel-manage")).to_be_visible()
 
         # Upload a completely different file name (should warn).
         with tempfile.TemporaryDirectory() as td:

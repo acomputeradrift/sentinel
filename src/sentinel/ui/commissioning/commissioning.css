@@ -9,11 +9,69 @@ body {
   color: #173246;
 }
 
-.shell {
-  max-width: 980px;
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #c6d2dd;
+}
+
+.topbar-inner {
+  max-width: 1180px;
   margin: 0 auto;
+  padding: 16px 18px;
+  box-sizing: border-box;
+}
+
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidenav {
+  width: 200px;
+  padding: 14px 12px;
+  background: #f7fbff;
+  border-right: 1px solid #c6d2dd;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
   padding: 24px 18px 60px;
   box-sizing: border-box;
+}
+
+.panel {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.tab {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid #b6c7d6;
+  background: transparent;
+  color: #173246;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tab.active {
+  border-color: #0f5d8a;
+  background: #177bb5;
+  color: #ffffff;
 }
 
 .header {
