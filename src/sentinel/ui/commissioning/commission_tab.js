@@ -13,8 +13,11 @@ function formatTimestampUtc(ts) {
   if (!s) return "";
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
-  // YYYY-MM-DD HH:MM:SSZ
-  return d.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "Z");
+  // Compact UTC: MM-DD HH:MM:SSZ (full timestamp kept in title attributes).
+  const iso = d.toISOString(); // always UTC
+  const mmdd = iso.slice(5, 10);
+  const time = iso.slice(11, 19);
+  return `${mmdd} ${time}Z`;
 }
 
 async function jsonFetch(url, options) {
@@ -79,8 +82,10 @@ function normalizeEventMessage(ev) {
   const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
   const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
 
+  const recordedAtUtc = String(data?.recordedAtUtc || data?.tsUtc || "");
   return {
-    tsUtc: formatTimestampUtc(data?.recordedAtUtc || data?.tsUtc || ""),
+    tsUtc: formatTimestampUtc(recordedAtUtc),
+    tsUtcFull: recordedAtUtc,
     device: String(refs?.deviceName || ""),
     page: String(refs?.pageName || ""),
     button: String(refs?.buttonName || ""),
@@ -108,14 +113,17 @@ function appendActivityRow(msg) {
   tdPage.className = "mono";
   tdButton.className = "mono";
   tdTarget.className = "mono";
-  tdStatus.className = "mono";
+  tdStatus.className = "mono status-cell";
 
   tdTime.textContent = msg.tsUtc || "";
+  tdTime.title = String(msg.tsUtcFull || msg.tsUtc || "");
   tdDevice.textContent = msg.device || "";
   tdPage.textContent = msg.page || "";
   tdButton.textContent = msg.button || "";
   tdTarget.textContent = msg.testTarget || msg.targetKey || "";
-  tdStatus.textContent = msg.status || "";
+  const st = String(msg.status || "").trim().toUpperCase();
+  tdStatus.textContent = st;
+  tdStatus.dataset.status = st;
 
   tr.appendChild(tdTime);
   tr.appendChild(tdDevice);
@@ -134,6 +142,52 @@ function appendActivityRow(msg) {
 let sse = null;
 let sseProjectId = null;
 let lastSseErrorAtMs = 0;
+
+function ensureCommissionHeader() {
+  const panel = document.getElementById("panel-commission");
+  if (!panel) return;
+  const shell = panel.querySelector(".commission-shell");
+  if (!shell) return;
+  if (document.getElementById("commissionSelection")) return;
+
+  const div = document.createElement("div");
+  div.className = "commission-selection";
+  div.id = "commissionSelection";
+  div.innerHTML = `
+    <div class="commission-selection-title">Selected</div>
+    <div class="commission-selection-row">
+      <div class="commission-selection-item">
+        <div class="commission-selection-label">Client</div>
+        <div class="commission-selection-value mono" data-testid="commission-selected-client" id="commissionSelectedClientName"></div>
+      </div>
+      <div class="commission-selection-item">
+        <div class="commission-selection-label">Project</div>
+        <div class="commission-selection-value mono" data-testid="commission-selected-project" id="commissionSelectedProjectName"></div>
+      </div>
+    </div>
+  `.trim();
+
+  shell.prepend(div);
+}
+
+function selectedOptionText(selectId) {
+  const sel = document.getElementById(selectId);
+  const opt = sel && sel.selectedOptions && sel.selectedOptions[0] ? sel.selectedOptions[0] : null;
+  return opt ? String(opt.textContent || "").trim() : "";
+}
+
+function updateSelectedNames() {
+  ensureCommissionHeader();
+  const clientNameEl = document.getElementById("commissionSelectedClientName");
+  const projectNameEl = document.getElementById("commissionSelectedProjectName");
+  if (!clientNameEl || !projectNameEl) return;
+
+  const clientName = selectedOptionText("clientSelect");
+  const projectName = selectedOptionText("projectSelect");
+
+  clientNameEl.textContent = clientName || "TODO: select a client";
+  projectNameEl.textContent = projectName || "TODO: select a project";
+}
 
 function stopSse() {
   if (sse) {
@@ -184,6 +238,7 @@ function startSse(projectId) {
 
 async function refreshCommission() {
   const projectId = currentProjectId();
+  updateSelectedNames();
   if (!projectId) return;
   startSse(projectId);
 
@@ -203,10 +258,14 @@ function runCommissionTab() {
   const tabDiagnostics = document.getElementById("tab-diagnostics");
   if (tabDiagnostics) tabDiagnostics.addEventListener("click", () => stopSse());
 
+  const clientSelect = document.getElementById("clientSelect");
+  if (clientSelect) clientSelect.addEventListener("change", () => updateSelectedNames());
+
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
       stopSse();
+      updateSelectedNames();
       if (isCommissionVisible()) void refreshCommission();
     });
   }
@@ -219,6 +278,8 @@ function runCommissionTab() {
   empty.id = "commissionActivityEmpty";
   empty.textContent = "No activity yet.";
   $("commissionActivity").appendChild(empty);
+
+  updateSelectedNames();
 }
 
 runCommissionTab();
