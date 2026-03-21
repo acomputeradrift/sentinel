@@ -126,19 +126,13 @@ function setLastGeneratedLabel() {
 }
 
 function setPanelContext() {
-  const clientSel = document.getElementById("clientSelect");
-  const projectSel = document.getElementById("projectSelect");
-  const clientName = clientSel && clientSel.selectedOptions && clientSel.selectedOptions[0] ? clientSel.selectedOptions[0].textContent : "";
-  const projectName = projectSel && projectSel.selectedOptions && projectSel.selectedOptions[0] ? projectSel.selectedOptions[0].textContent : "";
-
-  const c1 = document.getElementById("panelContextClient");
-  const p1 = document.getElementById("panelContextProject");
-  const c2 = document.getElementById("panelContextClient2");
-  const p2 = document.getElementById("panelContextProject2");
-  if (c1) c1.textContent = clientName || "";
-  if (p1) p1.textContent = projectName || "";
-  if (c2) c2.textContent = clientName || "";
-  if (p2) p2.textContent = projectName || "";
+  const ids = ["panelContextClient", "panelContextProject", "panelContextClient2", "panelContextProject2"];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const sub = el.closest(".panel-context-sub");
+    if (sub) sub.remove();
+  }
 }
 
 function renderTechLinks() {
