@@ -4,10 +4,12 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Request
 from fastapi import UploadFile
+from fastapi.responses import StreamingResponse
 
 from sentinel.server.api.errors import http_error
 from sentinel.server.services import pipeline
 from sentinel.server.services import progress
+from sentinel.server.services import sse
 from sentinel.server.services.repositories import Repository
 
 
@@ -16,6 +18,14 @@ router = APIRouter(prefix="/api/v1/commissioning", tags=["commissioning"])
 
 def _repo(request: Request) -> Repository:
     return request.app.state.repo
+
+
+def _broker(request: Request) -> sse.ProjectEventBroker:
+    broker = getattr(request.app.state, "project_event_broker", None)
+    if broker is None:
+        broker = sse.ProjectEventBroker()
+        request.app.state.project_event_broker = broker
+    return broker
 
 
 @router.get("/clients")
@@ -137,3 +147,34 @@ def project_progress(request: Request, projectId: str) -> dict:
         return progress.commissioning_progress(projectId=projectId, latest_results=latest)
     except FileNotFoundError:
         raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
+
+
+@router.get("/projects/{projectId}/events")
+async def project_events(request: Request, projectId: str):
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+
+    broker = _broker(request)
+    q = broker.subscribe(projectId=projectId)
+
+    async def gen():
+        try:
+            yield b": connected\nretry: 3000\n\n"
+            while True:
+                msg = await sse.wait_for_next(q, timeout_s=15.0)
+                if msg is None:
+                    yield b": keepalive\n\n"
+                    continue
+                yield f"event: test_result\ndata: {msg}\n\n".encode("utf-8")
+        finally:
+            broker.unsubscribe(projectId=projectId, q=q)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "cache-control": "no-cache",
+            "x-accel-buffering": "no",
+        },
+    )
