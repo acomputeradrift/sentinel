@@ -819,7 +819,25 @@ let currentDeviceTop=0;
   }}
   return s;
  }}
- async function postResult(ctxBtn, meta, targetLabel, outcome, failNote) {{
+ function setRowStatus(el, outcome, lastTestedAtUtc) {{
+  if (!el) return;
+  const oc=String(outcome||'').toUpperCase();
+  const at=String(lastTestedAtUtc||'').trim();
+  el.textContent = at ? (oc + ' \u2022 ' + at) : oc;
+ }}
+ async function fetchTargetStatus(techToken, targetKey) {{
+  try {{
+   const u=`/api/v1/testing/${{techToken}}/target-status?targetKey=${{encodeURIComponent(String(targetKey||''))}}`;
+   const r=await fetch(u);
+   if (!r.ok) return null;
+   const ct=String(r.headers.get('content-type')||'');
+   if (!ct.includes('application/json')) return null;
+   return await r.json();
+  }} catch (_e) {{
+   return null;
+  }}
+ }}
+ async function postResult(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
   const techToken=techTokenFromLocation();
   if (!techToken) return;
 
@@ -827,7 +845,6 @@ let currentDeviceTop=0;
   const isFail=String(outcome||'').toUpperCase()==='FAIL';
   const note=isFail ? String(failNote||'').trim() : null;
   if (isFail && !note) return;
-  if (isPosting) return;
   if (isPosting) return;
 
   let kind='BUTTON';
@@ -869,6 +886,9 @@ let currentDeviceTop=0;
     setPostStatus('Saved','success');
     const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
     if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
+    setRowStatus(statusEl, payload.outcome, null);
+    const st=await fetchTargetStatus(techToken, targetKey);
+    if (st && st.currentOutcome) setRowStatus(statusEl, st.currentOutcome, st.lastTestedAtUtc);
     return;
    }}
    const err=await readErrorText(r);
@@ -882,6 +902,7 @@ let currentDeviceTop=0;
  function bindResultRows(ctxBtn, meta) {{
   rows.querySelectorAll('.row').forEach(row=>{{
    const label=row.querySelector('.n')?.textContent||'';
+   const statusEl=row.querySelector('.row-status');
    const buttons=row.querySelectorAll('.actions button');
    if (buttons.length<2) return;
    const passBtn=buttons[0];
@@ -893,8 +914,8 @@ let currentDeviceTop=0;
    }};
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
-   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'PASS', null);}});
-   failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '');}});
+   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'PASS', null, statusEl);}});
+   failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
   }});
  }}
  function bindTestButtonClicks(root) {{
@@ -906,7 +927,7 @@ let currentDeviceTop=0;
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='row-status' aria-live='polite'></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
      setPostStatus('','');
      ov.classList.add('open');
      bindResultRows(b, m);
@@ -2323,7 +2344,25 @@ function toggleSection(btn){{
   }}
   return s;
  }}
- async function postResult(meta, targetLabel, outcome, failNote) {{
+ function setRowStatus(el, outcome, lastTestedAtUtc) {{
+  if (!el) return;
+  const oc=String(outcome||'').toUpperCase();
+  const at=String(lastTestedAtUtc||'').trim();
+  el.textContent = at ? (oc + ' \u2022 ' + at) : oc;
+ }}
+ async function fetchTargetStatus(techToken, targetKey) {{
+  try {{
+   const u=`/api/v1/testing/${{techToken}}/target-status?targetKey=${{encodeURIComponent(String(targetKey||''))}}`;
+   const r=await fetch(u);
+   if (!r.ok) return null;
+   const ct=String(r.headers.get('content-type')||'');
+   if (!ct.includes('application/json')) return null;
+   return await r.json();
+  }} catch (_e) {{
+   return null;
+  }}
+ }}
+ async function postResult(meta, targetLabel, outcome, failNote, statusEl) {{
   const techToken=techTokenFromLocation();
   if (!techToken) return;
   if (!meta || meta.kind!=='EVENT' || !meta.refs || meta.refs.eventId==null) return;
@@ -2331,7 +2370,8 @@ function toggleSection(btn){{
   const targetName=normalizeTargetName(targetLabel);
   const isFail=String(outcome||'').toUpperCase()==='FAIL';
   const note=isFail ? String(failNote||'').trim() : null;
-  if (isFail && !note) return;
+   if (isFail && !note) return;
+   if (isPosting) return;
 
   const eventId=Number(meta.refs.eventId);
   const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs:{{eventId}},targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
@@ -2343,6 +2383,9 @@ function toggleSection(btn){{
     setPostStatus('Saved','success');
     const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
     if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
+    setRowStatus(statusEl, payload.outcome, null);
+    const st=await fetchTargetStatus(techToken, `event:${eventId}:${targetName}`);
+    if (st && st.currentOutcome) setRowStatus(statusEl, st.currentOutcome, st.lastTestedAtUtc);
     return;
    }}
    const err=await readErrorText(r);
@@ -2356,6 +2399,7 @@ function toggleSection(btn){{
  function bindResultRows(meta) {{
   rows.querySelectorAll('.row').forEach(function(row){{
    const label=(row.querySelector('.n')||{{}}).textContent||'';
+   const statusEl=row.querySelector('.row-status');
    const buttons=row.querySelectorAll('.actions button');
    if (buttons.length<2) return;
    const passBtn=buttons[0];
@@ -2367,8 +2411,8 @@ function toggleSection(btn){{
    }}
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
-   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'PASS', null);}});
-   failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'FAIL', noteEl ? noteEl.value : '');}});
+   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'PASS', null, statusEl);}});
+   failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
   }});
  }}
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
@@ -2378,7 +2422,7 @@ function toggleSection(btn){{
    const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=Array.isArray(m.targets) ? m.targets : [];
-    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='row-status' aria-live='polite'></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
     setPostStatus('','');
     ov.classList.add('open');
     bindResultRows(m);
