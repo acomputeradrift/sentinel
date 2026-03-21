@@ -123,6 +123,47 @@ async def upload_apex(projectId: str, apex: UploadFile) -> dict:
     return {"uploadId": upload_id, "projectId": projectId, "originalFilename": apex.filename, "storagePath": str(path)}
 
 
+@router.post("/projects/{projectId}/upload-and-regenerate")
+async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFile) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    if not apex.filename:
+        raise http_error(400, code="VALIDATION_ERROR", message="Apex filename is required.")
+    content = await apex.read()
+    if not content:
+        raise http_error(400, code="VALIDATION_ERROR", message="Apex file is empty.")
+
+    upload_id = str(uuid4())
+    path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
+
+    try:
+        generation = pipeline.regenerate_project(projectId=projectId, apex_path=path)
+    except Exception as e:
+        raise http_error(500, code="REGENERATE_FAILED", message=str(e))
+
+    try:
+        _broker(request).publish(
+            projectId=projectId,
+            event={
+                "type": "generation",
+                "status": "READY",
+                "uploadId": upload_id,
+                "originalFilename": apex.filename,
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "projectId": projectId,
+        "uploadId": upload_id,
+        "originalFilename": apex.filename,
+        "storagePath": str(path),
+        "generation": {"status": "READY", **(generation or {})},
+    }
+
+
 @router.post("/projects/{projectId}/regenerate")
 def regenerate(projectId: str, payload: dict) -> dict:
     upload_id = payload.get("uploadId")
