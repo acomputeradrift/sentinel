@@ -213,6 +213,95 @@ async function refreshProgress() {
   const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
   const pct = Math.round(((out?.counts?.percentComplete || 0) * 100) * 10) / 10;
   $("progress").textContent = `${pct}% complete\n\n` + JSON.stringify(out, null, 2);
+  await refreshFails();
+}
+
+function formatFailIdentity(targetKey) {
+  const raw = String(targetKey || "").trim();
+  if (!raw) return "";
+  const parts = raw.split(":");
+  const kind = parts[0] || "";
+  if (kind === "event" && parts.length >= 3) {
+    const eventId = parts[1];
+    const targetName = parts.slice(2).join(":");
+    return `Event ${eventId} — ${targetName}`;
+  }
+  if (kind === "btn" && parts.length >= 5) {
+    const deviceId = parts[1];
+    const pageId = parts[2];
+    const buttonId = parts[3];
+    const targetName = parts.slice(4).join(":");
+    return `Button d${deviceId} p${pageId} b${buttonId} — ${targetName}`;
+  }
+  if (kind === "vpbtn" && parts.length >= 7) {
+    const deviceId = parts[1];
+    const pageId = parts[2];
+    const viewportButtonId = parts[3];
+    const frameId = parts[4];
+    const buttonId = parts[5];
+    const targetName = parts.slice(6).join(":");
+    return `Viewport d${deviceId} p${pageId} vp${viewportButtonId} f${frameId} b${buttonId} — ${targetName}`;
+  }
+  return raw;
+}
+
+function renderFails(items) {
+  const list = $("failsList");
+  const count = $("failsCount");
+  const status = $("failsStatus");
+  const rows = Array.isArray(items) ? items : [];
+
+  count.textContent = String(rows.length);
+  setStatus(status, "");
+  list.innerHTML = "";
+
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "fails-empty";
+    empty.textContent = "No current failures.";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const rec of rows) {
+    const targetKey = String(rec?.targetKey || "");
+    const identity = formatFailIdentity(targetKey);
+    const note = String(rec?.lastFailNote || "").trim();
+    const at = String(rec?.lastTestedAtUtc || "").trim();
+    const role = String(rec?.recordedBy?.role || "").trim();
+
+    const row = document.createElement("div");
+    row.className = "fails-row";
+
+    const head = document.createElement("div");
+    head.className = "fails-identity";
+    head.textContent = identity || targetKey || "(missing targetKey)";
+
+    const meta = document.createElement("div");
+    meta.className = "fails-meta mono";
+    const when = at ? at : "(unknown time)";
+    const who = role ? role : "(unknown)";
+    meta.textContent = `${when} • ${who}`;
+
+    const noteEl = document.createElement("div");
+    noteEl.className = "fails-note";
+    noteEl.textContent = note || "(no note recorded)";
+
+    row.appendChild(head);
+    row.appendChild(meta);
+    row.appendChild(noteEl);
+    list.appendChild(row);
+  }
+}
+
+async function refreshFails() {
+  const projectId = currentProjectId();
+  if (!projectId) {
+    renderFails([]);
+    return;
+  }
+  const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/fails`));
+  renderFails(out);
 }
 
 async function run() {
@@ -229,7 +318,12 @@ async function run() {
   $("refreshClientsBtn").addEventListener("click", () => safe(refreshClients, $("clientStatus")));
   $("refreshProjectsBtn").addEventListener("click", () => safe(refreshProjects, $("projectStatus")));
   $("clientSelect").addEventListener("change", () => safe(refreshProjects, $("projectStatus")));
-  $("projectSelect").addEventListener("change", () => safe(updateRegenerateEnabled, $("projectStatus")));
+  $("projectSelect").addEventListener("change", () =>
+    safe(async () => {
+      updateRegenerateEnabled();
+      await refreshFails();
+    }, $("projectStatus"))
+  );
 
   $("createClientBtn").addEventListener("click", () => safe(createClient, $("clientStatus")));
   $("createProjectBtn").addEventListener("click", () => safe(createProject, $("projectStatus")));
@@ -237,11 +331,13 @@ async function run() {
   $("regenerateBtn").addEventListener("click", () => safe(regenerate, $("regenStatus")));
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("projectStatus")));
   $("refreshProgressBtn").addEventListener("click", () => safe(refreshProgress, $("projectStatus")));
+  $("refreshFailsBtn").addEventListener("click", () => safe(refreshFails, $("projectStatus")));
 
   await safe(refreshClients, $("clientStatus"));
   setProgressHidden($("uploadProgress"), true);
   setProgressHidden($("regenProgress"), true);
   updateRegenerateEnabled();
+  await safe(refreshFails, $("projectStatus"));
 }
 
 run();
