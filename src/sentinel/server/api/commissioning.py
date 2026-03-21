@@ -122,6 +122,7 @@ def project_fails(request: Request, projectId: str) -> list[dict]:
     if proj is None:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
     latest = _repo(request).get_latest_results_for_project(projectId=projectId)
+    tags = _repo(request).get_fail_tags_for_project(projectId=projectId)
     fails = [rec for rec in latest.values() if rec.outcome == "FAIL"]
     fails.sort(key=lambda r: r.recordedAtUtc, reverse=True)
     return [
@@ -131,10 +132,38 @@ def project_fails(request: Request, projectId: str) -> list[dict]:
             "lastTestedAtUtc": rec.recordedAtUtc,
             "lastFailNote": rec.failNote,
             "recordedBy": rec.recordedBy,
+            "tag": tags.get(str(rec.target.get("targetKey") or ""), "NOT_STARTED"),
+            "deviceName": (rec.target.get("refs") or {}).get("deviceName") if isinstance(rec.target.get("refs"), dict) else None,
+            "pageName": (rec.target.get("refs") or {}).get("pageName") if isinstance(rec.target.get("refs"), dict) else None,
+            "buttonName": (rec.target.get("refs") or {}).get("buttonName") if isinstance(rec.target.get("refs"), dict) else None,
+            "scope": (rec.target.get("refs") or {}).get("scope") if isinstance(rec.target.get("refs"), dict) else None,
+            "targetName": rec.target.get("targetName"),
+            "resolvedData": (rec.target.get("refs") or {}).get("resolvedData") if isinstance(rec.target.get("refs"), dict) else None,
         }
         for rec in fails
         if str(rec.target.get("targetKey") or "")
     ]
+
+
+@router.put("/projects/{projectId}/fail-tags")
+def put_fail_tag(request: Request, projectId: str, payload: dict) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+
+    target_key = str(payload.get("targetKey") or "").strip()
+    tag = str(payload.get("tag") or "").strip().upper()
+    if not target_key:
+        raise http_error(400, code="VALIDATION_ERROR", message="targetKey is required.")
+    if tag not in ("NOT_STARTED", "IN_PROGRESS", "DONE"):
+        raise http_error(400, code="VALIDATION_ERROR", message="tag must be NOT_STARTED, IN_PROGRESS, or DONE.")
+
+    try:
+        _repo(request).set_fail_tag(projectId=projectId, targetKey=target_key, tag=tag)
+    except KeyError:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+
+    return {"projectId": projectId, "targetKey": target_key, "tag": tag}
 
 
 @router.get("/projects/{projectId}/progress")
