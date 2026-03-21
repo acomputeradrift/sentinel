@@ -5,6 +5,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +20,8 @@ class _CaptureServer:
         self._html_by_path = html_by_path
         self._post_mode = post_mode  # "ok" | "error"
         self.posts: list[dict] = []
+        self._last_by_target_key: dict[str, dict[str, object]] = {}
+        self._fixed_last_tested_at_utc = "2026-03-21T00:00:00Z"
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -30,7 +33,22 @@ class _CaptureServer:
                 return
 
             def do_GET(self):  # noqa: N802
-                html = outer._html_by_path.get(self.path)
+                parsed = urlparse(self.path)
+                if parsed.path.startswith("/api/v1/testing/") and parsed.path.endswith("/target-status"):
+                    qs = parse_qs(parsed.query or "")
+                    target_key = (qs.get("targetKey") or [""])[0]
+                    rec = outer._last_by_target_key.get(str(target_key or ""))
+                    outcome = str(rec.get("outcome")) if rec else "UNTESTED"
+                    note = rec.get("failNote") if rec else None
+                    last_at = outer._fixed_last_tested_at_utc if rec else None
+                    payload = {"targetKey": target_key, "currentOutcome": outcome, "lastTestedAtUtc": last_at, "lastFailNote": note}
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode("utf-8"))
+                    return
+
+                html = outer._html_by_path.get(parsed.path)
                 if html is None:
                     self.send_response(404)
                     self.end_headers()
@@ -45,6 +63,16 @@ class _CaptureServer:
                 body = self.rfile.read(length) if length else b""
                 payload = json.loads(body.decode("utf-8") or "{}")
                 outer.posts.append({"path": self.path, "payload": payload})
+                try:
+                    target = payload.get("target") or {}
+                    target_key = str(target.get("targetKey") or "")
+                    if target_key:
+                        outer._last_by_target_key[target_key] = {
+                            "outcome": str(payload.get("outcome") or ""),
+                            "failNote": payload.get("failNote"),
+                        }
+                except Exception:
+                    pass
                 if outer._post_mode == "error":
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json")
@@ -109,6 +137,18 @@ class TestingResultPostingTest(unittest.TestCase):
             time.sleep(0.05)
         self.fail(f"Expected #postStatus to contain {text!r}")
 
+    def _wait_for_row_status_contains(self, page, row_index: int, text: str, *, timeout_s: float = 3.0) -> None:  # noqa: ANN001
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                status = page.locator("#rows .row").nth(row_index).locator(".row-status").inner_text()
+            except Exception:
+                status = ""
+            if text in (status or ""):
+                return
+            time.sleep(0.05)
+        self.fail(f"Expected row {row_index} .row-status to contain {text!r}")
+
     def test_event_pass_posts_result(self):
         from sentinel.generation.render_core import render_project_home_html, load_json
 
@@ -139,6 +179,8 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_posts(server, min_posts=1)
             self._wait_for_status_contains(page, "Saved")
+            self._wait_for_row_status_contains(page, 0, "PASS")
+            self._wait_for_row_status_contains(page, 0, "2026-03-21T00:00:00Z")
             posted = server.posts[0]["payload"]
             self.assertEqual(posted["outcome"], "PASS")
             self.assertEqual(posted["target"]["kind"], "EVENT")
@@ -216,6 +258,8 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_posts(server, min_posts=1)
             self._wait_for_status_contains(page, "Saved")
+            self._wait_for_row_status_contains(page, 0, "PASS")
+            self._wait_for_row_status_contains(page, 0, "2026-03-21T00:00:00Z")
             posted = server.posts[0]["payload"]
             self.assertEqual(posted["outcome"], "PASS")
             self.assertEqual(posted["target"]["kind"], "BUTTON")
@@ -300,6 +344,8 @@ class TestingResultPostingTest(unittest.TestCase):
             fail_btn.click()
             self._wait_for_posts(server, min_posts=1)
             self._wait_for_status_contains(page, "Saved")
+            self._wait_for_row_status_contains(page, 0, "FAIL")
+            self._wait_for_row_status_contains(page, 0, "2026-03-21T00:00:00Z")
             posted = server.posts[0]["payload"]
             self.assertEqual(posted["outcome"], "FAIL")
             self.assertEqual(posted["failNote"], "Broken macro")
