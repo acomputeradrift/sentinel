@@ -25,8 +25,16 @@
       "Outcome": ["PASS", "FAIL"],
       "ActorRole": ["TECHNICIAN", "PROGRAMMER"],
       "TargetKind": ["EVENT", "BUTTON", "VIEWPORT_BUTTON"]
+      ,"FailTag": ["TARGET", "SCOPE", "DATA", "RESOLUTION", "UNKNOWN"]
     }
   },
+  "failTagCatalogExample": [
+    { "tag": "TARGET", "label": "Target", "description": "A specific target is failing or inconsistent." },
+    { "tag": "SCOPE", "label": "Scope", "description": "The failure applies to a page, device, or event section." },
+    { "tag": "DATA", "label": "Data", "description": "The extracted or resolved data is incomplete or wrong." },
+    { "tag": "RESOLUTION", "label": "Resolution", "description": "The server could not resolve the target or context cleanly." },
+    { "tag": "UNKNOWN", "label": "Unknown", "description": "Needs manual triage." }
+  ],
   "techLinkExamples": [
     {
       "label": "Jamie (remote)",
@@ -37,6 +45,28 @@
       "label": "Onsite Tech",
       "exampleTechLink": { "techLinkId": "uuid", "token": "opaque-string" },
       "exampleTechUrl": "/testing/{techToken}"
+    }
+  ],
+  "failExamples": [
+    {
+      "failId": "uuid",
+      "projectId": "uuid",
+      "tag": "TARGET",
+      "target": {
+        "targetKey": "vpbtn:81:513:48248:0:48249:Var.Reversed",
+        "kind": "VIEWPORT_BUTTON",
+        "refs": { "deviceId": 81, "pageId": 513, "viewportButtonId": 48248, "frameId": 0, "buttonId": 48249 },
+        "targetName": "Var.Reversed"
+      },
+      "scope": { "scopeType": "TARGET", "deviceId": 81, "pageId": 513, "eventSection": null },
+      "resolvedData": {
+        "resolvedTargetLabel": "Reverse toggle",
+        "resolvedCommand": "toggleReverse"
+      },
+      "currentOutcome": "FAIL",
+      "lastTestedAtUtc": "2026-03-19T12:05:00Z",
+      "lastFailNote": "Button reverses incorrectly.",
+      "recordedBy": { "role": "TECHNICIAN", "techLinkId": "uuid" }
     }
   ],
   "targetKeyExamples": [
@@ -99,6 +129,30 @@
       "target": { "kind": "VIEWPORT_BUTTON", "targetKey": "vpbtn:81:513:48248:0:48249:Var.Reversed", "targetName": "Var.Reversed" },
       "outcome": "FAIL",
       "failNote": "Button reverses incorrectly."
+    }
+  ],
+  "projectEventExamples": [
+    {
+      "eventId": "uuid",
+      "projectId": "uuid",
+      "tsUtc": "2026-03-19T12:01:15Z",
+      "type": "project.statusChanged",
+      "scope": { "scopeType": "PROJECT", "deviceId": null, "pageId": null, "eventSection": null },
+      "target": null,
+      "tag": null,
+      "resolvedData": {},
+      "data": { "status": "READY" }
+    },
+    {
+      "eventId": "uuid",
+      "projectId": "uuid",
+      "tsUtc": "2026-03-19T12:05:00Z",
+      "type": "fail.tagged",
+      "scope": { "scopeType": "TARGET", "deviceId": 81, "pageId": 513, "eventSection": null },
+      "target": { "targetKey": "vpbtn:81:513:48248:0:48249:Var.Reversed", "kind": "VIEWPORT_BUTTON", "refs": { "deviceId": 81, "pageId": 513, "viewportButtonId": 48248, "frameId": 0, "buttonId": 48249 }, "targetName": "Var.Reversed" },
+      "tag": "TARGET",
+      "resolvedData": { "resolvedTargetLabel": "Reverse toggle", "resolvedCommand": "toggleReverse" },
+      "data": { "failId": "uuid", "lastFailNote": "Button reverses incorrectly." }
     }
   ]
 }

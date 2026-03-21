@@ -27,7 +27,8 @@
 1. Current test state is derived from append-only test history, not stored as a separate mutable truth.
 2. For each `targetKey`, the latest record determines `currentOutcome`, `lastTestedAtUtc`, and `lastFailNote`.
 3. Commissioning `progress` and `fails` views are read models derived from the latest extracted project model plus the latest result per target.
-4. The commissioning fail/task-list view may surface `targetKey`, `currentOutcome`, `lastTestedAtUtc`, `lastFailNote`, and `recordedBy` for operator triage.
-5. Page-level progress is optional/future; current implementation requires device-level and event-section rollups at minimum.
+4. The commissioning fail/task-list view may surface `tag`, `target metadata`, `scope`, `resolvedData`, `currentOutcome`, `lastTestedAtUtc`, `lastFailNote`, and `recordedBy` for operator triage.
+5. `FailTag` is a stable v1 classification enum; clients must treat it as the source of truth for filtering and grouping fail tasks.
+6. Page-level progress is optional/future; current implementation requires device-level and event-section rollups at minimum.
 
 ---
