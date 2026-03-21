@@ -40,6 +40,7 @@ class TechLink:
     techLinkId: str
     projectId: str
     label: str | None
+    createdAtUtc: str
 
 
 @dataclass
@@ -74,6 +75,10 @@ class Repository(Protocol):
     def create_tech_link(self, *, projectId: str, label: str | None) -> tuple[TechLink, ActiveToken]: ...
 
     def rotate_tech_link_token(self, *, projectId: str, techLinkId: str) -> ActiveToken: ...
+
+    def list_active_tech_links(self, *, projectId: str) -> list[TechLink]: ...
+
+    def revoke_tech_link(self, *, projectId: str, techLinkId: str) -> None: ...
 
     def resolve_active_token(self, *, techToken: str) -> ActiveToken: ...
 
@@ -143,7 +148,7 @@ class InMemoryRepository:
 
     def create_tech_link(self, *, projectId: str, label: str | None) -> tuple[TechLink, ActiveToken]:
         with self._lock:
-            link = TechLink(techLinkId=new_uuid(), projectId=projectId, label=label)
+            link = TechLink(techLinkId=new_uuid(), projectId=projectId, label=label, createdAtUtc=utc_now())
             self._tech_links[link.techLinkId] = link
             token = self._issue_token_locked(projectId=projectId, techLinkId=link.techLinkId)
             return link, token
@@ -155,6 +160,27 @@ class InMemoryRepository:
             if old is not None:
                 self._active_tokens.pop(old, None)
             return self._issue_token_locked(projectId=projectId, techLinkId=techLinkId)
+
+    def list_active_tech_links(self, *, projectId: str) -> list[TechLink]:
+        with self._lock:
+            out: list[TechLink] = []
+            for link in self._tech_links.values():
+                if link.projectId != projectId:
+                    continue
+                if link.techLinkId not in self._active_token_by_link:
+                    continue
+                out.append(link)
+            out.sort(key=lambda l: l.createdAtUtc, reverse=True)
+            return out
+
+    def revoke_tech_link(self, *, projectId: str, techLinkId: str) -> None:
+        with self._lock:
+            link = self._tech_links.get(techLinkId)
+            if link is None or link.projectId != projectId:
+                raise KeyError("TECH_LINK_NOT_FOUND")
+            old = self._active_token_by_link.pop(techLinkId, None)
+            if old is not None:
+                self._active_tokens.pop(old, None)
 
     def _issue_token_locked(self, *, projectId: str, techLinkId: str) -> ActiveToken:
         techToken = new_token()
@@ -296,7 +322,9 @@ class PostgresRepository:
     def create_tech_link(self, *, projectId: str, label: str | None) -> tuple[TechLink, ActiveToken]:
         link_row = self._q.create_tech_link(self._database_url, project_id=projectId, label=label)
         token_row = self._q.rotate_tech_link_token(self._database_url, tech_link_id=link_row["techLinkId"])
-        link = TechLink(techLinkId=link_row["techLinkId"], projectId=projectId, label=label)
+        created = link_row.get("createdAtUtc")
+        created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+        link = TechLink(techLinkId=link_row["techLinkId"], projectId=projectId, label=label, createdAtUtc=created_str)
         token = ActiveToken(techToken=token_row["techToken"], techLinkId=link.techLinkId, projectId=projectId)
         return link, token
 
@@ -305,6 +333,18 @@ class PostgresRepository:
         # Validate token is tied to the expected project by resolving it.
         resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=token_row["techToken"])
         return ActiveToken(techToken=token_row["techToken"], techLinkId=resolved["techLinkId"], projectId=resolved["projectId"])
+
+    def list_active_tech_links(self, *, projectId: str) -> list[TechLink]:
+        rows = self._q.list_active_tech_links(self._database_url, project_id=projectId)
+        out: list[TechLink] = []
+        for r in rows:
+            created = r.get("createdAtUtc")
+            created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+            out.append(TechLink(techLinkId=str(r["techLinkId"]), projectId=projectId, label=r.get("label"), createdAtUtc=created_str))
+        return out
+
+    def revoke_tech_link(self, *, projectId: str, techLinkId: str) -> None:
+        self._q.revoke_tech_link_tokens(self._database_url, project_id=projectId, tech_link_id=techLinkId)
 
     def resolve_active_token(self, *, techToken: str) -> ActiveToken:
         resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=techToken)
