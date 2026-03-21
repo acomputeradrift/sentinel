@@ -7,6 +7,7 @@ from fastapi import UploadFile
 
 from sentinel.server.api.errors import http_error
 from sentinel.server.services import pipeline
+from sentinel.server.services import progress
 from sentinel.server.services.repositories import Repository
 
 
@@ -15,6 +16,30 @@ router = APIRouter(prefix="/api/v1/commissioning", tags=["commissioning"])
 
 def _repo(request: Request) -> Repository:
     return request.app.state.repo
+
+
+@router.get("/clients")
+def list_clients(request: Request) -> list[dict]:
+    clients = _repo(request).list_clients()
+    return [{"clientId": c.clientId, "name": c.name, "createdAtUtc": c.createdAtUtc} for c in clients]
+
+
+@router.get("/clients/{clientId}/projects")
+def list_projects_for_client(request: Request, clientId: str) -> list[dict]:
+    try:
+        projects = _repo(request).list_projects_for_client(clientId=clientId)
+    except KeyError:
+        raise http_error(404, code="CLIENT_NOT_FOUND", message="Client not found.")
+    return [
+        {
+            "projectId": p.projectId,
+            "clientId": p.clientId,
+            "name": p.name,
+            "status": p.status,
+            "createdAtUtc": p.createdAtUtc,
+        }
+        for p in projects
+    ]
 
 
 @router.post("/clients")
@@ -79,3 +104,36 @@ def regenerate(projectId: str, payload: dict) -> dict:
     apex_path = candidates[0]
     pipeline.regenerate_project(projectId=projectId, apex_path=apex_path)
     return {"projectId": projectId, "status": "READY"}
+
+
+@router.get("/projects/{projectId}/fails")
+def project_fails(request: Request, projectId: str) -> list[dict]:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    latest = _repo(request).get_latest_results_for_project(projectId=projectId)
+    fails = [rec for rec in latest.values() if rec.outcome == "FAIL"]
+    fails.sort(key=lambda r: r.recordedAtUtc, reverse=True)
+    return [
+        {
+            "targetKey": str(rec.target.get("targetKey") or ""),
+            "currentOutcome": "FAIL",
+            "lastTestedAtUtc": rec.recordedAtUtc,
+            "lastFailNote": rec.failNote,
+            "recordedBy": rec.recordedBy,
+        }
+        for rec in fails
+        if str(rec.target.get("targetKey") or "")
+    ]
+
+
+@router.get("/projects/{projectId}/progress")
+def project_progress(request: Request, projectId: str) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    latest = _repo(request).get_latest_results_for_project(projectId=projectId)
+    try:
+        return progress.commissioning_progress(projectId=projectId, latest_results=latest)
+    except FileNotFoundError:
+        raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
