@@ -43,7 +43,16 @@ function updateDiagnosticsTitle() {
   const clientName = _selectedText("clientSelect");
   const projectName = _selectedText("projectSelect");
   const suffix = clientName || projectName ? ` — ${clientName || "(client)"} / ${projectName || "(project)"}` : "";
-  h2.textContent = `Diagnostics${suffix}`;
+  h2.textContent = "Diagnostics";
+
+  let line = document.getElementById("diagnosticsClientProjectLine");
+  if (!line) {
+    line = document.createElement("div");
+    line.id = "diagnosticsClientProjectLine";
+    line.className = "diag-client-project";
+    h2.insertAdjacentElement("afterend", line);
+  }
+  line.textContent = clientName || projectName ? `${clientName || "(client)"} / ${projectName || "(project)"}` : "";
 }
 
 const diagAuto = {
@@ -128,6 +137,8 @@ function normalizeTargetLabel(targetName) {
   if (lower === "macro") return "macro";
   if (lower === "macrosteps" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro step";
   if (lower === "pagelink" || lower === "page link") return "pageLink";
+  if (lower === "text" || lower === "texts") return "text";
+  if (lower === "command" || lower === "commands") return "command";
   if (lower.startsWith("variable - ")) return `variable - ${lower.slice("variable - ".length)}`;
   if (lower.startsWith("var.")) return `variable - ${lower.slice(4)}`;
   return lower;
@@ -148,32 +159,133 @@ function formatUtcTimestamp(ts) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}Z`;
 }
 
-function renderSummary(progress, fails) {
-  const counts = progress?.counts || {};
-  const tested = Number(counts.testedTargets || 0);
-  const fail = Number(counts.fail || 0);
-  const total = Number(counts.totalTargets || 0);
-  const currentFails = Array.isArray(fails) ? fails.length : 0;
-  const failRate = tested ? Math.round((fail / tested) * 1000) / 10 : 0;
-  const completeness = Math.round((Number(counts.percentComplete || 0) * 100) * 10) / 10;
+function _ensurePieDom() {
+  const host = document.getElementById("diagnosticsSummary");
+  if (!host) return null;
 
-  const lines = [];
-  lines.push(`Completion: ${completeness}% (${tested}/${total} tested)`);
-  lines.push(`Fail rate: ${failRate}% (${fail}/${tested || 0} of tested)`);
-  lines.push(`Current fails: ${currentFails}`);
-  diag$("diagnosticsSummary").textContent = lines.join("\n");
+  host.textContent = "";
+  host.classList.add("diag-pies-host");
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "diag-pies";
+  wrapper.setAttribute("data-testid", "diagnostics-pies");
+
+  const makeCard = (title, testid) => {
+    const card = document.createElement("div");
+    card.className = "diag-pie-card";
+    card.setAttribute("data-testid", testid);
+
+    const t = document.createElement("div");
+    t.className = "diag-pie-title";
+    t.textContent = title;
+
+    const svgWrap = document.createElement("div");
+    svgWrap.className = "diag-pie-svgwrap";
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 120 120");
+    svg.setAttribute("width", "120");
+    svg.setAttribute("height", "120");
+    svg.classList.add("diag-pie");
+
+    const legend = document.createElement("div");
+    legend.className = "diag-pie-legend";
+
+    svgWrap.appendChild(svg);
+    card.appendChild(t);
+    card.appendChild(svgWrap);
+    card.appendChild(legend);
+
+    return { card, svg, legend };
+  };
+
+  const failureRate = makeCard("Failure Rate", "diagnostics-pie-failure-rate");
+  const failureTypes = makeCard("Failure Types", "diagnostics-pie-failure-types");
+  const taskCompletion = makeCard("Task Completion", "diagnostics-pie-task-completion");
+
+  wrapper.appendChild(failureRate.card);
+  wrapper.appendChild(failureTypes.card);
+  wrapper.appendChild(taskCompletion.card);
+  host.appendChild(wrapper);
+
+  const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
+  if (legacy) legacy.textContent = "";
+
+  return { failureRate, failureTypes, taskCompletion };
 }
 
-function renderFailTypeBreakdown(fails) {
-  const rows = Array.isArray(fails) ? fails : [];
-  const counts = new Map();
-  for (const rec of rows) {
-    const label = normalizeTargetLabel(rec?.targetName || _targetNameFromTargetKey(rec?.targetKey || ""));
-    counts.set(label, (counts.get(label) || 0) + 1);
+function _palette() {
+  return ["#177bb5", "#0f5d8a", "#33a1de", "#7cc4ea", "#6b7280", "#ef4444", "#f59e0b", "#10b981", "#8b5cf6"];
+}
+
+function _piePath(cx, cy, r, startAngle, endAngle) {
+  const polar = (angle) => {
+    const a = (angle - 90) * (Math.PI / 180);
+    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+  };
+  const p1 = polar(endAngle);
+  const p0 = polar(startAngle);
+  const large = endAngle - startAngle <= 180 ? "0" : "1";
+  return `M ${cx} ${cy} L ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y} Z`;
+}
+
+function renderPie(svg, legendEl, slices, centerLabel) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  legendEl.innerHTML = "";
+
+  const total = slices.reduce((a, s) => a + (Number(s.value) || 0), 0);
+  const safeTotal = total || 1;
+
+  const bg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  bg.setAttribute("cx", "60");
+  bg.setAttribute("cy", "60");
+  bg.setAttribute("r", "52");
+  bg.setAttribute("fill", "#e7eef5");
+  svg.appendChild(bg);
+
+  let angle = 0;
+  for (const s of slices) {
+    const v = Number(s.value) || 0;
+    if (v <= 0) continue;
+    const span = (v / safeTotal) * 360;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", _piePath(60, 60, 52, angle, angle + span));
+    path.setAttribute("fill", String(s.color || "#177bb5"));
+    svg.appendChild(path);
+    angle += span;
+
+    const row = document.createElement("div");
+    row.className = "diag-legend-row";
+    const sw = document.createElement("span");
+    sw.className = "diag-legend-swatch";
+    sw.style.background = String(s.color || "#177bb5");
+    const txt = document.createElement("span");
+    txt.className = "diag-legend-text";
+    const pctTxt = Math.round((v / safeTotal) * 1000) / 10;
+    txt.textContent = `${String(s.label)} (${v}, ${pctTxt}%)`;
+    row.appendChild(sw);
+    row.appendChild(txt);
+    legendEl.appendChild(row);
   }
-  const items = Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
-  const lines = items.length ? items.map(([label, n]) => `${label}: ${n}`).join("\n") : "No current failures.";
-  diag$("diagnosticsFailTypeBreakdown").textContent = lines;
+
+  const hole = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  hole.setAttribute("cx", "60");
+  hole.setAttribute("cy", "60");
+  hole.setAttribute("r", "30");
+  hole.setAttribute("fill", "#ffffff");
+  svg.appendChild(hole);
+
+  if (centerLabel) {
+    const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    t.setAttribute("x", "60");
+    t.setAttribute("y", "64");
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("font-size", "12");
+    t.setAttribute("font-weight", "700");
+    t.setAttribute("fill", "#173246");
+    t.textContent = centerLabel;
+    svg.appendChild(t);
+  }
 }
 
 async function updateFailTag(projectId, targetKey, tag) {
@@ -200,6 +312,59 @@ function tagDisplayFromEnum(tagEnum) {
   if (s === "IN_PROGRESS") return "In Progress";
   if (s === "DONE") return "Done";
   return "Not Started";
+}
+
+function tagDoneFromEnum(tagEnum) {
+  return String(tagEnum || "").trim().toUpperCase() === "DONE";
+}
+
+async function fetchRollups(projectId) {
+  try {
+    return await diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/rollups`));
+  } catch (_e) {
+    return null;
+  }
+}
+
+function firstTimeFailTargetsFromRollups(rollups) {
+  const candidates = [
+    rollups?.counts?.firstTimeFailTargets,
+    rollups?.firstTimeFailTargets,
+    rollups?.failureRate?.firstTimeFailTargets,
+  ];
+  for (const c of candidates) {
+    const n = Number(c);
+    if (!Number.isNaN(n) && Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function totalTargetsFrom(progress, rollups) {
+  const a = Number(rollups?.counts?.totalTargets);
+  if (!Number.isNaN(a) && Number.isFinite(a)) return a;
+  const b = Number(progress?.counts?.totalTargets);
+  if (!Number.isNaN(b) && Number.isFinite(b)) return b;
+  return 0;
+}
+
+function failureTypesFrom(rollups, fails) {
+  const by = rollups?.currentFailures?.byTargetName || rollups?.currentFailures?.byTargetType || null;
+  if (by && typeof by === "object" && !Array.isArray(by)) {
+    const items = [];
+    for (const [k, v] of Object.entries(by)) {
+      const n = Number(v);
+      if (!Number.isNaN(n) && n > 0) items.push([normalizeTargetLabel(k), n]);
+    }
+    return items;
+  }
+
+  const rows = Array.isArray(fails) ? fails : [];
+  const counts = new Map();
+  for (const rec of rows) {
+    const label = normalizeTargetLabel(rec?.targetName || _targetNameFromTargetKey(rec?.targetKey || ""));
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  return Array.from(counts.entries());
 }
 
 function renderTaskList(projectId, fails) {
@@ -277,21 +442,64 @@ function renderTaskList(projectId, fails) {
 
 async function refreshDiagnostics() {
   updateDiagnosticsTitle();
+  const pie = _ensurePieDom();
   const projectId = currentDiagProjectId();
   if (!projectId) {
-    diag$("diagnosticsSummary").textContent = "";
-    diag$("diagnosticsFailTypeBreakdown").textContent = "";
+    const host = document.getElementById("diagnosticsSummary");
+    if (host) host.textContent = "";
+    const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
+    if (legacy) legacy.textContent = "";
     diag$("diagnosticsTaskBody").innerHTML = "";
     return;
   }
 
-  const [progress, fails] = await Promise.all([
+  const [progress, fails, rollups] = await Promise.all([
     diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`)),
     diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/fails`)),
+    fetchRollups(projectId),
   ]);
 
-  renderSummary(progress, fails);
-  renderFailTypeBreakdown(fails);
+  if (pie) {
+    const totalTargets = totalTargetsFrom(progress, rollups);
+    const firstTimeFailTargets = firstTimeFailTargetsFromRollups(rollups);
+    const okTargets = Math.max(0, totalTargets - firstTimeFailTargets);
+    const failPct = totalTargets ? Math.round((firstTimeFailTargets / totalTargets) * 1000) / 10 : 0;
+    renderPie(
+      pie.failureRate.svg,
+      pie.failureRate.legend,
+      [
+        { label: "First-time fail", value: firstTimeFailTargets, color: "#ef4444" },
+        { label: "Other", value: okTargets, color: "#177bb5" },
+      ],
+      `${failPct}%`
+    );
+
+    const typeItems = failureTypesFrom(rollups, fails)
+      .filter(([k, n]) => String(k || "") && Number(n) > 0)
+      .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+    const pal = _palette();
+    const top = typeItems.slice(0, 6);
+    const otherCount = typeItems.slice(6).reduce((acc, [, n]) => acc + Number(n || 0), 0);
+    const slices = top.map(([label, n], idx) => ({ label, value: n, color: pal[(idx + 2) % pal.length] }));
+    if (otherCount > 0) slices.push({ label: "other", value: otherCount, color: "#6b7280" });
+    renderPie(pie.failureTypes.svg, pie.failureTypes.legend, slices, "");
+
+    const rows = Array.isArray(fails) ? fails : [];
+    const done = rows.filter((r) => tagDoneFromEnum(r?.tag)).length;
+    const totalTasks = rows.length;
+    const todo = Math.max(0, totalTasks - done);
+    const donePct = totalTasks ? Math.round((done / totalTasks) * 1000) / 10 : 0;
+    renderPie(
+      pie.taskCompletion.svg,
+      pie.taskCompletion.legend,
+      [
+        { label: "Done", value: done, color: "#10b981" },
+        { label: "Not done", value: todo, color: "#f59e0b" },
+      ],
+      totalTasks ? `${donePct}%` : ""
+    );
+  }
+
   renderTaskList(projectId, fails);
 }
 
