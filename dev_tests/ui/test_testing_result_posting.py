@@ -153,12 +153,14 @@ class TestingResultPostingTest(unittest.TestCase):
         from sentinel.generation.render_core import render_project_home_html, load_json
 
         app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        expected_scope = {"scopeType": "UNITTEST", "scopeId": "S-1"}
+        expected_resolved = {"driver": {"id": 123, "name": "Demo"}, "commands": [{"id": 1, "name": "PowerOn"}]}
         project_data = {
             "source": {"file": "UnitTest.apex"},
             "events": {
                 "system": [
                     {
-                        "diagnostics": {"eventId": 126},
+                        "diagnostics": {"eventId": 126, "scope": expected_scope, "resolvedData": expected_resolved},
                         "userFacing": {"description": "Test Event", "testTargets": {"Trigger": True}},
                     }
                 ],
@@ -185,6 +187,8 @@ class TestingResultPostingTest(unittest.TestCase):
             self.assertEqual(posted["outcome"], "PASS")
             self.assertEqual(posted["target"]["kind"], "EVENT")
             self.assertEqual(posted["target"]["targetKey"], "event:126:Trigger")
+            self.assertEqual(posted["target"]["refs"]["scope"], expected_scope)
+            self.assertEqual(posted["target"]["refs"]["resolvedData"], expected_resolved)
         finally:
             server.stop()
 

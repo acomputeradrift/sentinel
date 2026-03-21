@@ -874,7 +874,12 @@ let currentDeviceTop=0;
     refs={{deviceId,pageId,buttonId}};
     targetKey=`btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{targetName}}`;
     if (!deviceId || !pageId || !buttonId) return;
-   }}
+  }}
+  }}
+
+  if (meta && meta.refs) {{
+   if (meta.refs.scope!==undefined) refs.scope=meta.refs.scope;
+   if (meta.refs.resolvedData!==undefined) refs.resolvedData=meta.refs.resolvedData;
   }}
 
   const payload={{target:{{targetKey,kind,refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
@@ -2163,13 +2168,20 @@ def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
         for label in ("Trigger", "Macro", "Macros", "MacroStep", "MacroSteps", "Command", "Commands"):
             if test_targets.get(label):
                 targets.append(label)
+
+    refs: dict[str, Any] = {"eventId": int(event_id) if event_id is not None else None}
+    if isinstance(diag, dict):
+        if diag.get("scope") is not None:
+            refs["scope"] = diag.get("scope")
+        if diag.get("resolvedData") is not None:
+            refs["resolvedData"] = diag.get("resolvedData")
     return {
         "category": "Driver Event" if event_kind == "driver" else "System Event",
         "identity": identity,
         "buttonType": "",
         "targets": targets,
         "kind": "EVENT",
-        "refs": {"eventId": int(event_id) if event_id is not None else None},
+        "refs": refs,
     }
 
 
@@ -2373,8 +2385,13 @@ function toggleSection(btn){{
    if (isFail && !note) return;
    if (isPosting) return;
 
-  const eventId=Number(meta.refs.eventId);
-  const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs:{{eventId}},targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
+ const eventId=Number(meta.refs.eventId);
+  const refs={{eventId}};
+  if (meta && meta.refs) {{
+   if (meta.refs.scope!==undefined) refs.scope=meta.refs.scope;
+   if (meta.refs.resolvedData!==undefined) refs.resolvedData=meta.refs.resolvedData;
+  }}
+  const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
   try {{
    setPosting(true);
    setPostStatus('Saving…','saving');
