@@ -2384,7 +2384,7 @@ function toggleSection(btn){{
     const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
     if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
     setRowStatus(statusEl, payload.outcome, null);
-    const st=await fetchTargetStatus(techToken, `event:${eventId}:${targetName}`);
+    const st=await fetchTargetStatus(techToken, payload.target.targetKey);
     if (st && st.currentOutcome) setRowStatus(statusEl, st.currentOutcome, st.lastTestedAtUtc);
     return;
    }}
