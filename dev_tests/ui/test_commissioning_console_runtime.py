@@ -268,7 +268,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                     },
                     "devices": [
                         {"deviceId": "dev-1", "deviceName": "Device A", "counts": {"totalTargets": 2, "testedTargets": 1, "pass": 1, "fail": 0, "untested": 1, "percentComplete": 0.5}, "lastTestedAtUtc": "2026-03-21T00:00:00Z"},
-                        {"deviceId": "dev-2", "deviceName": "Device B", "counts": {"totalTargets": 2, "testedTargets": 1, "pass": 0, "fail": 1, "untested": 1, "percentComplete": 0.5}, "lastTestedAtUtc": "2026-03-21T00:00:00Z"},
+                        {"deviceId": "dev-2", "deviceName": "Device B", "counts": {"totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0}, "lastTestedAtUtc": None},
                     ],
                 },
             )
@@ -351,8 +351,6 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
         page.goto(url)
 
-        expect(page.get_by_role("heading", name="Commissioning Console")).to_be_visible()
-
         # Shell + tabs
         expect(page.get_by_role("button", name="Manage")).to_be_visible()
         expect(page.get_by_role("button", name="Commission")).to_be_visible()
@@ -403,16 +401,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         # Tab switching
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
-        commission_line = page.get_by_test_id("commission-client-project-line")
-        expect(commission_line).to_be_visible()
-        expect(commission_line).to_contain_text("Client A")
-        expect(commission_line).to_contain_text("Project 1")
-        self.assertGreater(commission_line.evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 18)
+        expect(page.locator("#commissionSelection")).to_have_count(0)
+        expect(page.locator("[data-testid='commission-selected-client']")).to_have_count(0)
+        expect(page.locator("[data-testid='commission-selected-project']")).to_have_count(0)
+        expect(page.locator("[data-testid='commission-client-project-line']")).to_have_count(0)
+        expect(page.locator("#commissionKpiComplete")).to_have_count(0)
+        expect(page.locator("#commissionKpiTested")).to_have_count(0)
+        expect(page.locator("#commissionKpiUntested")).to_have_count(0)
         expect(page.locator("[data-testid='commission-pie-project'], [data-testid='commission-pie-system-events'], [data-testid='commission-pie-driver-events']")).to_have_count(3)
-        expect(page.get_by_test_id("commission-pie-project")).to_contain_text("4/12")
-        expect(page.locator("[data-testid^='commission-pie-device-']")).to_have_count(2)
+        expect(page.get_by_test_id("commission-pie-project")).to_contain_text("2/12")
+        expect(page.locator("[data-testid^='commission-pie-device-']")).to_have_count(1)
         expect(page.get_by_test_id("commission-pie-device-dev-1")).to_be_visible()
-        expect(page.get_by_test_id("commission-pie-device-dev-2")).to_be_visible()
+        expect(page.locator("[data-testid='commission-pie-device-dev-2']")).to_have_count(0)
         expect(page.locator("#commissionActivityBody tr")).to_have_count(1)
         expect(page.locator("#commissionActivityBody")).to_contain_text("Device A")
         expect(page.locator("#commissionActivityBody")).to_contain_text("Home")

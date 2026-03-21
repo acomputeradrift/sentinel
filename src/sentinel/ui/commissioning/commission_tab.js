@@ -55,37 +55,15 @@ function applyStyleVars(el, vars) {
   }
 }
 
-function updateKpis(progress) {
-  const counts = progress && progress.counts ? progress.counts : {};
-  const total = Number(counts.totalTargets || 0);
-  const tested = Number(counts.testedTargets || 0);
-  const untested = Number(counts.untested || 0);
-
-  const completePct = total > 0 ? tested / total : 0;
-  const untestedPct = total > 0 ? untested / total : 0;
-
-  applyStyleVars($("commissionKpiCompleteRing"), pctStyle(completePct));
-  $("commissionKpiCompleteValue").textContent = `${Math.round(completePct * 100)}%`;
-  $("commissionKpiCompleteSub").textContent = `${tested}/${total} tested`;
-
-  applyStyleVars($("commissionKpiTestedRing"), pctStyle(completePct));
-  $("commissionKpiTestedValue").textContent = String(tested);
-  $("commissionKpiTestedSub").textContent = "tested targets";
-
-  applyStyleVars($("commissionKpiUntestedRing"), pctStyle(untestedPct));
-  $("commissionKpiUntestedValue").textContent = String(untested);
-  $("commissionKpiUntestedSub").textContent = "untested targets";
-}
-
 function ensureCommissionPies() {
   const panel = document.getElementById("panel-commission");
   if (!panel) return null;
   const shell = panel.querySelector(".commission-shell");
   if (!shell) return null;
 
-  // Hide legacy ring KPI row; replaced by pies.
+  // Remove legacy ring KPI row; replaced by pies.
   const legacy = shell.querySelector(".commission-kpis");
-  if (legacy) legacy.classList.add("commission-kpis--hidden");
+  if (legacy) legacy.remove();
 
   let pies = document.getElementById("commissionPies");
   if (pies) return pies;
@@ -95,12 +73,7 @@ function ensureCommissionPies() {
   pies.id = "commissionPies";
   pies.dataset.testid = "commission-pies";
 
-  const selection = document.getElementById("commissionSelection");
-  if (selection && selection.parentElement === shell) {
-    selection.insertAdjacentElement("afterend", pies);
-  } else {
-    shell.prepend(pies);
-  }
+  shell.prepend(pies);
 
   return pies;
 }
@@ -193,6 +166,8 @@ function updatePies(progress) {
     if (!d || typeof d !== "object") continue;
     const deviceId = String(d.deviceId ?? "");
     if (!deviceId) continue;
+    const totalTargets = Number(d?.counts?.totalTargets || 0);
+    if (totalTargets <= 0) continue;
     const displayName = String(d.displayName || `Device ${deviceId}`);
     const key = `device-${deviceId}`;
     const card = ensurePieCard({
@@ -202,7 +177,7 @@ function updatePies(progress) {
       color: "#f59e0b",
     });
     seen.add(`commissionPie-${key}`);
-    setPieCardProgress(card, { passed: d?.counts?.pass || 0, total: d?.counts?.totalTargets || 0 });
+    setPieCardProgress(card, { passed: d?.counts?.pass || 0, total: totalTargets });
   }
 
   const pies = document.getElementById("commissionPies");
@@ -283,30 +258,8 @@ let lastSseErrorAtMs = 0;
 let progressRefreshTimer = null;
 
 function ensureCommissionHeader() {
-  const panel = document.getElementById("panel-commission");
-  if (!panel) return;
-  const shell = panel.querySelector(".commission-shell");
-  if (!shell) return;
-  if (document.getElementById("commissionSelection")) return;
-
-  const div = document.createElement("div");
-  div.className = "commission-selection";
-  div.id = "commissionSelection";
-  div.innerHTML = `
-    <div class="commission-selection-title">Selected</div>
-    <div class="commission-selection-row">
-      <div class="commission-selection-item">
-        <div class="commission-selection-label">Client</div>
-        <div class="commission-selection-value mono" data-testid="commission-selected-client" id="commissionSelectedClientName"></div>
-      </div>
-      <div class="commission-selection-item">
-        <div class="commission-selection-label">Project</div>
-        <div class="commission-selection-value mono" data-testid="commission-selected-project" id="commissionSelectedProjectName"></div>
-      </div>
-    </div>
-  `.trim();
-
-  shell.prepend(div);
+  const div = document.getElementById("commissionSelection");
+  if (div) div.remove();
 }
 
 function selectedOptionText(selectId) {
@@ -317,15 +270,6 @@ function selectedOptionText(selectId) {
 
 function updateSelectedNames() {
   ensureCommissionHeader();
-  const clientNameEl = document.getElementById("commissionSelectedClientName");
-  const projectNameEl = document.getElementById("commissionSelectedProjectName");
-  if (!clientNameEl || !projectNameEl) return;
-
-  const clientName = selectedOptionText("clientSelect");
-  const projectName = selectedOptionText("projectSelect");
-
-  clientNameEl.textContent = clientName || "TODO: select a client";
-  projectNameEl.textContent = projectName || "TODO: select a project";
 }
 
 function stopSse() {
@@ -349,7 +293,6 @@ function scheduleProgressRefresh() {
     try {
       const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
       updatePies(progress);
-      updateKpis(progress);
     } catch (_e) {}
   }, 750);
 }
@@ -400,14 +343,12 @@ async function refreshCommission() {
   try {
     const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
     updatePies(progress);
-    updateKpis(progress);
   } catch (_e) {
     updatePies({
       counts: { totalTargets: 0, pass: 0 },
       eventSections: { system: { counts: { totalTargets: 0, pass: 0 } }, driver: { counts: { totalTargets: 0, pass: 0 } } },
       devices: [],
     });
-    updateKpis({ counts: { totalTargets: 0, testedTargets: 0, untested: 0 } });
   }
 }
 
