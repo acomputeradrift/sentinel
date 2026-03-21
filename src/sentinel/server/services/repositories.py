@@ -90,6 +90,10 @@ class Repository(Protocol):
 
     def get_latest_results_for_project(self, *, projectId: str) -> dict[str, TestResultRecord]: ...
 
+    def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None: ...
+
+    def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]: ...
+
 
 class InMemoryRepository:
     def __init__(self) -> None:
@@ -100,6 +104,7 @@ class InMemoryRepository:
         self._active_tokens: dict[str, ActiveToken] = {}
         self._active_token_by_link: dict[str, str] = {}
         self._results_by_project_target: dict[tuple[str, str], list[TestResultRecord]] = {}
+        self._fail_tags_by_project_target: dict[tuple[str, str], str] = {}
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -212,6 +217,20 @@ class InMemoryRepository:
                 last = self._latest_record(items)
                 if last is not None:
                     out[target_key] = last
+            return out
+
+    def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None:
+        with self._lock:
+            if projectId not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            self._fail_tags_by_project_target[(projectId, targetKey)] = tag
+
+    def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]:
+        with self._lock:
+            out: dict[str, str] = {}
+            for (pid, target_key), tag in self._fail_tags_by_project_target.items():
+                if pid == projectId:
+                    out[target_key] = tag
             return out
 
 
@@ -367,4 +386,14 @@ class PostgresRepository:
             return out
         finally:
             con.close()
+
+    def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None:
+        self._q.upsert_fail_tag(self._database_url, project_id=projectId, target_key=targetKey, tag=tag)
+
+    def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]:
+        rows = self._q.list_fail_tags_for_project(self._database_url, project_id=projectId)
+        out: dict[str, str] = {}
+        for r in rows:
+            out[str(r.get("targetKey") or "")] = str(r.get("tag") or "")
+        return out
 

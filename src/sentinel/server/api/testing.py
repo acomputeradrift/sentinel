@@ -125,6 +125,9 @@ def post_result(request: Request, techToken: str, payload: dict) -> dict:
             "recordedAtUtc": rec.recordedAtUtc,
             "targetKey": target_key,
             "outcome": rec.outcome,
+            "targetName": rec.target.get("targetName"),
+            "kind": rec.target.get("kind") or rec.target.get("targetKind"),
+            "refs": rec.target.get("refs"),
         },
     )
 

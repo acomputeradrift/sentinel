@@ -272,3 +272,29 @@ def list_latest_failed_targets(database_url: str, *, project_id: str) -> list[di
         )
     finally:
         con.close()
+
+
+def upsert_fail_tag(database_url: str, *, project_id: str, target_key: str, tag: str) -> None:
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "insert into fail_tags (project_id, target_key, tag, updated_at_utc) values (%s,%s,%s,%s) "
+            "on conflict (project_id, target_key) do update set tag=excluded.tag, updated_at_utc=excluded.updated_at_utc",
+            (project_id, target_key, tag, _utc_now()),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def list_fail_tags_for_project(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select target_key as \"targetKey\", tag from fail_tags where project_id=%s",
+            (project_id,),
+        )
+    finally:
+        con.close()

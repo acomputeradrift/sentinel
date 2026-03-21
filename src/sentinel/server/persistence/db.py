@@ -53,15 +53,19 @@ def _migrations_dir() -> Path:
 
 
 def apply_migrations(database_url: str) -> None:
-    sql_path = _migrations_dir() / "001_init.sql"
-    sql = sql_path.read_text(encoding="utf-8")
-    statements = [s.strip() for s in sql.split(";") if s.strip()]
+    migrations_dir = _migrations_dir()
+    sql_paths = sorted(migrations_dir.glob("*.sql"))
+    if not sql_paths:
+        return
 
     con = connect(database_url)
     try:
         cur = con.cursor()
-        for stmt in statements:
-            cur.execute(stmt)
+        for sql_path in sql_paths:
+            sql = sql_path.read_text(encoding="utf-8")
+            statements = [s.strip() for s in sql.split(";") if s.strip()]
+            for stmt in statements:
+                cur.execute(stmt)
         con.commit()
     finally:
         try:
