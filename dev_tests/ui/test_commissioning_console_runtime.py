@@ -4,6 +4,7 @@ import sys
 import tempfile
 import threading
 import time
+import re
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -92,12 +93,24 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         state: dict[str, object] = {
             "clients": [],
+            "clients_by_id": {},
             "projects_by_client": {},
+            "projects_by_id": {},
+            "tech_links_by_project": {},
             "last_upload_content_type": None,
             "expected_upload_filename": "TEST - System Manager v11.3.apex",
             "last_upload_body_contains_expected": None,
             "upload_counter": 0,
+            "tech_link_counter": 0,
+            "tech_link_revoke_counter": 0,
         }
+
+        def is_blue_rgb(value: str) -> bool:
+            match = re.fullmatch(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", str(value).strip())
+            if not match:
+                return False
+            red, green, blue = (int(part) for part in match.groups())
+            return blue > red and blue > green and blue >= 120
 
         def fulfill_json(route, payload, status: int = 200):
             route.fulfill(
@@ -114,6 +127,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 data = json.loads(request.post_data or "{}")
                 client = {"clientId": "client-1", "name": data.get("name", ""), "createdAtUtc": "2026-03-21T00:00:00Z"}
                 state["clients"] = [client]
+                state["clients_by_id"]["client-1"] = client
                 state["projects_by_client"]["client-1"] = []
                 fulfill_json(route, client)
                 return
@@ -130,6 +144,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 proj = {
                     "projectId": "proj-1",
                     "clientId": client_id,
+                    "clientName": state["clients_by_id"].get(client_id, {}).get("name", ""),
                     "name": data.get("name", ""),
                     "createdAtUtc": "2026-03-21T00:00:00Z",
                     "status": "EMPTY",
@@ -139,9 +154,25 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                     "activeTechLinkIds": [],
                 }
                 state["projects_by_client"][client_id] = [proj]
+                state["projects_by_id"][proj["projectId"]] = proj
+                state["tech_links_by_project"][proj["projectId"]] = []
                 fulfill_json(route, proj)
                 return
             route.fulfill(status=405, body="method not allowed")
+
+        def handle_project_detail(route, request):
+            project_id = request.url.split("/commissioning/projects/")[-1].split("?")[0].strip("/")
+            if request.method != "GET":
+                route.fulfill(status=405, body="method not allowed")
+                return
+            proj = dict(state["projects_by_id"].get(project_id, {}))
+            if not proj:
+                route.fulfill(status=404, body="not found")
+                return
+            active_links = [link for link in state["tech_links_by_project"].get(project_id, []) if not link.get("revokedAtUtc")]
+            proj["activeTechLinks"] = active_links
+            proj["lastGeneratedFilename"] = state.get("expected_upload_filename")
+            fulfill_json(route, proj)
 
         def handle_upload(route, request):
             headers = {k.lower(): v for k, v in request.headers.items()}
@@ -178,8 +209,49 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             )
 
         def handle_tech_links(route, request):
-            self.assertEqual(request.method, "POST")
-            fulfill_json(route, {"techLinkId": "tl-1", "techUrl": "/testing/token-abc"})
+            path = request.url.split("?")[0]
+            project_id = path.split("/commissioning/projects/")[-1].split("/tech-links")[0].strip("/")
+
+            if request.method == "GET":
+                active_links = [link for link in state["tech_links_by_project"].get(project_id, []) if not link.get("revokedAtUtc")]
+                fulfill_json(route, active_links)
+                return
+
+            if request.method == "POST" and path.endswith("/tech-links"):
+                data = json.loads(request.post_data or "{}")
+                state["tech_link_counter"] = int(state.get("tech_link_counter") or 0) + 1
+                tech_link_id = f"tl-{state['tech_link_counter']}"
+                created_at_utc = f"2026-03-21 00:0{state['tech_link_counter']}:00Z"
+                link = {
+                    "techLinkId": tech_link_id,
+                    "label": data.get("label") or "Onsite Tech",
+                    "techUrl": "/testing/token-abc",
+                    "createdAtUtc": created_at_utc,
+                    "revokedAtUtc": None,
+                }
+                state["tech_links_by_project"].setdefault(project_id, []).append(link)
+                proj = state["projects_by_id"].get(project_id)
+                if proj is not None:
+                    proj["activeTechLinkIds"] = [item["techLinkId"] for item in state["tech_links_by_project"][project_id] if not item.get("revokedAtUtc")]
+                fulfill_json(route, {"techLinkId": tech_link_id, "techUrl": link["techUrl"], "label": link["label"]})
+                return
+
+            if request.method in {"DELETE", "POST"} and "/tech-links/" in path:
+                suffix = path.split("/tech-links/", 1)[1]
+                tech_link_id = suffix.split("/")[0]
+                links = state["tech_links_by_project"].get(project_id, [])
+                for link in links:
+                    if link.get("techLinkId") == tech_link_id and not link.get("revokedAtUtc"):
+                        state["tech_link_revoke_counter"] = int(state.get("tech_link_revoke_counter") or 0) + 1
+                        link["revokedAtUtc"] = f"2026-03-21T00:0{state['tech_link_revoke_counter']}:00Z"
+                        break
+                proj = state["projects_by_id"].get(project_id)
+                if proj is not None:
+                    proj["activeTechLinkIds"] = [item["techLinkId"] for item in links if not item.get("revokedAtUtc")]
+                route.fulfill(status=204, body="")
+                return
+
+            route.fulfill(status=405, body="method not allowed")
 
         def handle_progress(route, request):
             self.assertEqual(request.method, "GET")
@@ -225,22 +297,32 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             route.fulfill(
                 status=200,
                 headers={"Content-Type": "text/event-stream; charset=utf-8"},
-                body="data: "
-                + json.dumps(
-                    {
-                        "tsUtc": "2026-03-21T00:00:01Z",
-                        "type": "result.recorded",
-                        "data": {"targetKey": "btn:81:513:48551:Macro", "outcome": "PASS"},
-                    }
-                )
-                + "\n\n",
+                body=(
+                    "event: test_result\n"
+                    "data: "
+                    + json.dumps(
+                        {
+                            "tsUtc": "2026-03-21T00:00:01Z",
+                            "type": "test_result",
+                            "data": {
+                                "recordedAtUtc": "2026-03-21T00:00:01Z",
+                                "targetKey": "btn:81:513:48551:Macro",
+                                "targetName": "Macro",
+                                "outcome": "PASS",
+                                "refs": {"deviceName": "Device A", "pageName": "Home", "buttonName": "Button 1"},
+                            },
+                        }
+                    )
+                    + "\n\n"
+                ),
             )
 
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
+        page.route("**/api/v1/commissioning/projects/*", handle_project_detail)
         page.route("**/api/v1/commissioning/projects/*/uploads", handle_upload)
         page.route("**/api/v1/commissioning/projects/*/regenerate", handle_regenerate)
-        page.route("**/api/v1/commissioning/projects/*/tech-links", handle_tech_links)
+        page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
         page.route("**/api/v1/commissioning/projects/*/events", handle_events)
@@ -254,6 +336,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Manage")).to_be_visible()
         expect(page.get_by_role("button", name="Commission")).to_be_visible()
         expect(page.get_by_role("button", name="Diagnostics")).to_be_visible()
+        expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
+        expect(page.get_by_role("heading", name="Sentinel Console")).to_be_visible()
         expect(page.locator("#panel-manage")).to_be_visible()
         expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Regenerate")).to_be_visible()
 
@@ -275,28 +359,46 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
         page.get_by_role("button", name="Upload .apex").click()
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
+        expect(page.locator("#uploadProgressLabel")).to_contain_text("Done")
+        self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
+        expect(page.locator("#panel-manage")).to_contain_text(apex_path.name)
+        expect(page.locator("#panel-manage")).to_contain_text("Last generated")
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
         self.assertEqual(state["last_upload_body_contains_expected"], True)
 
-        page.get_by_role("button", name="Regenerate").click()
-        expect(page.get_by_test_id("regen-status")).to_contain_text("READY")
+        expect(page.get_by_role("button", name="Regenerate")).to_have_count(0)
 
         page.get_by_label("Tech label").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
+        expect(page.locator("#panel-manage")).to_contain_text("Onsite Tech")
+        expect(page.locator("#panel-manage")).to_contain_text(re.compile(r"2026-03-21[ T]00:0\d:00Z"))
+        expect(page.get_by_role("button", name="Revoke")).to_be_visible()
+        page.get_by_role("button", name="Revoke").click()
+        expect(page.locator("#panel-manage")).not_to_contain_text("Onsite Tech")
 
         # Tab switching
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
+        expect(page.locator("#panel-commission")).to_contain_text("Client A")
+        expect(page.locator("#panel-commission")).to_contain_text("Project 1")
         expect(page.get_by_test_id("commission-kpi-complete")).to_be_visible()
         expect(page.get_by_test_id("commission-kpi-tested")).to_be_visible()
         expect(page.get_by_test_id("commission-kpi-untested")).to_be_visible()
         expect(page.get_by_test_id("commission-activity")).to_be_visible()
+        expect(page.locator("#commissionActivityBody tr")).to_have_count(1)
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Device A")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Home")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Button 1")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Macro")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("PASS")
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
+        expect(page.locator("#panel-diagnostics")).to_contain_text("Client A")
+        expect(page.locator("#panel-diagnostics")).to_contain_text("Project 1")
         expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Tag")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
@@ -306,6 +408,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Scope")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Resolved Data")).to_be_visible()
+        diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
+        self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
+        diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
+        self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}Z$")
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
 
