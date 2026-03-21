@@ -29,6 +29,23 @@ function setDiagStatus(msg) {
   if (el) el.textContent = msg || "";
 }
 
+function _selectedText(selectId) {
+  const sel = document.getElementById(selectId);
+  const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+  return opt ? String(opt.textContent || "").trim() : "";
+}
+
+function updateDiagnosticsTitle() {
+  const card = document.getElementById("diagnosticsCard");
+  if (!card) return;
+  const h2 = card.querySelector("h2");
+  if (!h2) return;
+  const clientName = _selectedText("clientSelect");
+  const projectName = _selectedText("projectSelect");
+  const suffix = clientName || projectName ? ` — ${clientName || "(client)"} / ${projectName || "(project)"}` : "";
+  h2.textContent = `Diagnostics${suffix}`;
+}
+
 const diagAuto = {
   source: null,
   projectId: null,
@@ -116,6 +133,21 @@ function normalizeTargetLabel(targetName) {
   return lower;
 }
 
+function formatUtcTimestamp(ts) {
+  const raw = String(ts || "").trim();
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const mm = pad2(d.getUTCMonth() + 1);
+  const dd = pad2(d.getUTCDate());
+  const hh = pad2(d.getUTCHours());
+  const mi = pad2(d.getUTCMinutes());
+  const ss = pad2(d.getUTCSeconds());
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}Z`;
+}
+
 function renderSummary(progress, fails) {
   const counts = progress?.counts || {};
   const tested = Number(counts.testedTargets || 0);
@@ -180,7 +212,7 @@ function renderTaskList(projectId, fails) {
     const targetKey = String(rec?.targetKey || "");
     const ident = parseIdentity(targetKey);
     const tag = tagDisplayFromEnum(rec?.tag || "NOT_STARTED");
-    const at = String(rec?.lastTestedAtUtc || "");
+    const at = formatUtcTimestamp(rec?.lastTestedAtUtc);
     const resolved = rec?.resolvedData;
     const note = String((resolved == null ? "" : resolved) || rec?.lastFailNote || "");
 
@@ -209,7 +241,7 @@ function renderTaskList(projectId, fails) {
     tdTag.appendChild(sel);
 
     const tdAt = document.createElement("td");
-    tdAt.className = "mono";
+    tdAt.className = "mono diag-ts";
     tdAt.textContent = at || "";
 
     const tdDevice = document.createElement("td");
@@ -244,6 +276,7 @@ function renderTaskList(projectId, fails) {
 }
 
 async function refreshDiagnostics() {
+  updateDiagnosticsTitle();
   const projectId = currentDiagProjectId();
   if (!projectId) {
     diag$("diagnosticsSummary").textContent = "";
@@ -273,10 +306,12 @@ function initDiagnosticsTab() {
     projectSelect.addEventListener("change", () => {
       const projectId = currentDiagProjectId();
       connectDiagnosticsSse(projectId);
+      updateDiagnosticsTitle();
       scheduleDiagnosticsRefresh(0);
     });
     const initialProjectId = currentDiagProjectId();
     connectDiagnosticsSse(initialProjectId);
+    updateDiagnosticsTitle();
     scheduleDiagnosticsRefresh(0);
   }
 }
