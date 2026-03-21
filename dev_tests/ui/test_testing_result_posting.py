@@ -223,6 +223,89 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_button_fail_requires_note_enables_button(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "BTN-1", "text": "Button 1", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 10,
+                                                        "orientations": {"portrait": {"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}}},
+                                                    },
+                                                    "testTargets": {"text": False, "macros": True, "macroSteps": False, "variables": {}, "pageLink": False},
+                                                    "resolvedPageLink": {"targetPageId": None},
+                                                }
+                                            ],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}],
+                                "buttons": [{"buttonId": 48551, "buttonTagName": "BTN-1", "identifiers": {"text": "Button 1"}, "testTargets": {}}],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+
+        token = "techTokenFail"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click(".btn-wrap .test-btn")
+
+            fail_btn = page.locator("#rows .row .actions button").nth(1)
+            self.assertTrue(fail_btn.is_disabled())
+
+            page.fill("#rows .row textarea", "Broken macro")
+            self.assertFalse(fail_btn.is_disabled())
+
+            fail_btn.click()
+            self._wait_for_posts(server, min_posts=1)
+            self._wait_for_status_contains(page, "Saved")
+            posted = server.posts[0]["payload"]
+            self.assertEqual(posted["outcome"], "FAIL")
+            self.assertEqual(posted["failNote"], "Broken macro")
+        finally:
+            server.stop()
+
     def test_event_post_failure_shows_error(self):
         from sentinel.generation.render_core import render_project_home_html, load_json
 

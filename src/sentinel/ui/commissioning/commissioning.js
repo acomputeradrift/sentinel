@@ -61,6 +61,7 @@ function currentProjectId() {
 const state = {
   lastUploadIdByProject: {},
   generationReadyByProject: {},
+  lastUploadFilenameByProject: {},
 };
 
 function setProgressHidden(el, hidden) {
@@ -85,6 +86,38 @@ function updateTechLinkEnabled() {
   const projectId = currentProjectId();
   const ready = projectId ? !!state.generationReadyByProject[projectId] : false;
   $("createTechLinkBtn").disabled = !projectId || !ready;
+}
+
+function _stripExtension(filename) {
+  const s = String(filename || "").trim();
+  const idx = s.lastIndexOf(".");
+  return idx > 0 ? s.slice(0, idx) : s;
+}
+
+function _normalizedBaseTokens(filename) {
+  let s = _stripExtension(filename).toLowerCase();
+  s = s.replace(/[_-]+/g, " ");
+  // Remove common version tokens: v55.2, ver 55.2, version 55.2, rev 3, build 102, b102
+  s = s.replace(/\b(v|ver|version)\s*\d+(?:[._-]\d+){0,4}\b/g, " ");
+  s = s.replace(/\b(r|rev|revision|build|b)\s*\d+(?:[._-]\d+)?\b/g, " ");
+  // Remove standalone numeric tokens (dates/build numbers) to reduce false warnings on version bumps.
+  s = s.replace(/\b\d+(?:[._-]\d+)*\b/g, " ");
+  s = s.replace(/[^\p{L}\p{N}]+/gu, " ");
+  s = s.replace(/\s+/g, " ").trim();
+  const tokens = s.split(" ").filter((t) => t && t.length >= 2);
+  return tokens;
+}
+
+function _baseSimilarity(a, b) {
+  const ta = _normalizedBaseTokens(a);
+  const tb = _normalizedBaseTokens(b);
+  if (!ta.length || !tb.length) return 0;
+  const setA = new Set(ta);
+  const setB = new Set(tb);
+  let inter = 0;
+  for (const t of setA) if (setB.has(t)) inter += 1;
+  const denom = Math.max(setA.size, setB.size) || 1;
+  return inter / denom;
 }
 
 async function createClient() {
@@ -167,11 +200,21 @@ async function uploadApex() {
 
     state.lastUploadIdByProject[projectId] = upload.uploadId;
     state.generationReadyByProject[projectId] = false;
+    const prevName = state.lastUploadFilenameByProject[projectId];
+    const nextName = upload.originalFilename;
+    state.lastUploadFilenameByProject[projectId] = nextName;
     updateRegenerateEnabled();
     updateTechLinkEnabled();
     setProgress($("uploadProgress"), 100);
     setStatus($("uploadProgressLabel"), "Done");
-    setStatus($("uploadStatus"), `Uploaded: ${upload.uploadId} (${upload.originalFilename})`);
+    let msg = `Uploaded: ${upload.uploadId} (${upload.originalFilename})`;
+    if (prevName && nextName) {
+      const sim = _baseSimilarity(prevName, nextName);
+      if (sim < 0.6) {
+        msg += `\nWARNING: This upload name looks different than the previous file for this project.\nPrevious: ${prevName}\nNew: ${nextName}`;
+      }
+    }
+    setStatus($("uploadStatus"), msg);
   } finally {
     uploadBtn.disabled = false;
   }

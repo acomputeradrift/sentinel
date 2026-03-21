@@ -1,6 +1,7 @@
 import json
 import socket
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -93,7 +94,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "clients": [],
             "projects_by_client": {},
             "last_upload_content_type": None,
-            "last_upload_body_contains": None,
+            "expected_upload_filename": "TEST - System Manager v11.3.apex",
+            "last_upload_body_contains_expected": None,
+            "upload_counter": 0,
         }
 
         def fulfill_json(route, payload, status: int = 200):
@@ -145,14 +148,17 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             ct = headers.get("content-type", "")
             state["last_upload_content_type"] = ct
             body = request.post_data_buffer or b""
-            state["last_upload_body_contains"] = b"TEST - System Manager v11.3.apex" in body
+            expected = str(state.get("expected_upload_filename") or "")
+            state["last_upload_body_contains_expected"] = expected.encode("utf-8") in body
+            state["upload_counter"] = int(state.get("upload_counter") or 0) + 1
+            upload_id = f"upload-{state['upload_counter']}"
             fulfill_json(
                 route,
                 {
-                    "uploadId": "upload-1",
+                    "uploadId": upload_id,
                     "projectId": "proj-1",
                     "receivedAtUtc": "2026-03-21T00:00:00Z",
-                    "originalFilename": "TEST - System Manager v11.3.apex",
+                    "originalFilename": expected,
                     "sha256": "deadbeef",
                     "bytes": len(body),
                     "contentType": "application/octet-stream",
@@ -242,7 +248,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
-        self.assertEqual(state["last_upload_body_contains"], True)
+        self.assertEqual(state["last_upload_body_contains_expected"], True)
 
         page.get_by_role("button", name="Regenerate").click()
         expect(page.get_by_test_id("regen-status")).to_contain_text("READY")
@@ -258,5 +264,17 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("fails-list")).to_contain_text("Trigger not firing")
         expect(page.get_by_test_id("fails-list")).to_contain_text("Button d81 p513 b48551 — Macro")
         expect(page.get_by_test_id("fails-list")).to_contain_text("Event 126 — Trigger")
+
+        # Upload a completely different file name (should warn).
+        with tempfile.TemporaryDirectory() as td:
+            other_path = Path(td) / "Completely Different Project v1.0.apex"
+            other_path.write_bytes(apex_path.read_bytes())
+            state["expected_upload_filename"] = other_path.name
+            page.set_input_files("input[type=file][name=apex]", str(other_path))
+            page.get_by_role("button", name="Upload .apex").click()
+            expect(page.get_by_test_id("upload-status")).to_contain_text("upload-2")
+            expect(page.get_by_test_id("upload-status")).to_contain_text("WARNING")
+            expect(page.get_by_test_id("upload-status")).to_contain_text("Previous:")
+            expect(page.get_by_test_id("upload-status")).to_contain_text("New:")
 
         page.close()

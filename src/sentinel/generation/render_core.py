@@ -887,13 +887,14 @@ let currentDeviceTop=0;
    const passBtn=buttons[0];
    const failBtn=buttons[1];
    const noteEl=row.querySelector('textarea');
+   const syncFailEnabled=()=>{{
+    const note=noteEl ? String(noteEl.value||'').trim() : '';
+    failBtn.disabled = !note;
+   }};
+   if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
+   syncFailEnabled();
    passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'PASS', null);}});
-   failBtn.addEventListener('click', e=>{{
-    e.stopPropagation();
-    const note=noteEl ? String(noteEl.value||'') : '';
-    if (!note.trim()) {{ if (noteEl) noteEl.focus(); return; }}
-    postResult(ctxBtn, meta, label, 'FAIL', note);
-   }});
+   failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '');}});
   }});
  }}
  function bindTestButtonClicks(root) {{
@@ -905,7 +906,7 @@ let currentDeviceTop=0;
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
      setPostStatus('','');
      ov.classList.add('open');
      bindResultRows(b, m);
@@ -2360,13 +2361,14 @@ function toggleSection(btn){{
    const passBtn=buttons[0];
    const failBtn=buttons[1];
    const noteEl=row.querySelector('textarea');
+   function syncFailEnabled() {{
+    const note=noteEl ? String(noteEl.value||'').trim() : '';
+    failBtn.disabled = !note;
+   }}
+   if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
+   syncFailEnabled();
    passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'PASS', null);}});
-   failBtn.addEventListener('click', function(e){{
-    e.stopPropagation();
-    const note=noteEl ? String(noteEl.value||'') : '';
-    if (!note.trim()) {{ if (noteEl) noteEl.focus(); return; }}
-    postResult(meta, label, 'FAIL', note);
-   }});
+   failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'FAIL', noteEl ? noteEl.value : '');}});
   }});
  }}
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
@@ -2376,7 +2378,7 @@ function toggleSection(btn){{
    const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=Array.isArray(m.targets) ? m.targets : [];
-    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button>Fail</button></div><textarea placeholder='Fail note' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
     setPostStatus('','');
     ov.classList.add('open');
     bindResultRows(m);
