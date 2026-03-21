@@ -47,6 +47,10 @@
   opacity: 0.75;
 }
 
+#refreshDiagnosticsBtn {
+  display: none !important;
+}
+
 @media (max-width: 860px) {
   .diag-grid {
     grid-template-columns: 1fr;

@@ -29,6 +29,49 @@ function setDiagStatus(msg) {
   if (el) el.textContent = msg || "";
 }
 
+const diagAuto = {
+  source: null,
+  projectId: null,
+  refreshTimer: null,
+};
+
+function scheduleDiagnosticsRefresh(delayMs = 150) {
+  if (diagAuto.refreshTimer) return;
+  diagAuto.refreshTimer = setTimeout(() => {
+    diagAuto.refreshTimer = null;
+    setDiagStatus("");
+    refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
+  }, Math.max(0, Number(delayMs) || 0));
+}
+
+function disconnectDiagnosticsSse() {
+  if (diagAuto.source) {
+    try {
+      diagAuto.source.close();
+    } catch (_e) {}
+  }
+  diagAuto.source = null;
+  diagAuto.projectId = null;
+}
+
+function connectDiagnosticsSse(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) {
+    disconnectDiagnosticsSse();
+    return;
+  }
+  if (diagAuto.source && diagAuto.projectId === pid) return;
+
+  disconnectDiagnosticsSse();
+  diagAuto.projectId = pid;
+  const url = diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/events`);
+  const es = new EventSource(url);
+  es.addEventListener("test_result", () => scheduleDiagnosticsRefresh());
+  es.addEventListener("result_saved", () => scheduleDiagnosticsRefresh());
+  es.onmessage = () => scheduleDiagnosticsRefresh();
+  diagAuto.source = es;
+}
+
 function _targetNameFromTargetKey(targetKey) {
   const raw = String(targetKey || "").trim();
   if (!raw) return "";
@@ -222,18 +265,19 @@ async function refreshDiagnostics() {
 function initDiagnosticsTab() {
   const refreshBtn = document.getElementById("refreshDiagnosticsBtn");
   if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => {
-      setDiagStatus("");
-      refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
-    });
+    refreshBtn.style.display = "none";
   }
 
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
-      setDiagStatus("");
-      refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
+      const projectId = currentDiagProjectId();
+      connectDiagnosticsSse(projectId);
+      scheduleDiagnosticsRefresh(0);
     });
+    const initialProjectId = currentDiagProjectId();
+    connectDiagnosticsSse(initialProjectId);
+    scheduleDiagnosticsRefresh(0);
   }
 }
 
