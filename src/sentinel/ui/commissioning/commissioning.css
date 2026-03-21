@@ -126,3 +126,45 @@ pre.mono {
   color: #4e6a7f;
 }
 
+.fails-head {
+  align-items: center;
+}
+
+.fails-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fails-row {
+  border: 1px solid #d4dee8;
+  border-radius: 14px;
+  padding: 12px 12px;
+  background: #fbfdff;
+}
+
+.fails-identity {
+  font-weight: 700;
+  color: #173246;
+  margin-bottom: 6px;
+}
+
+.fails-meta {
+  color: #4e6a7f;
+  margin-bottom: 8px;
+}
+
+.fails-note {
+  color: #173246;
+  white-space: pre-wrap;
+}
+
+.fails-empty {
+  border: 1px dashed #a9bccd;
+  border-radius: 14px;
+  padding: 12px 12px;
+  background: #f5f8fb;
+  color: #4e6a7f;
+  font-size: 13px;
+}
+

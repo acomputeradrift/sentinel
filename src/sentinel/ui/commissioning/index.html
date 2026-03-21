@@ -100,8 +100,15 @@
 
       <section class="card">
         <h2>Fails (placeholder)</h2>
-        <p class="sub">Will render once commissioning read endpoints exist.</p>
-        <pre class="mono" id="fails"></pre>
+        <div class="row fails-head">
+          <div class="sub">
+            Current failures:
+            <span class="mono" data-testid="fails-count" id="failsCount">0</span>
+          </div>
+          <button id="refreshFailsBtn" type="button">Refresh fails</button>
+        </div>
+        <div class="status" id="failsStatus"></div>
+        <div class="fails-list" data-testid="fails-list" id="failsList"></div>
       </section>
     </main>
 

@@ -60,7 +60,6 @@ function currentProjectId() {
 
 const state = {
   lastUploadIdByProject: {},
-  generationReadyByProject: {},
 };
 
 function setProgressHidden(el, hidden) {
@@ -79,12 +78,6 @@ function updateRegenerateEnabled() {
   const projectId = currentProjectId();
   const uploadId = projectId ? state.lastUploadIdByProject[projectId] : null;
   $("regenerateBtn").disabled = !projectId || !uploadId;
-}
-
-function updateCreateTechLinkEnabled() {
-  const projectId = currentProjectId();
-  const ready = projectId ? Boolean(state.generationReadyByProject[projectId]) : false;
-  $("createTechLinkBtn").disabled = !projectId || !ready;
 }
 
 async function createClient() {
@@ -113,8 +106,6 @@ async function createProject() {
   await refreshProjects();
   $("projectSelect").value = proj.projectId;
   updateRegenerateEnabled();
-  state.generationReadyByProject[proj.projectId] = false;
-  updateCreateTechLinkEnabled();
   setStatus($("projectStatus"), `Created project: ${proj.name}`);
 }
 
@@ -167,8 +158,6 @@ async function uploadApex() {
 
     state.lastUploadIdByProject[projectId] = upload.uploadId;
     updateRegenerateEnabled();
-    state.generationReadyByProject[projectId] = false;
-    updateCreateTechLinkEnabled();
     setProgress($("uploadProgress"), 100);
     setStatus($("uploadProgressLabel"), "Done");
     setStatus($("uploadStatus"), `Uploaded: ${upload.uploadId} (${upload.originalFilename})`);
@@ -184,11 +173,6 @@ async function regenerate() {
   if (!uploadId) {
     throw new Error("Upload an .apex first (no uploadId available).");
   }
-
-  // Generation is not considered "ready" for link issuance until progress returns 200.
-  state.generationReadyByProject[projectId] = false;
-  updateCreateTechLinkEnabled();
-
   const regenBtn = $("regenerateBtn");
   regenBtn.disabled = true;
   setStatus($("regenStatus"), "");
@@ -201,19 +185,8 @@ async function regenerate() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ uploadId }),
     });
-    const generationRun = out?.generationRun || null;
-    const genId = generationRun?.generationRunId || null;
-    const genStatus = generationRun?.status || null;
-    const exId = out?.extractionRun?.extractionRunId || null;
-
-    if (genId) {
-      setStatus($("regenStatus"), `Regenerated: ${genId}`);
-    } else if (genStatus) {
-      const extra = exId ? ` (extraction ${exId})` : "";
-      setStatus($("regenStatus"), `Regenerated: ${genStatus}${extra}`);
-    } else {
-      setStatus($("regenStatus"), "Regenerated.");
-    }
+    const genId = out?.generationRun?.generationRunId || "(missing)";
+    setStatus($("regenStatus"), `Regenerated: ${genId}`);
   } finally {
     setProgressHidden($("regenProgress"), true);
     setStatus($("regenProgressLabel"), "");
@@ -226,9 +199,6 @@ async function createTechLink() {
   const projectId = currentProjectId();
   const label = $("techLabel").value.trim() || null;
   if (!projectId) return;
-  if (!state.generationReadyByProject[projectId]) {
-    throw new Error("Generation is not ready. Refresh progress first.");
-  }
   const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links`), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -241,10 +211,97 @@ async function refreshProgress() {
   const projectId = currentProjectId();
   if (!projectId) return;
   const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-  state.generationReadyByProject[projectId] = true;
-  updateCreateTechLinkEnabled();
   const pct = Math.round(((out?.counts?.percentComplete || 0) * 100) * 10) / 10;
   $("progress").textContent = `${pct}% complete\n\n` + JSON.stringify(out, null, 2);
+  await refreshFails();
+}
+
+function formatFailIdentity(targetKey) {
+  const raw = String(targetKey || "").trim();
+  if (!raw) return "";
+  const parts = raw.split(":");
+  const kind = parts[0] || "";
+  if (kind === "event" && parts.length >= 3) {
+    const eventId = parts[1];
+    const targetName = parts.slice(2).join(":");
+    return `Event ${eventId} — ${targetName}`;
+  }
+  if (kind === "btn" && parts.length >= 5) {
+    const deviceId = parts[1];
+    const pageId = parts[2];
+    const buttonId = parts[3];
+    const targetName = parts.slice(4).join(":");
+    return `Button d${deviceId} p${pageId} b${buttonId} — ${targetName}`;
+  }
+  if (kind === "vpbtn" && parts.length >= 7) {
+    const deviceId = parts[1];
+    const pageId = parts[2];
+    const viewportButtonId = parts[3];
+    const frameId = parts[4];
+    const buttonId = parts[5];
+    const targetName = parts.slice(6).join(":");
+    return `Viewport d${deviceId} p${pageId} vp${viewportButtonId} f${frameId} b${buttonId} — ${targetName}`;
+  }
+  return raw;
+}
+
+function renderFails(items) {
+  const list = $("failsList");
+  const count = $("failsCount");
+  const status = $("failsStatus");
+  const rows = Array.isArray(items) ? items : [];
+
+  count.textContent = String(rows.length);
+  setStatus(status, "");
+  list.innerHTML = "";
+
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "fails-empty";
+    empty.textContent = "No current failures.";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const rec of rows) {
+    const targetKey = String(rec?.targetKey || "");
+    const identity = formatFailIdentity(targetKey);
+    const note = String(rec?.lastFailNote || "").trim();
+    const at = String(rec?.lastTestedAtUtc || "").trim();
+    const role = String(rec?.recordedBy?.role || "").trim();
+
+    const row = document.createElement("div");
+    row.className = "fails-row";
+
+    const head = document.createElement("div");
+    head.className = "fails-identity";
+    head.textContent = identity || targetKey || "(missing targetKey)";
+
+    const meta = document.createElement("div");
+    meta.className = "fails-meta mono";
+    const when = at ? at : "(unknown time)";
+    const who = role ? role : "(unknown)";
+    meta.textContent = `${when} • ${who}`;
+
+    const noteEl = document.createElement("div");
+    noteEl.className = "fails-note";
+    noteEl.textContent = note || "(no note recorded)";
+
+    row.appendChild(head);
+    row.appendChild(meta);
+    row.appendChild(noteEl);
+    list.appendChild(row);
+  }
+}
+
+async function refreshFails() {
+  const projectId = currentProjectId();
+  if (!projectId) {
+    renderFails([]);
+    return;
+  }
+  const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/fails`));
+  renderFails(out);
 }
 
 async function run() {
@@ -261,10 +318,12 @@ async function run() {
   $("refreshClientsBtn").addEventListener("click", () => safe(refreshClients, $("clientStatus")));
   $("refreshProjectsBtn").addEventListener("click", () => safe(refreshProjects, $("projectStatus")));
   $("clientSelect").addEventListener("change", () => safe(refreshProjects, $("projectStatus")));
-  $("projectSelect").addEventListener("change", () => safe(() => {
-    updateRegenerateEnabled();
-    updateCreateTechLinkEnabled();
-  }, $("projectStatus")));
+  $("projectSelect").addEventListener("change", () =>
+    safe(async () => {
+      updateRegenerateEnabled();
+      await refreshFails();
+    }, $("projectStatus"))
+  );
 
   $("createClientBtn").addEventListener("click", () => safe(createClient, $("clientStatus")));
   $("createProjectBtn").addEventListener("click", () => safe(createProject, $("projectStatus")));
@@ -272,12 +331,13 @@ async function run() {
   $("regenerateBtn").addEventListener("click", () => safe(regenerate, $("regenStatus")));
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("projectStatus")));
   $("refreshProgressBtn").addEventListener("click", () => safe(refreshProgress, $("projectStatus")));
+  $("refreshFailsBtn").addEventListener("click", () => safe(refreshFails, $("projectStatus")));
 
   await safe(refreshClients, $("clientStatus"));
   setProgressHidden($("uploadProgress"), true);
   setProgressHidden($("regenProgress"), true);
   updateRegenerateEnabled();
-  updateCreateTechLinkEnabled();
+  await safe(refreshFails, $("projectStatus"));
 }
 
 run();

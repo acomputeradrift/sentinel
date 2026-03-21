@@ -167,8 +167,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 route,
                 {
                     "extractionRun": {"extractionRunId": "ex-1", "projectId": "proj-1", "uploadId": "upload-1", "status": "SUCCEEDED"},
-                    # Simulate current server response shape where generationRunId is not present.
-                    "generationRun": {"projectId": "proj-1", "extractionRunId": "ex-1", "status": "SUCCEEDED"},
+                    "generationRun": {"generationRunId": "gen-1", "projectId": "proj-1", "extractionRunId": "ex-1", "status": "SUCCEEDED"},
                 },
             )
 
@@ -193,12 +192,35 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 },
             )
 
+        def handle_fails(route, request):
+            self.assertEqual(request.method, "GET")
+            fulfill_json(
+                route,
+                [
+                    {
+                        "targetKey": "btn:81:513:48551:Macro",
+                        "currentOutcome": "FAIL",
+                        "lastTestedAtUtc": "2026-03-21T00:00:00Z",
+                        "lastFailNote": "Macro did not run",
+                        "recordedBy": {"role": "TECHNICIAN", "actorId": None},
+                    },
+                    {
+                        "targetKey": "event:126:Trigger",
+                        "currentOutcome": "FAIL",
+                        "lastTestedAtUtc": "2026-03-20T23:00:00Z",
+                        "lastFailNote": "Trigger not firing",
+                        "recordedBy": {"role": "TECHNICIAN", "actorId": None},
+                    },
+                ],
+            )
+
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
         page.route("**/api/v1/commissioning/projects/*/uploads", handle_upload)
         page.route("**/api/v1/commissioning/projects/*/regenerate", handle_regenerate)
         page.route("**/api/v1/commissioning/projects/*/tech-links", handle_tech_links)
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
+        page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
         page.goto(url)
@@ -223,17 +245,19 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertEqual(state["last_upload_body_contains"], True)
 
         page.get_by_role("button", name="Regenerate").click()
-        expect(page.get_by_test_id("regen-status")).to_contain_text("SUCCEEDED")
-        expect(page.get_by_test_id("regen-status")).not_to_contain_text("(missing)")
+        expect(page.get_by_test_id("regen-status")).to_contain_text("gen-1")
 
         page.get_by_label("Tech label").fill("Onsite Tech")
-        expect(page.get_by_role("button", name="Create tech link")).to_be_disabled()
+        page.get_by_role("button", name="Create tech link").click()
+        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
 
         page.get_by_role("button", name="Refresh progress").click()
         expect(page.get_by_test_id("progress")).to_contain_text("30%")
 
-        expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
-        page.get_by_role("button", name="Create tech link").click()
-        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
+        expect(page.get_by_test_id("fails-count")).to_contain_text("2")
+        expect(page.get_by_test_id("fails-list")).to_contain_text("Macro did not run")
+        expect(page.get_by_test_id("fails-list")).to_contain_text("Trigger not firing")
+        expect(page.get_by_test_id("fails-list")).to_contain_text("Button d81 p513 b48551 — Macro")
+        expect(page.get_by_test_id("fails-list")).to_contain_text("Event 126 — Trigger")
 
         page.close()
