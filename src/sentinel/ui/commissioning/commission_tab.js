@@ -77,6 +77,144 @@ function updateKpis(progress) {
   $("commissionKpiUntestedSub").textContent = "untested targets";
 }
 
+function ensureCommissionPies() {
+  const panel = document.getElementById("panel-commission");
+  if (!panel) return null;
+  const shell = panel.querySelector(".commission-shell");
+  if (!shell) return null;
+
+  // Hide legacy ring KPI row; replaced by pies.
+  const legacy = shell.querySelector(".commission-kpis");
+  if (legacy) legacy.classList.add("commission-kpis--hidden");
+
+  let pies = document.getElementById("commissionPies");
+  if (pies) return pies;
+
+  pies = document.createElement("div");
+  pies.className = "commission-pies";
+  pies.id = "commissionPies";
+  pies.dataset.testid = "commission-pies";
+
+  const selection = document.getElementById("commissionSelection");
+  if (selection && selection.parentElement === shell) {
+    selection.insertAdjacentElement("afterend", pies);
+  } else {
+    shell.prepend(pies);
+  }
+
+  return pies;
+}
+
+function _pieCardInnerHtml({ title, valueId, subId, pieId }) {
+  return `
+    <div class="piecard-title">${title}</div>
+    <div class="piecard-body">
+      <div class="pie" id="${pieId}" aria-label="${title}"></div>
+      <div class="piecard-metrics">
+        <div class="piecard-value" id="${valueId}">0%</div>
+        <div class="piecard-sub" id="${subId}">0/0 passed</div>
+      </div>
+    </div>
+  `.trim();
+}
+
+function ensurePieCard({ key, title, testId, color }) {
+  const pies = ensureCommissionPies();
+  if (!pies) return null;
+
+  const cardId = `commissionPie-${key}`;
+  let card = document.getElementById(cardId);
+  if (card) {
+    const titleEl = card.querySelector(".piecard-title");
+    if (titleEl) titleEl.textContent = title;
+    if (testId) card.dataset.testid = testId;
+    if (color) card.style.setProperty("--pie-fill", color);
+    return card;
+  }
+
+  card = document.createElement("section");
+  card.className = "piecard";
+  card.id = cardId;
+  if (testId) card.dataset.testid = testId;
+  if (color) card.style.setProperty("--pie-fill", color);
+
+  const pieId = `${cardId}-chart`;
+  const valueId = `${cardId}-value`;
+  const subId = `${cardId}-sub`;
+  card.innerHTML = _pieCardInnerHtml({ title, valueId, subId, pieId });
+
+  pies.appendChild(card);
+  return card;
+}
+
+function setPieCardProgress(card, { passed, total }) {
+  if (!card) return;
+  const p = Number(passed || 0);
+  const t = Number(total || 0);
+  const pct01 = t > 0 ? p / t : 0;
+
+  const pie = card.querySelector(".pie");
+  if (pie) applyStyleVars(pie, pctStyle(pct01));
+
+  const value = card.querySelector(".piecard-value");
+  if (value) value.textContent = `${Math.round(pct01 * 100)}%`;
+
+  const sub = card.querySelector(".piecard-sub");
+  if (sub) sub.textContent = `${p}/${t} passed`;
+}
+
+function updatePies(progress) {
+  const counts = progress && progress.counts ? progress.counts : {};
+  const system = progress?.eventSections?.system?.counts || {};
+  const driver = progress?.eventSections?.driver?.counts || {};
+  const devices = Array.isArray(progress?.devices) ? progress.devices : [];
+
+  const projectCard = ensurePieCard({ key: "project", title: "Project Completion", testId: "commission-pie-project", color: "#7c3aed" });
+  setPieCardProgress(projectCard, { passed: counts.pass || 0, total: counts.totalTargets || 0 });
+
+  const systemCard = ensurePieCard({
+    key: "system-events",
+    title: "System Events Completion",
+    testId: "commission-pie-system-events",
+    color: "#177bb5",
+  });
+  setPieCardProgress(systemCard, { passed: system.pass || 0, total: system.totalTargets || 0 });
+
+  const driverCard = ensurePieCard({
+    key: "driver-events",
+    title: "Driver Events Completion",
+    testId: "commission-pie-driver-events",
+    color: "#16a34a",
+  });
+  setPieCardProgress(driverCard, { passed: driver.pass || 0, total: driver.totalTargets || 0 });
+
+  const seen = new Set();
+  for (const d of devices) {
+    if (!d || typeof d !== "object") continue;
+    const deviceId = String(d.deviceId ?? "");
+    if (!deviceId) continue;
+    const displayName = String(d.displayName || `Device ${deviceId}`);
+    const key = `device-${deviceId}`;
+    const card = ensurePieCard({
+      key,
+      title: displayName,
+      testId: `commission-pie-device-${deviceId}`,
+      color: "#f59e0b",
+    });
+    seen.add(`commissionPie-${key}`);
+    setPieCardProgress(card, { passed: d?.counts?.pass || 0, total: d?.counts?.totalTargets || 0 });
+  }
+
+  const pies = document.getElementById("commissionPies");
+  if (pies) {
+    for (const child of Array.from(pies.children)) {
+      const id = child && child.id ? String(child.id) : "";
+      if (!id.startsWith("commissionPie-device-")) continue;
+      if (!seen.has(id)) child.remove();
+    }
+  }
+}
+
 function normalizeEventMessage(ev) {
   const payload = ev && typeof ev === "object" ? ev : {};
   const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
@@ -142,6 +280,7 @@ function appendActivityRow(msg) {
 let sse = null;
 let sseProjectId = null;
 let lastSseErrorAtMs = 0;
+let progressRefreshTimer = null;
 
 function ensureCommissionHeader() {
   const panel = document.getElementById("panel-commission");
@@ -200,6 +339,21 @@ function stopSse() {
   lastSseErrorAtMs = 0;
 }
 
+function scheduleProgressRefresh() {
+  const projectId = currentProjectId();
+  if (!projectId) return;
+  if (progressRefreshTimer) return;
+
+  progressRefreshTimer = setTimeout(async () => {
+    progressRefreshTimer = null;
+    try {
+      const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
+      updatePies(progress);
+      updateKpis(progress);
+    } catch (_e) {}
+  }, 750);
+}
+
 function startSse(projectId) {
   if (!projectId) return;
   if (sse && sseProjectId === projectId) return;
@@ -213,6 +367,7 @@ function startSse(projectId) {
     try {
       const payload = JSON.parse(String(e.data || "{}"));
       appendActivityRow(normalizeEventMessage(payload));
+      scheduleProgressRefresh();
     } catch (_err) {
       appendActivityRow({ tsUtc: "", device: "", page: "", button: "", testTarget: "", status: "", targetKey: String(e.data || "") });
     }
@@ -244,8 +399,14 @@ async function refreshCommission() {
 
   try {
     const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
+    updatePies(progress);
     updateKpis(progress);
   } catch (_e) {
+    updatePies({
+      counts: { totalTargets: 0, pass: 0 },
+      eventSections: { system: { counts: { totalTargets: 0, pass: 0 } }, driver: { counts: { totalTargets: 0, pass: 0 } } },
+      devices: [],
+    });
     updateKpis({ counts: { totalTargets: 0, testedTargets: 0, untested: 0 } });
   }
 }
