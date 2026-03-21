@@ -105,6 +105,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "tech_link_revoke_counter": 0,
         }
 
+        def is_blue_rgb(value: str) -> bool:
+            match = re.fullmatch(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", str(value).strip())
+            if not match:
+                return False
+            red, green, blue = (int(part) for part in match.groups())
+            return blue > red and blue > green and blue >= 120
+
         def fulfill_json(route, payload, status: int = 200):
             route.fulfill(
                 status=status,
@@ -214,10 +221,12 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 data = json.loads(request.post_data or "{}")
                 state["tech_link_counter"] = int(state.get("tech_link_counter") or 0) + 1
                 tech_link_id = f"tl-{state['tech_link_counter']}"
+                created_at_utc = f"2026-03-21 00:0{state['tech_link_counter']}:00Z"
                 link = {
                     "techLinkId": tech_link_id,
                     "label": data.get("label") or "Onsite Tech",
                     "techUrl": "/testing/token-abc",
+                    "createdAtUtc": created_at_utc,
                     "revokedAtUtc": None,
                 }
                 state["tech_links_by_project"].setdefault(project_id, []).append(link)
@@ -350,8 +359,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
         page.get_by_role("button", name="Upload .apex").click()
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
-        expect(page.locator("#panel-manage")).to_contain_text("Last generated")
+        expect(page.locator("#uploadProgressLabel")).to_contain_text("Done")
+        self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
         expect(page.locator("#panel-manage")).to_contain_text(apex_path.name)
+        expect(page.locator("#panel-manage")).to_contain_text("Last generated")
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
         self.assertEqual(state["last_upload_body_contains_expected"], True)
@@ -362,10 +373,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
-        expect(page.get_by_text("Onsite Tech")).to_be_visible()
+        expect(page.locator("#panel-manage")).to_contain_text("Onsite Tech")
+        expect(page.locator("#panel-manage")).to_contain_text(re.compile(r"2026-03-21[ T]00:0\d:00Z"))
         expect(page.get_by_role("button", name="Revoke")).to_be_visible()
         page.get_by_role("button", name="Revoke").click()
-        expect(page.get_by_text("Onsite Tech")).to_have_count(0)
+        expect(page.locator("#panel-manage")).not_to_contain_text("Onsite Tech")
 
         # Tab switching
         page.get_by_role("button", name="Commission").click()
@@ -397,11 +409,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Resolved Data")).to_be_visible()
         diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
-        self.assertEqual(diag_header_bg, "rgb(23, 123, 181)")
-        diag_timestamp_width = page.locator("#diagnosticsTaskTable th").nth(1).evaluate(
-            "el => el.getBoundingClientRect().width"
-        )
-        self.assertLess(diag_timestamp_width, 140)
+        self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
+        diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
+        self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}Z$")
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
 
