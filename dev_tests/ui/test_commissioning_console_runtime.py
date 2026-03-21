@@ -166,8 +166,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             fulfill_json(
                 route,
                 {
-                    "extractionRun": {"extractionRunId": "ex-1", "projectId": "proj-1", "uploadId": "upload-1", "status": "SUCCEEDED"},
-                    "generationRun": {"generationRunId": "gen-1", "projectId": "proj-1", "extractionRunId": "ex-1", "status": "SUCCEEDED"},
+                    "projectId": "proj-1",
+                    "status": "READY",
                 },
             )
 
@@ -245,14 +245,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertEqual(state["last_upload_body_contains"], True)
 
         page.get_by_role("button", name="Regenerate").click()
-        expect(page.get_by_test_id("regen-status")).to_contain_text("gen-1")
+        expect(page.get_by_test_id("regen-status")).to_contain_text("READY")
+        expect(page.get_by_test_id("progress")).to_contain_text("30%")
 
         page.get_by_label("Tech label").fill("Onsite Tech")
+        expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
-
-        page.get_by_role("button", name="Refresh progress").click()
-        expect(page.get_by_test_id("progress")).to_contain_text("30%")
 
         expect(page.get_by_test_id("fails-count")).to_contain_text("2")
         expect(page.get_by_test_id("fails-list")).to_contain_text("Macro did not run")

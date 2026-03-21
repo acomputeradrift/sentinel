@@ -60,6 +60,7 @@ function currentProjectId() {
 
 const state = {
   lastUploadIdByProject: {},
+  generationReadyByProject: {},
 };
 
 function setProgressHidden(el, hidden) {
@@ -78,6 +79,12 @@ function updateRegenerateEnabled() {
   const projectId = currentProjectId();
   const uploadId = projectId ? state.lastUploadIdByProject[projectId] : null;
   $("regenerateBtn").disabled = !projectId || !uploadId;
+}
+
+function updateTechLinkEnabled() {
+  const projectId = currentProjectId();
+  const ready = projectId ? !!state.generationReadyByProject[projectId] : false;
+  $("createTechLinkBtn").disabled = !projectId || !ready;
 }
 
 async function createClient() {
@@ -105,7 +112,9 @@ async function createProject() {
   });
   await refreshProjects();
   $("projectSelect").value = proj.projectId;
+  state.generationReadyByProject[proj.projectId] = false;
   updateRegenerateEnabled();
+  updateTechLinkEnabled();
   setStatus($("projectStatus"), `Created project: ${proj.name}`);
 }
 
@@ -157,7 +166,9 @@ async function uploadApex() {
     });
 
     state.lastUploadIdByProject[projectId] = upload.uploadId;
+    state.generationReadyByProject[projectId] = false;
     updateRegenerateEnabled();
+    updateTechLinkEnabled();
     setProgress($("uploadProgress"), 100);
     setStatus($("uploadProgressLabel"), "Done");
     setStatus($("uploadStatus"), `Uploaded: ${upload.uploadId} (${upload.originalFilename})`);
@@ -173,6 +184,8 @@ async function regenerate() {
   if (!uploadId) {
     throw new Error("Upload an .apex first (no uploadId available).");
   }
+  state.generationReadyByProject[projectId] = false;
+  updateTechLinkEnabled();
   const regenBtn = $("regenerateBtn");
   regenBtn.disabled = true;
   setStatus($("regenStatus"), "");
@@ -185,8 +198,20 @@ async function regenerate() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ uploadId }),
     });
-    const genId = out?.generationRun?.generationRunId || "(missing)";
-    setStatus($("regenStatus"), `Regenerated: ${genId}`);
+    const genId = out?.generationRun?.generationRunId;
+    const status = out?.status;
+    if (genId) {
+      setStatus($("regenStatus"), `Regenerated: ${genId}`);
+    } else if (status) {
+      setStatus($("regenStatus"), `Regenerated: ${status}`);
+    } else {
+      setStatus($("regenStatus"), "Regenerated.");
+    }
+    try {
+      await refreshProgress();
+    } catch (_e) {
+      // Keep generationReady false until a successful progress fetch.
+    }
   } finally {
     setProgressHidden($("regenProgress"), true);
     setStatus($("regenProgressLabel"), "");
@@ -210,10 +235,18 @@ async function createTechLink() {
 async function refreshProgress() {
   const projectId = currentProjectId();
   if (!projectId) return;
-  const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-  const pct = Math.round(((out?.counts?.percentComplete || 0) * 100) * 10) / 10;
-  $("progress").textContent = `${pct}% complete\n\n` + JSON.stringify(out, null, 2);
-  await refreshFails();
+  try {
+    const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
+    const pct = Math.round(((out?.counts?.percentComplete || 0) * 100) * 10) / 10;
+    $("progress").textContent = `${pct}% complete\n\n` + JSON.stringify(out, null, 2);
+    state.generationReadyByProject[projectId] = true;
+    updateTechLinkEnabled();
+    await refreshFails();
+  } catch (e) {
+    state.generationReadyByProject[projectId] = false;
+    updateTechLinkEnabled();
+    throw e;
+  }
 }
 
 function formatFailIdentity(targetKey) {
@@ -312,6 +345,7 @@ async function run() {
     } catch (e) {
       setStatus(statusEl, String(e?.message || e));
       updateRegenerateEnabled();
+      updateTechLinkEnabled();
     }
   };
 
@@ -320,7 +354,10 @@ async function run() {
   $("clientSelect").addEventListener("change", () => safe(refreshProjects, $("projectStatus")));
   $("projectSelect").addEventListener("change", () =>
     safe(async () => {
+      const projectId = currentProjectId();
+      if (projectId) state.generationReadyByProject[projectId] = false;
       updateRegenerateEnabled();
+      updateTechLinkEnabled();
       await refreshFails();
     }, $("projectStatus"))
   );
@@ -337,6 +374,7 @@ async function run() {
   setProgressHidden($("uploadProgress"), true);
   setProgressHidden($("regenProgress"), true);
   updateRegenerateEnabled();
+  updateTechLinkEnabled();
   await safe(refreshFails, $("projectStatus"));
 }
 
