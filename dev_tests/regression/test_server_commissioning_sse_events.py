@@ -1,6 +1,3 @@
-import json
-import queue
-import threading
 import unittest
 from pathlib import Path
 import sys
@@ -37,31 +34,25 @@ class CommissioningSseEventsTest(unittest.TestCase):
         tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"label": "Onsite"}).json()
         tech_token = tech["techUrl"].split("/testing/")[1]
 
-        received: queue.Queue[dict] = queue.Queue()
-
-        def reader():
-            client_sse = TestClient(app)
-            with client_sse.stream("GET", f"/api/v1/commissioning/projects/{project_id}/events") as resp:
-                self.assertEqual(resp.status_code, 200)
-                for line in resp.iter_lines():
-                    s = (line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)).strip()
-                    if s.startswith("data:"):
-                        payload = s[len("data:") :].strip()
-                        received.put(json.loads(payload))
-                        break
-
-        t = threading.Thread(target=reader, daemon=True)
-        t.start()
-
-        client_post = TestClient(app)
-        ok = client_post.post(
+        ok = client.post(
             f"/api/v1/testing/{tech_token}/results",
             json={"target": {"targetKey": "event:126:Trigger", "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Trigger"}, "outcome": "PASS", "failNote": None},
         )
         self.assertEqual(ok.status_code, 200)
 
-        evt = received.get(timeout=3.0)
-        self.assertEqual(evt.get("type"), "test_result")
-        self.assertEqual(evt.get("projectId"), project_id)
-        self.assertEqual(evt.get("targetKey"), "event:126:Trigger")
-        self.assertEqual(evt.get("outcome"), "PASS")
+        with client.stream("GET", f"/api/v1/commissioning/projects/{project_id}/events?once=1") as resp:
+            self.assertEqual(resp.status_code, 200)
+            found = None
+            for line in resp.iter_lines():
+                s = (line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)).strip()
+                if s.startswith("data:"):
+                    payload = s[len("data:") :].strip()
+                    import json
+
+                    found = json.loads(payload)
+                    break
+            self.assertIsNotNone(found)
+            self.assertEqual(found.get("type"), "test_result")
+            self.assertEqual(found.get("projectId"), project_id)
+            self.assertEqual(found.get("targetKey"), "event:126:Trigger")
+            self.assertEqual(found.get("outcome"), "PASS")

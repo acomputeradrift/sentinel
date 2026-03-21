@@ -150,7 +150,7 @@ def project_progress(request: Request, projectId: str) -> dict:
 
 
 @router.get("/projects/{projectId}/events")
-async def project_events(request: Request, projectId: str):
+async def project_events(request: Request, projectId: str, once: bool = False):
     proj = _repo(request).get_project(projectId=projectId)
     if proj is None:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
@@ -167,6 +167,8 @@ async def project_events(request: Request, projectId: str):
                     yield b": keepalive\n\n"
                     continue
                 yield f"event: test_result\ndata: {msg}\n\n".encode("utf-8")
+                if once:
+                    return
         finally:
             broker.unsubscribe(projectId=projectId, q=q)
 
