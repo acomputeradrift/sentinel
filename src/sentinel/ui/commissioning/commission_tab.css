@@ -4,6 +4,24 @@
   --commission-kpi-track: #d7e3ee;
 }
 
+#commissionKpiComplete {
+  --commission-kpi-ring: #7c3aed;
+  --commission-kpi-track: #ede9fe;
+  --commission-kpi-bg: #f5f3ff;
+}
+
+#commissionKpiTested {
+  --commission-kpi-ring: #16a34a;
+  --commission-kpi-track: #dcfce7;
+  --commission-kpi-bg: #f0fdf4;
+}
+
+#commissionKpiUntested {
+  --commission-kpi-ring: #f59e0b;
+  --commission-kpi-track: #ffedd5;
+  --commission-kpi-bg: #fff7ed;
+}
+
 .tabbar {
   display: flex;
   gap: 10px;
@@ -32,6 +50,41 @@
   gap: 12px;
 }
 
+.commission-selection {
+  border: 1px solid #c6d2dd;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 12px 16px;
+  box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
+}
+
+.commission-selection-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4e6a7f;
+  margin-bottom: 8px;
+}
+
+.commission-selection-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.commission-selection-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4e6a7f;
+  margin-bottom: 4px;
+}
+
+.commission-selection-value {
+  font-size: 13px;
+  color: #173246;
+}
+
 .commission-kpis {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -42,7 +95,7 @@
   border: 1px solid #c6d2dd;
   border-radius: 16px;
   background: #ffffff;
-  padding: 14px;
+  padding: 16px;
   box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
 }
 
@@ -52,12 +105,12 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #4e6a7f;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .kpi-body {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
 }
 
@@ -81,8 +134,8 @@
 }
 
 .kpi-value {
-  position: relative;
-  margin-left: -52px;
+  font-size: 30px;
+  line-height: 1.05;
   font-weight: 900;
   color: #173246;
 }
@@ -90,6 +143,8 @@
 .kpi-sub {
   color: #4e6a7f;
   font-size: 13px;
+  line-height: 1.35;
+  margin-top: 2px;
 }
 
 .commission-activity {
@@ -120,6 +175,27 @@
   text-align: left;
   vertical-align: top;
   font-size: 13px;
+}
+
+.activity-table th:first-child,
+.activity-table td:first-child {
+  width: 130px !important;
+  white-space: nowrap;
+}
+
+.status-cell[data-status="PASS"] {
+  color: #0d6b2f;
+  font-weight: 800;
+}
+
+.status-cell[data-status="FAIL"] {
+  color: #a11b1b;
+  font-weight: 800;
+}
+
+.status-cell[data-status="SSE_ERROR"] {
+  color: #6b7280;
+  font-weight: 700;
 }
 
 .activity-table th {
