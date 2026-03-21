@@ -29,9 +29,9 @@ def _project_dir(*, projectId: str) -> Path:
 def _find_project_home(project_dir: Path) -> Path | None:
     if not project_dir.exists() or not project_dir.is_dir():
         return None
-    candidates = sorted(project_dir.glob("*__project-home.html"))
+    candidates = list(project_dir.glob("*__project-home.html"))
     if candidates:
-        return candidates[0]
+        return max(candidates, key=lambda p: (p.stat().st_mtime, p.name))
     fallback = project_dir / "project-home.html"
     return fallback if fallback.exists() else None
 
