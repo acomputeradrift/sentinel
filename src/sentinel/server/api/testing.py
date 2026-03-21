@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path, PurePosixPath
+
 from fastapi import APIRouter, Request
+from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 
 from sentinel.server.api.errors import http_error
@@ -14,14 +18,77 @@ def _repo(request: Request) -> Repository:
     return request.app.state.repo
 
 
+def _generated_root() -> Path:
+    return Path(os.environ.get("SENTINEL_GENERATED_ROOT") or "generated").resolve()
+
+
+def _project_dir(*, projectId: str) -> Path:
+    return (_generated_root() / projectId).resolve()
+
+
+def _find_project_home(project_dir: Path) -> Path | None:
+    if not project_dir.exists() or not project_dir.is_dir():
+        return None
+    candidates = sorted(project_dir.glob("*__project-home.html"))
+    if candidates:
+        return candidates[0]
+    fallback = project_dir / "project-home.html"
+    return fallback if fallback.exists() else None
+
+
+def _inject_base_href(html: str, *, base_href: str) -> str:
+    if "<base " in html or "<base>" in html:
+        return html
+    needle = "<head>"
+    if needle in html:
+        return html.replace(needle, needle + f'<base href="{base_href}">', 1)
+    needle2 = "<head"
+    idx = html.find(needle2)
+    if idx >= 0:
+        close = html.find(">", idx)
+        if close >= 0:
+            return html[: close + 1] + f'<base href="{base_href}">' + html[close + 1 :]
+    return f'<base href="{base_href}">' + html
+
+
 @router.get("/testing/{techToken}", response_class=HTMLResponse)
 def testing_html(request: Request, techToken: str) -> HTMLResponse:
     try:
-        _repo(request).resolve_active_token(techToken=techToken)
+        tok = _repo(request).resolve_active_token(techToken=techToken)
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
-    html = "<!doctype html><html><head><meta charset='utf-8'><title>Sentinel Testing</title></head><body><h1>Sentinel Testing</h1><p>MVP server is running.</p></body></html>"
-    return HTMLResponse(content=html)
+
+    project_dir = _project_dir(projectId=tok.projectId)
+    home = _find_project_home(project_dir)
+    if home is None:
+        html = "<!doctype html><html><head><meta charset='utf-8'><title>Sentinel Testing</title></head><body><h1>Sentinel Testing</h1><p>Testing UI has not been generated yet.</p></body></html>"
+        with_base = _inject_base_href(html, base_href=f"/testing/{techToken}/files/")
+        return HTMLResponse(content=with_base)
+
+    raw = home.read_text(encoding="utf-8", errors="replace")
+    with_base = _inject_base_href(raw, base_href=f"/testing/{techToken}/files/")
+    return HTMLResponse(content=with_base)
+
+
+@router.get("/testing/{techToken}/files/{path:path}")
+def testing_file(request: Request, techToken: str, path: str) -> FileResponse:
+    try:
+        tok = _repo(request).resolve_active_token(techToken=techToken)
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+    rel = PurePosixPath("/" + path).relative_to("/")
+    if any(part in ("..", "") for part in rel.parts):
+        raise http_error(404, code="NOT_FOUND", message="File not found.")
+
+    project_dir = _project_dir(projectId=tok.projectId)
+    target = (project_dir / Path(*rel.parts)).resolve()
+    if project_dir not in target.parents and target != project_dir:
+        raise http_error(404, code="NOT_FOUND", message="File not found.")
+    if not target.exists() or not target.is_file():
+        raise http_error(404, code="NOT_FOUND", message="File not found.")
+
+    return FileResponse(path=str(target))
 
 
 @router.post("/api/v1/testing/{techToken}/results")
@@ -58,4 +125,3 @@ def target_status(request: Request, techToken: str, targetKey: str) -> dict:
         return _repo(request).get_target_status(techToken=techToken, targetKey=targetKey)
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
-
