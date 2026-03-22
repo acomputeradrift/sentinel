@@ -43,8 +43,11 @@ class CommissioningSseEventsTest(unittest.TestCase):
         with client.stream("GET", f"/api/v1/commissioning/projects/{project_id}/events?once=1") as resp:
             self.assertEqual(resp.status_code, 200)
             found = None
+            found_event = None
             for line in resp.iter_lines():
                 s = (line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)).strip()
+                if s.startswith("event:"):
+                    found_event = s[len("event:") :].strip()
                 if s.startswith("data:"):
                     payload = s[len("data:") :].strip()
                     import json
@@ -52,6 +55,7 @@ class CommissioningSseEventsTest(unittest.TestCase):
                     found = json.loads(payload)
                     break
             self.assertIsNotNone(found)
+            self.assertEqual(found_event, "test_result")
             self.assertEqual(found.get("type"), "test_result")
             self.assertEqual(found.get("projectId"), project_id)
             self.assertTrue(found.get("recordedAtUtc"))

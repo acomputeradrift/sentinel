@@ -75,3 +75,54 @@ class FailTagsTest(unittest.TestCase):
         self.assertTrue(fails2)
         self.assertEqual(fails2[0]["tag"], "IN_PROGRESS")
 
+    def test_put_fail_tag_emits_sse_event(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+        project_id = p["projectId"]
+
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"label": "Onsite"}).json()
+        tech_token = tech["techUrl"].split("/testing/")[1]
+
+        target_key = "btn:1:2:3:Button A"
+        target = {"targetKey": target_key, "kind": "BUTTON", "targetName": "Button A", "refs": {"deviceName": "Device 1"}}
+        fail = client.post(
+            f"/api/v1/testing/{tech_token}/results",
+            json={"target": target, "outcome": "FAIL", "failNote": "No response"},
+        )
+        self.assertEqual(fail.status_code, 200)
+
+        set_tag = client.put(
+            f"/api/v1/commissioning/projects/{project_id}/fail-tags",
+            json={"targetKey": target_key, "tag": "DONE"},
+        )
+        self.assertEqual(set_tag.status_code, 200)
+
+        with client.stream("GET", f"/api/v1/commissioning/projects/{project_id}/events?once=1") as resp:
+            self.assertEqual(resp.status_code, 200)
+            found = None
+            found_event = None
+            for line in resp.iter_lines():
+                s = (line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)).strip()
+                if s.startswith("event:"):
+                    found_event = s[len("event:") :].strip()
+                if s.startswith("data:"):
+                    payload = s[len("data:") :].strip()
+                    import json
+
+                    found = json.loads(payload)
+                    break
+
+            self.assertEqual(found_event, "fail_tag_updated")
+            self.assertIsNotNone(found)
+            self.assertEqual(found.get("type"), "fail_tag_updated")
+            self.assertEqual(found.get("projectId"), project_id)
+            self.assertEqual(found.get("targetKey"), target_key)
+            self.assertEqual(found.get("tag"), "DONE")

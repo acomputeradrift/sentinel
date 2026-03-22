@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
@@ -225,6 +227,20 @@ def put_fail_tag(request: Request, projectId: str, payload: dict) -> dict:
     except KeyError:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
 
+    try:
+        _broker(request).publish(
+            projectId=projectId,
+            event={
+                "type": "fail_tag_updated",
+                "projectId": projectId,
+                "recordedAtUtc": datetime.now(timezone.utc).isoformat(),
+                "targetKey": target_key,
+                "tag": tag,
+            },
+        )
+    except Exception:
+        pass
+
     return {"projectId": projectId, "targetKey": target_key, "tag": tag}
 
 
@@ -296,7 +312,16 @@ async def project_events(request: Request, projectId: str, once: bool = False):
                 if msg is None:
                     yield b": keepalive\n\n"
                     continue
-                yield f"event: test_result\ndata: {msg}\n\n".encode("utf-8")
+                event_name = "message"
+                try:
+                    parsed = json.loads(msg)
+                    if isinstance(parsed, dict):
+                        t = str(parsed.get("type") or "").strip()
+                        if t:
+                            event_name = t
+                except Exception:
+                    pass
+                yield f"event: {event_name}\ndata: {msg}\n\n".encode("utf-8")
                 if once:
                     return
         finally:

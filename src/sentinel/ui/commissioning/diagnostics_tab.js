@@ -59,7 +59,30 @@ const diagAuto = {
   source: null,
   projectId: null,
   refreshTimer: null,
+  pollTimer: null,
 };
+
+function isDiagnosticsVisible() {
+  const panel = document.getElementById("panel-diagnostics");
+  return !!panel && !panel.hidden;
+}
+
+function stopDiagnosticsPoll() {
+  if (diagAuto.pollTimer) {
+    clearInterval(diagAuto.pollTimer);
+    diagAuto.pollTimer = null;
+  }
+}
+
+function startDiagnosticsPoll() {
+  if (diagAuto.pollTimer) return;
+  diagAuto.pollTimer = setInterval(() => {
+    if (!isDiagnosticsVisible()) return;
+    const projectId = currentDiagProjectId();
+    if (!projectId) return;
+    scheduleDiagnosticsRefresh();
+  }, 5000);
+}
 
 function scheduleDiagnosticsRefresh(delayMs = 150) {
   if (diagAuto.refreshTimer) return;
@@ -78,6 +101,7 @@ function disconnectDiagnosticsSse() {
   }
   diagAuto.source = null;
   diagAuto.projectId = null;
+  stopDiagnosticsPoll();
 }
 
 function connectDiagnosticsSse(projectId) {
@@ -93,9 +117,10 @@ function connectDiagnosticsSse(projectId) {
   const url = diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/events`);
   const es = new EventSource(url);
   es.addEventListener("test_result", () => scheduleDiagnosticsRefresh());
-  es.addEventListener("result_saved", () => scheduleDiagnosticsRefresh());
+  es.addEventListener("fail_tag_updated", () => scheduleDiagnosticsRefresh());
   es.onmessage = () => scheduleDiagnosticsRefresh();
   diagAuto.source = es;
+  startDiagnosticsPoll();
 }
 
 function _targetNameFromTargetKey(targetKey) {
@@ -398,6 +423,7 @@ function renderTaskList(projectId, fails) {
       try {
         await updateFailTag(projectId, targetKey, next);
         setDiagStatus("");
+        scheduleDiagnosticsRefresh(0);
       } catch (e) {
         sel.value = tagOptions().includes(tag) ? tag : "Not Started";
         setDiagStatus(String(e?.message || e));

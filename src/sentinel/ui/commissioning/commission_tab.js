@@ -269,6 +269,7 @@ let sse = null;
 let sseProjectId = null;
 let lastSseErrorAtMs = 0;
 let progressRefreshTimer = null;
+let commissionPollTimer = null;
 
 function ensureCommissionHeader() {
   const div = document.getElementById("commissionSelection");
@@ -347,11 +348,29 @@ function startSse(projectId) {
   });
 }
 
+function startCommissionPoll() {
+  if (commissionPollTimer) return;
+  commissionPollTimer = setInterval(() => {
+    if (!isCommissionVisible()) return;
+    const projectId = currentProjectId();
+    if (!projectId) return;
+    scheduleProgressRefresh();
+  }, 5000);
+}
+
+function stopCommissionPoll() {
+  if (commissionPollTimer) {
+    clearInterval(commissionPollTimer);
+    commissionPollTimer = null;
+  }
+}
+
 async function refreshCommission() {
   const projectId = currentProjectId();
   updateSelectedNames();
   if (!projectId) return;
   startSse(projectId);
+  startCommissionPoll();
   await refreshCommissionTopboxTitle(projectId);
 
   try {
@@ -370,9 +389,17 @@ function runCommissionTab() {
   const tabCommission = document.getElementById("tab-commission");
   if (tabCommission) tabCommission.addEventListener("click", () => void refreshCommission());
   const tabManage = document.getElementById("tab-manage");
-  if (tabManage) tabManage.addEventListener("click", () => stopSse());
+  if (tabManage)
+    tabManage.addEventListener("click", () => {
+      stopSse();
+      stopCommissionPoll();
+    });
   const tabDiagnostics = document.getElementById("tab-diagnostics");
-  if (tabDiagnostics) tabDiagnostics.addEventListener("click", () => stopSse());
+  if (tabDiagnostics)
+    tabDiagnostics.addEventListener("click", () => {
+      stopSse();
+      stopCommissionPoll();
+    });
 
   const clientSelect = document.getElementById("clientSelect");
   if (clientSelect) clientSelect.addEventListener("change", () => void refreshCommissionTopboxTitle(currentProjectId()));
