@@ -44,27 +44,11 @@ function isCommissionVisible() {
   return !!panel && !panel.hidden;
 }
 
-function ensureCommissionTopline() {
+async function refreshCommissionTopboxTitle(projectId) {
   const panel = document.getElementById("panel-commission");
-  if (!panel) return null;
-  const shell = panel.querySelector(".commission-shell");
-  if (!shell) return null;
-  let el = document.getElementById("commissionTopline");
-  if (el) return el;
-
-  el = document.createElement("div");
-  el.className = "commission-topline";
-  el.id = "commissionTopline";
-  el.dataset.testid = "commission-topline";
-  el.textContent = "";
-
-  shell.prepend(el);
-  return el;
-}
-
-async function refreshCommissionTopline(projectId) {
-  const el = ensureCommissionTopline();
-  if (!el) return;
+  if (!panel) return;
+  const title = panel.querySelector(".panel-context .panel-context-title");
+  if (!title) return;
 
   const clientName = selectedOptionText("clientSelect");
   const projectName = selectedOptionText("projectSelect");
@@ -76,7 +60,7 @@ async function refreshCommissionTopline(projectId) {
     } catch (_e) {}
   }
 
-  el.textContent = `${clientName} -> ${projectName} -> ${filename}`.trim();
+  title.textContent = `${clientName} -> ${projectName} -> ${filename}`.trim();
 }
 
 function pctStyle(pct01) {
@@ -374,7 +358,7 @@ async function refreshCommission() {
   updateSelectedNames();
   if (!projectId) return;
   startSse(projectId);
-  await refreshCommissionTopline(projectId);
+  await refreshCommissionTopboxTitle(projectId);
 
   try {
     const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
@@ -397,7 +381,7 @@ function runCommissionTab() {
   if (tabDiagnostics) tabDiagnostics.addEventListener("click", () => stopSse());
 
   const clientSelect = document.getElementById("clientSelect");
-  if (clientSelect) clientSelect.addEventListener("change", () => void refreshCommissionTopline(currentProjectId()));
+  if (clientSelect) clientSelect.addEventListener("change", () => void refreshCommissionTopboxTitle(currentProjectId()));
 
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
