@@ -52,13 +52,7 @@ async function refreshCommissionTopboxTitle(projectId) {
 
   const clientName = selectedOptionText("clientSelect");
   const projectName = selectedOptionText("projectSelect");
-  let filename = "";
-  if (projectId) {
-    try {
-      const proj = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}`));
-      filename = String(proj?.lastGeneratedFilename || proj?.lastUploadedFilename || "");
-    } catch (_e) {}
-  }
+  const filename = "";
 
   title.textContent = `${clientName} -> ${projectName} -> ${filename}`.trim();
 }
