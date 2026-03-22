@@ -423,7 +423,11 @@ function renderTaskList(projectId, fails) {
       try {
         await updateFailTag(projectId, targetKey, next);
         setDiagStatus("");
-        scheduleDiagnosticsRefresh(0);
+        if (diagAuto.refreshTimer) {
+          clearTimeout(diagAuto.refreshTimer);
+          diagAuto.refreshTimer = null;
+        }
+        await refreshDiagnostics();
       } catch (e) {
         sel.value = tagOptions().includes(tag) ? tag : "Not Started";
         setDiagStatus(String(e?.message || e));

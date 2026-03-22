@@ -52,9 +52,13 @@ async function refreshCommissionTopboxTitle(projectId) {
 
   const clientName = selectedOptionText("clientSelect");
   const projectName = selectedOptionText("projectSelect");
-  const filename = "";
+  const lastGen = document.getElementById("lastGeneratedLabel");
+  const raw = lastGen ? String(lastGen.textContent || "").trim() : "";
+  const filename = raw.toLowerCase().startsWith("last generated:") ? raw.slice("last generated:".length).trim() : raw;
 
-  title.textContent = `${clientName} -> ${projectName} -> ${filename}`.trim();
+  const parts = [clientName, projectName].map((s) => String(s || "").trim()).filter(Boolean);
+  if (filename) parts.push(filename);
+  title.textContent = parts.join(" -> ");
 }
 
 function pctStyle(pct01) {

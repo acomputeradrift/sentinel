@@ -97,6 +97,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "projects_by_client": {},
             "projects_by_id": {},
             "tech_links_by_project": {},
+            "fail_tags_by_target_key": {},
             "last_upload_content_type": None,
             "expected_upload_filename": "TEST - System Manager v11.3.apex",
             "last_upload_body_contains_expected": None,
@@ -275,6 +276,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         def handle_fails(route, request):
             self.assertEqual(request.method, "GET")
+            tags_by_key = state.get("fail_tags_by_target_key") or {}
             fulfill_json(
                 route,
                 [
@@ -285,7 +287,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                         "pageName": "Home",
                         "buttonName": "Button 1",
                         "scope": "BUTTON",
-                        "tag": "TARGET",
+                        "tag": tags_by_key.get("btn:81:513:48551:Macro", "NOT_STARTED"),
                         "currentOutcome": "FAIL",
                         "lastTestedAtUtc": "2026-03-21T00:00:00Z",
                         "lastFailNote": "Macro did not run",
@@ -299,7 +301,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                         "pageName": "Scene",
                         "buttonName": "",
                         "scope": "EVENT_SECTION",
-                        "tag": "DATA",
+                        "tag": tags_by_key.get("event:126:Trigger", "NOT_STARTED"),
                         "currentOutcome": "FAIL",
                         "lastTestedAtUtc": "2026-03-20T23:00:00Z",
                         "lastFailNote": "Trigger not firing",
@@ -308,6 +310,14 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                     },
                 ],
             )
+
+        def handle_fail_tags(route, request):
+            self.assertEqual(request.method, "PUT")
+            data = json.loads(request.post_data or "{}")
+            target_key = str(data.get("targetKey") or "")
+            tag = str(data.get("tag") or "")
+            state["fail_tags_by_target_key"][target_key] = tag
+            fulfill_json(route, {"projectId": "proj-1", "targetKey": target_key, "tag": tag})
 
         def handle_events(route, request):
             self.assertEqual(request.method, "GET")
@@ -346,6 +356,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
+        page.route("**/api/v1/commissioning/projects/*/fail-tags", handle_fail_tags)
         page.route("**/api/v1/commissioning/projects/*/events", handle_events)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
@@ -444,6 +455,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
         diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
         self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}Z$")
+
+        first_tag = page.locator("#diagnosticsTaskTable tbody tr").first.locator("select")
+        first_tag.select_option(label="Done")
+        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Done (1")
+
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
 
