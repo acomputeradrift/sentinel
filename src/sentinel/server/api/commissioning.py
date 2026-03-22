@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi import UploadFile
 from fastapi.responses import StreamingResponse
 
@@ -335,3 +335,72 @@ async def project_events(request: Request, projectId: str, once: bool = False):
             "x-accel-buffering": "no",
         },
     )
+
+
+@router.websocket("/projects/{projectId}/ws")
+async def project_ws(websocket: WebSocket, projectId: str):
+    await websocket.accept()
+
+    repo = getattr(websocket.app.state, "repo", None)
+    if repo is None or repo.get_project(projectId=projectId) is None:
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "code": "PROJECT_NOT_FOUND", "projectId": projectId}))
+        finally:
+            await websocket.close(code=1008)
+        return
+
+    broker = getattr(websocket.app.state, "project_event_broker", None)
+    if broker is None:
+        broker = sse.ProjectEventBroker()
+        websocket.app.state.project_event_broker = broker
+
+    q = broker.subscribe(projectId=projectId)
+    try:
+        while True:
+            msg = await sse.wait_for_next(q, timeout_s=15.0)
+            if msg is None:
+                await websocket.send_text(json.dumps({"type": "keepalive"}))
+                continue
+            await websocket.send_text(msg)
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        return
+    finally:
+        try:
+            broker.unsubscribe(projectId=projectId, q=q)
+        except Exception:
+            pass
+
+
+@router.websocket("/projects/{projectId}/ws")
+async def project_ws(websocket: WebSocket, projectId: str) -> None:
+    await websocket.accept()
+
+    repo: Repository = websocket.app.state.repo
+    proj = repo.get_project(projectId=projectId)
+    if proj is None:
+        await websocket.send_text('{"error":{"code":"PROJECT_NOT_FOUND","message":"Project not found.","details":{},"traceId":null}}')
+        await websocket.close(code=1008)
+        return
+
+    broker = getattr(websocket.app.state, "project_event_broker", None)
+    if broker is None:
+        broker = sse.ProjectEventBroker()
+        websocket.app.state.project_event_broker = broker
+
+    q = broker.subscribe(projectId=projectId)
+    try:
+        while True:
+            msg = await sse.wait_for_next(q, timeout_s=15.0)
+            if msg is None:
+                await websocket.send_text('{"type":"keepalive"}')
+                continue
+            await websocket.send_text(msg)
+    except WebSocketDisconnect:
+        return
+    finally:
+        try:
+            broker.unsubscribe(projectId=projectId, q=q)
+        except Exception:
+            pass

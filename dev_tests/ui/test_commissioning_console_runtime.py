@@ -319,35 +319,6 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             state["fail_tags_by_target_key"][target_key] = tag
             fulfill_json(route, {"projectId": "proj-1", "targetKey": target_key, "tag": tag})
 
-        def handle_events(route, request):
-            self.assertEqual(request.method, "GET")
-            route.fulfill(
-                status=200,
-                headers={"Content-Type": "text/event-stream; charset=utf-8"},
-                body=(
-                    "event: test_result\n"
-                    "data: "
-                    + json.dumps(
-                        {
-                            "tsUtc": "2026-03-21T00:00:01Z",
-                            "type": "test_result",
-                            "scope": {"scopeType": "DEVICE", "deviceId": "dev-1", "pageId": "page-1"},
-                            "target": {"targetKey": "btn:81:513:48551:Macro", "kind": "BUTTON", "refs": {"deviceName": "Device A", "pageName": "Home", "buttonName": "Button 1"}},
-                            "tag": "TARGET",
-                            "resolvedData": {"reason": "Macro did not run"},
-                            "data": {
-                                "recordedAtUtc": "2026-03-21T00:00:01Z",
-                                "targetKey": "btn:81:513:48551:Macro",
-                                "targetName": "Macro",
-                                "outcome": "PASS",
-                                "refs": {"deviceName": "Device A", "pageName": "Home", "buttonName": "Button 1"},
-                            },
-                        }
-                    )
-                    + "\n\n"
-                ),
-            )
-
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
         page.route("**/api/v1/commissioning/projects/*", handle_project_detail)
@@ -357,9 +328,43 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
         page.route("**/api/v1/commissioning/projects/*/fail-tags", handle_fail_tags)
-        page.route("**/api/v1/commissioning/projects/*/events", handle_events)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
+        page.add_init_script(
+            """
+(() => {
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 0;
+      setTimeout(() => {
+        this.readyState = 1;
+        if (this.onopen) this.onopen({});
+        setTimeout(() => {
+          const msg = {
+            type: "test_result",
+            projectId: "proj-1",
+            recordedAtUtc: "2026-03-21T00:00:01Z",
+            targetKey: "btn:81:513:48551:Macro",
+            outcome: "PASS",
+            targetName: "Macro",
+            kind: "BUTTON",
+            refs: { deviceName: "Device A", pageName: "Home", buttonName: "Button 1" }
+          };
+          if (this.onmessage) this.onmessage({ data: JSON.stringify(msg) });
+        }, 25);
+      }, 0);
+    }
+    send(_data) {}
+    close() {
+      this.readyState = 3;
+      if (this.onclose) this.onclose({});
+    }
+  }
+  window.WebSocket = FakeWebSocket;
+})();
+"""
+        )
         page.goto(url)
 
         # Shell + tabs

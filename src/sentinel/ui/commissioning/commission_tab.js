@@ -8,6 +8,12 @@ function api(path) {
   return `/api/v1${path}`;
 }
 
+function wsUrl(path) {
+  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  return `${proto}://${host}${path}`;
+}
+
 function formatTimestampUtc(ts) {
   const s = String(ts || "").trim();
   if (!s) return "";
@@ -269,11 +275,12 @@ function appendActivityRow(msg) {
   }
 }
 
-let sse = null;
-let sseProjectId = null;
-let lastSseErrorAtMs = 0;
-let progressRefreshTimer = null;
-let commissionPollTimer = null;
+let ws = null;
+let wsProjectId = null;
+let wsReconnectTimer = null;
+let wsReconnectDelayMs = 500;
+let progressFetchInFlight = false;
+let progressFetchPending = false;
 
 function ensureCommissionHeader() {
   const div = document.getElementById("commissionSelection");
@@ -290,96 +297,96 @@ function updateSelectedNames() {
   ensureCommissionHeader();
 }
 
-function stopSse() {
-  if (sse) {
+function stopWs() {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (ws) {
     try {
-      sse.close();
+      ws.close();
     } catch (_e) {}
   }
-  sse = null;
-  sseProjectId = null;
-  lastSseErrorAtMs = 0;
+  ws = null;
+  wsProjectId = null;
+  wsReconnectDelayMs = 500;
 }
 
-function scheduleProgressRefresh() {
-  const projectId = currentProjectId();
-  if (!projectId) return;
-  if (progressRefreshTimer) return;
-
-  progressRefreshTimer = setTimeout(async () => {
-    progressRefreshTimer = null;
-    try {
-      const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-      updatePies(progress);
-    } catch (_e) {}
-  }, 750);
-}
-
-function startSse(projectId) {
-  if (!projectId) return;
-  if (sse && sseProjectId === projectId) return;
-  stopSse();
-
-  const url = api(`/commissioning/projects/${encodeURIComponent(projectId)}/events`);
-  sse = new EventSource(url);
-  sseProjectId = projectId;
-
-  const handleTestResult = (e) => {
-    try {
-      const payload = JSON.parse(String(e.data || "{}"));
-      appendActivityRow(normalizeEventMessage(payload));
-      scheduleProgressRefresh();
-    } catch (_err) {
-      appendActivityRow({ tsUtc: "", device: "", page: "", button: "", testTarget: "", status: "", targetKey: String(e.data || "") });
+async function refreshProgressNow(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return;
+  if (progressFetchInFlight) {
+    progressFetchPending = true;
+    return;
+  }
+  progressFetchInFlight = true;
+  try {
+    const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(pid)}/progress`));
+    updatePies(progress);
+  } catch (_e) {
+  } finally {
+    progressFetchInFlight = false;
+    if (progressFetchPending) {
+      progressFetchPending = false;
+      void refreshProgressNow(pid);
     }
-  };
-
-  sse.addEventListener("test_result", handleTestResult);
-
-  sse.addEventListener("error", () => {
-    const now = Date.now();
-    if (now - lastSseErrorAtMs < 10_000) return;
-    lastSseErrorAtMs = now;
-    appendActivityRow({
-      tsUtc: formatTimestampUtc(new Date().toISOString()),
-      device: "",
-      page: "",
-      button: "",
-      testTarget: "",
-      status: "SSE_ERROR",
-      targetKey: "",
-    });
-  });
-}
-
-function startCommissionPoll() {
-  if (commissionPollTimer) return;
-  commissionPollTimer = setInterval(() => {
-    if (!isCommissionVisible()) return;
-    const projectId = currentProjectId();
-    if (!projectId) return;
-    scheduleProgressRefresh();
-  }, 5000);
-}
-
-function stopCommissionPoll() {
-  if (commissionPollTimer) {
-    clearInterval(commissionPollTimer);
-    commissionPollTimer = null;
   }
+}
+
+function _scheduleWsReconnect() {
+  if (wsReconnectTimer) return;
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    const projectId = currentProjectId();
+    if (!isCommissionVisible() || !projectId) return;
+    startWs(projectId);
+  }, Math.min(5000, Math.max(250, wsReconnectDelayMs)));
+  wsReconnectDelayMs = Math.min(5000, wsReconnectDelayMs * 2);
+}
+
+function startWs(projectId) {
+  if (!projectId) return;
+  if (ws && wsProjectId === projectId) return;
+  stopWs();
+
+  const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(projectId)}/ws`));
+  ws = new WebSocket(url);
+  wsProjectId = projectId;
+
+  ws.onopen = () => {
+    wsReconnectDelayMs = 500;
+  };
+  ws.onclose = () => {
+    ws = null;
+    wsProjectId = null;
+    if (isCommissionVisible()) _scheduleWsReconnect();
+  };
+  ws.onerror = () => {
+    try {
+      if (ws) ws.close();
+    } catch (_e) {}
+  };
+  ws.onmessage = (evt) => {
+    try {
+      const payload = JSON.parse(String(evt.data || "{}"));
+      const t = String(payload?.type || "").trim();
+      if (t === "test_result") {
+        appendActivityRow(normalizeEventMessage(payload));
+        void refreshProgressNow(projectId);
+      }
+    } catch (_e) {}
+  };
 }
 
 async function refreshCommission() {
   const projectId = currentProjectId();
   updateSelectedNames();
   if (!projectId) return;
-  startSse(projectId);
-  startCommissionPoll();
+  startWs(projectId);
   await refreshCommissionTopboxTitle(projectId);
 
   try {
-    const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-    updatePies(progress);
+    await refreshProgressNow(projectId);
   } catch (_e) {
     updatePies({
       counts: { totalTargets: 0, pass: 0 },
@@ -395,14 +402,12 @@ function runCommissionTab() {
   const tabManage = document.getElementById("tab-manage");
   if (tabManage)
     tabManage.addEventListener("click", () => {
-      stopSse();
-      stopCommissionPoll();
+      stopWs();
     });
   const tabDiagnostics = document.getElementById("tab-diagnostics");
   if (tabDiagnostics)
     tabDiagnostics.addEventListener("click", () => {
-      stopSse();
-      stopCommissionPoll();
+      stopWs();
     });
 
   const clientSelect = document.getElementById("clientSelect");
@@ -411,7 +416,7 @@ function runCommissionTab() {
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
-      stopSse();
+      stopWs();
       updateSelectedNames();
       if (isCommissionVisible()) void refreshCommission();
     });
