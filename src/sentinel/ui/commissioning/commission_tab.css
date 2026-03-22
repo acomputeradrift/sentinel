@@ -50,6 +50,15 @@
   gap: 12px;
 }
 
+.commission-topline {
+  background: #fff;
+  border: 1px solid var(--border, #cfd8e3);
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
 .commission-kpis--hidden {
   display: none;
 }

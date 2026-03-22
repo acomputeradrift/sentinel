@@ -44,6 +44,41 @@ function isCommissionVisible() {
   return !!panel && !panel.hidden;
 }
 
+function ensureCommissionTopline() {
+  const panel = document.getElementById("panel-commission");
+  if (!panel) return null;
+  const shell = panel.querySelector(".commission-shell");
+  if (!shell) return null;
+  let el = document.getElementById("commissionTopline");
+  if (el) return el;
+
+  el = document.createElement("div");
+  el.className = "commission-topline";
+  el.id = "commissionTopline";
+  el.dataset.testid = "commission-topline";
+  el.textContent = "";
+
+  shell.prepend(el);
+  return el;
+}
+
+async function refreshCommissionTopline(projectId) {
+  const el = ensureCommissionTopline();
+  if (!el) return;
+
+  const clientName = selectedOptionText("clientSelect");
+  const projectName = selectedOptionText("projectSelect");
+  let filename = "";
+  if (projectId) {
+    try {
+      const proj = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}`));
+      filename = String(proj?.lastGeneratedFilename || proj?.lastUploadedFilename || "");
+    } catch (_e) {}
+  }
+
+  el.textContent = `${clientName} -> ${projectName} -> ${filename}`.trim();
+}
+
 function pctStyle(pct01) {
   const pct = Math.max(0, Math.min(1, Number(pct01) || 0)) * 100;
   return { "--pct": String(pct) };
@@ -339,6 +374,7 @@ async function refreshCommission() {
   updateSelectedNames();
   if (!projectId) return;
   startSse(projectId);
+  await refreshCommissionTopline(projectId);
 
   try {
     const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
@@ -361,7 +397,7 @@ function runCommissionTab() {
   if (tabDiagnostics) tabDiagnostics.addEventListener("click", () => stopSse());
 
   const clientSelect = document.getElementById("clientSelect");
-  if (clientSelect) clientSelect.addEventListener("change", () => updateSelectedNames());
+  if (clientSelect) clientSelect.addEventListener("change", () => void refreshCommissionTopline(currentProjectId()));
 
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
