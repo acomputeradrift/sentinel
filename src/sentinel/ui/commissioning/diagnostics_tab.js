@@ -66,6 +66,14 @@ function diagWsUrl(path) {
   return `${proto}://${host}${path}`;
 }
 
+function logDiagnosticsWs(action, detail) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[diagnostics-ws]", action, detail == null ? "" : detail);
+    }
+  } catch (_e) {}
+}
+
 const diagRt = {
   ws: null,
   projectId: null,
@@ -115,18 +123,22 @@ function connectDiagnosticsWs(projectId) {
   disconnectDiagnosticsWs();
   diagRt.projectId = pid;
   const url = diagWsUrl(diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`));
+  logDiagnosticsWs("connect", url);
   const ws = new WebSocket(url);
   diagRt.ws = ws;
 
   ws.onopen = () => {
     diagRt.reconnectDelayMs = 500;
+    logDiagnosticsWs("open");
   };
   ws.onclose = () => {
     diagRt.ws = null;
     diagRt.projectId = null;
+    logDiagnosticsWs("close");
     if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
   };
   ws.onerror = () => {
+    logDiagnosticsWs("error");
     try {
       if (diagRt.ws) diagRt.ws.close();
     } catch (_e) {}
@@ -134,6 +146,8 @@ function connectDiagnosticsWs(projectId) {
   ws.onmessage = (evt) => {
     try {
       const payload = JSON.parse(String(evt.data || "{}"));
+      const t = String(payload?.type || "").trim();
+      logDiagnosticsWs("recv", t || "(unknown)");
       handleDiagnosticsEvent(payload);
     } catch (_e) {}
   };

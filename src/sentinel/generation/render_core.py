@@ -790,6 +790,14 @@ let currentDeviceTop=0;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
  const rowStatusByTargetKey=new Map();
+ function _logTechWs(action, data) {{
+  try {{
+   if (typeof console !== "undefined" && console.log) {{
+    const msg = data == null ? "" : data;
+    console.log("[tech-ws]", action, msg);
+   }}
+  }} catch (_e) {{}}
+ }}
  function techTokenFromLocation() {{
   const parts=String(window.location.pathname||'').split('/').filter(Boolean);
   const i=parts.indexOf('testing');
@@ -812,6 +820,7 @@ let currentDeviceTop=0;
   try {{
    const payload = JSON.parse(String(evt.data || "{{}}"));
    const t = String(payload?.type || "").trim();
+   _logTechWs("recv", t || "(unknown)");
    if (t === "error") {{
     const code = payload?.code;
     const message = payload?.message;
@@ -845,14 +854,17 @@ let currentDeviceTop=0;
    try {{ techWs.close(); }} catch (_e) {{}}
   }}
   techWsToken = techToken;
+  _logTechWs("connect", techToken);
   const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
   techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; }};
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); }};
   ws.onclose = () => {{
    techWs = null;
+   _logTechWs("close");
    _scheduleTechWsReconnect();
   }};
   ws.onerror = () => {{
+   _logTechWs("error");
    try {{ if (techWs) techWs.close(); }} catch (_e) {{}}
   }};
   ws.onmessage = _handleTechWsMessage;
@@ -866,6 +878,7 @@ let currentDeviceTop=0;
    setPostStatus("Error: websocket not connected", "error");
    return;
   }}
+  _logTechWs("send", payload?.type || "");
   techWs.send(JSON.stringify(payload));
  }}
  function setRowStatus(statusEl, outcome, recordedAtUtc) {{

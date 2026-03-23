@@ -14,6 +14,14 @@ function wsUrl(path) {
   return `${proto}://${host}${path}`;
 }
 
+function logCommissionWs(action, detail) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[commission-ws]", action, detail == null ? "" : detail);
+    }
+  } catch (_e) {}
+}
+
 function formatTimestampUtc(ts) {
   const s = String(ts || "").trim();
   if (!s) return "";
@@ -350,18 +358,22 @@ function startWs(projectId) {
   stopWs();
 
   const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(projectId)}/ws`));
+  logCommissionWs("connect", url);
   ws = new WebSocket(url);
   wsProjectId = projectId;
 
   ws.onopen = () => {
     wsReconnectDelayMs = 500;
+    logCommissionWs("open");
   };
   ws.onclose = () => {
     ws = null;
     wsProjectId = null;
+    logCommissionWs("close");
     if (isCommissionVisible()) _scheduleWsReconnect();
   };
   ws.onerror = () => {
+    logCommissionWs("error");
     try {
       if (ws) ws.close();
     } catch (_e) {}
@@ -370,6 +382,7 @@ function startWs(projectId) {
     try {
       const payload = JSON.parse(String(evt.data || "{}"));
       const t = String(payload?.type || "").trim();
+      logCommissionWs("recv", t || "(unknown)");
       if (t === "test_result" || t === "test_result.recorded") {
         appendActivityRow(normalizeEventMessage(payload));
         const progress = payload?.progress || payload?.data?.progress || null;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path, PurePosixPath
 
 import asyncio
@@ -17,6 +18,7 @@ from sentinel.server.services.repositories import Repository
 
 
 router = APIRouter(tags=["testing"])
+log = logging.getLogger(__name__)
 
 
 def _repo(request: Request) -> Repository:
@@ -205,9 +207,11 @@ def post_result(request: Request, techToken: str, payload: dict) -> dict:
 @router.websocket("/api/v1/testing/{techToken}/ws")
 async def testing_ws(websocket: WebSocket, techToken: str):
     await websocket.accept()
+    log.info("[testing-ws] connect techToken=%s", techToken)
 
     repo = getattr(websocket.app.state, "repo", None)
     if repo is None:
+        log.error("[testing-ws] repo_missing techToken=%s", techToken)
         await websocket.close(code=1011)
         return
 
@@ -215,6 +219,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
         tok = repo.resolve_active_token(techToken=techToken)
     except KeyError:
         try:
+            log.info("[testing-ws] revoked techToken=%s", techToken)
             await websocket.send_text(json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}))
         finally:
             await websocket.close(code=1008)
@@ -240,6 +245,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
             except Exception:
                 continue
             msg_type = str(payload.get("type") or "").strip()
+            log.info("[testing-ws] recv type=%s techToken=%s", msg_type, techToken)
             if msg_type not in ("test_result.submit", "test_result"):
                 await websocket.send_text(json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}))
                 continue
@@ -269,6 +275,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     try:
         await recv_loop()
     except WebSocketDisconnect:
+        log.info("[testing-ws] disconnect techToken=%s", techToken)
         pass
     finally:
         send_task.cancel()

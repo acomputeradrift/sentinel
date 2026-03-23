@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -16,6 +17,7 @@ from sentinel.server.services.repositories import Repository
 
 
 router = APIRouter(prefix="/api/v1/commissioning", tags=["commissioning"])
+log = logging.getLogger(__name__)
 
 
 def _repo(request: Request) -> Repository:
@@ -340,10 +342,12 @@ async def project_events(request: Request, projectId: str, once: bool = False):
 @router.websocket("/projects/{projectId}/ws")
 async def project_ws(websocket: WebSocket, projectId: str):
     await websocket.accept()
+    log.info("[commissioning-ws] connect projectId=%s", projectId)
 
     repo = getattr(websocket.app.state, "repo", None)
     if repo is None or repo.get_project(projectId=projectId) is None:
         try:
+            log.info("[commissioning-ws] project_not_found projectId=%s", projectId)
             await websocket.send_text(json.dumps({"type": "error", "code": "PROJECT_NOT_FOUND", "projectId": projectId}))
         finally:
             await websocket.close(code=1008)
@@ -361,8 +365,17 @@ async def project_ws(websocket: WebSocket, projectId: str):
             if msg is None:
                 await websocket.send_text(json.dumps({"type": "keepalive"}))
                 continue
+            try:
+                parsed = json.loads(msg)
+                if isinstance(parsed, dict):
+                    t = str(parsed.get("type") or "").strip()
+                    if t:
+                        log.info("[commissioning-ws] send type=%s projectId=%s", t, projectId)
+            except Exception:
+                pass
             await websocket.send_text(msg)
     except WebSocketDisconnect:
+        log.info("[commissioning-ws] disconnect projectId=%s", projectId)
         return
     except Exception:
         return
