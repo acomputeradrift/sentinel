@@ -797,13 +797,13 @@ let currentDeviceTop=0;
   postStatus.textContent=t;
   postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
   if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
- }}
+
  function setPosting(on) {{
   isPosting=!!on;
   rows.querySelectorAll('.actions button').forEach(b=>{{ b.disabled=isPosting; }});
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
- }}
+
  async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {
   const techToken=techTokenFromLocation();
   if (!techToken) return;
@@ -825,31 +825,19 @@ let currentDeviceTop=0;
   pendingTargetKey = target.targetKey;
   if (statusEl) setRowStatus(statusEl, payload.outcome, "");
   _sendTechWs(payload);
-}  }}
+}
 
-  if (meta && meta.refs) {{
-   if (meta.refs.scope!==undefined) refs.scope=meta.refs.scope;
-   if (meta.refs.resolvedData!==undefined) refs.resolvedData=meta.refs.resolvedData;
-  }}
 
-  const payload={{target:{{targetKey,kind,refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
-  try {{
-   setPosting(true);
-   setPostStatus('Saving…','saving');
-   const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
-   if (r.ok) {{
-    setPostStatus('Saved','success');
-    const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
-    if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
-    setRowStatus(statusEl, payload.outcome, null);
-    return;
-   }}
-  }} catch (e) {{
-   setPostStatus('Error: ' + String(e),'error');
-  }} finally {{
-   setPosting(false);
-  }}
- }}
+
+
+
+
+
+
+
+
+
+
  function bindResultRows(ctxBtn, meta) {{
   rows.querySelectorAll('.row').forEach(row=>{{
    const label=row.querySelector('.n')?.textContent||'';
