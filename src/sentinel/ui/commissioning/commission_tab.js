@@ -289,6 +289,7 @@ let wsReconnectTimer = null;
 let wsReconnectDelayMs = 500;
 let progressFetchInFlight = false;
 let progressFetchPending = false;
+let wsConnSeq = 0;
 
 function syncAfterReconnect(projectId) {
   const pid = String(projectId || "").trim();
@@ -365,28 +366,34 @@ function startWs(projectId) {
   stopWs();
 
   const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(projectId)}/ws`));
+  const connId = ++wsConnSeq;
+  logCommissionWs("conn-id", connId);
   logCommissionWs("connect", url);
   ws = new WebSocket(url);
   wsProjectId = projectId;
 
   ws.onopen = () => {
+    if (connId !== wsConnSeq) return;
     wsReconnectDelayMs = 500;
     logCommissionWs("open");
     syncAfterReconnect(projectId);
   };
   ws.onclose = () => {
+    if (connId !== wsConnSeq) return;
     ws = null;
     wsProjectId = null;
     logCommissionWs("close");
     if (isCommissionVisible()) _scheduleWsReconnect();
   };
   ws.onerror = () => {
+    if (connId !== wsConnSeq) return;
     logCommissionWs("error");
     try {
       if (ws) ws.close();
     } catch (_e) {}
   };
   ws.onmessage = (evt) => {
+    if (connId !== wsConnSeq) return;
     try {
       const payload = JSON.parse(String(evt.data || "{}"));
       const t = String(payload?.type || "").trim();

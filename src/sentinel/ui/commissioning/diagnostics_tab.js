@@ -95,6 +95,7 @@ const diagRt = {
   pies: null,
   wsUrls: null,
   wsUrlIndex: 0,
+  connSeq: 0,
 };
 
 function disconnectDiagnosticsWs() {
@@ -137,22 +138,27 @@ function connectDiagnosticsWs(projectId) {
   diagRt.wsUrls = diagWsUrlCandidates(path);
   diagRt.wsUrlIndex = 0;
   const url = diagRt.wsUrls[diagRt.wsUrlIndex];
+  const connId = ++diagRt.connSeq;
+  logDiagnosticsWs("conn-id", connId);
   logDiagnosticsWs("url", { protocol: window.location && window.location.protocol, host: window.location && window.location.host });
   logDiagnosticsWs("connect", url);
   const ws = new WebSocket(url);
   diagRt.ws = ws;
 
   ws.onopen = () => {
+    if (connId !== diagRt.connSeq) return;
     diagRt.reconnectDelayMs = 500;
     logDiagnosticsWs("open");
   };
   ws.onclose = () => {
+    if (connId !== diagRt.connSeq) return;
     diagRt.ws = null;
     diagRt.projectId = null;
     logDiagnosticsWs("close");
     if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
   };
   ws.onerror = () => {
+    if (connId !== diagRt.connSeq) return;
     logDiagnosticsWs("error");
     if (diagRt.wsUrls && diagRt.wsUrlIndex + 1 < diagRt.wsUrls.length) {
       diagRt.wsUrlIndex += 1;
@@ -162,22 +168,26 @@ function connectDiagnosticsWs(projectId) {
         const retry = new WebSocket(retryUrl);
         diagRt.ws = retry;
         retry.onopen = () => {
+          if (connId !== diagRt.connSeq) return;
           diagRt.reconnectDelayMs = 500;
           logDiagnosticsWs("open", "fallback");
         };
         retry.onclose = () => {
+          if (connId !== diagRt.connSeq) return;
           diagRt.ws = null;
           diagRt.projectId = null;
           logDiagnosticsWs("close", "fallback");
           if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
         };
         retry.onerror = () => {
+          if (connId !== diagRt.connSeq) return;
           logDiagnosticsWs("error", "fallback");
           try {
             if (diagRt.ws) diagRt.ws.close();
           } catch (_e) {}
         };
         retry.onmessage = (evt) => {
+          if (connId !== diagRt.connSeq) return;
           try {
             const payload = JSON.parse(String(evt.data || "{}"));
             const t = String(payload?.type || "").trim();
@@ -193,6 +203,7 @@ function connectDiagnosticsWs(projectId) {
     } catch (_e) {}
   };
   ws.onmessage = (evt) => {
+    if (connId !== diagRt.connSeq) return;
     try {
       const payload = JSON.parse(String(evt.data || "{}"));
       const t = String(payload?.type || "").trim();
@@ -867,13 +878,13 @@ function initDiagnosticsTab() {
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
       const projectId = currentDiagProjectId();
-      connectDiagnosticsWs(projectId);
+      if (isDiagnosticsVisible()) connectDiagnosticsWs(projectId);
       updateDiagnosticsTitle();
       setDiagStatus("");
       refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
     });
     const initialProjectId = currentDiagProjectId();
-    connectDiagnosticsWs(initialProjectId);
+    if (isDiagnosticsVisible()) connectDiagnosticsWs(initialProjectId);
     updateDiagnosticsTitle();
     refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
   }

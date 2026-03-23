@@ -91,6 +91,7 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertIn("[commission-ws]", text)
         self.assertIn("reconnect-sync", text)
         self.assertIn("normalize", text)
+        self.assertIn("conn-id", text)
 
     def test_diagnostics_js_contains_ws_marker(self):
         target = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "diagnostics_tab.js"
@@ -98,6 +99,7 @@ class WsLoggingMarkerTest(unittest.TestCase):
         text = target.read_text(encoding="utf-8")
         self.assertIn("[diagnostics-ws]", text)
         self.assertIn("fallback", text)
+        self.assertIn("conn-id", text)
 
     def test_server_ws_contains_log_markers(self):
         testing = ROOT / "src" / "sentinel" / "server" / "api" / "testing.py"
