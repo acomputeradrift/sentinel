@@ -712,6 +712,10 @@ function handleDiagnosticsEvent(payload) {
   const t = String(ev?.type || "").trim();
   if (!t || t === "keepalive") return;
   const projectId = String(ev?.projectId || diagRt.projectId || currentDiagProjectId() || "");
+  const progress = ev?.progress || ev?.data?.progress || null;
+  const rollups = ev?.rollups || ev?.data?.rollups || null;
+  if (progress) diagRt.progress = progress;
+  if (rollups) diagRt.rollups = rollups;
   if (t === "fail_tag_updated") {
     const targetKey = String(ev?.targetKey || "");
     const tag = String(ev?.tag || "").trim().toUpperCase();
@@ -724,7 +728,7 @@ function handleDiagnosticsEvent(payload) {
     }
     return;
   }
-  if (t === "test_result") {
+  if (t === "test_result" || t === "test_result.recorded") {
     const data = ev?.data && typeof ev.data === "object" ? ev.data : ev;
     const targetKey = String(data?.targetKey || "");
     const outcome = String(data?.outcome || "").trim().toUpperCase();
@@ -740,7 +744,7 @@ function handleDiagnosticsEvent(payload) {
         updateFailureTypesPie();
         updateTaskCompletionPie();
       }
-      void refreshRollupsNow(projectId);
+      if (progress || rollups) updateFailureRatePie();
       return;
     }
 
@@ -772,7 +776,7 @@ function handleDiagnosticsEvent(payload) {
     }
     updateFailureTypesPie();
     updateTaskCompletionPie();
-    void refreshRollupsNow(projectId);
+    if (progress || rollups) updateFailureRatePie();
   }
 }
 

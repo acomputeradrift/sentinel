@@ -737,6 +737,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .actions{{display:flex;gap:10px;margin-bottom:10px;}}
  .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
+ .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:#274258;}}
+ .row-status.is-pass{{color:#1e6b3c;background:#eaf7ef;border:1px solid #3a9c5d;padding:4px 8px;border-radius:999px;}}
+ .row-status.is-fail{{color:#8f1f1f;background:#fdeeee;border:1px solid #d05555;padding:4px 8px;border-radius:999px;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:2px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
@@ -781,6 +784,12 @@ let currentDeviceTop=0;
  const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus');
  let isPosting=false;
+ let techWs=null;
+ let techWsToken=null;
+ let techWsReconnectTimer=null;
+ let techWsReconnectDelayMs=500;
+ let pendingTargetKey=null;
+ const rowStatusByTargetKey=new Map();
  function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
  function setPostStatus(text, kind) {{
   if (!postStatus) return;
@@ -795,87 +804,28 @@ let currentDeviceTop=0;
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
- async function readErrorText(r) {{
-  try {{
-   const data=await r.json();
-   if (data && data.error) {{
-    const code=data.error.code ? String(data.error.code) : '';
-    const msg=data.error.message ? String(data.error.message) : '';
-    return (code && msg) ? (code + ' — ' + msg) : (code || msg || ('HTTP ' + r.status));
-   }}
-  }} catch (_e) {{}}
-  return 'HTTP ' + r.status + (r.statusText ? (' ' + r.statusText) : '');
- }}
- function techTokenFromLocation() {{
-  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
-  const i=parts.indexOf('testing');
-  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
- }}
- function normalizeTargetName(label) {{
-  const s=String(label??'').trim();
-  if (s.toLowerCase().startsWith('variable - ')) {{
-   const tail=s.slice('variable - '.length).trim();
-   return tail ? ('Var.'+tail) : s;
-  }}
-  return s;
- }}
- function setRowStatus(el, outcome, lastTestedAtUtc) {{
-  if (!el) return;
-  const oc=String(outcome||'').toUpperCase();
-  const at=String(lastTestedAtUtc||'').trim();
-  el.textContent = at ? (oc + ' \u2022 ' + at) : oc;
- }}
- async function fetchTargetStatus(techToken, targetKey) {{
-  try {{
-   const u=`/api/v1/testing/${{techToken}}/target-status?targetKey=${{encodeURIComponent(String(targetKey||''))}}`;
-   const r=await fetch(u);
-   if (!r.ok) return null;
-   const ct=String(r.headers.get('content-type')||'');
-   if (!ct.includes('application/json')) return null;
-   return await r.json();
-  }} catch (_e) {{
-   return null;
-  }}
- }}
- async function postResult(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {
   const techToken=techTokenFromLocation();
   if (!techToken) return;
-
-  const targetName=normalizeTargetName(targetLabel);
+  const target=buildTargetPayload(ctxBtn, meta, targetLabel);
+  if (!target) return;
   const isFail=String(outcome||'').toUpperCase()==='FAIL';
   const note=isFail ? String(failNote||'').trim() : null;
   if (isFail && !note) return;
   if (isPosting) return;
 
-  let kind='BUTTON';
-  let refs={{}};
-  let targetKey='';
-
-  if (meta && meta.kind==='EVENT' && meta.refs && meta.refs.eventId!=null) {{
-   const eventId=Number(meta.refs.eventId);
-   kind='EVENT';
-   refs={{eventId}};
-   targetKey=`event:${{eventId}}:${{targetName}}`;
-  }} else {{
-   const wrap=ctxBtn && ctxBtn.closest ? ctxBtn.closest('.btn-wrap') : null;
-   const deviceId=Number(wrap?.dataset.diagDeviceId||0);
-   const pageId=Number((activePageState()?.pageId)||wrap?.dataset.diagPageId||0);
-   const buttonId=Number(wrap?.dataset.diagButtonId||0);
-   const isVp=!!(wrap && wrap.classList && wrap.classList.contains('vp-btn'));
-   if (isVp) {{
-    const viewportButtonId=Number(wrap?.dataset.diagViewportButtonId||0);
-    const frameId=Number(wrap?.dataset.frame||0);
-    kind='VIEWPORT_BUTTON';
-    refs={{deviceId,pageId,viewportButtonId,frameId,buttonId}};
-    targetKey=`vpbtn:${{deviceId}}:${{pageId}}:${{viewportButtonId}}:${{frameId}}:${{buttonId}}:${{targetName}}`;
-    if (!deviceId || !pageId || !viewportButtonId || !buttonId) return;
-   }} else {{
-    kind='BUTTON';
-    refs={{deviceId,pageId,buttonId}};
-    targetKey=`btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{targetName}}`;
-    if (!deviceId || !pageId || !buttonId) return;
-  }}
-  }}
+  const payload={
+    type:"test_result.submit",
+    target:{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName},
+    outcome:String(outcome||'').toUpperCase(),
+    failNote:note
+  };
+  setPosting(true);
+  setPostStatus('Saving…','saving');
+  pendingTargetKey = target.targetKey;
+  if (statusEl) setRowStatus(statusEl, payload.outcome, "");
+  _sendTechWs(payload);
+}  }}
 
   if (meta && meta.refs) {{
    if (meta.refs.scope!==undefined) refs.scope=meta.refs.scope;
@@ -892,12 +842,8 @@ let currentDeviceTop=0;
     const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
     if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
     setRowStatus(statusEl, payload.outcome, null);
-    const st=await fetchTargetStatus(techToken, targetKey);
-    if (st && st.currentOutcome) setRowStatus(statusEl, st.currentOutcome, st.lastTestedAtUtc);
     return;
    }}
-   const err=await readErrorText(r);
-   setPostStatus('Error: ' + err,'error');
   }} catch (e) {{
    setPostStatus('Error: ' + String(e),'error');
   }} finally {{
@@ -919,8 +865,8 @@ let currentDeviceTop=0;
    }};
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
-   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'PASS', null, statusEl);}});
-   failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResult(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
+   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'PASS', null, statusEl);}});
+   failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
   }});
  }}
  function bindTestButtonClicks(root) {{
@@ -940,6 +886,7 @@ let currentDeviceTop=0;
    }});
   }}
 bindTestButtonClicks(document);
+ _connectTechWs();
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
  function activePageEl() {{
@@ -2269,6 +2216,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
  .actions{{display:flex;gap:10px;margin-bottom:10px;}}
  .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
+ .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:#274258;}}
+ .row-status.is-pass{{color:#1e6b3c;background:#eaf7ef;border:1px solid #3a9c5d;padding:4px 8px;border-radius:999px;}}
+ .row-status.is-fail{{color:#8f1f1f;background:#fdeeee;border:1px solid #d05555;padding:4px 8px;border-radius:999px;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:2px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
@@ -2302,6 +2252,12 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 const APP_UI={app_json};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus');
  let isPosting=false;
+ let techWs=null;
+ let techWsToken=null;
+ let techWsReconnectTimer=null;
+ let techWsReconnectDelayMs=500;
+ let pendingTargetKey=null;
+ const rowStatusByTargetKey=new Map();
  function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
  function setPostStatus(text, kind) {{
   if (!postStatus) return;
@@ -2316,82 +2272,28 @@ const APP_UI={app_json};
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
- async function readErrorText(r) {{
-  try {{
-   const data=await r.json();
-   if (data && data.error) {{
-    const code=data.error.code ? String(data.error.code) : '';
-    const msg=data.error.message ? String(data.error.message) : '';
-    return (code && msg) ? (code + ' — ' + msg) : (code || msg || ('HTTP ' + r.status));
-   }}
-  }} catch (_e) {{}}
-  return 'HTTP ' + r.status + (r.statusText ? (' ' + r.statusText) : '');
- }}
-function toggleSection(btn){{
- const target=document.getElementById(btn.getAttribute('data-target')||'');
- if (!target) return;
- const expanded=btn.getAttribute('aria-expanded')==='true';
- btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
- const chevron=btn.querySelector('.section-chevron');
- if (chevron) chevron.innerHTML=expanded
-  ? "<svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg>"
-  : "<svg viewBox='0 0 16 16'><path d='M3.5 9.75 8 5.25 12.5 9.75'/></svg>";
- if (expanded) {{
-  target.setAttribute('hidden','hidden');
- }} else {{
-  target.removeAttribute('hidden');
- }}
- }}
- var popupConfig=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
- function techTokenFromLocation() {{
-  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
-  const i=parts.indexOf('testing');
-  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
- }}
- function normalizeTargetName(label) {{
-  const s=String(label??'').trim();
-  if (s.toLowerCase().startsWith('variable - ')) {{
-   const tail=s.slice('variable - '.length).trim();
-   return tail ? ('Var.'+tail) : s;
-  }}
-  return s;
- }}
- function setRowStatus(el, outcome, lastTestedAtUtc) {{
-  if (!el) return;
-  const oc=String(outcome||'').toUpperCase();
-  const at=String(lastTestedAtUtc||'').trim();
-  el.textContent = at ? (oc + ' \u2022 ' + at) : oc;
- }}
- async function fetchTargetStatus(techToken, targetKey) {{
-  try {{
-   const u=`/api/v1/testing/${{techToken}}/target-status?targetKey=${{encodeURIComponent(String(targetKey||''))}}`;
-   const r=await fetch(u);
-   if (!r.ok) return null;
-   const ct=String(r.headers.get('content-type')||'');
-   if (!ct.includes('application/json')) return null;
-   return await r.json();
-  }} catch (_e) {{
-   return null;
-  }}
- }}
- async function postResult(meta, targetLabel, outcome, failNote, statusEl) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {
   const techToken=techTokenFromLocation();
   if (!techToken) return;
-  if (!meta || meta.kind!=='EVENT' || !meta.refs || meta.refs.eventId==null) return;
-
-  const targetName=normalizeTargetName(targetLabel);
+  const target=buildTargetPayload(ctxBtn, meta, targetLabel);
+  if (!target) return;
   const isFail=String(outcome||'').toUpperCase()==='FAIL';
   const note=isFail ? String(failNote||'').trim() : null;
-   if (isFail && !note) return;
-   if (isPosting) return;
+  if (isFail && !note) return;
+  if (isPosting) return;
 
- const eventId=Number(meta.refs.eventId);
-  const refs={{eventId}};
-  if (meta && meta.refs) {{
-   if (meta.refs.scope!==undefined) refs.scope=meta.refs.scope;
-   if (meta.refs.resolvedData!==undefined) refs.resolvedData=meta.refs.resolvedData;
-  }}
-  const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
+  const payload={
+    type:"test_result.submit",
+    target:{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName},
+    outcome:String(outcome||'').toUpperCase(),
+    failNote:note
+  };
+  setPosting(true);
+  setPostStatus('Saving…','saving');
+  pendingTargetKey = target.targetKey;
+  if (statusEl) setRowStatus(statusEl, payload.outcome, "");
+  _sendTechWs(payload);
+}  const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
   try {{
    setPosting(true);
    setPostStatus('Saving…','saving');
@@ -2401,12 +2303,8 @@ function toggleSection(btn){{
     const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
     if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
     setRowStatus(statusEl, payload.outcome, null);
-    const st=await fetchTargetStatus(techToken, payload.target.targetKey);
-    if (st && st.currentOutcome) setRowStatus(statusEl, st.currentOutcome, st.lastTestedAtUtc);
     return;
    }}
-   const err=await readErrorText(r);
-   setPostStatus('Error: ' + err,'error');
   }} catch (e) {{
    setPostStatus('Error: ' + String(e),'error');
   }} finally {{
@@ -2428,8 +2326,8 @@ function toggleSection(btn){{
    }}
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
-   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'PASS', null, statusEl);}});
-   failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResult(meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
+   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'PASS', null, statusEl);}});
+   failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
   }});
  }}
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{

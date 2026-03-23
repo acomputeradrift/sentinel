@@ -341,17 +341,69 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         this.readyState = 1;
         if (this.onopen) this.onopen({});
         setTimeout(() => {
-          const msg = {
-            type: "test_result",
-            projectId: "proj-1",
-            recordedAtUtc: "2026-03-21T00:00:01Z",
-            targetKey: "btn:81:513:48551:Macro",
-            outcome: "PASS",
-            targetName: "Macro",
-            kind: "BUTTON",
-            refs: { deviceName: "Device A", pageName: "Home", buttonName: "Button 1" }
+          const messages = [
+            {
+              type: "test_result.recorded",
+              projectId: "proj-1",
+              recordedAtUtc: "2026-03-21T00:00:01Z",
+              targetKey: "btn:99:1:2:New Button",
+              outcome: "PASS",
+              targetName: "New Button",
+              kind: "BUTTON",
+              refs: { deviceName: "Device A", pageName: "Home", buttonName: "Button 2", scope: "BUTTON" },
+              progress: {
+                projectId: "proj-1",
+                asOfGenerationRunId: "gen-1",
+                counts: { totalTargets: 12, testedTargets: 4, pass: 3, fail: 1, untested: 8, percentComplete: 0.3333 },
+                lastTestedAtUtc: "2026-03-21T00:00:01Z",
+                eventSections: {
+                  system: { counts: { totalTargets: 4, testedTargets: 2, pass: 2, fail: 0, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:01Z" },
+                  driver: { counts: { totalTargets: 4, testedTargets: 2, pass: 1, fail: 1, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:01Z" },
+                },
+                devices: [
+                  { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 2, testedTargets: 2, pass: 2, fail: 0, untested: 0, percentComplete: 1.0 }, lastTestedAtUtc: "2026-03-21T00:00:01Z" },
+                  { deviceId: "dev-2", deviceName: "Device B", counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+                ],
+              },
+            },
+            {
+              type: "test_result.recorded",
+              projectId: "proj-1",
+              recordedAtUtc: "2026-03-21T00:00:03Z",
+              targetKey: "btn:77:1:2:Fail Button",
+              outcome: "FAIL",
+              targetName: "Fail Button",
+              kind: "BUTTON",
+              failNote: "Button does not respond",
+              refs: { deviceName: "Device B", pageName: "Scene", buttonName: "Button 9", scope: "BUTTON" },
+              progress: {
+                projectId: "proj-1",
+                asOfGenerationRunId: "gen-1",
+                counts: { totalTargets: 12, testedTargets: 5, pass: 3, fail: 2, untested: 7, percentComplete: 0.4167 },
+                lastTestedAtUtc: "2026-03-21T00:00:03Z",
+                eventSections: {
+                  system: { counts: { totalTargets: 4, testedTargets: 2, pass: 2, fail: 0, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:03Z" },
+                  driver: { counts: { totalTargets: 4, testedTargets: 3, pass: 1, fail: 2, untested: 1, percentComplete: 0.75 }, lastTestedAtUtc: "2026-03-21T00:00:03Z" },
+                },
+                devices: [
+                  { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 2, testedTargets: 2, pass: 2, fail: 0, untested: 0, percentComplete: 1.0 }, lastTestedAtUtc: "2026-03-21T00:00:03Z" },
+                  { deviceId: "dev-2", deviceName: "Device B", counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+                ],
+              },
+              rollups: {
+                counts: { totalTargets: 12, firstTimeFailTargets: 3 },
+                currentFailures: { byTargetName: { "Fail Button": 1 } },
+              },
+            },
+          ];
+          let idx = 0;
+          const emit = () => {
+            if (idx >= messages.length) return;
+            if (this.onmessage) this.onmessage({ data: JSON.stringify(messages[idx]) });
+            idx += 1;
+            if (idx < messages.length) setTimeout(emit, 25);
           };
-          if (this.onmessage) this.onmessage({ data: JSON.stringify(msg) });
+          emit();
         }, 25);
       }, 0);
     }
@@ -431,12 +483,15 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("[data-testid^='commission-pie-device-']")).to_have_count(1)
         expect(page.get_by_test_id("commission-pie-device-dev-1")).to_be_visible()
         expect(page.locator("[data-testid='commission-pie-device-dev-2']")).to_have_count(0)
-        expect(page.locator("#commissionActivityBody tr")).to_have_count(1)
+        expect(page.locator("#commissionActivityBody tr")).to_have_count(2)
         expect(page.locator("#commissionActivityBody")).to_contain_text("Device A")
         expect(page.locator("#commissionActivityBody")).to_contain_text("Home")
-        expect(page.locator("#commissionActivityBody")).to_contain_text("Button 1")
-        expect(page.locator("#commissionActivityBody")).to_contain_text("Macro")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Button 2")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("New Button")
         expect(page.locator("#commissionActivityBody")).to_contain_text("PASS")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("FAIL")
+        expect(page.get_by_test_id("commission-pie-project")).to_contain_text("3/12")
+        expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("2/4")
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
@@ -460,6 +515,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
         diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
         self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}Z$")
+        expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(3)
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Fail Button")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Button does not respond")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("fail button")
+        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("First-time fail (3")
 
         first_tag = page.locator("#diagnosticsTaskTable tbody tr").first.locator("select")
         first_tag.select_option(label="Done")

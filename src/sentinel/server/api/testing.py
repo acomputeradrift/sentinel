@@ -3,11 +3,15 @@ from __future__ import annotations
 import os
 from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Request
+import asyncio
+import json
+
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 
 from sentinel.server.api.errors import http_error
+from sentinel.server.services import progress
 from sentinel.server.services import sse
 from sentinel.server.services.repositories import Repository
 
@@ -25,6 +29,73 @@ def _broker(request: Request) -> sse.ProjectEventBroker:
         broker = sse.ProjectEventBroker()
         request.app.state.project_event_broker = broker
     return broker
+
+
+def _ws_repo(websocket: WebSocket) -> Repository:
+    return websocket.app.state.repo
+
+
+def _ws_broker(websocket: WebSocket) -> sse.ProjectEventBroker:
+    broker = getattr(websocket.app.state, "project_event_broker", None)
+    if broker is None:
+        broker = sse.ProjectEventBroker()
+        websocket.app.state.project_event_broker = broker
+    return broker
+
+
+def _compute_progress_and_rollups(*, repo: Repository, projectId: str) -> tuple[dict | None, dict | None]:
+    try:
+        latest = repo.get_latest_results_for_project(projectId=projectId)
+        prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
+    except FileNotFoundError:
+        return None, None
+    except Exception:
+        return None, None
+
+    tags = repo.get_fail_tags_for_project(projectId=projectId)
+    by_target: dict[str, int] = {}
+    by_tag = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "DONE": 0}
+    total = 0
+    for rec in latest.values():
+        if rec.outcome != "FAIL":
+            continue
+        target = rec.target if isinstance(rec.target, dict) else {}
+        target_key = str(target.get("targetKey") or "").strip()
+        if not target_key:
+            continue
+        total += 1
+        name = str(target.get("targetName") or "").strip() or "(unknown)"
+        by_target[name] = by_target.get(name, 0) + 1
+        tag = str(tags.get(target_key, "NOT_STARTED") or "NOT_STARTED").strip().upper()
+        if tag not in by_tag:
+            tag = "NOT_STARTED"
+        by_tag[tag] += 1
+
+    rollups = {
+        "projectId": projectId,
+        "progress": prog,
+        "firstTimeFailTargets": repo.count_first_time_fail_targets(projectId=projectId),
+        "currentFailures": {"total": total, "byTargetName": by_target, "byTag": by_tag},
+    }
+    return prog, rollups
+
+
+def _build_test_result_event(*, repo: Repository, rec) -> dict:
+    target_key = str(rec.target.get("targetKey") or "")
+    progress_payload, rollups_payload = _compute_progress_and_rollups(repo=repo, projectId=rec.projectId)
+    return {
+        "type": "test_result",
+        "projectId": rec.projectId,
+        "recordedAtUtc": rec.recordedAtUtc,
+        "targetKey": target_key,
+        "outcome": rec.outcome,
+        "targetName": rec.target.get("targetName"),
+        "kind": rec.target.get("kind") or rec.target.get("targetKind"),
+        "refs": rec.target.get("refs"),
+        "failNote": rec.failNote,
+        "progress": progress_payload,
+        "rollups": rollups_payload,
+    }
 
 
 def _generated_root() -> Path:
@@ -117,19 +188,7 @@ def post_result(request: Request, techToken: str, payload: dict) -> dict:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
 
     target_key = str(rec.target.get("targetKey") or "")
-    _broker(request).publish(
-        projectId=rec.projectId,
-        event={
-            "type": "test_result",
-            "projectId": rec.projectId,
-            "recordedAtUtc": rec.recordedAtUtc,
-            "targetKey": target_key,
-            "outcome": rec.outcome,
-            "targetName": rec.target.get("targetName"),
-            "kind": rec.target.get("kind") or rec.target.get("targetKind"),
-            "refs": rec.target.get("refs"),
-        },
-    )
+    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(repo=_repo(request), rec=rec))
 
     return {
         "testResultId": rec.testResultId,
@@ -141,6 +200,83 @@ def post_result(request: Request, techToken: str, payload: dict) -> dict:
         "outcome": rec.outcome,
         "failNote": rec.failNote,
     }
+
+
+@router.websocket("/api/v1/testing/{techToken}/ws")
+async def testing_ws(websocket: WebSocket, techToken: str):
+    await websocket.accept()
+
+    repo = getattr(websocket.app.state, "repo", None)
+    if repo is None:
+        await websocket.close(code=1011)
+        return
+
+    try:
+        tok = repo.resolve_active_token(techToken=techToken)
+    except KeyError:
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}))
+        finally:
+            await websocket.close(code=1008)
+        return
+
+    project_id = tok.projectId
+    broker = _ws_broker(websocket)
+    q = broker.subscribe(projectId=project_id)
+
+    async def send_loop():
+        while True:
+            msg = await sse.wait_for_next(q, timeout_s=15.0)
+            if msg is None:
+                await websocket.send_text(json.dumps({"type": "keepalive"}))
+                continue
+            await websocket.send_text(msg)
+
+    async def recv_loop():
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                continue
+            msg_type = str(payload.get("type") or "").strip()
+            if msg_type not in ("test_result.submit", "test_result"):
+                await websocket.send_text(json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}))
+                continue
+            target = payload.get("target") or {}
+            outcome = str(payload.get("outcome") or "").strip().upper()
+            fail_note = payload.get("failNote")
+            if outcome not in ("PASS", "FAIL"):
+                await websocket.send_text(json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS or FAIL."}))
+                continue
+            if outcome == "FAIL" and not str(fail_note or "").strip():
+                await websocket.send_text(json.dumps({"type": "error", "code": "FAIL_NOTE_REQUIRED", "message": "Fail note is required when outcome is FAIL."}))
+                continue
+            try:
+                rec = repo.append_test_result(
+                    techToken=techToken,
+                    target=target,
+                    outcome=outcome,
+                    failNote=(str(fail_note).strip() if fail_note is not None else None),
+                )
+            except KeyError:
+                await websocket.send_text(json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}))
+                await websocket.close(code=1008)
+                return
+            broker.publish(projectId=rec.projectId, event=_build_test_result_event(repo=repo, rec=rec))
+
+    send_task = asyncio.create_task(send_loop())
+    try:
+        await recv_loop()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        send_task.cancel()
+        await asyncio.gather(send_task, return_exceptions=True)
+        try:
+            broker.unsubscribe(projectId=project_id, q=q)
+        except Exception:
+            pass
 
 
 @router.get("/api/v1/testing/{techToken}/target-status")

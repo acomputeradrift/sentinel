@@ -370,9 +370,10 @@ function startWs(projectId) {
     try {
       const payload = JSON.parse(String(evt.data || "{}"));
       const t = String(payload?.type || "").trim();
-      if (t === "test_result") {
+      if (t === "test_result" || t === "test_result.recorded") {
         appendActivityRow(normalizeEventMessage(payload));
-        void refreshProgressNow(projectId);
+        const progress = payload?.progress || payload?.data?.progress || null;
+        if (progress) updatePies(progress);
       }
     } catch (_e) {}
   };

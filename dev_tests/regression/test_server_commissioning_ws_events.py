@@ -87,6 +87,30 @@ class CommissioningWsEventsTest(unittest.TestCase):
             msg1 = _recv_until(ws, lambda m: m.get("type") == "test_result" and m.get("targetKey") == target_key)
             self.assertEqual(msg1.get("projectId"), project_id)
             self.assertEqual(msg1.get("outcome"), "PASS")
+            self.assertEqual(msg1.get("recordedAtUtc"), "2026-03-22T12:34:56.789123+00:00")
+            self.assertIsNone(msg1.get("failNote"))
+
+            ws.portal.call(
+                broker.publish,
+                projectId=project_id,
+                event={
+                    "type": "test_result",
+                    "projectId": project_id,
+                    "recordedAtUtc": "2026-03-22T12:36:56.789123+00:00",
+                    "targetKey": target_key,
+                    "outcome": "FAIL",
+                    "targetName": "Button A",
+                    "kind": "BUTTON",
+                    "refs": {"deviceName": "Device 1"},
+                    "failNote": "Button not responding",
+                },
+            )
+
+            msg1b = _recv_until(ws, lambda m: m.get("type") == "test_result" and m.get("outcome") == "FAIL")
+            self.assertEqual(msg1b.get("projectId"), project_id)
+            self.assertEqual(msg1b.get("targetKey"), target_key)
+            self.assertEqual(msg1b.get("recordedAtUtc"), "2026-03-22T12:36:56.789123+00:00")
+            self.assertEqual(msg1b.get("failNote"), "Button not responding")
 
             ws.portal.call(
                 broker.publish,
@@ -103,3 +127,61 @@ class CommissioningWsEventsTest(unittest.TestCase):
             msg2 = _recv_until(ws, lambda m: m.get("type") == "fail_tag_updated" and m.get("targetKey") == target_key)
             self.assertEqual(msg2.get("projectId"), project_id)
             self.assertEqual(msg2.get("tag"), "IN_PROGRESS")
+
+    def test_testing_ws_submits_and_receives_progress_rollups(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+        project_id = p["projectId"]
+
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech_token = str(tech.get("techUrl") or "").split("/")[-1]
+        self.assertTrue(tech_token, "Expected tech token from techUrl.")
+
+        with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as ws:
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "test_result.submit",
+                        "target": {
+                            "targetKey": "btn:1:2:3:Button A",
+                            "targetName": "Button A",
+                            "kind": "BUTTON",
+                            "refs": {"deviceName": "Device 1"},
+                        },
+                        "outcome": "PASS",
+                    }
+                )
+            )
+            msg = _recv_until(ws, lambda m: m.get("type") in ("test_result", "test_result.recorded") and m.get("outcome") == "PASS")
+            self.assertEqual(msg.get("projectId"), project_id)
+            self.assertIn("progress", msg)
+            self.assertIn("rollups", msg)
+
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "test_result.submit",
+                        "target": {
+                            "targetKey": "btn:1:2:3:Button A",
+                            "targetName": "Button A",
+                            "kind": "BUTTON",
+                            "refs": {"deviceName": "Device 1"},
+                        },
+                        "outcome": "FAIL",
+                        "failNote": "Button not responding",
+                    }
+                )
+            )
+            msg2 = _recv_until(ws, lambda m: m.get("type") in ("test_result", "test_result.recorded") and m.get("outcome") == "FAIL")
+            self.assertEqual(msg2.get("projectId"), project_id)
+            self.assertEqual(msg2.get("failNote"), "Button not responding")
+            self.assertIn("progress", msg2)
+            self.assertIn("rollups", msg2)
