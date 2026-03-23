@@ -371,36 +371,3 @@ async def project_ws(websocket: WebSocket, projectId: str):
             broker.unsubscribe(projectId=projectId, q=q)
         except Exception:
             pass
-
-
-@router.websocket("/projects/{projectId}/ws")
-async def project_ws(websocket: WebSocket, projectId: str) -> None:
-    await websocket.accept()
-
-    repo: Repository = websocket.app.state.repo
-    proj = repo.get_project(projectId=projectId)
-    if proj is None:
-        await websocket.send_text('{"error":{"code":"PROJECT_NOT_FOUND","message":"Project not found.","details":{},"traceId":null}}')
-        await websocket.close(code=1008)
-        return
-
-    broker = getattr(websocket.app.state, "project_event_broker", None)
-    if broker is None:
-        broker = sse.ProjectEventBroker()
-        websocket.app.state.project_event_broker = broker
-
-    q = broker.subscribe(projectId=projectId)
-    try:
-        while True:
-            msg = await sse.wait_for_next(q, timeout_s=15.0)
-            if msg is None:
-                await websocket.send_text('{"type":"keepalive"}')
-                continue
-            await websocket.send_text(msg)
-    except WebSocketDisconnect:
-        return
-    finally:
-        try:
-            broker.unsubscribe(projectId=projectId, q=q)
-        except Exception:
-            pass

@@ -28,6 +28,26 @@ def _recv_until(ws, predicate, *, max_messages: int = 10):
 
 
 class CommissioningWsEventsTest(unittest.TestCase):
+    def test_no_duplicate_commissioning_project_ws_route(self):
+        _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+
+        try:
+            from starlette.routing import WebSocketRoute  # type: ignore
+        except Exception:  # pragma: no cover
+            raise unittest.SkipTest("starlette is not installed")
+
+        ws_routes = [
+            r
+            for r in getattr(app.router, "routes", [])
+            if isinstance(r, WebSocketRoute) and getattr(r, "path", None) == "/api/v1/commissioning/projects/{projectId}/ws"
+        ]
+        self.assertEqual(len(ws_routes), 1, "Expected exactly one commissioning project websocket route.")
+
     def test_ws_emits_test_result_and_fail_tag_updated(self):
         TestClient = _require_fastapi()
 
@@ -67,4 +87,3 @@ class CommissioningWsEventsTest(unittest.TestCase):
             msg2 = _recv_until(ws, lambda m: m.get("type") == "fail_tag_updated" and m.get("targetKey") == target_key)
             self.assertEqual(msg2.get("projectId"), project_id)
             self.assertEqual(msg2.get("tag"), "IN_PROGRESS")
-
