@@ -17,7 +17,7 @@ from sentinel.server.services.repositories import Repository
 
 
 router = APIRouter(prefix="/api/v1/commissioning", tags=["commissioning"])
-log = logging.getLogger(__name__)
+log = logging.getLogger("uvicorn.error")
 
 
 def _repo(request: Request) -> Repository:
