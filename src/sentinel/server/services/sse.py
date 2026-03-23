@@ -4,11 +4,13 @@ import asyncio
 import json
 import queue
 import threading
+import logging
 from typing import Any
 
 
 class ProjectEventBroker:
     def __init__(self) -> None:
+        self._log = logging.getLogger("uvicorn.error")
         self._lock = threading.Lock()
         self._subscribers: dict[str, set[queue.Queue[str]]] = {}
         self._last_event: dict[str, str] = {}
@@ -18,6 +20,8 @@ class ProjectEventBroker:
         with self._lock:
             self._subscribers.setdefault(projectId, set()).add(q)
             last = self._last_event.get(projectId)
+            sub_count = len(self._subscribers.get(projectId, set()))
+        self._log.info("[broker] subscribe projectId=%s broker_id=%s subs=%s", projectId, id(self), sub_count)
         if last is not None:
             try:
                 q.put_nowait(last)
@@ -33,6 +37,8 @@ class ProjectEventBroker:
             subs.discard(q)
             if not subs:
                 self._subscribers.pop(projectId, None)
+            sub_count = len(self._subscribers.get(projectId, set()))
+        self._log.info("[broker] unsubscribe projectId=%s broker_id=%s subs=%s", projectId, id(self), sub_count)
 
     def publish(self, *, projectId: str, event: dict[str, Any]) -> None:
         msg = json.dumps(event, separators=(",", ":"), ensure_ascii=False)
@@ -40,6 +46,7 @@ class ProjectEventBroker:
             self._last_event[projectId] = msg
         with self._lock:
             subs = list(self._subscribers.get(projectId, set()))
+        self._log.info("[broker] publish projectId=%s broker_id=%s subs=%s", projectId, id(self), len(subs))
         for q in subs:
             try:
                 q.put_nowait(msg)
@@ -56,6 +63,7 @@ class ProjectEventBroker:
 
 async def wait_for_next(q: queue.Queue[str], *, timeout_s: float) -> str | None:
     try:
-        return await asyncio.wait_for(asyncio.to_thread(q.get), timeout=timeout_s)
+        item = await asyncio.wait_for(asyncio.to_thread(q.get), timeout=timeout_s)
+        return item
     except asyncio.TimeoutError:
         return None
