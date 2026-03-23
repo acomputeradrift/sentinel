@@ -797,16 +797,16 @@ let currentDeviceTop=0;
   postStatus.textContent=t;
   postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
   if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
- }
+ }}
 
  function setPosting(on) {{
   isPosting=!!on;
   rows.querySelectorAll('.actions button').forEach(b=>{{ b.disabled=isPosting; }});
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
- }
+ }}
 
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
   const techToken=techTokenFromLocation();
   if (!techToken) return;
   const target=buildTargetPayload(ctxBtn, meta, targetLabel);
@@ -827,7 +827,7 @@ let currentDeviceTop=0;
   pendingTargetKey = target.targetKey;
   if (statusEl) setRowStatus(statusEl, payload.outcome, "");
   _sendTechWs(payload);
-}
+ }}
 
 
 
@@ -2262,7 +2262,7 @@ const APP_UI={app_json};
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
   const techToken=techTokenFromLocation();
   if (!techToken) return;
   const target=buildTargetPayload(ctxBtn, meta, targetLabel);
@@ -2283,7 +2283,7 @@ const APP_UI={app_json};
   pendingTargetKey = target.targetKey;
   if (statusEl) setRowStatus(statusEl, payload.outcome, "");
   _sendTechWs(payload);
-}  const payload={{target:{{targetKey:`event:${{eventId}}:${{targetName}}`,kind:'EVENT',refs,targetName}},outcome:String(outcome||'').toUpperCase(),failNote:note}};
+ }}
   try {{
    setPosting(true);
    setPostStatus('Saving…','saving');
