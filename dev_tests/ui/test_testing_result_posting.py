@@ -210,6 +210,23 @@ class TestingResultPostingTest(unittest.TestCase):
     def _ws_payload(self, page, index: int = 0):  # noqa: ANN001
         return page.evaluate(f"window.__wsOutbox[{index}]")
 
+    def _wait_for_log_contains(self, logs: list[str], text: str, *, timeout_s: float = 3.0) -> None:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if any(text in (line or "") for line in logs):
+                return
+            time.sleep(0.05)
+        self.fail(f"Expected console log containing {text!r}")
+
+    def _wait_for_log_contains_all(self, logs: list[str], tokens: list[str], *, timeout_s: float = 3.0) -> None:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            for line in logs:
+                if all(tok in (line or "") for tok in tokens):
+                    return
+            time.sleep(0.05)
+        self.fail(f"Expected console log containing all tokens {tokens!r}")
+
     def test_event_pass_posts_result(self):
         from sentinel.generation.render_core import render_project_home_html, load_json
 
@@ -237,12 +254,16 @@ class TestingResultPostingTest(unittest.TestCase):
         port = server.start()
         try:
             page = self._browser.new_page()
+            logs: list[str] = []
+            page.on("console", lambda msg: logs.append(msg.text))
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click("button.section-toggle[data-target='system-events']")
             page.click(".event-row.test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_ws_outbox(page, min_posts=1)
+            self._wait_for_log_contains(logs, "[tech-ws] send")
+            self._wait_for_log_contains_all(logs, ["[tech-ws]", "send", "test_result.submit"])
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
             self.assertEqual(sent["target"]["kind"], "EVENT")
