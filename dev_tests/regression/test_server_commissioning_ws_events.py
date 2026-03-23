@@ -56,19 +56,22 @@ class CommissioningWsEventsTest(unittest.TestCase):
 
         app = create_app(repo=InMemoryRepository())
         client = TestClient(app)
+        # Use a separate HTTP client while the websocket session is open to avoid
+        # deadlocking on the TestClient portal/threading model.
+        http = TestClient(app)
 
-        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
-        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+        c = http.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p = http.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
         project_id = p["projectId"]
 
-        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"label": "Onsite"}).json()
+        tech = http.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"label": "Onsite"}).json()
         tech_token = tech["techUrl"].split("/testing/")[1]
 
         target_key = "btn:1:2:3:Button A"
         target = {"targetKey": target_key, "kind": "BUTTON", "targetName": "Button A", "refs": {"deviceName": "Device 1"}}
 
         with client.websocket_connect(f"/api/v1/commissioning/projects/{project_id}/ws") as ws:
-            ok = client.post(
+            ok = http.post(
                 f"/api/v1/testing/{tech_token}/results",
                 json={"target": target, "outcome": "PASS", "failNote": None},
             )
@@ -78,7 +81,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg1.get("projectId"), project_id)
             self.assertEqual(msg1.get("outcome"), "PASS")
 
-            set_tag = client.put(
+            set_tag = http.put(
                 f"/api/v1/commissioning/projects/{project_id}/fail-tags",
                 json={"targetKey": target_key, "tag": "IN_PROGRESS"},
             )
