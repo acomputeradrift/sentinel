@@ -290,6 +290,13 @@ let wsReconnectDelayMs = 500;
 let progressFetchInFlight = false;
 let progressFetchPending = false;
 
+function syncAfterReconnect(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return;
+  logCommissionWs("reconnect-sync", pid);
+  void refreshProgressNow(pid);
+}
+
 function ensureCommissionHeader() {
   const div = document.getElementById("commissionSelection");
   if (div) div.remove();
@@ -365,6 +372,7 @@ function startWs(projectId) {
   ws.onopen = () => {
     wsReconnectDelayMs = 500;
     logCommissionWs("open");
+    syncAfterReconnect(projectId);
   };
   ws.onclose = () => {
     ws = null;

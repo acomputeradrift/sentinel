@@ -833,7 +833,11 @@ let currentDeviceTop=0;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
    const statusEl = rowStatusByTargetKey.get(targetKey);
-   if (!statusEl) return;
+   if (!statusEl) {{
+    const known = Array.from(rowStatusByTargetKey.keys());
+    _logTechWs("row-miss", {{targetKey, knownCount: known.length, knownSample: known.slice(0, 5)}});
+    return;
+   }}
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
    setRowStatus(statusEl, outcome, at);
@@ -977,6 +981,7 @@ let currentDeviceTop=0;
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
   }};
+  _logTechWs("expect", target.targetKey);
   setPosting(true);
   setPostStatus('Saving…','saving');
   pendingTargetKey = target.targetKey;

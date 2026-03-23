@@ -66,6 +66,15 @@ function diagWsUrl(path) {
   return `${proto}://${host}${path}`;
 }
 
+function diagWsUrlCandidates(path) {
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  const primaryProto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const primary = `${primaryProto}://${host}${path}`;
+  const fallbackProto = primaryProto === "wss" ? "ws" : "wss";
+  const fallback = `${fallbackProto}://${host}${path}`;
+  return primaryProto === fallbackProto ? [primary] : [primary, fallback];
+}
+
 function logDiagnosticsWs(action, detail) {
   try {
     if (typeof console !== "undefined" && console.log) {
@@ -84,6 +93,8 @@ const diagRt = {
   rollups: null,
   progress: null,
   pies: null,
+  wsUrls: null,
+  wsUrlIndex: 0,
 };
 
 function disconnectDiagnosticsWs() {
@@ -122,7 +133,11 @@ function connectDiagnosticsWs(projectId) {
 
   disconnectDiagnosticsWs();
   diagRt.projectId = pid;
-  const url = diagWsUrl(diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`));
+  const path = diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`);
+  diagRt.wsUrls = diagWsUrlCandidates(path);
+  diagRt.wsUrlIndex = 0;
+  const url = diagRt.wsUrls[diagRt.wsUrlIndex];
+  logDiagnosticsWs("url", { protocol: window.location && window.location.protocol, host: window.location && window.location.host });
   logDiagnosticsWs("connect", url);
   const ws = new WebSocket(url);
   diagRt.ws = ws;
@@ -139,6 +154,40 @@ function connectDiagnosticsWs(projectId) {
   };
   ws.onerror = () => {
     logDiagnosticsWs("error");
+    if (diagRt.wsUrls && diagRt.wsUrlIndex + 1 < diagRt.wsUrls.length) {
+      diagRt.wsUrlIndex += 1;
+      const retryUrl = diagRt.wsUrls[diagRt.wsUrlIndex];
+      logDiagnosticsWs("fallback", retryUrl);
+      try {
+        const retry = new WebSocket(retryUrl);
+        diagRt.ws = retry;
+        retry.onopen = () => {
+          diagRt.reconnectDelayMs = 500;
+          logDiagnosticsWs("open", "fallback");
+        };
+        retry.onclose = () => {
+          diagRt.ws = null;
+          diagRt.projectId = null;
+          logDiagnosticsWs("close", "fallback");
+          if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
+        };
+        retry.onerror = () => {
+          logDiagnosticsWs("error", "fallback");
+          try {
+            if (diagRt.ws) diagRt.ws.close();
+          } catch (_e) {}
+        };
+        retry.onmessage = (evt) => {
+          try {
+            const payload = JSON.parse(String(evt.data || "{}"));
+            const t = String(payload?.type || "").trim();
+            logDiagnosticsWs("recv", t || "(unknown)");
+            handleDiagnosticsEvent(payload);
+          } catch (_e) {}
+        };
+        return;
+      } catch (_e) {}
+    }
     try {
       if (diagRt.ws) diagRt.ws.close();
     } catch (_e) {}
