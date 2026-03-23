@@ -790,6 +790,146 @@ let currentDeviceTop=0;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
  const rowStatusByTargetKey=new Map();
+ function techTokenFromLocation() {{
+  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
+  const i=parts.indexOf('testing');
+  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
+ }}
+ function techWsUrl(path) {{
+  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  return `${{proto}}://${{host}}${{path}}`;
+ }}
+ function _scheduleTechWsReconnect() {{
+  if (techWsReconnectTimer) return;
+  techWsReconnectTimer = setTimeout(() => {{
+   techWsReconnectTimer = null;
+   _connectTechWs();
+  }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
+  techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
+ }}
+ function _handleTechWsMessage(evt) {{
+  try {{
+   const payload = JSON.parse(String(evt.data || "{{}}"));
+   const t = String(payload?.type || "").trim();
+   if (t !== "test_result.recorded" && t !== "test_result") return;
+   const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
+   if (!targetKey) return;
+   const statusEl = rowStatusByTargetKey.get(targetKey);
+   if (!statusEl) return;
+   const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
+   const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+   setRowStatus(statusEl, outcome, at);
+   statusEl.classList.toggle("is-pass", outcome === "PASS");
+   statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   if (pendingTargetKey && pendingTargetKey === targetKey) {{
+    pendingTargetKey = null;
+    setPosting(false);
+    setPostStatus("Saved", "success");
+   }}
+  }} catch (_e) {{}}
+ }}
+ function _connectTechWs() {{
+  const techToken = techTokenFromLocation();
+  if (!techToken) return;
+  if (techWs && techWsToken === techToken) return;
+  if (techWs) {{
+   try {{ techWs.close(); }} catch (_e) {{}}
+  }}
+  techWsToken = techToken;
+  const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
+  techWs = ws;
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; }};
+  ws.onclose = () => {{
+   techWs = null;
+   _scheduleTechWsReconnect();
+  }};
+  ws.onerror = () => {{
+   try {{ if (techWs) techWs.close(); }} catch (_e) {{}}
+  }};
+  ws.onmessage = _handleTechWsMessage;
+ }}
+ function _sendTechWs(payload) {{
+  if (!techWs || techWs.readyState !== 1) {{
+   _connectTechWs();
+  }}
+  if (!techWs || techWs.readyState !== 1) {{
+   setPosting(false);
+   setPostStatus("Error: websocket not connected", "error");
+   return;
+  }}
+  techWs.send(JSON.stringify(payload));
+ }}
+ function techTokenFromLocation() {{
+  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
+  const i=parts.indexOf('testing');
+  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
+ }}
+ function techWsUrl(path) {{
+  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  return `${{proto}}://${{host}}${{path}}`;
+ }}
+ function _scheduleTechWsReconnect() {{
+  if (techWsReconnectTimer) return;
+  techWsReconnectTimer = setTimeout(() => {{
+   techWsReconnectTimer = null;
+   _connectTechWs();
+  }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
+  techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
+ }}
+ function _handleTechWsMessage(evt) {{
+  try {{
+   const payload = JSON.parse(String(evt.data || "{{}}"));
+   const t = String(payload?.type || "").trim();
+   if (t !== "test_result.recorded" && t !== "test_result") return;
+   const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
+   if (!targetKey) return;
+   const statusEl = rowStatusByTargetKey.get(targetKey);
+   if (!statusEl) return;
+   const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
+   const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+   setRowStatus(statusEl, outcome, at);
+   statusEl.classList.toggle("is-pass", outcome === "PASS");
+   statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   if (pendingTargetKey && pendingTargetKey === targetKey) {{
+    pendingTargetKey = null;
+    setPosting(false);
+    setPostStatus("Saved", "success");
+   }}
+  }} catch (_e) {{}}
+ }}
+ function _connectTechWs() {{
+  const techToken = techTokenFromLocation();
+  if (!techToken) return;
+  if (techWs && techWsToken === techToken) return;
+  if (techWs) {{
+   try {{ techWs.close(); }} catch (_e) {{}}
+  }}
+  techWsToken = techToken;
+  const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
+  techWs = ws;
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; }};
+  ws.onclose = () => {{
+   techWs = null;
+   _scheduleTechWsReconnect();
+  }};
+  ws.onerror = () => {{
+   try {{ if (techWs) techWs.close(); }} catch (_e) {{}}
+  }};
+  ws.onmessage = _handleTechWsMessage;
+ }}
+ function _sendTechWs(payload) {{
+  if (!techWs || techWs.readyState !== 1) {{
+   _connectTechWs();
+  }}
+  if (!techWs || techWs.readyState !== 1) {{
+   setPosting(false);
+   setPostStatus("Error: websocket not connected", "error");
+   return;
+  }}
+  techWs.send(JSON.stringify(payload));
+ }}
  function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
  function setPostStatus(text, kind) {{
   if (!postStatus) return;
@@ -825,6 +965,8 @@ let currentDeviceTop=0;
   setPosting(true);
   setPostStatus('Saving…','saving');
   pendingTargetKey = target.targetKey;
+  if (statusEl) rowStatusByTargetKey.set(target.targetKey, statusEl);
+  if (statusEl) rowStatusByTargetKey.set(target.targetKey, statusEl);
   if (statusEl) setRowStatus(statusEl, payload.outcome, "");
   _sendTechWs(payload);
  }}
