@@ -816,12 +816,12 @@ let currentDeviceTop=0;
   if (isFail && !note) return;
   if (isPosting) return;
 
-  const payload={
+  const payload={{
     type:"test_result.submit",
-    target:{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName},
+    target:{{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
-  };
+  }};
   setPosting(true);
   setPostStatus('Saving…','saving');
   pendingTargetKey = target.targetKey;
@@ -1886,6 +1886,9 @@ if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(activeZoomPercent()
 if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
 const vpPopupClose=document.getElementById('vpPopupClose');
 if (vpPopupClose) vpPopupClose.addEventListener('click',()=>exitViewportMode());
+const vpPopup=document.getElementById('vpPopup');
+if (vpPopup) vpPopup.addEventListener('click', e=>{{ if (e.target===vpPopup) exitViewportMode(); }});
+document.addEventListener('keydown', e=>{{ if (e.key === 'Escape') exitViewportMode(); }});
 // Only the X closes the popup. Backdrop click and Escape are ignored on purpose.
 document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
  if (el.dataset.boundVpClick) return;
@@ -2272,12 +2275,12 @@ const APP_UI={app_json};
   if (isFail && !note) return;
   if (isPosting) return;
 
-  const payload={
+  const payload={{
     type:"test_result.submit",
-    target:{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName},
+    target:{{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
-  };
+  }};
   setPosting(true);
   setPostStatus('Saving…','saving');
   pendingTargetKey = target.targetKey;
