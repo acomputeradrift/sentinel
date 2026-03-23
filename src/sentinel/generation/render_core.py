@@ -812,6 +812,14 @@ let currentDeviceTop=0;
   try {{
    const payload = JSON.parse(String(evt.data || "{{}}"));
    const t = String(payload?.type || "").trim();
+   if (t === "error") {{
+    const code = payload?.code;
+    const message = payload?.message;
+    const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
+    setPosting(false);
+    setPostStatus(`Error: ${{msg}}`, "error");
+    return;
+   }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
@@ -860,75 +868,69 @@ let currentDeviceTop=0;
   }}
   techWs.send(JSON.stringify(payload));
  }}
- function techTokenFromLocation() {{
-  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
-  const i=parts.indexOf('testing');
-  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
+ function setRowStatus(statusEl, outcome, recordedAtUtc) {{
+  if (!statusEl) return;
+  const o = String(outcome || "").trim().toUpperCase();
+  const at = String(recordedAtUtc || "").trim();
+  const parts = [];
+  if (o) parts.push(o);
+  if (at) parts.push(at);
+  statusEl.textContent = parts.join(" ");
  }}
- function techWsUrl(path) {{
-  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
-  const host = window.location && window.location.host ? window.location.host : "localhost";
-  return `${{proto}}://${{host}}${{path}}`;
- }}
- function _scheduleTechWsReconnect() {{
-  if (techWsReconnectTimer) return;
-  techWsReconnectTimer = setTimeout(() => {{
-   techWsReconnectTimer = null;
-   _connectTechWs();
-  }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
-  techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
- }}
- function _handleTechWsMessage(evt) {{
-  try {{
-   const payload = JSON.parse(String(evt.data || "{{}}"));
-   const t = String(payload?.type || "").trim();
-   if (t !== "test_result.recorded" && t !== "test_result") return;
-   const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
-   if (!targetKey) return;
-   const statusEl = rowStatusByTargetKey.get(targetKey);
-   if (!statusEl) return;
-   const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
-   const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   setRowStatus(statusEl, outcome, at);
-   statusEl.classList.toggle("is-pass", outcome === "PASS");
-   statusEl.classList.toggle("is-fail", outcome === "FAIL");
-   if (pendingTargetKey && pendingTargetKey === targetKey) {{
-    pendingTargetKey = null;
-    setPosting(false);
-    setPostStatus("Saved", "success");
-   }}
-  }} catch (_e) {{}}
- }}
- function _connectTechWs() {{
-  const techToken = techTokenFromLocation();
-  if (!techToken) return;
-  if (techWs && techWsToken === techToken) return;
-  if (techWs) {{
-   try {{ techWs.close(); }} catch (_e) {{}}
+ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
+  const m = (meta && typeof meta === "object") ? meta : {{}};
+  const label = String(targetLabel || "").trim();
+  const kind = String(m.kind || "").trim().toUpperCase();
+  const refs = (m.refs && typeof m.refs === "object") ? {{...m.refs}} : {{}};
+  if (kind === "EVENT") {{
+   const eventId = refs.eventId;
+   if (eventId == null) return null;
+   const targetKey = `event:${{eventId}}:${{label || "Trigger"}}`;
+   return {{
+    targetKey,
+    kind: "EVENT",
+    targetName: label || String(m.identity || "").trim(),
+    refs
+   }};
   }}
-  techWsToken = techToken;
-  const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
-  techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; }};
-  ws.onclose = () => {{
-   techWs = null;
-   _scheduleTechWsReconnect();
+  const btn = ctxBtn || null;
+  const wrap = btn && btn.closest ? btn.closest(".btn-wrap") : null;
+  const deviceId = wrap && wrap.dataset ? wrap.dataset.diagDeviceId : null;
+  const pageIndexRaw = wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null;
+  const pageIndex = pageIndexRaw == null ? null : Number(pageIndexRaw);
+  const pageState = (pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
+  const pageId = pageState && pageState.pageId != null ? pageState.pageId : null;
+  const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
+  const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
+  const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
+  const buttonName = String(m.identity || label || "").trim();
+  const targetName = label || buttonName;
+  const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
+  if (deviceId != null) refs.deviceId = Number(deviceId);
+  if (pageId != null) refs.pageId = pageId;
+  if (buttonId != null) refs.buttonId = Number(buttonId);
+  if (vpButtonId != null) refs.viewportButtonId = Number(vpButtonId);
+  if (buttonTag) refs.buttonTag = buttonTag;
+  if (pageState && pageState.deviceName) refs.deviceName = String(pageState.deviceName || "");
+  if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
+  if (buttonName) refs.buttonName = buttonName;
+  refs.scope = scope;
+  let targetKey = "";
+  if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{targetName}}`;
+  }} else if (vpButtonId && deviceId != null && pageId != null) {{
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{targetName}}`;
+  }} else if (deviceId != null && pageId != null && buttonId != null) {{
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{targetName}}`;
+  }} else {{
+   targetKey = `btn:${{targetName || "Button"}}`;
+  }}
+  return {{
+   targetKey,
+   kind: scope,
+   targetName,
+   refs
   }};
-  ws.onerror = () => {{
-   try {{ if (techWs) techWs.close(); }} catch (_e) {{}}
-  }};
-  ws.onmessage = _handleTechWsMessage;
- }}
- function _sendTechWs(payload) {{
-  if (!techWs || techWs.readyState !== 1) {{
-   _connectTechWs();
-  }}
-  if (!techWs || techWs.readyState !== 1) {{
-   setPosting(false);
-   setPostStatus("Error: websocket not connected", "error");
-   return;
-  }}
-  techWs.send(JSON.stringify(payload));
  }}
  function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
  function setPostStatus(text, kind) {{
@@ -965,7 +967,6 @@ let currentDeviceTop=0;
   setPosting(true);
   setPostStatus('Saving…','saving');
   pendingTargetKey = target.targetKey;
-  if (statusEl) rowStatusByTargetKey.set(target.targetKey, statusEl);
   if (statusEl) rowStatusByTargetKey.set(target.targetKey, statusEl);
   if (statusEl) setRowStatus(statusEl, payload.outcome, "");
   _sendTechWs(payload);
@@ -2393,6 +2394,148 @@ const APP_UI={app_json};
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
  const rowStatusByTargetKey=new Map();
+ function techTokenFromLocation() {{
+  const parts=String(window.location.pathname||'').split('/').filter(Boolean);
+  const i=parts.indexOf('testing');
+  return (i>=0 && parts[i+1]) ? parts[i+1] : null;
+ }}
+ function techWsUrl(path) {{
+  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  return `${{proto}}://${{host}}${{path}}`;
+ }}
+ function _scheduleTechWsReconnect() {{
+  if (techWsReconnectTimer) return;
+  techWsReconnectTimer = setTimeout(() => {{
+   techWsReconnectTimer = null;
+   _connectTechWs();
+  }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
+  techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
+ }}
+ function _handleTechWsMessage(evt) {{
+  try {{
+   const payload = JSON.parse(String(evt.data || "{{}}"));
+   const t = String(payload?.type || "").trim();
+   if (t === "error") {{
+    const code = payload?.code;
+    const message = payload?.message;
+    const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
+    setPosting(false);
+    setPostStatus(`Error: ${{msg}}`, "error");
+    return;
+   }}
+   if (t !== "test_result.recorded" && t !== "test_result") return;
+   const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
+   if (!targetKey) return;
+   const statusEl = rowStatusByTargetKey.get(targetKey);
+   if (!statusEl) return;
+   const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
+   const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+   setRowStatus(statusEl, outcome, at);
+   statusEl.classList.toggle("is-pass", outcome === "PASS");
+   statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   if (pendingTargetKey && pendingTargetKey === targetKey) {{
+    pendingTargetKey = null;
+    setPosting(false);
+    setPostStatus("Saved", "success");
+   }}
+  }} catch (_e) {{}}
+ }}
+ function _connectTechWs() {{
+  const techToken = techTokenFromLocation();
+  if (!techToken) return;
+  if (techWs && techWsToken === techToken) return;
+  if (techWs) {{
+   try {{ techWs.close(); }} catch (_e) {{}}
+  }}
+  techWsToken = techToken;
+  const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
+  techWs = ws;
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; }};
+  ws.onclose = () => {{
+   techWs = null;
+   _scheduleTechWsReconnect();
+  }};
+  ws.onerror = () => {{
+   try {{ if (techWs) techWs.close(); }} catch (_e) {{}}
+  }};
+  ws.onmessage = _handleTechWsMessage;
+ }}
+ function _sendTechWs(payload) {{
+  if (!techWs || techWs.readyState !== 1) {{
+   _connectTechWs();
+  }}
+  if (!techWs || techWs.readyState !== 1) {{
+   setPosting(false);
+   setPostStatus("Error: websocket not connected", "error");
+   return;
+  }}
+  techWs.send(JSON.stringify(payload));
+ }}
+ function setRowStatus(statusEl, outcome, recordedAtUtc) {{
+  if (!statusEl) return;
+  const o = String(outcome || "").trim().toUpperCase();
+  const at = String(recordedAtUtc || "").trim();
+  const parts = [];
+  if (o) parts.push(o);
+  if (at) parts.push(at);
+  statusEl.textContent = parts.join(" ");
+ }}
+ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
+  const m = (meta && typeof meta === "object") ? meta : {{}};
+  const label = String(targetLabel || "").trim();
+  const kind = String(m.kind || "").trim().toUpperCase();
+  const refs = (m.refs && typeof m.refs === "object") ? {{...m.refs}} : {{}};
+  if (kind === "EVENT") {{
+   const eventId = refs.eventId;
+   if (eventId == null) return null;
+   const targetKey = `event:${{eventId}}:${{label || "Trigger"}}`;
+   return {{
+    targetKey,
+    kind: "EVENT",
+    targetName: label || String(m.identity || "").trim(),
+    refs
+   }};
+  }}
+  const btn = ctxBtn || null;
+  const wrap = btn && btn.closest ? btn.closest(".btn-wrap") : null;
+  const deviceId = wrap && wrap.dataset ? wrap.dataset.diagDeviceId : null;
+  const pageIndexRaw = wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null;
+  const pageIndex = pageIndexRaw == null ? null : Number(pageIndexRaw);
+  const pageState = (pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
+  const pageId = pageState && pageState.pageId != null ? pageState.pageId : null;
+  const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
+  const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
+  const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
+  const buttonName = String(m.identity || label || "").trim();
+  const targetName = label || buttonName;
+  const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
+  if (deviceId != null) refs.deviceId = Number(deviceId);
+  if (pageId != null) refs.pageId = pageId;
+  if (buttonId != null) refs.buttonId = Number(buttonId);
+  if (vpButtonId != null) refs.viewportButtonId = Number(vpButtonId);
+  if (buttonTag) refs.buttonTag = buttonTag;
+  if (pageState && pageState.deviceName) refs.deviceName = String(pageState.deviceName || "");
+  if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
+  if (buttonName) refs.buttonName = buttonName;
+  refs.scope = scope;
+  let targetKey = "";
+  if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{targetName}}`;
+  }} else if (vpButtonId && deviceId != null && pageId != null) {{
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{targetName}}`;
+  }} else if (deviceId != null && pageId != null && buttonId != null) {{
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{targetName}}`;
+  }} else {{
+   targetKey = `btn:${{targetName || "Button"}}`;
+  }}
+  return {{
+   targetKey,
+   kind: scope,
+   targetName,
+   refs
+  }};
+ }}
  function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
  function setPostStatus(text, kind) {{
   if (!postStatus) return;
@@ -2406,6 +2549,15 @@ const APP_UI={app_json};
   rows.querySelectorAll('.actions button').forEach(function(b){{ b.disabled=isPosting; }});
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
+ }}
+ function toggleSection(btn) {{
+  const targetId = btn ? btn.getAttribute("data-target") : "";
+  const section = targetId ? document.getElementById(targetId) : null;
+  if (!section) return;
+  const isHidden = section.hasAttribute("hidden");
+  if (isHidden) section.removeAttribute("hidden");
+  else section.setAttribute("hidden", "hidden");
+  btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
  }}
  async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
   const techToken=techTokenFromLocation();
@@ -2424,27 +2576,11 @@ const APP_UI={app_json};
     failNote:note
   }};
   setPosting(true);
-  setPostStatus('Saving…','saving');
-  pendingTargetKey = target.targetKey;
-  if (statusEl) setRowStatus(statusEl, payload.outcome, "");
-  _sendTechWs(payload);
- }}
-  try {{
-   setPosting(true);
-   setPostStatus('Saving…','saving');
-   const r=await fetch(`/api/v1/testing/${{techToken}}/results`,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}});
-   if (r.ok) {{
-    setPostStatus('Saved','success');
-    const autoClose=!!(APP_UI && APP_UI.testingPopup && APP_UI.testingPopup.autoCloseOnSuccess);
-    if (autoClose) setTimeout(()=>ov.classList.remove('open'), 250);
-    setRowStatus(statusEl, payload.outcome, null);
-    return;
-   }}
-  }} catch (e) {{
-   setPostStatus('Error: ' + String(e),'error');
-  }} finally {{
-   setPosting(false);
-  }}
+ setPostStatus('Saving…','saving');
+ pendingTargetKey = target.targetKey;
+ if (statusEl) rowStatusByTargetKey.set(target.targetKey, statusEl);
+ if (statusEl) setRowStatus(statusEl, payload.outcome, "");
+ _sendTechWs(payload);
  }}
  function bindResultRows(meta) {{
   rows.querySelectorAll('.row').forEach(function(row){{
@@ -2468,16 +2604,18 @@ const APP_UI={app_json};
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
   b.addEventListener('click', function(){{
    const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
-   const suffix=(popupConfig.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
-   const titleTemplate=popupConfig.titleTemplate || '{{category}} Test - {{identity}}';
+   const popupCfg=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
+   const suffix=(popupCfg.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
+   const titleTemplate=popupCfg.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=Array.isArray(m.targets) ? m.targets : [];
     rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='row-status' aria-live='polite'></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
     setPostStatus('','');
     ov.classList.add('open');
-    bindResultRows(m);
-   }});
+   bindResultRows(m);
   }});
+ }});
+_connectTechWs();
 document.getElementById('close').addEventListener('click', function(){{ov.classList.remove('open');}});
 ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('open');}});
 </script></body></html>"""
