@@ -227,6 +227,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
 
     project_id = tok.projectId
     broker = _ws_broker(websocket)
+    log.info("[testing-ws] broker_id=%s projectId=%s", id(broker), project_id)
     q = broker.subscribe(projectId=project_id)
 
     async def send_loop():
@@ -271,10 +272,11 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 return
             event = _build_test_result_event(repo=repo, rec=rec)
             log.info(
-                "[testing-ws] publish projectId=%s targetKey=%s outcome=%s",
+                "[testing-ws] publish projectId=%s targetKey=%s outcome=%s broker_id=%s",
                 rec.projectId,
                 str(event.get("targetKey") or ""),
                 str(event.get("outcome") or ""),
+                id(broker),
             )
             broker.publish(projectId=rec.projectId, event=event)
 

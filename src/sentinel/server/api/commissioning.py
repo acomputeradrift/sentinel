@@ -357,6 +357,7 @@ async def project_ws(websocket: WebSocket, projectId: str):
     if broker is None:
         broker = sse.ProjectEventBroker()
         websocket.app.state.project_event_broker = broker
+    log.info("[commissioning-ws] broker_id=%s projectId=%s", id(broker), projectId)
 
     q = broker.subscribe(projectId=projectId)
     try:
