@@ -392,7 +392,9 @@ function startWs(projectId) {
       const t = String(payload?.type || "").trim();
       logCommissionWs("recv", t || "(unknown)");
       if (t === "test_result" || t === "test_result.recorded") {
-        appendActivityRow(normalizeEventMessage(payload));
+        const norm = normalizeEventMessage(payload);
+        logCommissionWs("normalize", { hasDevice: !!norm.device, hasPage: !!norm.page, hasButton: !!norm.button, hasTarget: !!norm.testTarget, hasKey: !!norm.targetKey, status: norm.status });
+        appendActivityRow(norm);
         const progress = payload?.progress || payload?.data?.progress || null;
         if (progress) updatePies(progress);
       }
