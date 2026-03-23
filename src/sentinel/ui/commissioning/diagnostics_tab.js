@@ -96,6 +96,7 @@ const diagRt = {
   wsUrls: null,
   wsUrlIndex: 0,
   connSeq: 0,
+  state: "closed",
 };
 
 function disconnectDiagnosticsWs() {
@@ -111,6 +112,7 @@ function disconnectDiagnosticsWs() {
   diagRt.ws = null;
   diagRt.projectId = null;
   diagRt.reconnectDelayMs = 500;
+  diagRt.state = "closed";
 }
 
 function _scheduleDiagnosticsWsReconnect() {
@@ -130,7 +132,7 @@ function connectDiagnosticsWs(projectId) {
     disconnectDiagnosticsWs();
     return;
   }
-  if (diagRt.ws && diagRt.projectId === pid) return;
+  if (diagRt.projectId === pid && (diagRt.state === "connecting" || diagRt.state === "open")) return;
 
   disconnectDiagnosticsWs();
   diagRt.projectId = pid;
@@ -139,6 +141,7 @@ function connectDiagnosticsWs(projectId) {
   diagRt.wsUrlIndex = 0;
   const url = diagRt.wsUrls[diagRt.wsUrlIndex];
   const connId = ++diagRt.connSeq;
+  diagRt.state = "connecting";
   logDiagnosticsWs("conn-id", connId);
   logDiagnosticsWs("url", { protocol: window.location && window.location.protocol, host: window.location && window.location.host });
   logDiagnosticsWs("connect", url);
@@ -148,17 +151,20 @@ function connectDiagnosticsWs(projectId) {
   ws.onopen = () => {
     if (connId !== diagRt.connSeq) return;
     diagRt.reconnectDelayMs = 500;
+    diagRt.state = "open";
     logDiagnosticsWs("open");
   };
   ws.onclose = () => {
     if (connId !== diagRt.connSeq) return;
     diagRt.ws = null;
     diagRt.projectId = null;
+    diagRt.state = "closed";
     logDiagnosticsWs("close");
     if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
   };
   ws.onerror = () => {
     if (connId !== diagRt.connSeq) return;
+    diagRt.state = "closed";
     logDiagnosticsWs("error");
     if (diagRt.wsUrls && diagRt.wsUrlIndex + 1 < diagRt.wsUrls.length) {
       diagRt.wsUrlIndex += 1;
@@ -170,17 +176,20 @@ function connectDiagnosticsWs(projectId) {
         retry.onopen = () => {
           if (connId !== diagRt.connSeq) return;
           diagRt.reconnectDelayMs = 500;
+          diagRt.state = "open";
           logDiagnosticsWs("open", "fallback");
         };
         retry.onclose = () => {
           if (connId !== diagRt.connSeq) return;
           diagRt.ws = null;
           diagRt.projectId = null;
+          diagRt.state = "closed";
           logDiagnosticsWs("close", "fallback");
           if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
         };
         retry.onerror = () => {
           if (connId !== diagRt.connSeq) return;
+          diagRt.state = "closed";
           logDiagnosticsWs("error", "fallback");
           try {
             if (diagRt.ws) diagRt.ws.close();

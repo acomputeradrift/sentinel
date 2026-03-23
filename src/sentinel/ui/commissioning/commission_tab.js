@@ -290,6 +290,7 @@ let wsReconnectDelayMs = 500;
 let progressFetchInFlight = false;
 let progressFetchPending = false;
 let wsConnSeq = 0;
+let wsState = "closed";
 
 function syncAfterReconnect(projectId) {
   const pid = String(projectId || "").trim();
@@ -326,6 +327,7 @@ function stopWs() {
   ws = null;
   wsProjectId = null;
   wsReconnectDelayMs = 500;
+  wsState = "closed";
 }
 
 async function refreshProgressNow(projectId) {
@@ -362,11 +364,12 @@ function _scheduleWsReconnect() {
 
 function startWs(projectId) {
   if (!projectId) return;
-  if (ws && wsProjectId === projectId) return;
+  if (wsProjectId === projectId && (wsState === "connecting" || wsState === "open")) return;
   stopWs();
 
   const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(projectId)}/ws`));
   const connId = ++wsConnSeq;
+  wsState = "connecting";
   logCommissionWs("conn-id", connId);
   logCommissionWs("connect", url);
   ws = new WebSocket(url);
@@ -374,6 +377,7 @@ function startWs(projectId) {
 
   ws.onopen = () => {
     if (connId !== wsConnSeq) return;
+    wsState = "open";
     wsReconnectDelayMs = 500;
     logCommissionWs("open");
     syncAfterReconnect(projectId);
@@ -382,11 +386,13 @@ function startWs(projectId) {
     if (connId !== wsConnSeq) return;
     ws = null;
     wsProjectId = null;
+    wsState = "closed";
     logCommissionWs("close");
     if (isCommissionVisible()) _scheduleWsReconnect();
   };
   ws.onerror = () => {
     if (connId !== wsConnSeq) return;
+    wsState = "closed";
     logCommissionWs("error");
     try {
       if (ws) ws.close();
