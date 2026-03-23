@@ -104,6 +104,7 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertTrue(testing.exists(), f"Missing file: {testing}")
         self.assertTrue(commissioning.exists(), f"Missing file: {commissioning}")
         self.assertIn("[testing-ws]", testing.read_text(encoding="utf-8"))
+        self.assertIn("publish", testing.read_text(encoding="utf-8"))
         self.assertIn("[commissioning-ws]", commissioning.read_text(encoding="utf-8"))
 
 

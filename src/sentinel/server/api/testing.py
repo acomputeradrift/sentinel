@@ -269,7 +269,14 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 await websocket.send_text(json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}))
                 await websocket.close(code=1008)
                 return
-            broker.publish(projectId=rec.projectId, event=_build_test_result_event(repo=repo, rec=rec))
+            event = _build_test_result_event(repo=repo, rec=rec)
+            log.info(
+                "[testing-ws] publish projectId=%s targetKey=%s outcome=%s",
+                rec.projectId,
+                str(event.get("targetKey") or ""),
+                str(event.get("outcome") or ""),
+            )
+            broker.publish(projectId=rec.projectId, event=event)
 
     send_task = asyncio.create_task(send_loop())
     try:
