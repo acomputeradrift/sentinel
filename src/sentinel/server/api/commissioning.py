@@ -7,12 +7,11 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi import UploadFile
-from fastapi.responses import StreamingResponse
 
 from sentinel.server.api.errors import http_error
 from sentinel.server.services import pipeline
 from sentinel.server.services import progress
-from sentinel.server.services import sse
+from sentinel.server.services import ws_broker
 from sentinel.server.services.repositories import Repository
 
 
@@ -24,10 +23,10 @@ def _repo(request: Request) -> Repository:
     return request.app.state.repo
 
 
-def _broker(request: Request) -> sse.ProjectEventBroker:
+def _broker(request: Request) -> ws_broker.ProjectEventBroker:
     broker = getattr(request.app.state, "project_event_broker", None)
     if broker is None:
-        broker = sse.ProjectEventBroker()
+        broker = ws_broker.ProjectEventBroker()
         request.app.state.project_event_broker = broker
     return broker
 
@@ -299,44 +298,7 @@ def project_rollups(request: Request, projectId: str) -> dict:
 
 @router.get("/projects/{projectId}/events")
 async def project_events(request: Request, projectId: str, once: bool = False):
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
-
-    broker = _broker(request)
-    q = broker.subscribe(projectId=projectId)
-
-    async def gen():
-        try:
-            yield b": connected\nretry: 3000\n\n"
-            while True:
-                msg = await sse.wait_for_next(q, timeout_s=15.0)
-                if msg is None:
-                    yield b": keepalive\n\n"
-                    continue
-                event_name = "message"
-                try:
-                    parsed = json.loads(msg)
-                    if isinstance(parsed, dict):
-                        t = str(parsed.get("type") or "").strip()
-                        if t:
-                            event_name = t
-                except Exception:
-                    pass
-                yield f"event: {event_name}\ndata: {msg}\n\n".encode("utf-8")
-                if once:
-                    return
-        finally:
-            broker.unsubscribe(projectId=projectId, q=q)
-
-    return StreamingResponse(
-        gen(),
-        media_type="text/event-stream",
-        headers={
-            "cache-control": "no-cache",
-            "x-accel-buffering": "no",
-        },
-    )
+    raise http_error(410, code="SSE_REMOVED", message="SSE endpoints have been removed; use WebSocket.")
 
 
 @router.websocket("/projects/{projectId}/ws")
@@ -355,14 +317,14 @@ async def project_ws(websocket: WebSocket, projectId: str):
 
     broker = getattr(websocket.app.state, "project_event_broker", None)
     if broker is None:
-        broker = sse.ProjectEventBroker()
+        broker = ws_broker.ProjectEventBroker()
         websocket.app.state.project_event_broker = broker
     log.info("[commissioning-ws] broker_id=%s projectId=%s", id(broker), projectId)
 
     q = broker.subscribe(projectId=projectId)
     try:
         while True:
-            msg = await sse.wait_for_next(q, timeout_s=15.0)
+            msg = await ws_broker.wait_for_next(q, timeout_s=15.0)
             if msg is None:
                 await websocket.send_text(json.dumps({"type": "keepalive"}))
                 continue

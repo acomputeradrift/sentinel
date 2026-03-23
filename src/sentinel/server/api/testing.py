@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse
 
 from sentinel.server.api.errors import http_error
 from sentinel.server.services import progress
-from sentinel.server.services import sse
+from sentinel.server.services import ws_broker
 from sentinel.server.services.repositories import Repository
 
 
@@ -25,10 +25,10 @@ def _repo(request: Request) -> Repository:
     return request.app.state.repo
 
 
-def _broker(request: Request) -> sse.ProjectEventBroker:
+def _broker(request: Request) -> ws_broker.ProjectEventBroker:
     broker = getattr(request.app.state, "project_event_broker", None)
     if broker is None:
-        broker = sse.ProjectEventBroker()
+        broker = ws_broker.ProjectEventBroker()
         request.app.state.project_event_broker = broker
     return broker
 
@@ -37,10 +37,10 @@ def _ws_repo(websocket: WebSocket) -> Repository:
     return websocket.app.state.repo
 
 
-def _ws_broker(websocket: WebSocket) -> sse.ProjectEventBroker:
+def _ws_broker(websocket: WebSocket) -> ws_broker.ProjectEventBroker:
     broker = getattr(websocket.app.state, "project_event_broker", None)
     if broker is None:
-        broker = sse.ProjectEventBroker()
+        broker = ws_broker.ProjectEventBroker()
         websocket.app.state.project_event_broker = broker
     return broker
 
@@ -232,7 +232,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
 
     async def send_loop():
         while True:
-            msg = await sse.wait_for_next(q, timeout_s=15.0)
+            msg = await ws_broker.wait_for_next(q, timeout_s=15.0)
             if msg is None:
                 await websocket.send_text(json.dumps({"type": "keepalive"}))
                 continue

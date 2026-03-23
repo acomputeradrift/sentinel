@@ -101,16 +101,16 @@ class WsLoggingMarkerTest(unittest.TestCase):
     def test_server_ws_contains_log_markers(self):
         testing = ROOT / "src" / "sentinel" / "server" / "api" / "testing.py"
         commissioning = ROOT / "src" / "sentinel" / "server" / "api" / "commissioning.py"
-        sse = ROOT / "src" / "sentinel" / "server" / "services" / "sse.py"
+        broker = ROOT / "src" / "sentinel" / "server" / "services" / "ws_broker.py"
         self.assertTrue(testing.exists(), f"Missing file: {testing}")
         self.assertTrue(commissioning.exists(), f"Missing file: {commissioning}")
-        self.assertTrue(sse.exists(), f"Missing file: {sse}")
+        self.assertTrue(broker.exists(), f"Missing file: {broker}")
         self.assertIn("[testing-ws]", testing.read_text(encoding="utf-8"))
         self.assertIn("publish", testing.read_text(encoding="utf-8"))
         self.assertIn("broker_id", testing.read_text(encoding="utf-8"))
         self.assertIn("[commissioning-ws]", commissioning.read_text(encoding="utf-8"))
         self.assertIn("broker_id", commissioning.read_text(encoding="utf-8"))
-        self.assertIn("[broker]", sse.read_text(encoding="utf-8"))
+        self.assertIn("[broker]", broker.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
