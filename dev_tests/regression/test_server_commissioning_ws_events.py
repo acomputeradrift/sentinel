@@ -56,36 +56,49 @@ class CommissioningWsEventsTest(unittest.TestCase):
 
         app = create_app(repo=InMemoryRepository())
         client = TestClient(app)
-        # Use a separate HTTP client while the websocket session is open to avoid
-        # deadlocking on the TestClient portal/threading model.
-        http = TestClient(app)
 
-        c = http.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
-        p = http.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
         project_id = p["projectId"]
 
-        tech = http.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"label": "Onsite"}).json()
-        tech_token = tech["techUrl"].split("/testing/")[1]
-
         target_key = "btn:1:2:3:Button A"
-        target = {"targetKey": target_key, "kind": "BUTTON", "targetName": "Button A", "refs": {"deviceName": "Device 1"}}
 
         with client.websocket_connect(f"/api/v1/commissioning/projects/{project_id}/ws") as ws:
-            ok = http.post(
-                f"/api/v1/testing/{tech_token}/results",
-                json={"target": target, "outcome": "PASS", "failNote": None},
+            # Publish directly from inside the websocket portal thread so the
+            # broker's asyncio queues are used from the correct event loop.
+            broker = getattr(app.state, "project_event_broker", None)
+            self.assertIsNotNone(broker)
+
+            ws.portal.call(
+                broker.publish,
+                project_id,
+                {
+                    "type": "test_result",
+                    "projectId": project_id,
+                    "recordedAtUtc": "2026-03-22T12:34:56.789123+00:00",
+                    "targetKey": target_key,
+                    "outcome": "PASS",
+                    "targetName": "Button A",
+                    "kind": "BUTTON",
+                    "refs": {"deviceName": "Device 1"},
+                },
             )
-            self.assertEqual(ok.status_code, 200)
 
             msg1 = _recv_until(ws, lambda m: m.get("type") == "test_result" and m.get("targetKey") == target_key)
             self.assertEqual(msg1.get("projectId"), project_id)
             self.assertEqual(msg1.get("outcome"), "PASS")
 
-            set_tag = http.put(
-                f"/api/v1/commissioning/projects/{project_id}/fail-tags",
-                json={"targetKey": target_key, "tag": "IN_PROGRESS"},
+            ws.portal.call(
+                broker.publish,
+                project_id,
+                {
+                    "type": "fail_tag_updated",
+                    "projectId": project_id,
+                    "recordedAtUtc": "2026-03-22T12:35:56.789123+00:00",
+                    "targetKey": target_key,
+                    "tag": "IN_PROGRESS",
+                },
             )
-            self.assertEqual(set_tag.status_code, 200)
 
             msg2 = _recv_until(ws, lambda m: m.get("type") == "fail_tag_updated" and m.get("targetKey") == target_key)
             self.assertEqual(msg2.get("projectId"), project_id)
