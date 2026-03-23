@@ -71,8 +71,8 @@ class CommissioningWsEventsTest(unittest.TestCase):
 
             ws.portal.call(
                 broker.publish,
-                project_id,
-                {
+                projectId=project_id,
+                event={
                     "type": "test_result",
                     "projectId": project_id,
                     "recordedAtUtc": "2026-03-22T12:34:56.789123+00:00",
@@ -90,8 +90,8 @@ class CommissioningWsEventsTest(unittest.TestCase):
 
             ws.portal.call(
                 broker.publish,
-                project_id,
-                {
+                projectId=project_id,
+                event={
                     "type": "fail_tag_updated",
                     "projectId": project_id,
                     "recordedAtUtc": "2026-03-22T12:35:56.789123+00:00",
