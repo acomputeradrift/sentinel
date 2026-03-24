@@ -130,6 +130,8 @@ Operational requirement:
 
 Goal: ensure tested code only is deployed.
 
+If test have been run on the new work, already, skip the retest below, but tell me.
+
 1) Unit/regression tests (local)
    - `python -m unittest discover -s dev_tests/regression -p "test_*.py"`
 
