@@ -227,3 +227,56 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg2.get("failNote"), "Button not responding")
             self.assertIn("progress", msg2)
             self.assertIn("rollups", msg2)
+
+    def test_testing_submit_fanout_reaches_commissioning_ws(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+        project_id = p["projectId"]
+
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech_token = str(tech.get("techUrl") or "").split("/")[-1]
+        self.assertTrue(tech_token, "Expected tech token from techUrl.")
+
+        with client.websocket_connect(f"/api/v1/commissioning/projects/{project_id}/ws") as commission_ws:
+            snap = _recv_until(commission_ws, lambda m: m.get("type") == "commissioning_snapshot")
+            self.assertEqual(snap.get("projectId"), project_id)
+            self.assertIn("progress", snap)
+            self.assertIn("rollups", snap)
+            self.assertIn("activities", snap)
+            self.assertIn("fails", snap)
+
+            with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as tech_ws:
+                tech_ws.send_text(
+                    json.dumps(
+                        {
+                            "type": "test_result.submit",
+                            "target": {
+                                "targetKey": "btn:1:2:3:Button A",
+                                "targetName": "Button A",
+                                "kind": "BUTTON",
+                                "refs": {
+                                    "deviceName": "Device 1",
+                                    "pageName": "Home",
+                                    "buttonName": "Button A",
+                                    "scope": "BUTTON",
+                                },
+                            },
+                            "outcome": "PASS",
+                        }
+                    )
+                )
+
+                tech_msg = _recv_until(tech_ws, lambda m: m.get("type") == "test_result" and m.get("outcome") == "PASS")
+                self.assertEqual(tech_msg.get("projectId"), project_id)
+
+                commission_msg = _recv_until(commission_ws, lambda m: m.get("type") == "test_result" and m.get("outcome") == "PASS")
+                self.assertEqual(commission_msg.get("projectId"), project_id)
+                self.assertEqual(commission_msg.get("targetKey"), "btn:1:2:3:Button A")

@@ -34,20 +34,6 @@ function formatTimestampUtc(ts) {
   return `${mmdd} ${time}Z`;
 }
 
-async function jsonFetch(url, options) {
-  const res = await fetch(url, options);
-  const ct = res.headers.get("content-type") || "";
-  if (!res.ok) {
-    const body = ct.includes("application/json") ? await res.json() : await res.text();
-    if (body && typeof body === "object" && body.error && body.error.message) {
-      throw new Error(String(body.error.message));
-    }
-    throw new Error(typeof body === "string" ? body : JSON.stringify(body));
-  }
-  if (ct.includes("application/json")) return res.json();
-  return res.text();
-}
-
 function currentProjectId() {
   const sel = document.getElementById("projectSelect");
   return sel ? sel.value : "";
@@ -287,8 +273,6 @@ let ws = null;
 let wsProjectId = null;
 let wsReconnectTimer = null;
 let wsReconnectDelayMs = 500;
-let progressFetchInFlight = false;
-let progressFetchPending = false;
 let wsConnSeq = 0;
 let wsState = "closed";
 
@@ -296,7 +280,6 @@ function syncAfterReconnect(projectId) {
   const pid = String(projectId || "").trim();
   if (!pid) return;
   logCommissionWs("reconnect-sync", pid);
-  void refreshProgressNow(pid);
 }
 
 function ensureCommissionHeader() {
@@ -330,24 +313,27 @@ function stopWs() {
   wsState = "closed";
 }
 
-async function refreshProgressNow(projectId) {
-  const pid = String(projectId || "").trim();
-  if (!pid) return;
-  if (progressFetchInFlight) {
-    progressFetchPending = true;
+function setActivityRows(rows) {
+  const body = $("commissionActivityBody");
+  body.innerHTML = "";
+  const items = Array.isArray(rows) ? rows : [];
+  if (!items.length) {
+    const empty = document.getElementById("commissionActivityEmpty");
+    if (!empty) {
+      const msg = document.createElement("div");
+      msg.className = "activity-empty";
+      msg.id = "commissionActivityEmpty";
+      msg.textContent = "No activity yet.";
+      $("commissionActivity").appendChild(msg);
+    }
     return;
   }
-  progressFetchInFlight = true;
-  try {
-    const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(pid)}/progress`));
-    updatePies(progress);
-  } catch (_e) {
-  } finally {
-    progressFetchInFlight = false;
-    if (progressFetchPending) {
-      progressFetchPending = false;
-      void refreshProgressNow(pid);
-    }
+  const empty = document.getElementById("commissionActivityEmpty");
+  if (empty) empty.remove();
+  const capped = items.slice(0, 50);
+  for (let idx = capped.length - 1; idx >= 0; idx--) {
+    const norm = normalizeEventMessage(capped[idx]);
+    appendActivityRow(norm);
   }
 }
 
@@ -404,6 +390,13 @@ function startWs(projectId) {
       const payload = JSON.parse(String(evt.data || "{}"));
       const t = String(payload?.type || "").trim();
       logCommissionWs("recv", t || "(unknown)");
+      if (t === "commissioning_snapshot") {
+        const progress = payload?.progress || null;
+        const activities = Array.isArray(payload?.activities) ? payload.activities : [];
+        setActivityRows(activities);
+        if (progress) updatePies(progress);
+        return;
+      }
       if (t === "test_result" || t === "test_result.recorded") {
         const norm = normalizeEventMessage(payload);
         logCommissionWs("normalize", { hasDevice: !!norm.device, hasPage: !!norm.page, hasButton: !!norm.button, hasTarget: !!norm.testTarget, hasKey: !!norm.targetKey, status: norm.status });
@@ -421,16 +414,6 @@ async function refreshCommission() {
   if (!projectId) return;
   startWs(projectId);
   await refreshCommissionTopboxTitle(projectId);
-
-  try {
-    await refreshProgressNow(projectId);
-  } catch (_e) {
-    updatePies({
-      counts: { totalTargets: 0, pass: 0 },
-      eventSections: { system: { counts: { totalTargets: 0, pass: 0 } }, driver: { counts: { totalTargets: 0, pass: 0 } } },
-      devices: [],
-    });
-  }
 }
 
 function runCommissionTab() {

@@ -104,6 +104,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "upload_counter": 0,
             "tech_link_counter": 0,
             "tech_link_revoke_counter": 0,
+            "progress_fetch_count": 0,
+            "fails_fetch_count": 0,
+            "rollups_fetch_count": 0,
         }
 
         def is_blue_rgb(value: str) -> bool:
@@ -256,6 +259,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         def handle_progress(route, request):
             self.assertEqual(request.method, "GET")
+            state["progress_fetch_count"] = int(state.get("progress_fetch_count") or 0) + 1
             fulfill_json(
                 route,
                 {
@@ -276,6 +280,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         def handle_fails(route, request):
             self.assertEqual(request.method, "GET")
+            state["fails_fetch_count"] = int(state.get("fails_fetch_count") or 0) + 1
             tags_by_key = state.get("fail_tags_by_target_key") or {}
             fulfill_json(
                 route,
@@ -311,6 +316,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 ],
             )
 
+        def handle_rollups(route, request):
+            self.assertEqual(request.method, "GET")
+            state["rollups_fetch_count"] = int(state.get("rollups_fetch_count") or 0) + 1
+            fulfill_json(
+                route,
+                {
+                    "projectId": "proj-1",
+                    "counts": {"totalTargets": 12, "firstTimeFailTargets": 2},
+                    "currentFailures": {"byTargetName": {"macro": 1, "trigger": 1}},
+                },
+            )
+
         def handle_fail_tags(route, request):
             self.assertEqual(request.method, "PUT")
             data = json.loads(request.post_data or "{}")
@@ -327,6 +344,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
+        page.route("**/api/v1/commissioning/projects/*/rollups", handle_rollups)
         page.route("**/api/v1/commissioning/projects/*/fail-tags", handle_fail_tags)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
@@ -342,6 +360,58 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         if (this.onopen) this.onopen({});
         setTimeout(() => {
           const messages = [
+            {
+              type: "commissioning_snapshot",
+              projectId: "proj-1",
+              progress: {
+                projectId: "proj-1",
+                asOfGenerationRunId: "gen-1",
+                counts: { totalTargets: 12, testedTargets: 3, pass: 2, fail: 1, untested: 9, percentComplete: 0.25 },
+                lastTestedAtUtc: "2026-03-21T00:00:00Z",
+                eventSections: {
+                  system: { counts: { totalTargets: 4, testedTargets: 1, pass: 1, fail: 0, untested: 3, percentComplete: 0.25 }, lastTestedAtUtc: "2026-03-21T00:00:00Z" },
+                  driver: { counts: { totalTargets: 4, testedTargets: 2, pass: 1, fail: 1, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:00Z" },
+                },
+                devices: [
+                  { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 2, testedTargets: 1, pass: 1, fail: 0, untested: 1, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:00Z" },
+                  { deviceId: "dev-2", deviceName: "Device B", counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+                ],
+              },
+              rollups: {
+                projectId: "proj-1",
+                counts: { totalTargets: 12, firstTimeFailTargets: 2 },
+                currentFailures: { byTargetName: { macro: 1, trigger: 1 } },
+              },
+              fails: [
+                {
+                  targetKey: "btn:81:513:48551:Macro",
+                  targetName: "Macro",
+                  deviceName: "Device A",
+                  pageName: "Home",
+                  buttonName: "Button 1",
+                  scope: "BUTTON",
+                  tag: "NOT_STARTED",
+                  currentOutcome: "FAIL",
+                  lastTestedAtUtc: "2026-03-21T00:00:00Z",
+                  lastFailNote: "Macro did not run",
+                  resolvedData: { reason: "Macro did not run" }
+                },
+                {
+                  targetKey: "event:126:Trigger",
+                  targetName: "Trigger",
+                  deviceName: "Device B",
+                  pageName: "Scene",
+                  buttonName: "",
+                  scope: "EVENT_SECTION",
+                  tag: "NOT_STARTED",
+                  currentOutcome: "FAIL",
+                  lastTestedAtUtc: "2026-03-20T23:00:00Z",
+                  lastFailNote: "Trigger not firing",
+                  resolvedData: { reason: "Trigger not firing" }
+                },
+              ],
+              activities: [],
+            },
             {
               type: "test_result.recorded",
               projectId: "proj-1",
@@ -539,5 +609,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             expect(page.get_by_test_id("upload-status")).to_contain_text("WARNING")
             expect(page.get_by_test_id("upload-status")).to_contain_text("Previous:")
             expect(page.get_by_test_id("upload-status")).to_contain_text("New:")
+
+        self.assertEqual(state.get("progress_fetch_count"), 0)
+        self.assertEqual(state.get("fails_fetch_count"), 0)
+        self.assertEqual(state.get("rollups_fetch_count"), 0)
 
         page.close()

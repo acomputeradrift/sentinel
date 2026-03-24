@@ -442,14 +442,6 @@ function tagDoneFromEnum(tagEnum) {
   return String(tagEnum || "").trim().toUpperCase() === "DONE";
 }
 
-async function fetchRollups(projectId) {
-  try {
-    return await diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/rollups`));
-  } catch (_e) {
-    return null;
-  }
-}
-
 function firstTimeFailTargetsFromRollups(rollups) {
   const candidates = [
     rollups?.counts?.firstTimeFailTargets,
@@ -583,45 +575,28 @@ function renderTaskList(projectId, fails) {
   }
 }
 
-async function refreshDiagnostics() {
-  updateDiagnosticsTitle();
-  const pie = _ensurePieDom();
-  const projectId = currentDiagProjectId();
-  if (!projectId) {
-    const host = document.getElementById("diagnosticsSummary");
-    if (host) host.textContent = "";
-    const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
-    if (legacy) legacy.textContent = "";
-    diag$("diagnosticsTaskBody").innerHTML = "";
-    return;
-  }
+function clearDiagnosticsView() {
+  const host = document.getElementById("diagnosticsSummary");
+  if (host) host.textContent = "";
+  const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
+  if (legacy) legacy.textContent = "";
+  diag$("diagnosticsTaskBody").innerHTML = "";
+  diagRt.tasksByKey.clear();
+  diagRt.rowByKey.clear();
+  diagRt.progress = null;
+  diagRt.rollups = null;
+  diagRt.pies = null;
+}
 
-  const [progress, fails, rollups] = await Promise.all([
-    diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`)),
-    diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/fails`)),
-    fetchRollups(projectId),
-  ]);
-  diagRt.pies = pie;
-  diagRt.rollups = rollups;
-  diagRt.progress = progress;
-
-  if (pie) {
-    const totalTargets = totalTargetsFrom(progress, rollups);
-    const firstTimeFailTargets = firstTimeFailTargetsFromRollups(rollups);
-    const okTargets = Math.max(0, totalTargets - firstTimeFailTargets);
-    const failPct = totalTargets ? Math.round((firstTimeFailTargets / totalTargets) * 1000) / 10 : 0;
-    renderPie(
-      pie.failureRate.svg,
-      pie.failureRate.legend,
-      [
-        { label: "First-time fail", value: firstTimeFailTargets, color: "#ef4444" },
-        { label: "Other", value: okTargets, color: "#177bb5" },
-      ],
-      `${failPct}%`
-    );
-  }
-
+function applyDiagnosticsSnapshot(snapshot) {
+  const projectId = String(snapshot?.projectId || currentDiagProjectId() || "");
+  if (!projectId) return;
+  diagRt.pies = _ensurePieDom();
+  diagRt.progress = snapshot?.progress || null;
+  diagRt.rollups = snapshot?.rollups || null;
+  const fails = Array.isArray(snapshot?.fails) ? snapshot.fails : [];
   renderTaskList(projectId, fails);
+  updateFailureRatePie();
   updateFailureTypesPie();
   updateTaskCompletionPie();
 }
@@ -765,35 +740,14 @@ function _updateTaskRowDom(row, task) {
   row.sel.value = tagDisplayFromEnum(task?.tag || "NOT_STARTED");
 }
 
-let _rollupsFetchInFlight = false;
-let _rollupsFetchPending = false;
-
-async function refreshRollupsNow(projectId) {
-  const pid = String(projectId || "").trim();
-  if (!pid) return;
-  if (_rollupsFetchInFlight) {
-    _rollupsFetchPending = true;
-    return;
-  }
-  _rollupsFetchInFlight = true;
-  try {
-    const rollups = await fetchRollups(pid);
-    if (rollups) diagRt.rollups = rollups;
-    updateFailureRatePie();
-  } catch (_e) {
-  } finally {
-    _rollupsFetchInFlight = false;
-    if (_rollupsFetchPending) {
-      _rollupsFetchPending = false;
-      void refreshRollupsNow(pid);
-    }
-  }
-}
-
 function handleDiagnosticsEvent(payload) {
   const ev = payload && typeof payload === "object" ? payload : {};
   const t = String(ev?.type || "").trim();
   if (!t || t === "keepalive") return;
+  if (t === "commissioning_snapshot") {
+    applyDiagnosticsSnapshot(ev);
+    return;
+  }
   const projectId = String(ev?.projectId || diagRt.projectId || currentDiagProjectId() || "");
   const progress = ev?.progress || ev?.data?.progress || null;
   const rollups = ev?.rollups || ev?.data?.rollups || null;
@@ -875,7 +829,7 @@ function initDiagnosticsTab() {
       const projectId = currentDiagProjectId();
       connectDiagnosticsWs(projectId);
       setDiagStatus("");
-      refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
+      updateDiagnosticsTitle();
     });
   }
   const tabManage = document.getElementById("tab-manage");
@@ -890,12 +844,12 @@ function initDiagnosticsTab() {
       if (isDiagnosticsVisible()) connectDiagnosticsWs(projectId);
       updateDiagnosticsTitle();
       setDiagStatus("");
-      refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
+      if (!projectId) clearDiagnosticsView();
     });
     const initialProjectId = currentDiagProjectId();
     if (isDiagnosticsVisible()) connectDiagnosticsWs(initialProjectId);
     updateDiagnosticsTitle();
-    refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
+    if (!initialProjectId) clearDiagnosticsView();
   }
 }
 

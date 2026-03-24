@@ -31,6 +31,117 @@ def _broker(request: Request) -> ws_broker.ProjectEventBroker:
     return broker
 
 
+def _safe_progress(*, repo: Repository, projectId: str) -> dict:
+    try:
+        latest = repo.get_latest_results_for_project(projectId=projectId)
+        return progress.commissioning_progress(projectId=projectId, latest_results=latest)
+    except Exception:
+        return {
+            "projectId": projectId,
+            "counts": {"totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0},
+            "lastTestedAtUtc": None,
+            "eventSections": {"system": {"counts": {"totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0}, "lastTestedAtUtc": None}, "driver": {"counts": {"totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0}, "lastTestedAtUtc": None}},
+            "devices": [],
+        }
+
+
+def _rollups_from_repo(*, repo: Repository, projectId: str, latest_results: dict, progress_payload: dict) -> dict:
+    tags = repo.get_fail_tags_for_project(projectId=projectId)
+    by_target: dict[str, int] = {}
+    by_tag = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "DONE": 0}
+    total = 0
+    for rec in latest_results.values():
+        if rec.outcome != "FAIL":
+            continue
+        target = rec.target if isinstance(rec.target, dict) else {}
+        target_key = str(target.get("targetKey") or "").strip()
+        if not target_key:
+            continue
+        total += 1
+        name = str(target.get("targetName") or "").strip() or "(unknown)"
+        by_target[name] = by_target.get(name, 0) + 1
+        tag = str(tags.get(target_key, "NOT_STARTED") or "NOT_STARTED").strip().upper()
+        if tag not in by_tag:
+            tag = "NOT_STARTED"
+        by_tag[tag] += 1
+    return {
+        "projectId": projectId,
+        "progress": progress_payload,
+        "counts": {
+            "totalTargets": int((progress_payload or {}).get("counts", {}).get("totalTargets") or 0),
+            "firstTimeFailTargets": repo.count_first_time_fail_targets(projectId=projectId),
+        },
+        "firstTimeFailTargets": repo.count_first_time_fail_targets(projectId=projectId),
+        "currentFailures": {"total": total, "byTargetName": by_target, "byTag": by_tag},
+    }
+
+
+def _fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict) -> list[dict]:
+    tags = repo.get_fail_tags_for_project(projectId=projectId)
+    fails = [rec for rec in latest_results.values() if rec.outcome == "FAIL"]
+    fails.sort(key=lambda r: r.recordedAtUtc, reverse=True)
+    out: list[dict] = []
+    for rec in fails:
+        target_key = str(rec.target.get("targetKey") or "")
+        if not target_key:
+            continue
+        refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
+        out.append(
+            {
+                "targetKey": target_key,
+                "currentOutcome": "FAIL",
+                "lastTestedAtUtc": rec.recordedAtUtc,
+                "lastFailNote": rec.failNote,
+                "recordedBy": rec.recordedBy,
+                "tag": tags.get(target_key, "NOT_STARTED"),
+                "deviceName": refs.get("deviceName") if isinstance(refs, dict) else None,
+                "pageName": refs.get("pageName") if isinstance(refs, dict) else None,
+                "buttonName": refs.get("buttonName") if isinstance(refs, dict) else None,
+                "scope": refs.get("scope") if isinstance(refs, dict) else None,
+                "targetName": rec.target.get("targetName"),
+                "resolvedData": refs.get("resolvedData") if isinstance(refs, dict) else None,
+            }
+        )
+    return out
+
+
+def _activities_from_latest(*, latest_results: dict) -> list[dict]:
+    rows = list(latest_results.values())
+    rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
+    out: list[dict] = []
+    for rec in rows[:50]:
+        refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
+        out.append(
+            {
+                "type": "test_result",
+                "projectId": rec.projectId,
+                "recordedAtUtc": rec.recordedAtUtc,
+                "targetKey": str(rec.target.get("targetKey") or ""),
+                "outcome": rec.outcome,
+                "targetName": rec.target.get("targetName"),
+                "kind": rec.target.get("kind") or rec.target.get("targetKind"),
+                "refs": refs if isinstance(refs, dict) else {},
+                "failNote": rec.failNote,
+            }
+        )
+    return out
+
+
+def _commissioning_snapshot(*, repo: Repository, projectId: str) -> dict:
+    latest = repo.get_latest_results_for_project(projectId=projectId)
+    progress_payload = _safe_progress(repo=repo, projectId=projectId)
+    rollups = _rollups_from_repo(repo=repo, projectId=projectId, latest_results=latest, progress_payload=progress_payload)
+    return {
+        "type": "commissioning_snapshot",
+        "projectId": projectId,
+        "recordedAtUtc": datetime.now(timezone.utc).isoformat(),
+        "progress": progress_payload,
+        "rollups": rollups,
+        "activities": _activities_from_latest(latest_results=latest),
+        "fails": _fails_from_latest(repo=repo, projectId=projectId, latest_results=latest),
+    }
+
+
 @router.get("/clients")
 def list_clients(request: Request) -> list[dict]:
     clients = _repo(request).list_clients()
@@ -187,27 +298,7 @@ def project_fails(request: Request, projectId: str) -> list[dict]:
     if proj is None:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
     latest = _repo(request).get_latest_results_for_project(projectId=projectId)
-    tags = _repo(request).get_fail_tags_for_project(projectId=projectId)
-    fails = [rec for rec in latest.values() if rec.outcome == "FAIL"]
-    fails.sort(key=lambda r: r.recordedAtUtc, reverse=True)
-    return [
-        {
-            "targetKey": str(rec.target.get("targetKey") or ""),
-            "currentOutcome": "FAIL",
-            "lastTestedAtUtc": rec.recordedAtUtc,
-            "lastFailNote": rec.failNote,
-            "recordedBy": rec.recordedBy,
-            "tag": tags.get(str(rec.target.get("targetKey") or ""), "NOT_STARTED"),
-            "deviceName": (rec.target.get("refs") or {}).get("deviceName") if isinstance(rec.target.get("refs"), dict) else None,
-            "pageName": (rec.target.get("refs") or {}).get("pageName") if isinstance(rec.target.get("refs"), dict) else None,
-            "buttonName": (rec.target.get("refs") or {}).get("buttonName") if isinstance(rec.target.get("refs"), dict) else None,
-            "scope": (rec.target.get("refs") or {}).get("scope") if isinstance(rec.target.get("refs"), dict) else None,
-            "targetName": rec.target.get("targetName"),
-            "resolvedData": (rec.target.get("refs") or {}).get("resolvedData") if isinstance(rec.target.get("refs"), dict) else None,
-        }
-        for rec in fails
-        if str(rec.target.get("targetKey") or "")
-    ]
+    return _fails_from_latest(repo=_repo(request), projectId=projectId, latest_results=latest)
 
 
 @router.put("/projects/{projectId}/fail-tags")
@@ -263,37 +354,13 @@ def project_rollups(request: Request, projectId: str) -> dict:
     if proj is None:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
 
-    latest = _repo(request).get_latest_results_for_project(projectId=projectId)
+    repo = _repo(request)
+    latest = repo.get_latest_results_for_project(projectId=projectId)
     try:
         prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
     except FileNotFoundError:
         raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
-
-    tags = _repo(request).get_fail_tags_for_project(projectId=projectId)
-    by_target: dict[str, int] = {}
-    by_tag = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "DONE": 0}
-    total = 0
-    for rec in latest.values():
-        if rec.outcome != "FAIL":
-            continue
-        target = rec.target if isinstance(rec.target, dict) else {}
-        target_key = str(target.get("targetKey") or "").strip()
-        if not target_key:
-            continue
-        total += 1
-        name = str(target.get("targetName") or "").strip() or "(unknown)"
-        by_target[name] = by_target.get(name, 0) + 1
-        tag = str(tags.get(target_key, "NOT_STARTED") or "NOT_STARTED").strip().upper()
-        if tag not in by_tag:
-            tag = "NOT_STARTED"
-        by_tag[tag] += 1
-
-    return {
-        "projectId": projectId,
-        "progress": prog,
-        "firstTimeFailTargets": _repo(request).count_first_time_fail_targets(projectId=projectId),
-        "currentFailures": {"total": total, "byTargetName": by_target, "byTag": by_tag},
-    }
+    return _rollups_from_repo(repo=repo, projectId=projectId, latest_results=latest, progress_payload=prog)
 
 
 @router.get("/projects/{projectId}/events")
@@ -323,6 +390,8 @@ async def project_ws(websocket: WebSocket, projectId: str):
 
     q = broker.subscribe(projectId=projectId)
     try:
+        snapshot = _commissioning_snapshot(repo=repo, projectId=projectId)
+        await websocket.send_text(json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False))
         while True:
             msg = await ws_broker.wait_for_next(q, timeout_s=15.0)
             if msg is None:
