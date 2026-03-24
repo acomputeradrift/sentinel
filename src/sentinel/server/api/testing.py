@@ -278,6 +278,10 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 str(event.get("outcome") or ""),
                 id(broker),
             )
+            try:
+                await websocket.send_text(json.dumps(event, separators=(",", ":"), ensure_ascii=False))
+            except Exception:
+                log.exception("[testing-ws] direct_send_failed techToken=%s", techToken)
             broker.publish(projectId=rec.projectId, event=event)
 
     send_task = asyncio.create_task(send_loop())

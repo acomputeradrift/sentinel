@@ -128,6 +128,48 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg2.get("projectId"), project_id)
             self.assertEqual(msg2.get("tag"), "IN_PROGRESS")
 
+    def test_testing_ws_direct_reply_even_if_broker_publish_noop(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+        project_id = p["projectId"]
+
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech_token = str(tech.get("techUrl") or "").split("/")[-1]
+        self.assertTrue(tech_token, "Expected tech token from techUrl.")
+
+        with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as ws:
+            broker = getattr(app.state, "project_event_broker", None)
+            self.assertIsNotNone(broker)
+            broker.publish = lambda **kwargs: None
+
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "test_result.submit",
+                        "target": {
+                            "targetKey": "btn:1:2:3:Button A",
+                            "targetName": "Button A",
+                            "kind": "BUTTON",
+                            "refs": {"deviceName": "Device 1"},
+                        },
+                        "outcome": "PASS",
+                    }
+                )
+            )
+            msg = _recv_until(ws, lambda m: m.get("type") == "test_result" and m.get("outcome") == "PASS")
+            self.assertEqual(msg.get("projectId"), project_id)
+            self.assertEqual(msg.get("targetKey"), "btn:1:2:3:Button A")
+            self.assertIn("progress", msg)
+            self.assertIn("rollups", msg)
+
     def test_testing_ws_submits_and_receives_progress_rollups(self):
         TestClient = _require_fastapi()
 
