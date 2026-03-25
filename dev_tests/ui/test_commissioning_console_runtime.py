@@ -502,7 +502,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
         expect(page.get_by_role("heading", name="Sentinel Console")).to_be_visible()
         expect(page.locator("#panel-manage")).to_be_visible()
-        expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Generate")).to_be_visible()
+        expect(page.locator("#manageClientCard")).to_be_visible()
+        expect(page.locator("#manageProjectCard")).to_be_hidden()
+        expect(page.locator("#manageProjectDetails")).to_be_hidden()
 
         # Manage must not render Progress/Fails sections.
         expect(page.locator("#panel-manage [data-testid='progress']")).to_have_count(0)
@@ -512,10 +514,16 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.get_by_label("New client name").fill("Client A")
         page.get_by_role("button", name="Create client").click()
         expect(page.get_by_label("Client", exact=True)).to_have_value("client-1")
+        expect(page.locator("#manageProjectCard")).to_be_visible()
+        expect(page.locator("#manageProjectDetails")).to_be_hidden()
 
         page.get_by_label("New project name").fill("Project 1")
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_label("Project", exact=True)).to_have_value("proj-1")
+        expect(page.locator("#manageProjectDetails")).to_be_visible()
+        expect(page.locator("#panel-manage")).to_contain_text("Current File")
+        expect(page.locator("#panel-manage")).to_contain_text("Upload + Generate")
+        expect(page.locator("#panel-manage")).to_contain_text("Current Tech Links")
 
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")

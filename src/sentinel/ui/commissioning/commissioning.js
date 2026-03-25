@@ -49,10 +49,31 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
   }
 }
 
+function resetProjectDetailsUi() {
+  setStatus($("uploadStatus"), "");
+  setStatus($("regenStatus"), "");
+  setStatus($("uploadProgressLabel"), "");
+  setStatus($("regenProgressLabel"), "");
+  setStatus($("techLinkStatus"), "");
+  $("techUrl").textContent = "";
+  $("techLabel").value = "";
+  setProgressHidden($("uploadProgress"), true);
+  setProgressHidden($("regenProgress"), true);
+}
+
+function updateManageVisibility() {
+  const hasClient = !!$("clientSelect").value;
+  const hasProject = !!$("projectSelect").value;
+  $("manageProjectCard").hidden = !hasClient;
+  $("manageProjectDetails").hidden = !hasProject;
+  if (!hasProject) resetProjectDetailsUi();
+}
+
 async function refreshClients() {
   const clients = await jsonFetch(api("/commissioning/clients"));
   setSelectOptions($("clientSelect"), clients, (c) => c.clientId, (c) => c.name);
   $("clientSelect").dispatchEvent(new Event("change"));
+  updateManageVisibility();
   return clients;
 }
 
@@ -61,11 +82,13 @@ async function refreshProjects() {
   if (!clientId) {
     setSelectOptions($("projectSelect"), [], () => "", () => "");
     $("projectSelect").dispatchEvent(new Event("change"));
+    updateManageVisibility();
     return [];
   }
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
   $("projectSelect").dispatchEvent(new Event("change"));
+  updateManageVisibility();
   return projects;
 }
 
@@ -449,6 +472,7 @@ async function run() {
       await refreshProjects();
       setPanelContext();
       setLastGeneratedLabel();
+      updateManageVisibility();
     }, $("projectStatus"))
   );
   $("projectSelect").addEventListener("change", () =>
@@ -459,6 +483,7 @@ async function run() {
       renderTechLinks();
       setPanelContext();
       setLastGeneratedLabel();
+      updateManageVisibility();
       await loadTechLinks();
     }, $("projectStatus"))
   );
@@ -479,6 +504,7 @@ async function run() {
   renderTechLinks();
   setPanelContext();
   setLastGeneratedLabel();
+  updateManageVisibility();
   setActiveTab("manage");
 }
 
