@@ -83,6 +83,11 @@ class WsLoggingMarkerTest(unittest.TestCase):
     def test_device_html_contains_tech_ws_marker(self):
         html = render_single_device_html(_minimal_project_data(), _minimal_app_ui(), project_stem="sample_project_data", device_index=0)
         self.assertIn("[tech-ws]", html)
+        self.assertIn("blocked:isPosting", html)
+        self.assertIn("blocked:no-target", html)
+        self.assertIn("send-abort:not-open", html)
+        self.assertIn("ack-match", html)
+        self.assertIn("ack-miss", html)
 
     def test_commissioning_js_contains_ws_marker(self):
         target = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "commission_tab.js"
@@ -92,6 +97,8 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertIn("reconnect-sync", text)
         self.assertIn("normalize", text)
         self.assertIn("conn-id", text)
+        self.assertIn("recv:json-parse-failed", text)
+        self.assertIn("consumer:onMessage-failed", text)
 
     def test_diagnostics_js_contains_ws_marker(self):
         target = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "diagnostics_tab.js"
@@ -100,6 +107,8 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertIn("[diagnostics-ws]", text)
         self.assertIn("fallback", text)
         self.assertIn("conn-id", text)
+        self.assertIn("recv:ignored", text)
+        self.assertIn("snapshot:missing-project-id", text)
 
     def test_server_ws_contains_log_markers(self):
         testing = ROOT / "src" / "sentinel" / "server" / "api" / "testing.py"
@@ -111,9 +120,15 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertIn("[testing-ws]", testing.read_text(encoding="utf-8"))
         self.assertIn("publish", testing.read_text(encoding="utf-8"))
         self.assertIn("broker_id", testing.read_text(encoding="utf-8"))
+        self.assertIn("recv:json-parse-failed", testing.read_text(encoding="utf-8"))
+        self.assertIn("unsubscribe-failed", testing.read_text(encoding="utf-8"))
         self.assertIn("[commissioning-ws]", commissioning.read_text(encoding="utf-8"))
         self.assertIn("broker_id", commissioning.read_text(encoding="utf-8"))
+        self.assertIn("send:parse-failed", commissioning.read_text(encoding="utf-8"))
+        self.assertIn("unsubscribe-failed", commissioning.read_text(encoding="utf-8"))
         self.assertIn("[broker]", broker.read_text(encoding="utf-8"))
+        self.assertIn("subscribe-replay-failed", broker.read_text(encoding="utf-8"))
+        self.assertIn("publish-delivery-failed", broker.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

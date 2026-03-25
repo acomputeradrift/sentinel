@@ -111,6 +111,7 @@ function disconnectDiagnosticsWs() {
 function connectDiagnosticsWs(projectId) {
   const pid = String(projectId || "").trim();
   if (!pid) {
+    logDiagnosticsWs("connect:missing-project-id");
     disconnectDiagnosticsWs();
     return;
   }
@@ -497,7 +498,10 @@ function clearDiagnosticsView() {
 
 function applyDiagnosticsSnapshot(snapshot) {
   const projectId = String(snapshot?.projectId || currentDiagProjectId() || "");
-  if (!projectId) return;
+  if (!projectId) {
+    logDiagnosticsWs("snapshot:missing-project-id");
+    return;
+  }
   diagRt.pies = _ensurePieDom();
   diagRt.progress = snapshot?.progress || null;
   diagRt.rollups = snapshot?.rollups || null;
@@ -650,7 +654,10 @@ function _updateTaskRowDom(row, task) {
 function handleDiagnosticsEvent(payload) {
   const ev = payload && typeof payload === "object" ? payload : {};
   const t = String(ev?.type || "").trim();
-  if (!t || t === "keepalive") return;
+  if (!t || t === "keepalive") {
+    logDiagnosticsWs("recv:ignored", t || "(empty)");
+    return;
+  }
   if (t === "commissioning_snapshot") {
     applyDiagnosticsSnapshot(ev);
     return;
@@ -677,7 +684,10 @@ function handleDiagnosticsEvent(payload) {
     const targetKey = String(data?.targetKey || "");
     const outcome = String(data?.outcome || "").trim().toUpperCase();
     const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
-    if (!targetKey || (outcome !== "PASS" && outcome !== "FAIL")) return;
+    if (!targetKey || (outcome !== "PASS" && outcome !== "FAIL")) {
+      logDiagnosticsWs("recv:ignored", { reason: "invalid-result", targetKey, outcome });
+      return;
+    }
     if (outcome === "PASS") {
       const existing = diagRt.tasksByKey.get(targetKey);
       if (existing) {

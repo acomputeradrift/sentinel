@@ -36,6 +36,7 @@ def _safe_progress(*, repo: Repository, projectId: str) -> dict:
         latest = repo.get_latest_results_for_project(projectId=projectId)
         return progress.commissioning_progress(projectId=projectId, latest_results=latest)
     except Exception:
+        log.exception("[commissioning-ws] progress:compute-failed projectId=%s", projectId)
         return {
             "projectId": projectId,
             "counts": {"totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0},
@@ -267,7 +268,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
             },
         )
     except Exception:
-        pass
+        log.exception("[commissioning-ws] publish:generation-failed projectId=%s", projectId)
 
     return {
         "projectId": projectId,
@@ -331,7 +332,7 @@ def put_fail_tag(request: Request, projectId: str, payload: dict) -> dict:
             },
         )
     except Exception:
-        pass
+        log.exception("[commissioning-ws] publish:fail-tag-update-failed projectId=%s", projectId)
 
     return {"projectId": projectId, "targetKey": target_key, "tag": tag}
 
@@ -404,15 +405,16 @@ async def project_ws(websocket: WebSocket, projectId: str):
                     if t:
                         log.info("[commissioning-ws] send type=%s projectId=%s", t, projectId)
             except Exception:
-                pass
+                log.warning("[commissioning-ws] send:parse-failed projectId=%s", projectId)
             await websocket.send_text(msg)
     except WebSocketDisconnect:
         log.info("[commissioning-ws] disconnect projectId=%s", projectId)
         return
     except Exception:
+        log.exception("[commissioning-ws] stream-failed projectId=%s", projectId)
         return
     finally:
         try:
             broker.unsubscribe(projectId=projectId, q=q)
         except Exception:
-            pass
+            log.exception("[commissioning-ws] unsubscribe-failed projectId=%s", projectId)

@@ -26,7 +26,7 @@ class ProjectEventBroker:
             try:
                 q.put_nowait(last)
             except Exception:
-                pass
+                self._log.exception("[broker] subscribe-replay-failed projectId=%s broker_id=%s", projectId, id(self))
         return q
 
     def unsubscribe(self, *, projectId: str, q: queue.Queue[str]) -> None:
@@ -54,11 +54,11 @@ class ProjectEventBroker:
                 try:
                     _ = q.get_nowait()
                 except Exception:
-                    pass
+                    self._log.exception("[broker] publish-queue-drop-failed projectId=%s broker_id=%s", projectId, id(self))
                 try:
                     q.put_nowait(msg)
                 except Exception:
-                    pass
+                    self._log.exception("[broker] publish-delivery-failed projectId=%s broker_id=%s", projectId, id(self))
 
 
 async def wait_for_next(q: queue.Queue[str], *, timeout_s: float) -> str | None:

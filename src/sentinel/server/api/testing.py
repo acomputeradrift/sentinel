@@ -50,8 +50,10 @@ def _compute_progress_and_rollups(*, repo: Repository, projectId: str) -> tuple[
         latest = repo.get_latest_results_for_project(projectId=projectId)
         prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
     except FileNotFoundError:
+        log.info("[testing-ws] rollups:project-model-missing projectId=%s", projectId)
         return None, None
     except Exception:
+        log.exception("[testing-ws] rollups:compute-failed projectId=%s", projectId)
         return None, None
 
     tags = repo.get_fail_tags_for_project(projectId=projectId)
@@ -244,6 +246,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
             try:
                 payload = json.loads(raw)
             except Exception:
+                log.warning("[testing-ws] recv:json-parse-failed techToken=%s raw=%s", techToken, str(raw)[:200])
                 continue
             msg_type = str(payload.get("type") or "").strip()
             log.info("[testing-ws] recv type=%s techToken=%s", msg_type, techToken)
@@ -289,14 +292,13 @@ async def testing_ws(websocket: WebSocket, techToken: str):
         await recv_loop()
     except WebSocketDisconnect:
         log.info("[testing-ws] disconnect techToken=%s", techToken)
-        pass
     finally:
         send_task.cancel()
         await asyncio.gather(send_task, return_exceptions=True)
         try:
             broker.unsubscribe(projectId=project_id, q=q)
         except Exception:
-            pass
+            log.exception("[testing-ws] unsubscribe-failed techToken=%s projectId=%s", techToken, project_id)
 
 
 @router.get("/api/v1/testing/{techToken}/target-status")

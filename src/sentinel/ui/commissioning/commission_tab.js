@@ -304,7 +304,9 @@ function ensureSharedProjectWsManager() {
       if (!consumer || typeof consumer.onMessage !== "function") continue;
       try {
         consumer.onMessage(payload);
-      } catch (_e) {}
+      } catch (e) {
+        logProjectWs("consumer:onMessage-failed", String(e?.message || e || ""));
+      }
     }
   }
 
@@ -330,7 +332,9 @@ function ensureSharedProjectWsManager() {
     wsIntentionalClose = !!intentional;
     try {
       ws.close();
-    } catch (_e) {}
+    } catch (e) {
+      logProjectWs("close:socket-throw", String(e?.message || e || ""));
+    }
   }
 
   function scheduleReconnect() {
@@ -344,7 +348,10 @@ function ensureSharedProjectWsManager() {
 
   function connectIfNeeded(projectId) {
     const pid = String(projectId || "").trim();
-    if (!pid) return;
+    if (!pid) {
+      logProjectWs("connect:missing-project-id");
+      return;
+    }
     if (ws && wsProjectId === pid && (wsState === "connecting" || wsState === "open")) return;
 
     closeSocket(true);
@@ -359,13 +366,19 @@ function ensureSharedProjectWsManager() {
     ws = new WebSocket(url);
 
     ws.onopen = () => {
-      if (connId !== wsConnSeq) return;
+      if (connId !== wsConnSeq) {
+        logProjectWs("open:stale-conn", connId);
+        return;
+      }
       wsState = "open";
       wsReconnectDelayMs = 500;
       logProjectWs("open", wsProjectId);
     };
     ws.onclose = () => {
-      if (connId !== wsConnSeq) return;
+      if (connId !== wsConnSeq) {
+        logProjectWs("close:stale-conn", connId);
+        return;
+      }
       const intentional = wsIntentionalClose;
       wsIntentionalClose = false;
       ws = null;
@@ -375,18 +388,28 @@ function ensureSharedProjectWsManager() {
       if (!intentional && desiredProjectId()) scheduleReconnect();
     };
     ws.onerror = () => {
-      if (connId !== wsConnSeq) return;
+      if (connId !== wsConnSeq) {
+        logProjectWs("error:stale-conn", connId);
+        return;
+      }
       logProjectWs("error");
       try {
         if (ws) ws.close();
-      } catch (_e) {}
+      } catch (e) {
+        logProjectWs("error:close-throw", String(e?.message || e || ""));
+      }
     };
     ws.onmessage = (evt) => {
-      if (connId !== wsConnSeq) return;
+      if (connId !== wsConnSeq) {
+        logProjectWs("recv:stale-conn", connId);
+        return;
+      }
       try {
         const payload = JSON.parse(String(evt.data || "{}"));
         fanOut(payload);
-      } catch (_e) {}
+      } catch (e) {
+        logProjectWs("recv:json-parse-failed", String(e?.message || e || ""));
+      }
     };
   }
 
@@ -407,7 +430,10 @@ function ensureSharedProjectWsManager() {
   window.__sentinelProjectWsManager = {
     setConsumer(id, state) {
       const key = String(id || "").trim();
-      if (!key) return;
+      if (!key) {
+        logProjectWs("consumer:set-missing-id");
+        return;
+      }
       const prev = consumers.get(key) || {};
       const next = {
         ...prev,
@@ -495,12 +521,17 @@ function handleCommissionWsPayload(payload) {
       const progress = payload?.progress || payload?.data?.progress || null;
       if (progress) updatePies(progress);
     }
-  } catch (_e) {}
+  } catch (e) {
+    logCommissionWs("payload:handle-failed", String(e?.message || e || ""));
+  }
 }
 
 function startWs(projectId) {
   const pid = String(projectId || "").trim();
-  if (!pid) return;
+  if (!pid) {
+    logCommissionWs("start:missing-project-id");
+    return;
+  }
   sharedProjectWsManager.setConsumer("commission", {
     active: true,
     projectId: pid,
@@ -520,7 +551,10 @@ function stopWs() {
 async function refreshCommission() {
   const projectId = currentProjectId();
   updateSelectedNames();
-  if (!projectId) return;
+  if (!projectId) {
+    logCommissionWs("refresh:missing-project-id");
+    return;
+  }
   startWs(projectId);
   await refreshCommissionTopboxTitle(projectId);
 }

@@ -797,7 +797,9 @@ let currentDeviceTop=0;
     const msg = data == null ? "" : data;
     console.log("[tech-ws]", action, msg);
    }}
-  }} catch (_e) {{}}
+  }} catch (_e) {{
+   _logTechWs("recv:parse-failed");
+  }}
  }}
  function techTokenFromLocation() {{
   const parts=String(window.location.pathname||'').split('/').filter(Boolean);
@@ -845,11 +847,16 @@ let currentDeviceTop=0;
     statusEl.classList.toggle("is-fail", outcome === "FAIL");
    }}
    if (pendingTargetKey && pendingTargetKey === targetKey) {{
+    _logTechWs("ack-match", targetKey);
     pendingTargetKey = null;
     setPosting(false);
     setPostStatus("Saved", "success");
+   }} else if (pendingTargetKey) {{
+    _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
    }}
-  }} catch (_e) {{}}
+  }} catch (_e) {{
+   _logTechWs("recv:parse-failed");
+  }}
  }}
  function _connectTechWs() {{
   const techToken = techTokenFromLocation();
@@ -874,16 +881,17 @@ let currentDeviceTop=0;
   }};
   ws.onmessage = _handleTechWsMessage;
  }}
- function _sendTechWs(payload) {{
-  if (!techWs || techWs.readyState !== 1) {{
-   _connectTechWs();
-  }}
-  if (!techWs || techWs.readyState !== 1) {{
-   setPosting(false);
-   setPostStatus("Error: websocket not connected", "error");
-   return;
-  }}
-  _logTechWs("send", payload?.type || "");
+  function _sendTechWs(payload) {{
+   if (!techWs || techWs.readyState !== 1) {{
+    _connectTechWs();
+   }}
+   if (!techWs || techWs.readyState !== 1) {{
+    _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
+    setPosting(false);
+    setPostStatus("Error: websocket not connected", "error");
+    return;
+   }}
+   _logTechWs("send", payload?.type || "");
   techWs.send(JSON.stringify(payload));
  }}
  function setRowStatus(statusEl, outcome, recordedAtUtc) {{
@@ -980,13 +988,25 @@ let currentDeviceTop=0;
 
  async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
   const techToken=techTokenFromLocation();
-  if (!techToken) return;
+  if (!techToken) {{
+   _logTechWs("blocked:no-token");
+   return;
+  }}
   const target=buildTargetPayload(ctxBtn, meta, targetLabel);
-  if (!target) return;
+  if (!target) {{
+   _logTechWs("blocked:no-target", targetLabel);
+   return;
+  }}
   const isFail=String(outcome||'').toUpperCase()==='FAIL';
   const note=isFail ? String(failNote||'').trim() : null;
-  if (isFail && !note) return;
-  if (isPosting) return;
+  if (isFail && !note) {{
+   _logTechWs("blocked:missing-fail-note", target.targetKey);
+   return;
+  }}
+  if (isPosting) {{
+   _logTechWs("blocked:isPosting", {{ pending: pendingTargetKey, targetKey: target.targetKey }});
+   return;
+  }}
 
   const payload={{
     type:"test_result.submit",
@@ -2484,9 +2504,12 @@ const APP_UI={app_json};
     statusEl.classList.toggle("is-fail", outcome === "FAIL");
    }}
    if (pendingTargetKey && pendingTargetKey === targetKey) {{
+    _logTechWs("ack-match", targetKey);
     pendingTargetKey = null;
     setPosting(false);
     setPostStatus("Saved", "success");
+   }} else if (pendingTargetKey) {{
+    _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
    }}
   }} catch (_e) {{}}
  }}
@@ -2518,6 +2541,7 @@ const APP_UI={app_json};
    _connectTechWs();
   }}
   if (!techWs || techWs.readyState !== 1) {{
+   _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
    setPosting(false);
    setPostStatus("Error: websocket not connected", "error");
    return;
@@ -2626,13 +2650,25 @@ const APP_UI={app_json};
  }}
  async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
   const techToken=techTokenFromLocation();
-  if (!techToken) return;
+  if (!techToken) {{
+   _logTechWs("blocked:no-token");
+   return;
+  }}
   const target=buildTargetPayload(ctxBtn, meta, targetLabel);
-  if (!target) return;
+  if (!target) {{
+   _logTechWs("blocked:no-target", targetLabel);
+   return;
+  }}
   const isFail=String(outcome||'').toUpperCase()==='FAIL';
   const note=isFail ? String(failNote||'').trim() : null;
-  if (isFail && !note) return;
-  if (isPosting) return;
+  if (isFail && !note) {{
+   _logTechWs("blocked:missing-fail-note", target.targetKey);
+   return;
+  }}
+  if (isPosting) {{
+   _logTechWs("blocked:isPosting", {{ pending: pendingTargetKey, targetKey: target.targetKey }});
+   return;
+  }}
 
   const payload={{
     type:"test_result.submit",
@@ -2640,6 +2676,7 @@ const APP_UI={app_json};
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
   }};
+  _logTechWs("expect", target.targetKey);
   setPosting(true);
  setPostStatus('Saving…','saving');
  pendingTargetKey = target.targetKey;
