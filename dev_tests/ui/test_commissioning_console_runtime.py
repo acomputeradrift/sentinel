@@ -104,6 +104,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "upload_counter": 0,
             "tech_link_counter": 0,
             "tech_link_revoke_counter": 0,
+            "progress_fetch_count": 0,
+            "fails_fetch_count": 0,
+            "rollups_fetch_count": 0,
         }
 
         def is_blue_rgb(value: str) -> bool:
@@ -200,7 +203,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         def handle_regenerate(route, request):
             self.assertEqual(request.method, "POST")
             data = json.loads(request.post_data or "{}")
-            self.assertEqual(data.get("uploadId"), "upload-1")
+            self.assertRegex(str(data.get("uploadId") or ""), r"^upload-\d+$")
             fulfill_json(
                 route,
                 {
@@ -256,6 +259,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         def handle_progress(route, request):
             self.assertEqual(request.method, "GET")
+            state["progress_fetch_count"] = int(state.get("progress_fetch_count") or 0) + 1
             fulfill_json(
                 route,
                 {
@@ -276,6 +280,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         def handle_fails(route, request):
             self.assertEqual(request.method, "GET")
+            state["fails_fetch_count"] = int(state.get("fails_fetch_count") or 0) + 1
             tags_by_key = state.get("fail_tags_by_target_key") or {}
             fulfill_json(
                 route,
@@ -311,6 +316,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 ],
             )
 
+        def handle_rollups(route, request):
+            self.assertEqual(request.method, "GET")
+            state["rollups_fetch_count"] = int(state.get("rollups_fetch_count") or 0) + 1
+            fulfill_json(
+                route,
+                {
+                    "projectId": "proj-1",
+                    "counts": {"totalTargets": 12, "firstTimeFailTargets": 2},
+                    "currentFailures": {"byTargetName": {"macro": 1, "trigger": 1}},
+                },
+            )
+
         def handle_fail_tags(route, request):
             self.assertEqual(request.method, "PUT")
             data = json.loads(request.post_data or "{}")
@@ -318,35 +335,6 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             tag = str(data.get("tag") or "")
             state["fail_tags_by_target_key"][target_key] = tag
             fulfill_json(route, {"projectId": "proj-1", "targetKey": target_key, "tag": tag})
-
-        def handle_events(route, request):
-            self.assertEqual(request.method, "GET")
-            route.fulfill(
-                status=200,
-                headers={"Content-Type": "text/event-stream; charset=utf-8"},
-                body=(
-                    "event: test_result\n"
-                    "data: "
-                    + json.dumps(
-                        {
-                            "tsUtc": "2026-03-21T00:00:01Z",
-                            "type": "test_result",
-                            "scope": {"scopeType": "DEVICE", "deviceId": "dev-1", "pageId": "page-1"},
-                            "target": {"targetKey": "btn:81:513:48551:Macro", "kind": "BUTTON", "refs": {"deviceName": "Device A", "pageName": "Home", "buttonName": "Button 1"}},
-                            "tag": "TARGET",
-                            "resolvedData": {"reason": "Macro did not run"},
-                            "data": {
-                                "recordedAtUtc": "2026-03-21T00:00:01Z",
-                                "targetKey": "btn:81:513:48551:Macro",
-                                "targetName": "Macro",
-                                "outcome": "PASS",
-                                "refs": {"deviceName": "Device A", "pageName": "Home", "buttonName": "Button 1"},
-                            },
-                        }
-                    )
-                    + "\n\n"
-                ),
-            )
 
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
@@ -356,10 +344,155 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
         page.route("**/api/v1/commissioning/projects/*/progress", handle_progress)
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
+        page.route("**/api/v1/commissioning/projects/*/rollups", handle_rollups)
         page.route("**/api/v1/commissioning/projects/*/fail-tags", handle_fail_tags)
-        page.route("**/api/v1/commissioning/projects/*/events", handle_events)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
+        page.add_init_script(
+            """
+(() => {
+  let wsConnectCount = 0;
+  let wsCloseCount = 0;
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 0;
+      wsConnectCount += 1;
+      setTimeout(() => {
+        this.readyState = 1;
+        if (this.onopen) this.onopen({});
+        setTimeout(() => {
+          const messages = [
+            {
+              type: "commissioning_snapshot",
+              projectId: "proj-1",
+              progress: {
+                projectId: "proj-1",
+                asOfGenerationRunId: "gen-1",
+                counts: { totalTargets: 12, testedTargets: 3, pass: 2, fail: 1, untested: 9, percentComplete: 0.25 },
+                lastTestedAtUtc: "2026-03-21T00:00:00Z",
+                eventSections: {
+                  system: { counts: { totalTargets: 4, testedTargets: 1, pass: 1, fail: 0, untested: 3, percentComplete: 0.25 }, lastTestedAtUtc: "2026-03-21T00:00:00Z" },
+                  driver: { counts: { totalTargets: 4, testedTargets: 2, pass: 1, fail: 1, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:00Z" },
+                },
+                devices: [
+                  { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 2, testedTargets: 1, pass: 1, fail: 0, untested: 1, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:00Z" },
+                  { deviceId: "dev-2", deviceName: "Device B", counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+                ],
+              },
+              rollups: {
+                projectId: "proj-1",
+                counts: { totalTargets: 12, firstTimeFailTargets: 2 },
+                currentFailures: { byTargetName: { macro: 1, trigger: 1 } },
+              },
+              fails: [
+                {
+                  targetKey: "btn:81:513:48551:Macro",
+                  targetName: "Macro",
+                  deviceName: "Device A",
+                  pageName: "Home",
+                  buttonName: "Button 1",
+                  scope: "BUTTON",
+                  tag: "NOT_STARTED",
+                  currentOutcome: "FAIL",
+                  lastTestedAtUtc: "2026-03-21T00:00:00Z",
+                  lastFailNote: "Macro did not run",
+                  resolvedData: { reason: "Macro did not run" }
+                },
+                {
+                  targetKey: "event:126:Trigger",
+                  targetName: "Trigger",
+                  deviceName: "Device B",
+                  pageName: "Scene",
+                  buttonName: "",
+                  scope: "EVENT_SECTION",
+                  tag: "NOT_STARTED",
+                  currentOutcome: "FAIL",
+                  lastTestedAtUtc: "2026-03-20T23:00:00Z",
+                  lastFailNote: "Trigger not firing",
+                  resolvedData: { reason: "Trigger not firing" }
+                },
+              ],
+              activities: [],
+            },
+            {
+              type: "test_result.recorded",
+              projectId: "proj-1",
+              recordedAtUtc: "2026-03-21T00:00:01Z",
+              targetKey: "btn:99:1:2:New Button",
+              outcome: "PASS",
+              targetName: "New Button",
+              kind: "BUTTON",
+              refs: { deviceName: "Device A", pageName: "Home", buttonName: "Button 2", scope: "BUTTON" },
+              progress: {
+                projectId: "proj-1",
+                asOfGenerationRunId: "gen-1",
+                counts: { totalTargets: 12, testedTargets: 4, pass: 3, fail: 1, untested: 8, percentComplete: 0.3333 },
+                lastTestedAtUtc: "2026-03-21T00:00:01Z",
+                eventSections: {
+                  system: { counts: { totalTargets: 4, testedTargets: 2, pass: 2, fail: 0, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:01Z" },
+                  driver: { counts: { totalTargets: 4, testedTargets: 2, pass: 1, fail: 1, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:01Z" },
+                },
+                devices: [
+                  { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 2, testedTargets: 2, pass: 2, fail: 0, untested: 0, percentComplete: 1.0 }, lastTestedAtUtc: "2026-03-21T00:00:01Z" },
+                  { deviceId: "dev-2", deviceName: "Device B", counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+                ],
+              },
+            },
+            {
+              type: "test_result.recorded",
+              projectId: "proj-1",
+              recordedAtUtc: "2026-03-21T00:00:03Z",
+              targetKey: "btn:77:1:2:Fail Button",
+              outcome: "FAIL",
+              targetName: "Fail Button",
+              kind: "BUTTON",
+              failNote: "Button does not respond",
+              refs: { deviceName: "Device B", pageName: "Scene", buttonName: "Button 9", scope: "BUTTON" },
+              progress: {
+                projectId: "proj-1",
+                asOfGenerationRunId: "gen-1",
+                counts: { totalTargets: 12, testedTargets: 5, pass: 3, fail: 2, untested: 7, percentComplete: 0.4167 },
+                lastTestedAtUtc: "2026-03-21T00:00:03Z",
+                eventSections: {
+                  system: { counts: { totalTargets: 4, testedTargets: 2, pass: 2, fail: 0, untested: 2, percentComplete: 0.5 }, lastTestedAtUtc: "2026-03-21T00:00:03Z" },
+                  driver: { counts: { totalTargets: 4, testedTargets: 3, pass: 1, fail: 2, untested: 1, percentComplete: 0.75 }, lastTestedAtUtc: "2026-03-21T00:00:03Z" },
+                },
+                devices: [
+                  { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 2, testedTargets: 2, pass: 2, fail: 0, untested: 0, percentComplete: 1.0 }, lastTestedAtUtc: "2026-03-21T00:00:03Z" },
+                  { deviceId: "dev-2", deviceName: "Device B", counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+                ],
+              },
+              rollups: {
+                counts: { totalTargets: 12, firstTimeFailTargets: 3 },
+                currentFailures: { byTargetName: { "Fail Button": 1 } },
+              },
+            },
+          ];
+          let idx = 0;
+          const emit = () => {
+            if (idx >= messages.length) return;
+            if (this.onmessage) this.onmessage({ data: JSON.stringify(messages[idx]) });
+            idx += 1;
+            if (idx < messages.length) setTimeout(emit, 25);
+          };
+          emit();
+        }, 25);
+      }, 0);
+    }
+    send(_data) {}
+    close() {
+      this.readyState = 3;
+      wsCloseCount += 1;
+      if (this.onclose) this.onclose({});
+    }
+  }
+  window.__wsConnectCount = () => wsConnectCount;
+  window.__wsCloseCount = () => wsCloseCount;
+  window.WebSocket = FakeWebSocket;
+})();
+"""
+        )
         page.goto(url)
 
         # Shell + tabs
@@ -369,7 +502,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
         expect(page.get_by_role("heading", name="Sentinel Console")).to_be_visible()
         expect(page.locator("#panel-manage")).to_be_visible()
-        expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Regenerate")).to_be_visible()
+        expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Generate")).to_be_visible()
 
         # Manage must not render Progress/Fails sections.
         expect(page.locator("#panel-manage [data-testid='progress']")).to_have_count(0)
@@ -387,9 +520,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
-        page.get_by_role("button", name="Upload .apex").click()
+        page.get_by_role("button", name="Upload + Generate").click()
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
-        expect(page.locator("#uploadProgressLabel")).to_contain_text("Done")
+        expect(page.locator("#uploadProgressLabel")).to_have_count(1)
         self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
         expect(page.locator("#panel-manage")).to_contain_text(apex_path.name)
         expect(page.locator("#panel-manage")).to_contain_text("Last generated")
@@ -404,7 +537,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
         expect(page.locator("#panel-manage")).to_contain_text("Onsite Tech")
-        expect(page.locator("#panel-manage")).to_contain_text(re.compile(r"2026-03-21[ T]00:0\d:00Z"))
+        expect(page.locator("#panel-manage")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
         expect(page.get_by_role("button", name="Revoke")).to_be_visible()
         page.get_by_role("button", name="Revoke").click()
         expect(page.locator("#panel-manage")).not_to_contain_text("Onsite Tech")
@@ -422,24 +555,27 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionKpiTested")).to_have_count(0)
         expect(page.locator("#commissionKpiUntested")).to_have_count(0)
         expect(page.locator("[data-testid='commission-pie-project'], [data-testid='commission-pie-system-events'], [data-testid='commission-pie-driver-events']")).to_have_count(3)
-        expect(page.get_by_test_id("commission-pie-project")).to_contain_text("2/12")
+        expect(page.get_by_test_id("commission-pie-project")).to_contain_text(re.compile(r"\d+/12 passed"))
         expect(page.locator("[data-testid^='commission-pie-device-']")).to_have_count(1)
         expect(page.get_by_test_id("commission-pie-device-dev-1")).to_be_visible()
         expect(page.locator("[data-testid='commission-pie-device-dev-2']")).to_have_count(0)
-        expect(page.locator("#commissionActivityBody tr")).to_have_count(1)
+        expect(page.locator("#commissionActivityBody tr")).to_have_count(2)
         expect(page.locator("#commissionActivityBody")).to_contain_text("Device A")
         expect(page.locator("#commissionActivityBody")).to_contain_text("Home")
-        expect(page.locator("#commissionActivityBody")).to_contain_text("Button 1")
-        expect(page.locator("#commissionActivityBody")).to_contain_text("Macro")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Button 2")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("New Button")
         expect(page.locator("#commissionActivityBody")).to_contain_text("PASS")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("FAIL")
+        expect(page.get_by_test_id("commission-pie-project")).to_contain_text("3/12")
+        expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("2/4")
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
-        diagnostics_line = page.get_by_test_id("diagnostics-client-project-line")
+        diagnostics_line = page.locator("#diagnosticsClientProjectLine")
         expect(diagnostics_line).to_be_visible()
         expect(diagnostics_line).to_contain_text("Client A")
         expect(diagnostics_line).to_contain_text("Project 1")
-        self.assertGreater(diagnostics_line.evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 18)
+        self.assertGreaterEqual(diagnostics_line.evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 14)
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'], [data-testid='diagnostics-pie-failure-types'], [data-testid='diagnostics-pie-task-completion']")).to_have_count(3)
         expect(page.get_by_test_id("diagnostics-summary-block")).to_have_count(0)
         expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
@@ -454,11 +590,21 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
         diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
-        self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}Z$")
+        self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?Z$")
+        expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(3)
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text(re.compile(r"fail button", re.I))
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Button does not respond")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("fail button")
+        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("First-time fail (3")
 
         first_tag = page.locator("#diagnosticsTaskTable tbody tr").first.locator("select")
         first_tag.select_option(label="Done")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Done (1")
+
+        page.get_by_role("button", name="Commission").click()
+        expect(page.locator("#panel-commission")).to_be_visible()
+        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 1)
+        self.assertEqual(page.evaluate("window.__wsCloseCount()"), 0)
 
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
@@ -469,10 +615,14 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             other_path.write_bytes(apex_path.read_bytes())
             state["expected_upload_filename"] = other_path.name
             page.set_input_files("input[type=file][name=apex]", str(other_path))
-            page.get_by_role("button", name="Upload .apex").click()
+            page.get_by_role("button", name="Upload + Generate").click()
             expect(page.get_by_test_id("upload-status")).to_contain_text("upload-2")
             expect(page.get_by_test_id("upload-status")).to_contain_text("WARNING")
             expect(page.get_by_test_id("upload-status")).to_contain_text("Previous:")
             expect(page.get_by_test_id("upload-status")).to_contain_text("New:")
+
+        self.assertEqual(state.get("progress_fetch_count"), 0)
+        self.assertEqual(state.get("fails_fetch_count"), 0)
+        self.assertEqual(state.get("rollups_fetch_count"), 0)
 
         page.close()

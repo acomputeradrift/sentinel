@@ -149,6 +149,97 @@ class TestingResultPostingTest(unittest.TestCase):
             time.sleep(0.05)
         self.fail(f"Expected row {row_index} .row-status to contain {text!r}")
 
+    def _assert_ws_helpers_present(self, html: str) -> None:
+        self.assertIn("function buildTargetPayload", html)
+        self.assertIn("function _connectTechWs", html)
+        self.assertEqual(html.count("function _connectTechWs"), 1, "Expected a single _connectTechWs definition")
+        self.assertNotIn("await fetch(", html, "HTML should not contain top-level await fetch fallback")
+
+    def _install_fake_ws(self, page) -> None:  # noqa: ANN001
+        page.add_init_script(
+            """
+(() => {
+  const outbox = [];
+  const sockets = [];
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 0;
+      sockets.push(this);
+      setTimeout(() => {
+        this.readyState = 1;
+        if (this.onopen) this.onopen({});
+        try {
+          const raw = sessionStorage.getItem("__ws_open_messages");
+          if (raw) {
+            const msgs = JSON.parse(raw);
+            sessionStorage.removeItem("__ws_open_messages");
+            if (Array.isArray(msgs)) {
+              msgs.forEach((msg) => {
+                const payload = (typeof msg === "string") ? msg : JSON.stringify(msg);
+                if (this.onmessage) this.onmessage({ data: payload });
+              });
+            }
+          }
+        } catch (_e) {}
+      }, 0);
+    }
+    send(data) {
+      try {
+        outbox.push(JSON.parse(data));
+      } catch (_e) {
+        outbox.push(data);
+      }
+    }
+    close() {
+      this.readyState = 3;
+      if (this.onclose) this.onclose({});
+    }
+  }
+  window.__wsOutbox = outbox;
+  window.__emitWs = (msg) => {
+    const payload = (typeof msg === "string") ? msg : JSON.stringify(msg);
+    sockets.forEach(ws => {
+      if (ws.onmessage) ws.onmessage({ data: payload });
+    });
+  };
+  window.WebSocket = FakeWebSocket;
+})();
+"""
+        )
+
+    def _wait_for_ws_outbox(self, page, *, min_posts: int = 1, timeout_s: float = 3.0) -> None:  # noqa: ANN001
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                count = page.evaluate("window.__wsOutbox ? window.__wsOutbox.length : 0")
+            except Exception:
+                count = 0
+            if count >= min_posts:
+                return
+            time.sleep(0.05)
+        self.fail(f"Expected at least {min_posts} WS send(s).")
+
+    def _ws_payload(self, page, index: int = 0):  # noqa: ANN001
+        return page.evaluate(f"window.__wsOutbox[{index}]")
+
+    def _wait_for_log_contains(self, logs: list[str], text: str, *, timeout_s: float = 3.0) -> None:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if any(text in (line or "") for line in logs):
+                return
+            time.sleep(0.05)
+        self.fail(f"Expected console log containing {text!r}")
+
+    def _wait_for_log_contains_all(self, logs: list[str], tokens: list[str], *, timeout_s: float = 3.0) -> None:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            for line in logs:
+                if all(tok in (line or "") for tok in tokens):
+                    return
+            time.sleep(0.05)
+        self.fail(f"Expected console log containing all tokens {tokens!r}")
+
     def test_event_pass_posts_result(self):
         from sentinel.generation.render_core import render_project_home_html, load_json
 
@@ -169,26 +260,154 @@ class TestingResultPostingTest(unittest.TestCase):
             "devices": [],
         }
         html = render_project_home_html(project_data, app_ui, "unittest")
+        self._assert_ws_helpers_present(html)
 
         token = "techToken123"
         server = _CaptureServer(html_by_path={f"/testing/{token}": html})
         port = server.start()
         try:
             page = self._browser.new_page()
+            logs: list[str] = []
+            page.on("console", lambda msg: logs.append(msg.text))
+            self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click("button.section-toggle[data-target='system-events']")
             page.click(".event-row.test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
-            self._wait_for_posts(server, min_posts=1)
+            self._wait_for_ws_outbox(page, min_posts=1)
+            self._wait_for_log_contains(logs, "[tech-ws] send")
+            self._wait_for_log_contains_all(logs, ["[tech-ws]", "send", "test_result.submit"])
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["outcome"], "PASS")
+            self.assertEqual(sent["target"]["kind"], "EVENT")
+            self.assertEqual(sent["target"]["targetKey"], "event:126:Trigger")
+            self.assertEqual(sent["target"]["refs"]["scope"], expected_scope)
+            self.assertEqual(sent["target"]["refs"]["resolvedData"], expected_resolved)
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-21T00:00:00Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent,
+            )
             self._wait_for_status_contains(page, "Saved")
             self._wait_for_row_status_contains(page, 0, "PASS")
             self._wait_for_row_status_contains(page, 0, "2026-03-21T00:00:00Z")
-            posted = server.posts[0]["payload"]
-            self.assertEqual(posted["outcome"], "PASS")
-            self.assertEqual(posted["target"]["kind"], "EVENT")
-            self.assertEqual(posted["target"]["targetKey"], "event:126:Trigger")
-            self.assertEqual(posted["target"]["refs"]["scope"], expected_scope)
-            self.assertEqual(posted["target"]["refs"]["resolvedData"], expected_resolved)
+        finally:
+            server.stop()
+
+    def test_snapshot_rehydrates_pass_and_fail_after_reload(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "BTN-1", "text": "Button 1", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 10,
+                                                        "orientations": {"portrait": {"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}}},
+                                                    },
+                                                    "testTargets": {
+                                                        "text": True,
+                                                        "macros": False,
+                                                        "macroSteps": False,
+                                                        "variables": {},
+                                                        "pageLink": {"enabled": True, "targetPageId": 514},
+                                                    },
+                                                    "resolvedPageLink": {"targetPageId": 514},
+                                                }
+                                            ],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}],
+                                "buttons": [{"buttonId": 48551, "buttonTagName": "BTN-1", "identifiers": {"text": "Button 1"}, "testTargets": {}}],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
+
+        token = "techTokenSnapshot"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click(".btn-wrap .test-btn")
+
+            pass_btn = page.locator("#rows .row .actions button").nth(0)
+            pass_btn.click()
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent_pass = self._ws_payload(page, 0)
+
+            snapshot_payload = {
+                "type": "testing_snapshot",
+                "results": [
+                    {
+                        "targetKey": sent_pass["target"]["targetKey"],
+                        "outcome": "PASS",
+                        "recordedAtUtc": "2026-03-25T10:00:00Z",
+                    },
+                    {
+                        "targetKey": "btn:81:513:48551:PageLink",
+                        "outcome": "FAIL",
+                        "recordedAtUtc": "2026-03-25T10:00:01Z",
+                        "failNote": "Page link broken",
+                    },
+                ],
+            }
+            page.evaluate("(payload) => sessionStorage.setItem('__ws_open_messages', JSON.stringify([payload]))", snapshot_payload)
+            page.reload()
+            page.click(".btn-wrap .test-btn")
+            self._wait_for_row_status_contains(page, 0, "PASS")
+            self._wait_for_row_status_contains(page, 0, "2026-03-25T10:00:00Z")
+            self._wait_for_row_status_contains(page, 1, "FAIL")
+            self._wait_for_row_status_contains(page, 1, "2026-03-25T10:00:01Z")
         finally:
             server.stop()
 
@@ -251,23 +470,40 @@ class TestingResultPostingTest(unittest.TestCase):
         }
 
         html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
 
         token = "techToken456"
         server = _CaptureServer(html_by_path={f"/testing/{token}": html})
         port = server.start()
         try:
             page = self._browser.new_page()
+            self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click(".btn-wrap .test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
-            self._wait_for_posts(server, min_posts=1)
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["outcome"], "PASS")
+            self.assertEqual(sent["target"]["kind"], "BUTTON")
+            self.assertEqual(sent["target"]["targetKey"], "btn:81:513:48551:Macro")
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-21T00:00:00Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent,
+            )
             self._wait_for_status_contains(page, "Saved")
             self._wait_for_row_status_contains(page, 0, "PASS")
             self._wait_for_row_status_contains(page, 0, "2026-03-21T00:00:00Z")
-            posted = server.posts[0]["payload"]
-            self.assertEqual(posted["outcome"], "PASS")
-            self.assertEqual(posted["target"]["kind"], "BUTTON")
-            self.assertEqual(posted["target"]["targetKey"], "btn:81:513:48551:Macro")
         finally:
             server.stop()
 
@@ -330,12 +566,14 @@ class TestingResultPostingTest(unittest.TestCase):
         }
 
         html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
 
         token = "techTokenFail"
         server = _CaptureServer(html_by_path={f"/testing/{token}": html})
         port = server.start()
         try:
             page = self._browser.new_page()
+            self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click(".btn-wrap .test-btn")
 
@@ -346,13 +584,124 @@ class TestingResultPostingTest(unittest.TestCase):
             self.assertFalse(fail_btn.is_disabled())
 
             fail_btn.click()
-            self._wait_for_posts(server, min_posts=1)
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["outcome"], "FAIL")
+            self.assertEqual(sent["failNote"], "Broken macro")
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-21T00:00:00Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs,
+  failNote: payload.failNote
+})
+""",
+                sent,
+            )
             self._wait_for_status_contains(page, "Saved")
             self._wait_for_row_status_contains(page, 0, "FAIL")
             self._wait_for_row_status_contains(page, 0, "2026-03-21T00:00:00Z")
-            posted = server.posts[0]["payload"]
-            self.assertEqual(posted["outcome"], "FAIL")
-            self.assertEqual(posted["failNote"], "Broken macro")
+        finally:
+            server.stop()
+
+    def test_button_pass_status_persists_after_reopen(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "BTN-1", "text": "Button 1", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 10,
+                                                        "orientations": {"portrait": {"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}}},
+                                                    },
+                                                    "testTargets": {"text": False, "macros": True, "macroSteps": False, "variables": {}, "pageLink": False},
+                                                    "resolvedPageLink": {"targetPageId": None},
+                                                }
+                                            ],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}],
+                                "buttons": [{"buttonId": 48551, "buttonTagName": "BTN-1", "identifiers": {"text": "Button 1"}, "testTargets": {}}],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
+
+        token = "techTokenPersist"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click(".btn-wrap .test-btn")
+            page.click("#rows .row .actions button")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-21T00:00:00Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent,
+            )
+            self._wait_for_status_contains(page, "Saved")
+            page.click("#close")
+            page.click(".btn-wrap .test-btn")
+            self._wait_for_row_status_contains(page, 0, "PASS")
+            self._wait_for_row_status_contains(page, 0, "2026-03-21T00:00:00Z")
         finally:
             server.stop()
 
@@ -374,17 +723,22 @@ class TestingResultPostingTest(unittest.TestCase):
             "devices": [],
         }
         html = render_project_home_html(project_data, app_ui, "unittest")
+        self._assert_ws_helpers_present(html)
 
         token = "techToken789"
         server = _CaptureServer(html_by_path={f"/testing/{token}": html}, post_mode="error")
         port = server.start()
         try:
             page = self._browser.new_page()
+            self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click("button.section-toggle[data-target='system-events']")
             page.click(".event-row.test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
-            self._wait_for_posts(server, min_posts=1)
+            self._wait_for_ws_outbox(page, min_posts=1)
+            page.evaluate(
+                "window.__emitWs({type:'error', code:'UNITTEST_ERROR', message:'Unit test forced failure'})"
+            )
             self._wait_for_status_contains(page, "UNITTEST_ERROR")
         finally:
             server.stop()

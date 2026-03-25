@@ -8,6 +8,28 @@ function api(path) {
   return `/api/v1${path}`;
 }
 
+function wsUrl(path) {
+  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  return `${proto}://${host}${path}`;
+}
+
+function logProjectWs(action, detail) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[project-ws]", action, detail == null ? "" : detail);
+    }
+  } catch (_e) {}
+}
+
+function logCommissionWs(action, detail) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[commission-ws]", action, detail == null ? "" : detail);
+    }
+  } catch (_e) {}
+}
+
 function formatTimestampUtc(ts) {
   const s = String(ts || "").trim();
   if (!s) return "";
@@ -18,20 +40,6 @@ function formatTimestampUtc(ts) {
   const mmdd = iso.slice(5, 10);
   const time = iso.slice(11, 19);
   return `${mmdd} ${time}Z`;
-}
-
-async function jsonFetch(url, options) {
-  const res = await fetch(url, options);
-  const ct = res.headers.get("content-type") || "";
-  if (!res.ok) {
-    const body = ct.includes("application/json") ? await res.json() : await res.text();
-    if (body && typeof body === "object" && body.error && body.error.message) {
-      throw new Error(String(body.error.message));
-    }
-    throw new Error(typeof body === "string" ? body : JSON.stringify(body));
-  }
-  if (ct.includes("application/json")) return res.json();
-  return res.text();
 }
 
 function currentProjectId() {
@@ -269,11 +277,184 @@ function appendActivityRow(msg) {
   }
 }
 
-let sse = null;
-let sseProjectId = null;
-let lastSseErrorAtMs = 0;
-let progressRefreshTimer = null;
-let commissionPollTimer = null;
+function ensureSharedProjectWsManager() {
+  if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
+
+  let ws = null;
+  let wsProjectId = "";
+  let wsReconnectTimer = null;
+  let wsReconnectDelayMs = 500;
+  let wsConnSeq = 0;
+  let wsState = "closed";
+  let wsIntentionalClose = false;
+  let idleCloseTimer = null;
+  const consumers = new Map();
+
+  function desiredProjectId() {
+    for (const consumer of consumers.values()) {
+      if (!consumer || !consumer.active) continue;
+      const pid = String(consumer.projectId || "").trim();
+      if (pid) return pid;
+    }
+    return "";
+  }
+
+  function fanOut(payload) {
+    for (const consumer of consumers.values()) {
+      if (!consumer || typeof consumer.onMessage !== "function") continue;
+      try {
+        consumer.onMessage(payload);
+      } catch (e) {
+        logProjectWs("consumer:onMessage-failed", String(e?.message || e || ""));
+      }
+    }
+  }
+
+  function clearReconnectTimer() {
+    if (!wsReconnectTimer) return;
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+
+  function clearIdleCloseTimer() {
+    if (!idleCloseTimer) return;
+    clearTimeout(idleCloseTimer);
+    idleCloseTimer = null;
+  }
+
+  function closeSocket(intentional) {
+    clearReconnectTimer();
+    if (!ws) {
+      wsState = "closed";
+      wsProjectId = "";
+      return;
+    }
+    wsIntentionalClose = !!intentional;
+    try {
+      ws.close();
+    } catch (e) {
+      logProjectWs("close:socket-throw", String(e?.message || e || ""));
+    }
+  }
+
+  function scheduleReconnect() {
+    clearReconnectTimer();
+    wsReconnectTimer = setTimeout(() => {
+      wsReconnectTimer = null;
+      connectIfNeeded(desiredProjectId());
+    }, Math.min(5000, Math.max(250, wsReconnectDelayMs)));
+    wsReconnectDelayMs = Math.min(5000, wsReconnectDelayMs * 2);
+  }
+
+  function connectIfNeeded(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) {
+      logProjectWs("connect:missing-project-id");
+      return;
+    }
+    if (ws && wsProjectId === pid && (wsState === "connecting" || wsState === "open")) return;
+
+    closeSocket(true);
+    clearIdleCloseTimer();
+
+    const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(pid)}/ws`));
+    const connId = ++wsConnSeq;
+    wsState = "connecting";
+    wsProjectId = pid;
+    logProjectWs("conn-id", connId);
+    logProjectWs("connect", url);
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      if (connId !== wsConnSeq) {
+        logProjectWs("open:stale-conn", connId);
+        return;
+      }
+      wsState = "open";
+      wsReconnectDelayMs = 500;
+      logProjectWs("open", wsProjectId);
+    };
+    ws.onclose = () => {
+      if (connId !== wsConnSeq) {
+        logProjectWs("close:stale-conn", connId);
+        return;
+      }
+      const intentional = wsIntentionalClose;
+      wsIntentionalClose = false;
+      ws = null;
+      wsProjectId = "";
+      wsState = "closed";
+      logProjectWs("close", intentional ? "intentional" : "unexpected");
+      if (!intentional && desiredProjectId()) scheduleReconnect();
+    };
+    ws.onerror = () => {
+      if (connId !== wsConnSeq) {
+        logProjectWs("error:stale-conn", connId);
+        return;
+      }
+      logProjectWs("error");
+      try {
+        if (ws) ws.close();
+      } catch (e) {
+        logProjectWs("error:close-throw", String(e?.message || e || ""));
+      }
+    };
+    ws.onmessage = (evt) => {
+      if (connId !== wsConnSeq) {
+        logProjectWs("recv:stale-conn", connId);
+        return;
+      }
+      try {
+        const payload = JSON.parse(String(evt.data || "{}"));
+        fanOut(payload);
+      } catch (e) {
+        logProjectWs("recv:json-parse-failed", String(e?.message || e || ""));
+      }
+    };
+  }
+
+  function reconcile() {
+    const pid = desiredProjectId();
+    if (pid) {
+      clearIdleCloseTimer();
+      connectIfNeeded(pid);
+      return;
+    }
+    if (idleCloseTimer) return;
+    idleCloseTimer = setTimeout(() => {
+      idleCloseTimer = null;
+      if (!desiredProjectId()) closeSocket(true);
+    }, 300);
+  }
+
+  window.__sentinelProjectWsManager = {
+    setConsumer(id, state) {
+      const key = String(id || "").trim();
+      if (!key) {
+        logProjectWs("consumer:set-missing-id");
+        return;
+      }
+      const prev = consumers.get(key) || {};
+      const next = {
+        ...prev,
+        ...state,
+        projectId: String(state?.projectId ?? prev.projectId ?? "").trim(),
+        active: state && Object.prototype.hasOwnProperty.call(state, "active") ? !!state.active : !!prev.active,
+      };
+      consumers.set(key, next);
+      reconcile();
+    },
+  };
+  return window.__sentinelProjectWsManager;
+}
+
+const sharedProjectWsManager = ensureSharedProjectWsManager();
+
+function syncAfterReconnect(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return;
+  logCommissionWs("reconnect-sync", pid);
+}
 
 function ensureCommissionHeader() {
   const div = document.getElementById("commissionSelection");
@@ -290,103 +471,99 @@ function updateSelectedNames() {
   ensureCommissionHeader();
 }
 
-function stopSse() {
-  if (sse) {
-    try {
-      sse.close();
-    } catch (_e) {}
-  }
-  sse = null;
-  sseProjectId = null;
-  lastSseErrorAtMs = 0;
-}
-
-function scheduleProgressRefresh() {
-  const projectId = currentProjectId();
-  if (!projectId) return;
-  if (progressRefreshTimer) return;
-
-  progressRefreshTimer = setTimeout(async () => {
-    progressRefreshTimer = null;
-    try {
-      const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-      updatePies(progress);
-    } catch (_e) {}
-  }, 750);
-}
-
-function startSse(projectId) {
-  if (!projectId) return;
-  if (sse && sseProjectId === projectId) return;
-  stopSse();
-
-  const url = api(`/commissioning/projects/${encodeURIComponent(projectId)}/events`);
-  sse = new EventSource(url);
-  sseProjectId = projectId;
-
-  const handleTestResult = (e) => {
-    try {
-      const payload = JSON.parse(String(e.data || "{}"));
-      appendActivityRow(normalizeEventMessage(payload));
-      scheduleProgressRefresh();
-    } catch (_err) {
-      appendActivityRow({ tsUtc: "", device: "", page: "", button: "", testTarget: "", status: "", targetKey: String(e.data || "") });
+function setActivityRows(rows) {
+  const body = $("commissionActivityBody");
+  body.innerHTML = "";
+  const items = Array.isArray(rows) ? rows : [];
+  if (!items.length) {
+    const empty = document.getElementById("commissionActivityEmpty");
+    if (!empty) {
+      const msg = document.createElement("div");
+      msg.className = "activity-empty";
+      msg.id = "commissionActivityEmpty";
+      msg.textContent = "No activity yet.";
+      $("commissionActivity").appendChild(msg);
     }
-  };
-
-  sse.addEventListener("test_result", handleTestResult);
-
-  sse.addEventListener("error", () => {
-    const now = Date.now();
-    if (now - lastSseErrorAtMs < 10_000) return;
-    lastSseErrorAtMs = now;
-    appendActivityRow({
-      tsUtc: formatTimestampUtc(new Date().toISOString()),
-      device: "",
-      page: "",
-      button: "",
-      testTarget: "",
-      status: "SSE_ERROR",
-      targetKey: "",
-    });
-  });
-}
-
-function startCommissionPoll() {
-  if (commissionPollTimer) return;
-  commissionPollTimer = setInterval(() => {
-    if (!isCommissionVisible()) return;
-    const projectId = currentProjectId();
-    if (!projectId) return;
-    scheduleProgressRefresh();
-  }, 5000);
-}
-
-function stopCommissionPoll() {
-  if (commissionPollTimer) {
-    clearInterval(commissionPollTimer);
-    commissionPollTimer = null;
+    return;
   }
+  const empty = document.getElementById("commissionActivityEmpty");
+  if (empty) empty.remove();
+  const capped = items.slice(0, 50);
+  for (let idx = capped.length - 1; idx >= 0; idx--) {
+    const norm = normalizeEventMessage(capped[idx]);
+    appendActivityRow(norm);
+  }
+  logCommissionWs("snapshot:activities-applied", capped.length);
+}
+
+function handleCommissionWsPayload(payload) {
+  try {
+    const t = String(payload?.type || "").trim();
+    logCommissionWs("recv", t || "(unknown)");
+    if (t === "keepalive") return;
+    if (t === "commissioning_snapshot") {
+      const progress = payload?.progress || null;
+      const activities = Array.isArray(payload?.activities) ? payload.activities : [];
+      setActivityRows(activities);
+      if (progress) updatePies(progress);
+      const counts = progress?.counts || {};
+      logCommissionWs("snapshot:applied", {
+        activities: activities.length,
+        pass: Number(counts.pass || 0),
+        fail: Number(counts.fail || 0),
+      });
+      return;
+    }
+    if (t === "test_result" || t === "test_result.recorded") {
+      const norm = normalizeEventMessage(payload);
+      logCommissionWs("normalize", {
+        hasDevice: !!norm.device,
+        hasPage: !!norm.page,
+        hasButton: !!norm.button,
+        hasTarget: !!norm.testTarget,
+        hasKey: !!norm.targetKey,
+        status: norm.status,
+      });
+      appendActivityRow(norm);
+      const progress = payload?.progress || payload?.data?.progress || null;
+      if (progress) updatePies(progress);
+    }
+  } catch (e) {
+    logCommissionWs("payload:handle-failed", String(e?.message || e || ""));
+  }
+}
+
+function startWs(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) {
+    logCommissionWs("start:missing-project-id");
+    return;
+  }
+  sharedProjectWsManager.setConsumer("commission", {
+    active: true,
+    projectId: pid,
+    onMessage: handleCommissionWsPayload,
+  });
+  syncAfterReconnect(pid);
+}
+
+function stopWs() {
+  sharedProjectWsManager.setConsumer("commission", {
+    active: false,
+    projectId: String(currentProjectId() || "").trim(),
+    onMessage: handleCommissionWsPayload,
+  });
 }
 
 async function refreshCommission() {
   const projectId = currentProjectId();
   updateSelectedNames();
-  if (!projectId) return;
-  startSse(projectId);
-  startCommissionPoll();
-  await refreshCommissionTopboxTitle(projectId);
-
-  try {
-    const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
-    updatePies(progress);
-  } catch (_e) {
-    updatePies({
-      counts: { totalTargets: 0, pass: 0 },
-      eventSections: { system: { counts: { totalTargets: 0, pass: 0 } }, driver: { counts: { totalTargets: 0, pass: 0 } } },
-      devices: [],
-    });
+  if (!projectId) {
+    logCommissionWs("refresh:missing-project-id");
+    return;
   }
+  startWs(projectId);
+  await refreshCommissionTopboxTitle(projectId);
 }
 
 function runCommissionTab() {
@@ -395,14 +572,12 @@ function runCommissionTab() {
   const tabManage = document.getElementById("tab-manage");
   if (tabManage)
     tabManage.addEventListener("click", () => {
-      stopSse();
-      stopCommissionPoll();
+      stopWs();
     });
   const tabDiagnostics = document.getElementById("tab-diagnostics");
   if (tabDiagnostics)
     tabDiagnostics.addEventListener("click", () => {
-      stopSse();
-      stopCommissionPoll();
+      stopWs();
     });
 
   const clientSelect = document.getElementById("clientSelect");
@@ -411,7 +586,7 @@ function runCommissionTab() {
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
-      stopSse();
+      stopWs();
       updateSelectedNames();
       if (isCommissionVisible()) void refreshCommission();
     });

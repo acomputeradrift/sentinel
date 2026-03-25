@@ -55,72 +55,79 @@ function updateDiagnosticsTitle() {
   line.textContent = clientName || projectName ? `${clientName || "(client)"} / ${projectName || "(project)"}` : "";
 }
 
-const diagAuto = {
-  source: null,
-  projectId: null,
-  refreshTimer: null,
-  pollTimer: null,
-};
-
 function isDiagnosticsVisible() {
   const panel = document.getElementById("panel-diagnostics");
   return !!panel && !panel.hidden;
 }
 
-function stopDiagnosticsPoll() {
-  if (diagAuto.pollTimer) {
-    clearInterval(diagAuto.pollTimer);
-    diagAuto.pollTimer = null;
-  }
+function diagWsUrl(path) {
+  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  return `${proto}://${host}${path}`;
 }
 
-function startDiagnosticsPoll() {
-  if (diagAuto.pollTimer) return;
-  diagAuto.pollTimer = setInterval(() => {
-    if (!isDiagnosticsVisible()) return;
-    const projectId = currentDiagProjectId();
-    if (!projectId) return;
-    scheduleDiagnosticsRefresh();
-  }, 5000);
+function diagWsUrlCandidates(path) {
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  const primaryProto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const primary = `${primaryProto}://${host}${path}`;
+  const fallbackProto = primaryProto === "wss" ? "ws" : "wss";
+  const fallback = `${fallbackProto}://${host}${path}`;
+  return primaryProto === fallbackProto ? [primary] : [primary, fallback];
 }
 
-function scheduleDiagnosticsRefresh(delayMs = 150) {
-  if (diagAuto.refreshTimer) return;
-  diagAuto.refreshTimer = setTimeout(() => {
-    diagAuto.refreshTimer = null;
-    setDiagStatus("");
-    refreshDiagnostics().catch((e) => setDiagStatus(String(e?.message || e)));
-  }, Math.max(0, Number(delayMs) || 0));
+function logDiagnosticsWs(action, detail) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[diagnostics-ws]", action, detail == null ? "" : detail);
+    }
+  } catch (_e) {}
 }
 
-function disconnectDiagnosticsSse() {
-  if (diagAuto.source) {
-    try {
-      diagAuto.source.close();
-    } catch (_e) {}
-  }
-  diagAuto.source = null;
-  diagAuto.projectId = null;
-  stopDiagnosticsPoll();
+const diagRt = {
+  projectId: null,
+  connSeq: 0,
+  tasksByKey: new Map(),
+  rowByKey: new Map(),
+  rollups: null,
+  progress: null,
+  pies: null,
+};
+
+function getSharedProjectWsManager() {
+  if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
+  throw new Error("Shared project websocket manager not found.");
 }
 
-function connectDiagnosticsSse(projectId) {
+function disconnectDiagnosticsWs() {
+  getSharedProjectWsManager().setConsumer("diagnostics", {
+    active: false,
+    projectId: String(currentDiagProjectId() || "").trim(),
+    onMessage: handleDiagnosticsEvent,
+  });
+  diagRt.projectId = null;
+  logDiagnosticsWs("close");
+}
+
+function connectDiagnosticsWs(projectId) {
   const pid = String(projectId || "").trim();
   if (!pid) {
-    disconnectDiagnosticsSse();
+    logDiagnosticsWs("connect:missing-project-id");
+    disconnectDiagnosticsWs();
     return;
   }
-  if (diagAuto.source && diagAuto.projectId === pid) return;
-
-  disconnectDiagnosticsSse();
-  diagAuto.projectId = pid;
-  const url = diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/events`);
-  const es = new EventSource(url);
-  es.addEventListener("test_result", () => scheduleDiagnosticsRefresh());
-  es.addEventListener("fail_tag_updated", () => scheduleDiagnosticsRefresh());
-  es.onmessage = () => scheduleDiagnosticsRefresh();
-  diagAuto.source = es;
-  startDiagnosticsPoll();
+  diagRt.projectId = pid;
+  logDiagnosticsWs("conn-id", ++diagRt.connSeq);
+  logDiagnosticsWs("url", { protocol: window.location && window.location.protocol, host: window.location && window.location.host });
+  logDiagnosticsWs("connect", diagWsUrl(diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`)));
+  getSharedProjectWsManager().setConsumer("diagnostics", {
+    active: true,
+    projectId: pid,
+    onMessage: (payload) => {
+      const t = String(payload?.type || "").trim();
+      logDiagnosticsWs("recv", t || "(unknown)");
+      handleDiagnosticsEvent(payload);
+    },
+  });
 }
 
 function _targetNameFromTargetKey(targetKey) {
@@ -343,14 +350,6 @@ function tagDoneFromEnum(tagEnum) {
   return String(tagEnum || "").trim().toUpperCase() === "DONE";
 }
 
-async function fetchRollups(projectId) {
-  try {
-    return await diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/rollups`));
-  } catch (_e) {
-    return null;
-  }
-}
-
 function firstTimeFailTargetsFromRollups(rollups) {
   const candidates = [
     rollups?.counts?.firstTimeFailTargets,
@@ -395,6 +394,8 @@ function failureTypesFrom(rollups, fails) {
 function renderTaskList(projectId, fails) {
   const tbody = diag$("diagnosticsTaskBody");
   tbody.innerHTML = "";
+  diagRt.tasksByKey.clear();
+  diagRt.rowByKey.clear();
   const rows = Array.isArray(fails) ? fails : [];
   rows.sort((a, b) => String(b?.lastTestedAtUtc || "").localeCompare(String(a?.lastTestedAtUtc || "")));
 
@@ -423,11 +424,9 @@ function renderTaskList(projectId, fails) {
       try {
         await updateFailTag(projectId, targetKey, next);
         setDiagStatus("");
-        if (diagAuto.refreshTimer) {
-          clearTimeout(diagAuto.refreshTimer);
-          diagAuto.refreshTimer = null;
-        }
-        await refreshDiagnostics();
+        const task = diagRt.tasksByKey.get(targetKey);
+        if (task) task.tag = next;
+        updateTaskCompletionPie();
       } catch (e) {
         sel.value = tagOptions().includes(tag) ? tag : "Not Started";
         setDiagStatus(String(e?.message || e));
@@ -467,70 +466,278 @@ function renderTaskList(projectId, fails) {
     tr.appendChild(tdTarget);
     tr.appendChild(tdResolved);
     tbody.appendChild(tr);
+
+    diagRt.tasksByKey.set(targetKey, {
+      targetKey,
+      tag: tagEnumFromDisplay(tag),
+      lastTestedAtUtc: String(rec?.lastTestedAtUtc || ""),
+      deviceName: String(rec?.deviceName || ""),
+      pageName: String(rec?.pageName || ""),
+      buttonName: String(rec?.buttonName || ""),
+      scope: String(rec?.scope || ""),
+      targetName: String(rec?.targetName || ""),
+      resolvedData: rec?.resolvedData,
+      lastFailNote: String(rec?.lastFailNote || ""),
+    });
+    diagRt.rowByKey.set(targetKey, { tr, sel });
   }
 }
 
-async function refreshDiagnostics() {
-  updateDiagnosticsTitle();
-  const pie = _ensurePieDom();
-  const projectId = currentDiagProjectId();
+function clearDiagnosticsView() {
+  const host = document.getElementById("diagnosticsSummary");
+  if (host) host.textContent = "";
+  const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
+  if (legacy) legacy.textContent = "";
+  diag$("diagnosticsTaskBody").innerHTML = "";
+  diagRt.tasksByKey.clear();
+  diagRt.rowByKey.clear();
+  diagRt.progress = null;
+  diagRt.rollups = null;
+  diagRt.pies = null;
+}
+
+function applyDiagnosticsSnapshot(snapshot) {
+  const projectId = String(snapshot?.projectId || currentDiagProjectId() || "");
   if (!projectId) {
-    const host = document.getElementById("diagnosticsSummary");
-    if (host) host.textContent = "";
-    const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
-    if (legacy) legacy.textContent = "";
-    diag$("diagnosticsTaskBody").innerHTML = "";
+    logDiagnosticsWs("snapshot:missing-project-id");
     return;
   }
-
-  const [progress, fails, rollups] = await Promise.all([
-    diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`)),
-    diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(projectId)}/fails`)),
-    fetchRollups(projectId),
-  ]);
-
-  if (pie) {
-    const totalTargets = totalTargetsFrom(progress, rollups);
-    const firstTimeFailTargets = firstTimeFailTargetsFromRollups(rollups);
-    const okTargets = Math.max(0, totalTargets - firstTimeFailTargets);
-    const failPct = totalTargets ? Math.round((firstTimeFailTargets / totalTargets) * 1000) / 10 : 0;
-    renderPie(
-      pie.failureRate.svg,
-      pie.failureRate.legend,
-      [
-        { label: "First-time fail", value: firstTimeFailTargets, color: "#ef4444" },
-        { label: "Other", value: okTargets, color: "#177bb5" },
-      ],
-      `${failPct}%`
-    );
-
-    const typeItems = failureTypesFrom(rollups, fails)
-      .filter(([k, n]) => String(k || "") && Number(n) > 0)
-      .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
-    const pal = _palette();
-    const top = typeItems.slice(0, 6);
-    const otherCount = typeItems.slice(6).reduce((acc, [, n]) => acc + Number(n || 0), 0);
-    const slices = top.map(([label, n], idx) => ({ label, value: n, color: pal[(idx + 2) % pal.length] }));
-    if (otherCount > 0) slices.push({ label: "other", value: otherCount, color: "#6b7280" });
-    renderPie(pie.failureTypes.svg, pie.failureTypes.legend, slices, "");
-
-    const rows = Array.isArray(fails) ? fails : [];
-    const done = rows.filter((r) => tagDoneFromEnum(r?.tag)).length;
-    const totalTasks = rows.length;
-    const todo = Math.max(0, totalTasks - done);
-    const donePct = totalTasks ? Math.round((done / totalTasks) * 1000) / 10 : 0;
-    renderPie(
-      pie.taskCompletion.svg,
-      pie.taskCompletion.legend,
-      [
-        { label: "Done", value: done, color: "#10b981" },
-        { label: "Not done", value: todo, color: "#f59e0b" },
-      ],
-      totalTasks ? `${donePct}%` : ""
-    );
-  }
-
+  diagRt.pies = _ensurePieDom();
+  diagRt.progress = snapshot?.progress || null;
+  diagRt.rollups = snapshot?.rollups || null;
+  const fails = Array.isArray(snapshot?.fails) ? snapshot.fails : [];
   renderTaskList(projectId, fails);
+  updateFailureRatePie();
+  updateFailureTypesPie();
+  updateTaskCompletionPie();
+  const counts = snapshot?.progress?.counts || {};
+  logDiagnosticsWs("snapshot:applied", {
+    fails: fails.length,
+    pass: Number(counts.pass || 0),
+    fail: Number(counts.fail || 0),
+  });
+}
+
+function _ensureDiagPiesCached() {
+  if (!diagRt.pies) diagRt.pies = _ensurePieDom();
+  return diagRt.pies;
+}
+
+function updateFailureRatePie() {
+  const pie = _ensureDiagPiesCached();
+  if (!pie) return;
+  const totalTargets = totalTargetsFrom(diagRt.progress, diagRt.rollups);
+  const firstTimeFailTargets = firstTimeFailTargetsFromRollups(diagRt.rollups);
+  const okTargets = Math.max(0, totalTargets - firstTimeFailTargets);
+  const failPct = totalTargets ? Math.round((firstTimeFailTargets / totalTargets) * 1000) / 10 : 0;
+  renderPie(
+    pie.failureRate.svg,
+    pie.failureRate.legend,
+    [
+      { label: "First-time fail", value: firstTimeFailTargets, color: "#ef4444" },
+      { label: "Other", value: okTargets, color: "#177bb5" },
+    ],
+    totalTargets ? `${failPct}%` : ""
+  );
+}
+
+function updateFailureTypesPie() {
+  const pie = _ensureDiagPiesCached();
+  if (!pie) return;
+  const counts = new Map();
+  for (const task of diagRt.tasksByKey.values()) {
+    const label = normalizeTargetLabel(task?.targetName || _targetNameFromTargetKey(task?.targetKey || ""));
+    if (!label) continue;
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  const typeItems = Array.from(counts.entries())
+    .filter(([k, n]) => String(k || "") && Number(n) > 0)
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+  const pal = _palette();
+  const top = typeItems.slice(0, 6);
+  const otherCount = typeItems.slice(6).reduce((acc, [, n]) => acc + Number(n || 0), 0);
+  const slices = top.map(([label, n], idx) => ({ label, value: n, color: pal[(idx + 2) % pal.length] }));
+  if (otherCount > 0) slices.push({ label: "other", value: otherCount, color: "#6b7280" });
+  renderPie(pie.failureTypes.svg, pie.failureTypes.legend, slices, "");
+}
+
+function updateTaskCompletionPie() {
+  const pie = _ensureDiagPiesCached();
+  if (!pie) return;
+  const tasks = Array.from(diagRt.tasksByKey.values());
+  const done = tasks.filter((t) => tagDoneFromEnum(t?.tag)).length;
+  const total = tasks.length;
+  const todo = Math.max(0, total - done);
+  const donePct = total ? Math.round((done / total) * 1000) / 10 : 0;
+  renderPie(
+    pie.taskCompletion.svg,
+    pie.taskCompletion.legend,
+    [
+      { label: "Done", value: done, color: "#10b981" },
+      { label: "Not done", value: todo, color: "#f59e0b" },
+    ],
+    total ? `${donePct}%` : ""
+  );
+}
+
+function _makeTaskRow(projectId, task) {
+  const targetKey = String(task?.targetKey || "");
+  const ident = parseIdentity(targetKey);
+
+  const tr = document.createElement("tr");
+
+  const tdTag = document.createElement("td");
+  const sel = document.createElement("select");
+  sel.className = "diag-tag";
+  for (const optVal of tagOptions()) {
+    const opt = document.createElement("option");
+    opt.value = optVal;
+    opt.textContent = optVal;
+    sel.appendChild(opt);
+  }
+  sel.value = tagDisplayFromEnum(task?.tag || "NOT_STARTED");
+  sel.addEventListener("change", async () => {
+    const next = tagEnumFromDisplay(sel.value);
+    try {
+      await updateFailTag(projectId, targetKey, next);
+      const t = diagRt.tasksByKey.get(targetKey);
+      if (t) t.tag = next;
+      updateTaskCompletionPie();
+      setDiagStatus("");
+    } catch (e) {
+      sel.value = tagDisplayFromEnum(task?.tag || "NOT_STARTED");
+      setDiagStatus(String(e?.message || e));
+    }
+  });
+  tdTag.appendChild(sel);
+
+  const tdAt = document.createElement("td");
+  tdAt.className = "mono diag-ts";
+
+  const tdDevice = document.createElement("td");
+  const tdPage = document.createElement("td");
+  const tdButton = document.createElement("td");
+  const tdScope = document.createElement("td");
+  const tdTarget = document.createElement("td");
+  const tdResolved = document.createElement("td");
+  tdResolved.className = "diag-muted";
+
+  tdDevice.textContent = String(task?.deviceName || (ident.device ? `d${ident.device}` : ""));
+  tdPage.textContent = String(task?.pageName || (ident.page ? `p${ident.page}` : ""));
+  tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
+  tdScope.textContent = String(task?.scope || "");
+  tdTarget.textContent = normalizeTargetLabel(task?.targetName || ident.testTarget || "");
+  const resolved = task?.resolvedData;
+  const note = String((resolved == null ? "" : resolved) || task?.lastFailNote || "");
+  tdResolved.textContent = note || "";
+
+  tr.appendChild(tdTag);
+  tr.appendChild(tdAt);
+  tr.appendChild(tdDevice);
+  tr.appendChild(tdPage);
+  tr.appendChild(tdButton);
+  tr.appendChild(tdScope);
+  tr.appendChild(tdTarget);
+  tr.appendChild(tdResolved);
+
+  return { tr, sel, tdAt, tdDevice, tdPage, tdButton, tdScope, tdTarget, tdResolved };
+}
+
+function _updateTaskRowDom(row, task) {
+  if (!row) return;
+  row.tdAt.textContent = formatUtcTimestamp(task?.lastTestedAtUtc) || "";
+  row.tdDevice.textContent = String(task?.deviceName || "");
+  row.tdPage.textContent = String(task?.pageName || "");
+  row.tdButton.textContent = String(task?.buttonName || "");
+  row.tdScope.textContent = String(task?.scope || "");
+  row.tdTarget.textContent = normalizeTargetLabel(task?.targetName || "");
+  const resolved = task?.resolvedData;
+  const note = String((resolved == null ? "" : resolved) || task?.lastFailNote || "");
+  row.tdResolved.textContent = note || "";
+  row.sel.value = tagDisplayFromEnum(task?.tag || "NOT_STARTED");
+}
+
+function handleDiagnosticsEvent(payload) {
+  const ev = payload && typeof payload === "object" ? payload : {};
+  const t = String(ev?.type || "").trim();
+  if (!t || t === "keepalive") {
+    logDiagnosticsWs("recv:ignored", t || "(empty)");
+    return;
+  }
+  if (t === "commissioning_snapshot") {
+    applyDiagnosticsSnapshot(ev);
+    return;
+  }
+  const projectId = String(ev?.projectId || diagRt.projectId || currentDiagProjectId() || "");
+  const progress = ev?.progress || ev?.data?.progress || null;
+  const rollups = ev?.rollups || ev?.data?.rollups || null;
+  if (progress) diagRt.progress = progress;
+  if (rollups) diagRt.rollups = rollups;
+  if (t === "fail_tag_updated") {
+    const targetKey = String(ev?.targetKey || "");
+    const tag = String(ev?.tag || "").trim().toUpperCase();
+    const task = diagRt.tasksByKey.get(targetKey);
+    if (task && tag) {
+      task.tag = tag;
+      const row = diagRt.rowByKey.get(targetKey);
+      if (row) row.sel.value = tagDisplayFromEnum(tag);
+      updateTaskCompletionPie();
+    }
+    return;
+  }
+  if (t === "test_result" || t === "test_result.recorded") {
+    const data = ev?.data && typeof ev.data === "object" ? ev.data : ev;
+    const targetKey = String(data?.targetKey || "");
+    const outcome = String(data?.outcome || "").trim().toUpperCase();
+    const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
+    if (!targetKey || (outcome !== "PASS" && outcome !== "FAIL")) {
+      logDiagnosticsWs("recv:ignored", { reason: "invalid-result", targetKey, outcome });
+      return;
+    }
+    if (outcome === "PASS") {
+      const existing = diagRt.tasksByKey.get(targetKey);
+      if (existing) {
+        diagRt.tasksByKey.delete(targetKey);
+        const row = diagRt.rowByKey.get(targetKey);
+        if (row && row.tr && row.tr.parentElement) row.tr.parentElement.removeChild(row.tr);
+        diagRt.rowByKey.delete(targetKey);
+        updateFailureTypesPie();
+        updateTaskCompletionPie();
+      }
+      if (progress || rollups) updateFailureRatePie();
+      return;
+    }
+
+    const prev = diagRt.tasksByKey.get(targetKey);
+    const next = {
+      targetKey,
+      tag: prev?.tag || "NOT_STARTED",
+      lastTestedAtUtc: String(data?.recordedAtUtc || ""),
+      deviceName: String(refs?.deviceName || ""),
+      pageName: String(refs?.pageName || ""),
+      buttonName: String(refs?.buttonName || ""),
+      scope: String(refs?.scope || ""),
+      targetName: String(data?.targetName || ""),
+      resolvedData: refs?.resolvedData,
+      lastFailNote: String(data?.failNote || ""),
+    };
+    diagRt.tasksByKey.set(targetKey, next);
+
+    const tbody = diag$("diagnosticsTaskBody");
+    const existingRow = diagRt.rowByKey.get(targetKey);
+    if (existingRow) {
+      _updateTaskRowDom(existingRow, next);
+      if (existingRow.tr && tbody.firstChild !== existingRow.tr) tbody.prepend(existingRow.tr);
+    } else {
+      const row = _makeTaskRow(projectId, next);
+      _updateTaskRowDom(row, next);
+      tbody.prepend(row.tr);
+      diagRt.rowByKey.set(targetKey, row);
+    }
+    updateFailureTypesPie();
+    updateTaskCompletionPie();
+    if (progress || rollups) updateFailureRatePie();
+  }
 }
 
 function initDiagnosticsTab() {
@@ -539,18 +746,33 @@ function initDiagnosticsTab() {
     refreshBtn.style.display = "none";
   }
 
+  const tabDiag = document.getElementById("tab-diagnostics");
+  if (tabDiag) {
+    tabDiag.addEventListener("click", () => {
+      const projectId = currentDiagProjectId();
+      connectDiagnosticsWs(projectId);
+      setDiagStatus("");
+      updateDiagnosticsTitle();
+    });
+  }
+  const tabManage = document.getElementById("tab-manage");
+  if (tabManage) tabManage.addEventListener("click", () => disconnectDiagnosticsWs());
+  const tabCommission = document.getElementById("tab-commission");
+  if (tabCommission) tabCommission.addEventListener("click", () => disconnectDiagnosticsWs());
+
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
       const projectId = currentDiagProjectId();
-      connectDiagnosticsSse(projectId);
+      if (isDiagnosticsVisible()) connectDiagnosticsWs(projectId);
       updateDiagnosticsTitle();
-      scheduleDiagnosticsRefresh(0);
+      setDiagStatus("");
+      if (!projectId) clearDiagnosticsView();
     });
     const initialProjectId = currentDiagProjectId();
-    connectDiagnosticsSse(initialProjectId);
+    if (isDiagnosticsVisible()) connectDiagnosticsWs(initialProjectId);
     updateDiagnosticsTitle();
-    scheduleDiagnosticsRefresh(0);
+    if (!initialProjectId) clearDiagnosticsView();
   }
 }
 
