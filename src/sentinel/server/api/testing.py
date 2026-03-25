@@ -102,6 +102,27 @@ def _build_test_result_event(*, repo: Repository, rec) -> dict:
     }
 
 
+def _build_testing_snapshot(*, repo: Repository, projectId: str) -> dict:
+    latest = repo.get_latest_results_for_project(projectId=projectId)
+    rows = list(latest.values())
+    rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
+    results: list[dict] = []
+    for rec in rows:
+        target = rec.target if isinstance(rec.target, dict) else {}
+        results.append(
+            {
+                "targetKey": str(target.get("targetKey") or ""),
+                "outcome": str(rec.outcome or "").upper(),
+                "recordedAtUtc": rec.recordedAtUtc,
+                "targetName": target.get("targetName"),
+                "kind": target.get("kind") or target.get("targetKind"),
+                "refs": target.get("refs"),
+                "failNote": rec.failNote,
+            }
+        )
+    return {"type": "testing_snapshot", "projectId": projectId, "results": results}
+
+
 def _generated_root() -> Path:
     return Path(os.environ.get("SENTINEL_GENERATED_ROOT") or "generated").resolve()
 
@@ -231,6 +252,12 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     broker = _ws_broker(websocket)
     log.info("[testing-ws] broker_id=%s projectId=%s", id(broker), project_id)
     q = broker.subscribe(projectId=project_id)
+    try:
+        snapshot = _build_testing_snapshot(repo=repo, projectId=project_id)
+        log.info("[testing-ws] snapshot-send projectId=%s count=%s", project_id, len(snapshot.get("results") or []))
+        await websocket.send_text(json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False))
+    except Exception:
+        log.exception("[testing-ws] snapshot-send-failed projectId=%s techToken=%s", project_id, techToken)
 
     async def send_loop():
         while True:

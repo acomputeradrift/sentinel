@@ -832,6 +832,26 @@ let currentDeviceTop=0;
     setPostStatus(`Error: ${{msg}}`, "error");
     return;
    }}
+   if (t === "testing_snapshot") {{
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+    let applied = 0;
+    for (const rec of results) {{
+     const targetKey = String(rec?.targetKey || "");
+     if (!targetKey) continue;
+     const outcome = String(rec?.outcome || "").toUpperCase();
+     const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     const statusEl = rowStatusByTargetKey.get(targetKey);
+     if (statusEl) {{
+      setRowStatus(statusEl, outcome, at);
+      statusEl.classList.toggle("is-pass", outcome === "PASS");
+      statusEl.classList.toggle("is-fail", outcome === "FAIL");
+      applied += 1;
+     }}
+    }}
+    _logTechWs("snapshot:applied", {{ total: results.length, applied }});
+    return;
+   }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
@@ -2489,6 +2509,26 @@ const APP_UI={app_json};
     const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
     setPosting(false);
     setPostStatus(`Error: ${{msg}}`, "error");
+    return;
+   }}
+   if (t === "testing_snapshot") {{
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+    let applied = 0;
+    for (const rec of results) {{
+     const targetKey = String(rec?.targetKey || "");
+     if (!targetKey) continue;
+     const outcome = String(rec?.outcome || "").toUpperCase();
+     const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     const statusEl = rowStatusByTargetKey.get(targetKey);
+     if (statusEl) {{
+      setRowStatus(statusEl, outcome, at);
+      statusEl.classList.toggle("is-pass", outcome === "PASS");
+      statusEl.classList.toggle("is-fail", outcome === "FAIL");
+      applied += 1;
+     }}
+    }}
+    _logTechWs("snapshot:applied", {{ total: results.length, applied }});
     return;
    }}
    if (t !== "test_result.recorded" && t !== "test_result") return;

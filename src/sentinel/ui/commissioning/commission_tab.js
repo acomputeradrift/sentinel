@@ -493,6 +493,7 @@ function setActivityRows(rows) {
     const norm = normalizeEventMessage(capped[idx]);
     appendActivityRow(norm);
   }
+  logCommissionWs("snapshot:activities-applied", capped.length);
 }
 
 function handleCommissionWsPayload(payload) {
@@ -505,6 +506,12 @@ function handleCommissionWsPayload(payload) {
       const activities = Array.isArray(payload?.activities) ? payload.activities : [];
       setActivityRows(activities);
       if (progress) updatePies(progress);
+      const counts = progress?.counts || {};
+      logCommissionWs("snapshot:applied", {
+        activities: activities.length,
+        pass: Number(counts.pass || 0),
+        fail: Number(counts.fail || 0),
+      });
       return;
     }
     if (t === "test_result" || t === "test_result.recorded") {

@@ -88,6 +88,8 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertIn("send-abort:not-open", html)
         self.assertIn("ack-match", html)
         self.assertIn("ack-miss", html)
+        self.assertIn("testing_snapshot", html)
+        self.assertIn("snapshot:applied", html)
 
     def test_commissioning_js_contains_ws_marker(self):
         target = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "commission_tab.js"
@@ -122,6 +124,8 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertIn("broker_id", testing.read_text(encoding="utf-8"))
         self.assertIn("recv:json-parse-failed", testing.read_text(encoding="utf-8"))
         self.assertIn("unsubscribe-failed", testing.read_text(encoding="utf-8"))
+        self.assertIn("testing_snapshot", testing.read_text(encoding="utf-8"))
+        self.assertIn("snapshot-send", testing.read_text(encoding="utf-8"))
         self.assertIn("[commissioning-ws]", commissioning.read_text(encoding="utf-8"))
         self.assertIn("broker_id", commissioning.read_text(encoding="utf-8"))
         self.assertIn("send:parse-failed", commissioning.read_text(encoding="utf-8"))

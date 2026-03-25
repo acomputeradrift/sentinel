@@ -510,6 +510,12 @@ function applyDiagnosticsSnapshot(snapshot) {
   updateFailureRatePie();
   updateFailureTypesPie();
   updateTaskCompletionPie();
+  const counts = snapshot?.progress?.counts || {};
+  logDiagnosticsWs("snapshot:applied", {
+    fails: fails.length,
+    pass: Number(counts.pass || 0),
+    fail: Number(counts.fail || 0),
+  });
 }
 
 function _ensureDiagPiesCached() {
