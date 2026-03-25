@@ -14,6 +14,14 @@ function wsUrl(path) {
   return `${proto}://${host}${path}`;
 }
 
+function logProjectWs(action, detail) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[project-ws]", action, detail == null ? "" : detail);
+    }
+  } catch (_e) {}
+}
+
 function logCommissionWs(action, detail) {
   try {
     if (typeof console !== "undefined" && console.log) {
@@ -269,12 +277,152 @@ function appendActivityRow(msg) {
   }
 }
 
-let ws = null;
-let wsProjectId = null;
-let wsReconnectTimer = null;
-let wsReconnectDelayMs = 500;
-let wsConnSeq = 0;
-let wsState = "closed";
+function ensureSharedProjectWsManager() {
+  if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
+
+  let ws = null;
+  let wsProjectId = "";
+  let wsReconnectTimer = null;
+  let wsReconnectDelayMs = 500;
+  let wsConnSeq = 0;
+  let wsState = "closed";
+  let wsIntentionalClose = false;
+  let idleCloseTimer = null;
+  const consumers = new Map();
+
+  function desiredProjectId() {
+    for (const consumer of consumers.values()) {
+      if (!consumer || !consumer.active) continue;
+      const pid = String(consumer.projectId || "").trim();
+      if (pid) return pid;
+    }
+    return "";
+  }
+
+  function fanOut(payload) {
+    for (const consumer of consumers.values()) {
+      if (!consumer || typeof consumer.onMessage !== "function") continue;
+      try {
+        consumer.onMessage(payload);
+      } catch (_e) {}
+    }
+  }
+
+  function clearReconnectTimer() {
+    if (!wsReconnectTimer) return;
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+
+  function clearIdleCloseTimer() {
+    if (!idleCloseTimer) return;
+    clearTimeout(idleCloseTimer);
+    idleCloseTimer = null;
+  }
+
+  function closeSocket(intentional) {
+    clearReconnectTimer();
+    if (!ws) {
+      wsState = "closed";
+      wsProjectId = "";
+      return;
+    }
+    wsIntentionalClose = !!intentional;
+    try {
+      ws.close();
+    } catch (_e) {}
+  }
+
+  function scheduleReconnect() {
+    clearReconnectTimer();
+    wsReconnectTimer = setTimeout(() => {
+      wsReconnectTimer = null;
+      connectIfNeeded(desiredProjectId());
+    }, Math.min(5000, Math.max(250, wsReconnectDelayMs)));
+    wsReconnectDelayMs = Math.min(5000, wsReconnectDelayMs * 2);
+  }
+
+  function connectIfNeeded(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return;
+    if (ws && wsProjectId === pid && (wsState === "connecting" || wsState === "open")) return;
+
+    closeSocket(true);
+    clearIdleCloseTimer();
+
+    const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(pid)}/ws`));
+    const connId = ++wsConnSeq;
+    wsState = "connecting";
+    wsProjectId = pid;
+    logProjectWs("conn-id", connId);
+    logProjectWs("connect", url);
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      if (connId !== wsConnSeq) return;
+      wsState = "open";
+      wsReconnectDelayMs = 500;
+      logProjectWs("open", wsProjectId);
+    };
+    ws.onclose = () => {
+      if (connId !== wsConnSeq) return;
+      const intentional = wsIntentionalClose;
+      wsIntentionalClose = false;
+      ws = null;
+      wsProjectId = "";
+      wsState = "closed";
+      logProjectWs("close", intentional ? "intentional" : "unexpected");
+      if (!intentional && desiredProjectId()) scheduleReconnect();
+    };
+    ws.onerror = () => {
+      if (connId !== wsConnSeq) return;
+      logProjectWs("error");
+      try {
+        if (ws) ws.close();
+      } catch (_e) {}
+    };
+    ws.onmessage = (evt) => {
+      if (connId !== wsConnSeq) return;
+      try {
+        const payload = JSON.parse(String(evt.data || "{}"));
+        fanOut(payload);
+      } catch (_e) {}
+    };
+  }
+
+  function reconcile() {
+    const pid = desiredProjectId();
+    if (pid) {
+      clearIdleCloseTimer();
+      connectIfNeeded(pid);
+      return;
+    }
+    if (idleCloseTimer) return;
+    idleCloseTimer = setTimeout(() => {
+      idleCloseTimer = null;
+      if (!desiredProjectId()) closeSocket(true);
+    }, 300);
+  }
+
+  window.__sentinelProjectWsManager = {
+    setConsumer(id, state) {
+      const key = String(id || "").trim();
+      if (!key) return;
+      const prev = consumers.get(key) || {};
+      const next = {
+        ...prev,
+        ...state,
+        projectId: String(state?.projectId ?? prev.projectId ?? "").trim(),
+        active: state && Object.prototype.hasOwnProperty.call(state, "active") ? !!state.active : !!prev.active,
+      };
+      consumers.set(key, next);
+      reconcile();
+    },
+  };
+  return window.__sentinelProjectWsManager;
+}
+
+const sharedProjectWsManager = ensureSharedProjectWsManager();
 
 function syncAfterReconnect(projectId) {
   const pid = String(projectId || "").trim();
@@ -295,22 +443,6 @@ function selectedOptionText(selectId) {
 
 function updateSelectedNames() {
   ensureCommissionHeader();
-}
-
-function stopWs() {
-  if (wsReconnectTimer) {
-    clearTimeout(wsReconnectTimer);
-    wsReconnectTimer = null;
-  }
-  if (ws) {
-    try {
-      ws.close();
-    } catch (_e) {}
-  }
-  ws = null;
-  wsProjectId = null;
-  wsReconnectDelayMs = 500;
-  wsState = "closed";
 }
 
 function setActivityRows(rows) {
@@ -337,75 +469,52 @@ function setActivityRows(rows) {
   }
 }
 
-function _scheduleWsReconnect() {
-  if (wsReconnectTimer) return;
-  wsReconnectTimer = setTimeout(() => {
-    wsReconnectTimer = null;
-    const projectId = currentProjectId();
-    if (!isCommissionVisible() || !projectId) return;
-    startWs(projectId);
-  }, Math.min(5000, Math.max(250, wsReconnectDelayMs)));
-  wsReconnectDelayMs = Math.min(5000, wsReconnectDelayMs * 2);
+function handleCommissionWsPayload(payload) {
+  try {
+    const t = String(payload?.type || "").trim();
+    logCommissionWs("recv", t || "(unknown)");
+    if (t === "keepalive") return;
+    if (t === "commissioning_snapshot") {
+      const progress = payload?.progress || null;
+      const activities = Array.isArray(payload?.activities) ? payload.activities : [];
+      setActivityRows(activities);
+      if (progress) updatePies(progress);
+      return;
+    }
+    if (t === "test_result" || t === "test_result.recorded") {
+      const norm = normalizeEventMessage(payload);
+      logCommissionWs("normalize", {
+        hasDevice: !!norm.device,
+        hasPage: !!norm.page,
+        hasButton: !!norm.button,
+        hasTarget: !!norm.testTarget,
+        hasKey: !!norm.targetKey,
+        status: norm.status,
+      });
+      appendActivityRow(norm);
+      const progress = payload?.progress || payload?.data?.progress || null;
+      if (progress) updatePies(progress);
+    }
+  } catch (_e) {}
 }
 
 function startWs(projectId) {
-  if (!projectId) return;
-  if (wsProjectId === projectId && (wsState === "connecting" || wsState === "open")) return;
-  stopWs();
+  const pid = String(projectId || "").trim();
+  if (!pid) return;
+  sharedProjectWsManager.setConsumer("commission", {
+    active: true,
+    projectId: pid,
+    onMessage: handleCommissionWsPayload,
+  });
+  syncAfterReconnect(pid);
+}
 
-  const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(projectId)}/ws`));
-  const connId = ++wsConnSeq;
-  wsState = "connecting";
-  logCommissionWs("conn-id", connId);
-  logCommissionWs("connect", url);
-  ws = new WebSocket(url);
-  wsProjectId = projectId;
-
-  ws.onopen = () => {
-    if (connId !== wsConnSeq) return;
-    wsState = "open";
-    wsReconnectDelayMs = 500;
-    logCommissionWs("open");
-    syncAfterReconnect(projectId);
-  };
-  ws.onclose = () => {
-    if (connId !== wsConnSeq) return;
-    ws = null;
-    wsProjectId = null;
-    wsState = "closed";
-    logCommissionWs("close");
-    if (isCommissionVisible()) _scheduleWsReconnect();
-  };
-  ws.onerror = () => {
-    if (connId !== wsConnSeq) return;
-    wsState = "closed";
-    logCommissionWs("error");
-    try {
-      if (ws) ws.close();
-    } catch (_e) {}
-  };
-  ws.onmessage = (evt) => {
-    if (connId !== wsConnSeq) return;
-    try {
-      const payload = JSON.parse(String(evt.data || "{}"));
-      const t = String(payload?.type || "").trim();
-      logCommissionWs("recv", t || "(unknown)");
-      if (t === "commissioning_snapshot") {
-        const progress = payload?.progress || null;
-        const activities = Array.isArray(payload?.activities) ? payload.activities : [];
-        setActivityRows(activities);
-        if (progress) updatePies(progress);
-        return;
-      }
-      if (t === "test_result" || t === "test_result.recorded") {
-        const norm = normalizeEventMessage(payload);
-        logCommissionWs("normalize", { hasDevice: !!norm.device, hasPage: !!norm.page, hasButton: !!norm.button, hasTarget: !!norm.testTarget, hasKey: !!norm.targetKey, status: norm.status });
-        appendActivityRow(norm);
-        const progress = payload?.progress || payload?.data?.progress || null;
-        if (progress) updatePies(progress);
-      }
-    } catch (_e) {}
-  };
+function stopWs() {
+  sharedProjectWsManager.setConsumer("commission", {
+    active: false,
+    projectId: String(currentProjectId() || "").trim(),
+    onMessage: handleCommissionWsPayload,
+  });
 }
 
 async function refreshCommission() {

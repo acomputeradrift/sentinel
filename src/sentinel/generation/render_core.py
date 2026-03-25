@@ -790,6 +790,7 @@ let currentDeviceTop=0;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
  const rowStatusByTargetKey=new Map();
+ const statusByTargetKey=new Map();
  function _logTechWs(action, data) {{
   try {{
    if (typeof console !== "undefined" && console.log) {{
@@ -832,17 +833,17 @@ let currentDeviceTop=0;
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
-   const statusEl = rowStatusByTargetKey.get(targetKey);
-   if (!statusEl) {{
-    const known = Array.from(rowStatusByTargetKey.keys());
-    _logTechWs("row-miss", {{targetKey, knownCount: known.length, knownSample: known.slice(0, 5)}});
-    return;
-   }}
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   setRowStatus(statusEl, outcome, at);
-   statusEl.classList.toggle("is-pass", outcome === "PASS");
-   statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+   const statusEl = rowStatusByTargetKey.get(targetKey);
+   if (!statusEl) {{
+    _logTechWs("row-miss", targetKey);
+   }} else {{
+    setRowStatus(statusEl, outcome, at);
+    statusEl.classList.toggle("is-pass", outcome === "PASS");
+    statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   }}
    if (pendingTargetKey && pendingTargetKey === targetKey) {{
     pendingTargetKey = null;
     setPosting(false);
@@ -893,6 +894,18 @@ let currentDeviceTop=0;
   if (o) parts.push(o);
   if (at) parts.push(at);
   statusEl.textContent = parts.join(" ");
+ }}
+ function applyCachedStatus(statusEl, targetKey) {{
+  if (!statusEl) return;
+  const key = String(targetKey || "").trim();
+  if (!key) return;
+  const rec = statusByTargetKey.get(key);
+  if (!rec) return;
+  const outcome = String(rec.outcome || "").toUpperCase();
+  const at = String(rec.recordedAtUtc || "");
+  setRowStatus(statusEl, outcome, at);
+  statusEl.classList.toggle("is-pass", outcome === "PASS");
+  statusEl.classList.toggle("is-fail", outcome === "FAIL");
  }}
  function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -1002,6 +1015,7 @@ let currentDeviceTop=0;
 
 
  function bindResultRows(ctxBtn, meta) {{
+  rowStatusByTargetKey.clear();
   rows.querySelectorAll('.row').forEach(row=>{{
    const label=row.querySelector('.n')?.textContent||'';
    const statusEl=row.querySelector('.row-status');
@@ -1016,6 +1030,11 @@ let currentDeviceTop=0;
    }};
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
+   const target = buildTargetPayload(ctxBtn, meta, label);
+   if (target?.targetKey && statusEl) {{
+    rowStatusByTargetKey.set(target.targetKey, statusEl);
+    applyCachedStatus(statusEl, target.targetKey);
+   }}
    passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'PASS', null, statusEl);}});
    failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
   }});
@@ -2412,6 +2431,7 @@ const APP_UI={app_json};
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
  const rowStatusByTargetKey=new Map();
+ const statusByTargetKey=new Map();
  function _logTechWs(action, data) {{
   try {{
    if (typeof console !== "undefined" && console.log) {{
@@ -2454,13 +2474,15 @@ const APP_UI={app_json};
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
-   const statusEl = rowStatusByTargetKey.get(targetKey);
-   if (!statusEl) return;
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   setRowStatus(statusEl, outcome, at);
-   statusEl.classList.toggle("is-pass", outcome === "PASS");
-   statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+   const statusEl = rowStatusByTargetKey.get(targetKey);
+   if (statusEl) {{
+    setRowStatus(statusEl, outcome, at);
+    statusEl.classList.toggle("is-pass", outcome === "PASS");
+    statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   }}
    if (pendingTargetKey && pendingTargetKey === targetKey) {{
     pendingTargetKey = null;
     setPosting(false);
@@ -2511,6 +2533,18 @@ const APP_UI={app_json};
   if (o) parts.push(o);
   if (at) parts.push(at);
   statusEl.textContent = parts.join(" ");
+ }}
+ function applyCachedStatus(statusEl, targetKey) {{
+  if (!statusEl) return;
+  const key = String(targetKey || "").trim();
+  if (!key) return;
+  const rec = statusByTargetKey.get(key);
+  if (!rec) return;
+  const outcome = String(rec.outcome || "").toUpperCase();
+  const at = String(rec.recordedAtUtc || "");
+  setRowStatus(statusEl, outcome, at);
+  statusEl.classList.toggle("is-pass", outcome === "PASS");
+  statusEl.classList.toggle("is-fail", outcome === "FAIL");
  }}
  function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -2614,6 +2648,7 @@ const APP_UI={app_json};
  _sendTechWs(payload);
  }}
  function bindResultRows(meta) {{
+  rowStatusByTargetKey.clear();
   rows.querySelectorAll('.row').forEach(function(row){{
    const label=(row.querySelector('.n')||{{}}).textContent||'';
    const statusEl=row.querySelector('.row-status');
@@ -2628,6 +2663,11 @@ const APP_UI={app_json};
    }}
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
+   const target = buildTargetPayload(null, meta, label);
+   if (target?.targetKey && statusEl) {{
+    rowStatusByTargetKey.set(target.targetKey, statusEl);
+    applyCachedStatus(statusEl, target.targetKey);
+   }}
    passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'PASS', null, statusEl);}});
    failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
   }});

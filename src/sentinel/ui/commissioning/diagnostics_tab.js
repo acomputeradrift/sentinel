@@ -84,46 +84,28 @@ function logDiagnosticsWs(action, detail) {
 }
 
 const diagRt = {
-  ws: null,
   projectId: null,
-  reconnectTimer: null,
-  reconnectDelayMs: 500,
+  connSeq: 0,
   tasksByKey: new Map(),
   rowByKey: new Map(),
   rollups: null,
   progress: null,
   pies: null,
-  wsUrls: null,
-  wsUrlIndex: 0,
-  connSeq: 0,
-  state: "closed",
 };
 
-function disconnectDiagnosticsWs() {
-  if (diagRt.reconnectTimer) {
-    clearTimeout(diagRt.reconnectTimer);
-    diagRt.reconnectTimer = null;
-  }
-  if (diagRt.ws) {
-    try {
-      diagRt.ws.close();
-    } catch (_e) {}
-  }
-  diagRt.ws = null;
-  diagRt.projectId = null;
-  diagRt.reconnectDelayMs = 500;
-  diagRt.state = "closed";
+function getSharedProjectWsManager() {
+  if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
+  throw new Error("Shared project websocket manager not found.");
 }
 
-function _scheduleDiagnosticsWsReconnect() {
-  if (diagRt.reconnectTimer) return;
-  diagRt.reconnectTimer = setTimeout(() => {
-    diagRt.reconnectTimer = null;
-    const projectId = currentDiagProjectId();
-    if (!isDiagnosticsVisible() || !projectId) return;
-    connectDiagnosticsWs(projectId);
-  }, Math.min(5000, Math.max(250, diagRt.reconnectDelayMs)));
-  diagRt.reconnectDelayMs = Math.min(5000, diagRt.reconnectDelayMs * 2);
+function disconnectDiagnosticsWs() {
+  getSharedProjectWsManager().setConsumer("diagnostics", {
+    active: false,
+    projectId: String(currentDiagProjectId() || "").trim(),
+    onMessage: handleDiagnosticsEvent,
+  });
+  diagRt.projectId = null;
+  logDiagnosticsWs("close");
 }
 
 function connectDiagnosticsWs(projectId) {
@@ -132,94 +114,19 @@ function connectDiagnosticsWs(projectId) {
     disconnectDiagnosticsWs();
     return;
   }
-  if (diagRt.projectId === pid && (diagRt.state === "connecting" || diagRt.state === "open")) return;
-
-  disconnectDiagnosticsWs();
   diagRt.projectId = pid;
-  const path = diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`);
-  diagRt.wsUrls = diagWsUrlCandidates(path);
-  diagRt.wsUrlIndex = 0;
-  const url = diagRt.wsUrls[diagRt.wsUrlIndex];
-  const connId = ++diagRt.connSeq;
-  diagRt.state = "connecting";
-  logDiagnosticsWs("conn-id", connId);
+  logDiagnosticsWs("conn-id", ++diagRt.connSeq);
   logDiagnosticsWs("url", { protocol: window.location && window.location.protocol, host: window.location && window.location.host });
-  logDiagnosticsWs("connect", url);
-  const ws = new WebSocket(url);
-  diagRt.ws = ws;
-
-  ws.onopen = () => {
-    if (connId !== diagRt.connSeq) return;
-    diagRt.reconnectDelayMs = 500;
-    diagRt.state = "open";
-    logDiagnosticsWs("open");
-  };
-  ws.onclose = () => {
-    if (connId !== diagRt.connSeq) return;
-    diagRt.ws = null;
-    diagRt.projectId = null;
-    diagRt.state = "closed";
-    logDiagnosticsWs("close");
-    if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
-  };
-  ws.onerror = () => {
-    if (connId !== diagRt.connSeq) return;
-    diagRt.state = "closed";
-    logDiagnosticsWs("error");
-    if (diagRt.wsUrls && diagRt.wsUrlIndex + 1 < diagRt.wsUrls.length) {
-      diagRt.wsUrlIndex += 1;
-      const retryUrl = diagRt.wsUrls[diagRt.wsUrlIndex];
-      logDiagnosticsWs("fallback", retryUrl);
-      try {
-        const retry = new WebSocket(retryUrl);
-        diagRt.ws = retry;
-        retry.onopen = () => {
-          if (connId !== diagRt.connSeq) return;
-          diagRt.reconnectDelayMs = 500;
-          diagRt.state = "open";
-          logDiagnosticsWs("open", "fallback");
-        };
-        retry.onclose = () => {
-          if (connId !== diagRt.connSeq) return;
-          diagRt.ws = null;
-          diagRt.projectId = null;
-          diagRt.state = "closed";
-          logDiagnosticsWs("close", "fallback");
-          if (isDiagnosticsVisible()) _scheduleDiagnosticsWsReconnect();
-        };
-        retry.onerror = () => {
-          if (connId !== diagRt.connSeq) return;
-          diagRt.state = "closed";
-          logDiagnosticsWs("error", "fallback");
-          try {
-            if (diagRt.ws) diagRt.ws.close();
-          } catch (_e) {}
-        };
-        retry.onmessage = (evt) => {
-          if (connId !== diagRt.connSeq) return;
-          try {
-            const payload = JSON.parse(String(evt.data || "{}"));
-            const t = String(payload?.type || "").trim();
-            logDiagnosticsWs("recv", t || "(unknown)");
-            handleDiagnosticsEvent(payload);
-          } catch (_e) {}
-        };
-        return;
-      } catch (_e) {}
-    }
-    try {
-      if (diagRt.ws) diagRt.ws.close();
-    } catch (_e) {}
-  };
-  ws.onmessage = (evt) => {
-    if (connId !== diagRt.connSeq) return;
-    try {
-      const payload = JSON.parse(String(evt.data || "{}"));
+  logDiagnosticsWs("connect", diagWsUrl(diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`)));
+  getSharedProjectWsManager().setConsumer("diagnostics", {
+    active: true,
+    projectId: pid,
+    onMessage: (payload) => {
       const t = String(payload?.type || "").trim();
       logDiagnosticsWs("recv", t || "(unknown)");
       handleDiagnosticsEvent(payload);
-    } catch (_e) {}
-  };
+    },
+  });
 }
 
 function _targetNameFromTargetKey(targetKey) {

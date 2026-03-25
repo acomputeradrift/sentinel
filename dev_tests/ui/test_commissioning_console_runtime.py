@@ -351,10 +351,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.add_init_script(
             """
 (() => {
+  let wsConnectCount = 0;
+  let wsCloseCount = 0;
   class FakeWebSocket {
     constructor(url) {
       this.url = url;
       this.readyState = 0;
+      wsConnectCount += 1;
       setTimeout(() => {
         this.readyState = 1;
         if (this.onopen) this.onopen({});
@@ -480,9 +483,12 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
     send(_data) {}
     close() {
       this.readyState = 3;
+      wsCloseCount += 1;
       if (this.onclose) this.onclose({});
     }
   }
+  window.__wsConnectCount = () => wsConnectCount;
+  window.__wsCloseCount = () => wsCloseCount;
   window.WebSocket = FakeWebSocket;
 })();
 """
@@ -594,6 +600,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         first_tag = page.locator("#diagnosticsTaskTable tbody tr").first.locator("select")
         first_tag.select_option(label="Done")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Done (1")
+
+        page.get_by_role("button", name="Commission").click()
+        expect(page.locator("#panel-commission")).to_be_visible()
+        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 1)
+        self.assertEqual(page.evaluate("window.__wsCloseCount()"), 0)
 
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
