@@ -289,6 +289,7 @@ async function createClient() {
   $("clientSelect").value = client.clientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   await refreshProjects();
+  $("newClientName").value = "";
 }
 
 async function createProject() {
@@ -305,6 +306,7 @@ async function createProject() {
   $("projectSelect").dispatchEvent(new Event("change"));
   state.generationReadyByProject[proj.projectId] = false;
   updateTechLinkEnabled();
+  $("newProjectName").value = "";
 }
 
 function _xhrPostFormData(url, fd, onProgress) {

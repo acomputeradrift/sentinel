@@ -9,6 +9,10 @@ from uuid import uuid4
 from sentinel.server.persistence import db
 
 
+class DuplicateClientNameError(ValueError):
+    pass
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -26,10 +30,16 @@ def create_client(database_url: str, *, name: str) -> str:
     con = db.connect(database_url)
     try:
         cur = con.cursor()
-        cur.execute(
-            "insert into clients (client_id, name, created_at_utc) values (%s, %s, %s)",
-            (client_id, name, _utc_now()),
-        )
+        try:
+            cur.execute(
+                "insert into clients (client_id, name, created_at_utc) values (%s, %s, %s)",
+                (client_id, name, _utc_now()),
+            )
+        except Exception as e:
+            msg = str(e)
+            if "clients_name_uq" in msg:
+                raise DuplicateClientNameError(name) from e
+            raise
         con.commit()
         return client_id
     finally:

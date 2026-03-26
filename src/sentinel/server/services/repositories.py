@@ -147,6 +147,10 @@ class InMemoryRepository:
 
     def create_client(self, *, name: str) -> Client:
         with self._lock:
+            wanted = str(name).strip().casefold()
+            for existing in self._clients.values():
+                if str(existing.name).strip().casefold() == wanted:
+                    raise KeyError("CLIENT_EXISTS")
             client = Client(clientId=new_uuid(), name=name, createdAtUtc=utc_now())
             self._clients[client.clientId] = client
             return client
@@ -340,7 +344,10 @@ class PostgresRepository:
         self._db.apply_migrations(database_url)
 
     def create_client(self, *, name: str) -> Client:
-        client_id = self._q.create_client(self._database_url, name=name)
+        try:
+            client_id = self._q.create_client(self._database_url, name=name)
+        except self._q.DuplicateClientNameError as e:
+            raise KeyError("CLIENT_EXISTS") from e
         return Client(clientId=client_id, name=name, createdAtUtc=utc_now())
 
     def create_project(self, *, clientId: str, name: str) -> Project:

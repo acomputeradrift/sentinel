@@ -187,7 +187,12 @@ def create_client(request: Request, payload: dict) -> dict:
     name = str(payload.get("name") or "").strip()
     if not name:
         raise http_error(400, code="VALIDATION_ERROR", message="Client name is required.")
-    c = _repo(request).create_client(name=name)
+    try:
+        c = _repo(request).create_client(name=name)
+    except KeyError as e:
+        if str(e) == "'CLIENT_EXISTS'" or str(e) == "CLIENT_EXISTS":
+            raise http_error(409, code="CLIENT_EXISTS", message="Client name already exists.")
+        raise
     return {"clientId": c.clientId, "name": c.name, "createdAtUtc": c.createdAtUtc}
 
 
