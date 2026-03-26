@@ -31,11 +31,11 @@
             <section class="card" id="manageClientCard">
               <h2>Client</h2>
               <div class="row">
-                <label class="field">
+                <label class="field grow">
                   <span>New client name</span>
                   <input id="newClientName" type="text" placeholder="e.g. Verrier Home" />
                 </label>
-                <button id="createClientBtn" type="button">Create client</button>
+                <button class="manage-create-btn" id="createClientBtn" type="button">Create client</button>
               </div>
               <div class="row">
                 <label class="field grow">
@@ -43,7 +43,6 @@
                   <select id="clientSelect" aria-label="Client"></select>
                 </label>
               </div>
-              <div class="status" id="clientStatus"></div>
             </section>
 
             <section class="card" id="manageProjectCard" hidden>
@@ -53,7 +52,7 @@
                   <span>New project name</span>
                   <input id="newProjectName" type="text" placeholder="e.g. iPhone v55.2" />
                 </label>
-                <button id="createProjectBtn" type="button">Create project</button>
+                <button class="manage-create-btn" id="createProjectBtn" type="button">Create project</button>
               </div>
               <div class="row">
                 <label class="field grow">
@@ -61,12 +60,11 @@
                   <select id="projectSelect" aria-label="Project"></select>
                 </label>
               </div>
-              <div class="status" id="projectStatus"></div>
 
               <div id="manageProjectDetails" hidden>
                 <h3>Current File</h3>
                 <div class="status">
-                  <div id="lastGeneratedLabel"></div>
+                  <div id="lastGeneratedLabel">None</div>
                 </div>
 
                 <h3>Upload + Generate</h3>
@@ -82,11 +80,6 @@
                   <div class="progress-label" id="uploadProgressLabel"></div>
                 </div>
                 <div class="status" data-testid="upload-status" id="uploadStatus"></div>
-                <div class="row progress-row">
-                  <progress id="regenProgress" class="progress"></progress>
-                  <div class="progress-label" id="regenProgressLabel"></div>
-                </div>
-                <div class="status" data-testid="regen-status" id="regenStatus"></div>
 
                 <h3>Current Tech Links</h3>
                 <div class="row">

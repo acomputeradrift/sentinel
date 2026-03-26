@@ -524,6 +524,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#panel-manage")).to_contain_text("Current File")
         expect(page.locator("#panel-manage")).to_contain_text("Upload + Generate")
         expect(page.locator("#panel-manage")).to_contain_text("Current Tech Links")
+        expect(page.locator("#clientStatus")).to_have_count(0)
+        expect(page.locator("#projectStatus")).to_have_count(0)
+        expect(page.locator("#regenProgress")).to_have_count(0)
+        expect(page.locator("#regenProgressLabel")).to_have_count(0)
+        expect(page.locator("#regenStatus")).to_have_count(0)
+        expect(page.locator("#lastGeneratedLabel")).to_have_text("None")
+        self.assertLessEqual(page.locator("#manageProjectDetails").evaluate("el => parseFloat(getComputedStyle(el).marginTop)"), 12)
 
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
@@ -532,8 +539,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
         expect(page.locator("#uploadProgressLabel")).to_have_count(1)
         self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
-        expect(page.locator("#panel-manage")).to_contain_text(apex_path.name)
-        expect(page.locator("#panel-manage")).to_contain_text("Last generated")
+        expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name)
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
         self.assertEqual(state["last_upload_body_contains_expected"], True)

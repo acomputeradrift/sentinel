@@ -36,6 +36,7 @@ async function jsonFetch(url, options) {
 }
 
 function setStatus(el, msg) {
+  if (!el) return;
   el.textContent = msg || "";
 }
 
@@ -51,14 +52,11 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
 
 function resetProjectDetailsUi() {
   setStatus($("uploadStatus"), "");
-  setStatus($("regenStatus"), "");
   setStatus($("uploadProgressLabel"), "");
-  setStatus($("regenProgressLabel"), "");
   setStatus($("techLinkStatus"), "");
   $("techUrl").textContent = "";
   $("techLabel").value = "";
   setProgressHidden($("uploadProgress"), true);
-  setProgressHidden($("regenProgress"), true);
 }
 
 function updateManageVisibility() {
@@ -139,13 +137,13 @@ function setLastGeneratedLabel() {
   if (!el) return;
   const projectId = currentProjectId();
   if (!projectId) {
-    el.textContent = "";
+    el.textContent = "None";
     return;
   }
   const gen = state.lastGeneratedFilenameByProject[projectId];
   const up = state.lastUploadFilenameByProject[projectId];
   const name = gen || up;
-  el.textContent = name ? `Last generated: ${name}` : "";
+  el.textContent = name || "None";
 }
 
 function setPanelContext() {
@@ -287,7 +285,6 @@ async function createClient() {
   $("clientSelect").value = client.clientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   await refreshProjects();
-  setStatus($("clientStatus"), `Created client: ${client.name}`);
 }
 
 async function createProject() {
@@ -304,7 +301,6 @@ async function createProject() {
   $("projectSelect").dispatchEvent(new Event("change"));
   state.generationReadyByProject[proj.projectId] = false;
   updateTechLinkEnabled();
-  setStatus($("projectStatus"), `Created project: ${proj.name}`);
 }
 
 function _xhrPostFormData(url, fd, onProgress) {
@@ -352,9 +348,6 @@ async function uploadAndRegenerate() {
   setProgressHidden($("uploadProgress"), false);
   setProgress($("uploadProgress"), 0);
   setStatus($("uploadProgressLabel"), "Uploading...");
-  setProgressHidden($("regenProgress"), true);
-  setStatus($("regenProgressLabel"), "");
-  setStatus($("regenStatus"), "");
 
   const fd = new FormData();
   fd.append("apex", file, file.name);
@@ -384,10 +377,6 @@ async function uploadAndRegenerate() {
       state.lastUploadIdByProject[projectId] = upload.uploadId;
       setProgress($("uploadProgress"), 100);
       setStatus($("uploadProgressLabel"), "Upload done");
-
-      setProgressHidden($("regenProgress"), false);
-      setProgress($("regenProgress"), null);
-      setStatus($("regenProgressLabel"), "Generating...");
       const regenOut = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/regenerate`), {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -417,21 +406,11 @@ async function uploadAndRegenerate() {
       }
     }
     setStatus($("uploadStatus"), msg);
-
-    setProgressHidden($("regenProgress"), false);
-    setProgress($("regenProgress"), null);
-    setStatus($("regenProgressLabel"), "Generating...");
-    // If server already waited for generation, this still provides useful feedback.
-    const genId = combined?.generationRun?.generationRunId || combined?.regeneration?.generationRun?.generationRunId || "";
-    if (genId) setStatus($("regenStatus"), `Generated: ${genId}`);
-    else setStatus($("regenStatus"), "Generated.");
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
   } finally {
     setProgressHidden($("uploadProgress"), true);
-    setProgressHidden($("regenProgress"), true);
     setStatus($("uploadProgressLabel"), "");
-    setStatus($("regenProgressLabel"), "");
     uploadBtn.disabled = false;
   }
 }
@@ -457,6 +436,9 @@ async function createTechLink() {
 }
 
 async function run() {
+  const clientStatusEl = document.getElementById("clientStatus");
+  const projectStatusEl = document.getElementById("projectStatus");
+
   const safe = async (fn, statusEl) => {
     try {
       setStatus(statusEl, "");
@@ -473,7 +455,7 @@ async function run() {
       setPanelContext();
       setLastGeneratedLabel();
       updateManageVisibility();
-    }, $("projectStatus"))
+    }, projectStatusEl)
   );
   $("projectSelect").addEventListener("change", () =>
     safe(async () => {
@@ -485,21 +467,20 @@ async function run() {
       setLastGeneratedLabel();
       updateManageVisibility();
       await loadTechLinks();
-    }, $("projectStatus"))
+    }, projectStatusEl)
   );
 
   $("tab-manage").addEventListener("click", () => setActiveTab("manage"));
   $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
   $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
 
-  $("createClientBtn").addEventListener("click", () => safe(createClient, $("clientStatus")));
-  $("createProjectBtn").addEventListener("click", () => safe(createProject, $("projectStatus")));
+  $("createClientBtn").addEventListener("click", () => safe(createClient, clientStatusEl));
+  $("createProjectBtn").addEventListener("click", () => safe(createProject, projectStatusEl));
   $("uploadBtn").addEventListener("click", () => safe(uploadAndRegenerate, $("uploadStatus")));
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
 
-  await safe(refreshClients, $("clientStatus"));
+  await safe(refreshClients, clientStatusEl);
   setProgressHidden($("uploadProgress"), true);
-  setProgressHidden($("regenProgress"), true);
   updateTechLinkEnabled();
   renderTechLinks();
   setPanelContext();
