@@ -62,50 +62,54 @@
               </div>
 
               <div id="manageProjectDetails" hidden>
-                <h3>Current File</h3>
-                <div class="status">
-                  <div id="lastGeneratedLabel">None</div>
+                <div class="manage-section">
+                  <h3>Current File</h3>
+                  <div class="status">
+                    <div id="lastGeneratedLabel">None</div>
+                  </div>
                 </div>
 
-                <h3>Upload + Generate</h3>
-                <div class="row">
-                  <label class="field grow">
-                    <span>.apex file</span>
-                    <input type="file" name="apex" id="apexFile" accept=".apex" />
-                  </label>
-                  <button id="uploadBtn" type="button">Upload + Generate</button>
-                </div>
-                <div class="row progress-row">
-                  <progress id="uploadProgress" class="progress" max="100" value="0"></progress>
-                  <div class="progress-label" id="uploadProgressLabel"></div>
-                </div>
-                <div class="status" data-testid="upload-status" id="uploadStatus"></div>
-
-                <h3>Current Tech Links</h3>
-                <div class="row">
-                  <label class="field grow">
-                    <span>Tech label</span>
-                    <input id="techLabel" type="text" placeholder="e.g. Onsite Tech" />
-                  </label>
-                  <button id="createTechLinkBtn" type="button" disabled>Create tech link</button>
-                </div>
-                <div class="status">
-                  <div class="mono" data-testid="tech-url" id="techUrl"></div>
-                  <div id="techLinkStatus"></div>
+                <div class="manage-section">
+                  <div class="row">
+                    <label class="field grow">
+                      <input type="file" name="apex" id="apexFile" accept=".apex" />
+                    </label>
+                    <button id="uploadBtn" type="button">Upload + Generate</button>
+                  </div>
+                  <div class="row progress-row" id="uploadProgressRow">
+                    <progress id="uploadProgress" class="progress" max="100" value="0"></progress>
+                    <div class="progress-label" id="uploadProgressLabel"></div>
+                  </div>
+                  <div class="status" data-testid="upload-status" id="uploadStatus"></div>
                 </div>
 
-                <div class="table-wrap">
-                  <table class="mini-table" aria-label="Active tech links">
-                    <thead>
-                      <tr>
-                        <th style="width: 220px">Label</th>
-                        <th style="width: 190px">Created (UTC)</th>
-                        <th style="width: 110px"></th>
-                      </tr>
-                    </thead>
-                    <tbody id="techLinksBody"></tbody>
-                  </table>
-                  <div class="empty" id="techLinksEmpty">No active tech links for this project.</div>
+                <div class="manage-section">
+                  <h3>Current Tech Links</h3>
+                  <div class="row">
+                    <label class="field grow">
+                      <span>Tech label</span>
+                      <input id="techLabel" type="text" placeholder="e.g. Onsite Tech" />
+                    </label>
+                    <button id="createTechLinkBtn" type="button" disabled>Create tech link</button>
+                  </div>
+                  <div class="status">
+                    <div class="mono" data-testid="tech-url" id="techUrl"></div>
+                    <div id="techLinkStatus"></div>
+                  </div>
+
+                  <div class="table-wrap">
+                    <table class="mini-table" aria-label="Active tech links">
+                      <thead>
+                        <tr>
+                          <th style="width: 220px">Label</th>
+                          <th style="width: 190px">Created (UTC)</th>
+                          <th style="width: 110px"></th>
+                        </tr>
+                      </thead>
+                      <tbody id="techLinksBody"></tbody>
+                    </table>
+                    <div class="empty" id="techLinksEmpty">No active tech links for this project.</div>
+                  </div>
                 </div>
               </div>
             </section>

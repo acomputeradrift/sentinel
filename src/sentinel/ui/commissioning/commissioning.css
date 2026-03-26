@@ -139,12 +139,37 @@ h2 {
 
 #manageProjectDetails {
   margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid #e1ebf3;
+  padding-top: 0;
+  border-top: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#manageProjectDetails[hidden] {
+  display: none !important;
 }
 
 .manage-create-btn {
   min-width: 116px;
+}
+
+#manageProjectDetails .manage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#manageProjectDetails .row {
+  margin: 0;
+}
+
+#manageProjectDetails h3 {
+  margin: 0;
+}
+
+#uploadStatus:empty {
+  display: none;
 }
 
 .row {

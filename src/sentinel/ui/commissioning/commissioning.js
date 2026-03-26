@@ -8,6 +8,12 @@ function api(path) {
   return `/api/v1${path}`;
 }
 
+function wsUrl(path) {
+  const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location && window.location.host ? window.location.host : "localhost";
+  return `${proto}://${host}${path}`;
+}
+
 function setActiveTab(tabName) {
   const tabs = ["manage", "commission", "diagnostics"];
   for (const t of tabs) {
@@ -56,7 +62,7 @@ function resetProjectDetailsUi() {
   setStatus($("techLinkStatus"), "");
   $("techUrl").textContent = "";
   $("techLabel").value = "";
-  setProgressHidden($("uploadProgress"), true);
+  setProgressHidden($("uploadProgressRow"), true);
 }
 
 function updateManageVisibility() {
@@ -97,8 +103,7 @@ function currentProjectId() {
 const state = {
   lastUploadIdByProject: {},
   generationReadyByProject: {},
-  lastUploadFilenameByProject: {},
-  lastGeneratedFilenameByProject: {},
+  activeUploadByProject: {},
   techLinksByProject: {},
 };
 
@@ -140,9 +145,8 @@ function setLastGeneratedLabel() {
     el.textContent = "None";
     return;
   }
-  const gen = state.lastGeneratedFilenameByProject[projectId];
-  const up = state.lastUploadFilenameByProject[projectId];
-  const name = gen || up;
+  const activeUpload = state.activeUploadByProject[projectId] || null;
+  const name = activeUpload && activeUpload.originalFilename ? String(activeUpload.originalFilename).trim() : "";
   el.textContent = name || "None";
 }
 
@@ -345,7 +349,7 @@ async function uploadAndRegenerate() {
   const uploadBtn = $("uploadBtn");
   uploadBtn.disabled = true;
   setStatus($("uploadStatus"), "");
-  setProgressHidden($("uploadProgress"), false);
+  setProgressHidden($("uploadProgressRow"), false);
   setProgress($("uploadProgress"), 0);
   setStatus($("uploadProgressLabel"), "Uploading...");
 
@@ -386,15 +390,11 @@ async function uploadAndRegenerate() {
     }
 
     const uploadObj = combined?.upload || combined?.uploadResult || combined;
-    const originalFilename = uploadObj?.originalFilename || file.name;
     const uploadId = uploadObj?.uploadId || state.lastUploadIdByProject[projectId] || null;
     if (uploadId) state.lastUploadIdByProject[projectId] = uploadId;
     state.generationReadyByProject[projectId] = false;
-    const prevName = state.lastUploadFilenameByProject[projectId];
-    const nextName = originalFilename;
-    state.lastUploadFilenameByProject[projectId] = nextName;
-    state.lastGeneratedFilenameByProject[projectId] = nextName;
-    setLastGeneratedLabel();
+    const prevName = state.activeUploadByProject[projectId]?.originalFilename || "";
+    const nextName = String((uploadObj?.originalFilename || file.name) || "");
 
     setProgress($("uploadProgress"), 100);
     setStatus($("uploadProgressLabel"), "Done");
@@ -409,10 +409,86 @@ async function uploadAndRegenerate() {
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
   } finally {
-    setProgressHidden($("uploadProgress"), true);
+    setProgressHidden($("uploadProgressRow"), true);
     setStatus($("uploadProgressLabel"), "");
     uploadBtn.disabled = false;
   }
+}
+
+let manageWs = null;
+let manageWsProjectId = "";
+let manageWsSeq = 0;
+
+function stopManageWs() {
+  if (!manageWs) {
+    manageWsProjectId = "";
+    return;
+  }
+  try {
+    manageWs.close();
+  } catch (_e) {}
+  manageWs = null;
+  manageWsProjectId = "";
+}
+
+function applyActiveUpload(projectId, activeUpload) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return;
+  if (activeUpload && typeof activeUpload === "object") {
+    state.activeUploadByProject[pid] = {
+      uploadId: activeUpload.uploadId || null,
+      originalFilename: activeUpload.originalFilename || "",
+      storagePath: activeUpload.storagePath || "",
+      uploadedAtUtc: activeUpload.uploadedAtUtc || "",
+    };
+  } else {
+    state.activeUploadByProject[pid] = null;
+  }
+  if (pid === currentProjectId()) setLastGeneratedLabel();
+}
+
+function handleManageWsPayload(projectId, payload) {
+  const t = String(payload?.type || "").trim();
+  if (!t || t === "keepalive") return;
+  if (t === "commissioning_snapshot" || t === "generation") {
+    const activeUpload = payload?.activeUpload || null;
+    applyActiveUpload(projectId, activeUpload);
+    state.generationReadyByProject[projectId] = !!activeUpload;
+    updateTechLinkEnabled();
+  }
+}
+
+function startManageWs(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) {
+    stopManageWs();
+    return;
+  }
+  if (manageWs && manageWsProjectId === pid) return;
+  stopManageWs();
+
+  const seq = ++manageWsSeq;
+  const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(pid)}/ws`));
+  manageWsProjectId = pid;
+  manageWs = new WebSocket(url);
+  manageWs.onmessage = (evt) => {
+    if (seq !== manageWsSeq) return;
+    try {
+      const payload = JSON.parse(String(evt.data || "{}"));
+      handleManageWsPayload(pid, payload);
+    } catch (_e) {}
+  };
+  manageWs.onclose = () => {
+    if (seq !== manageWsSeq) return;
+    manageWs = null;
+    manageWsProjectId = "";
+  };
+  manageWs.onerror = () => {
+    if (seq !== manageWsSeq) return;
+    try {
+      if (manageWs) manageWs.close();
+    } catch (_e) {}
+  };
 }
 
 async function createTechLink() {
@@ -466,6 +542,7 @@ async function run() {
       setPanelContext();
       setLastGeneratedLabel();
       updateManageVisibility();
+      startManageWs(projectId);
       await loadTechLinks();
     }, projectStatusEl)
   );
@@ -480,10 +557,11 @@ async function run() {
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
 
   await safe(refreshClients, clientStatusEl);
-  setProgressHidden($("uploadProgress"), true);
+  setProgressHidden($("uploadProgressRow"), true);
   updateTechLinkEnabled();
   renderTechLinks();
   setPanelContext();
+  startManageWs(currentProjectId());
   setLastGeneratedLabel();
   updateManageVisibility();
   setActiveTab("manage");
