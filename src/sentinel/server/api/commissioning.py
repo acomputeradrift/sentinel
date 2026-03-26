@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
@@ -128,6 +129,19 @@ def _activities_from_latest(*, latest_results: dict) -> list[dict]:
     return out
 
 
+def _active_upload_payload(*, repo: Repository, projectId: str) -> dict | None:
+    active = repo.get_project_active_upload(projectId=projectId)
+    if active is None:
+        return None
+    return {
+        "uploadId": active.uploadId,
+        "projectId": active.projectId,
+        "originalFilename": active.originalFilename,
+        "storagePath": active.storagePath,
+        "uploadedAtUtc": active.uploadedAtUtc,
+    }
+
+
 def _commissioning_snapshot(*, repo: Repository, projectId: str) -> dict:
     latest = repo.get_latest_results_for_project(projectId=projectId)
     progress_payload = _safe_progress(repo=repo, projectId=projectId)
@@ -140,6 +154,7 @@ def _commissioning_snapshot(*, repo: Repository, projectId: str) -> dict:
         "rollups": rollups,
         "activities": _activities_from_latest(latest_results=latest),
         "fails": _fails_from_latest(repo=repo, projectId=projectId, latest_results=latest),
+        "activeUpload": _active_upload_payload(repo=repo, projectId=projectId),
     }
 
 
@@ -172,7 +187,12 @@ def create_client(request: Request, payload: dict) -> dict:
     name = str(payload.get("name") or "").strip()
     if not name:
         raise http_error(400, code="VALIDATION_ERROR", message="Client name is required.")
-    c = _repo(request).create_client(name=name)
+    try:
+        c = _repo(request).create_client(name=name)
+    except KeyError as e:
+        if str(e) == "'CLIENT_EXISTS'" or str(e) == "CLIENT_EXISTS":
+            raise http_error(409, code="CLIENT_EXISTS", message="Client name already exists.")
+        raise
     return {"clientId": c.clientId, "name": c.name, "createdAtUtc": c.createdAtUtc}
 
 
@@ -194,6 +214,9 @@ def create_project(request: Request, clientId: str, payload: dict) -> dict:
 
 @router.post("/projects/{projectId}/tech-links")
 def create_tech_link(request: Request, projectId: str, payload: dict) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
     label = payload.get("label")
     link, token = _repo(request).create_tech_link(projectId=projectId, label=str(label) if label is not None else None)
     return {"techLinkId": link.techLinkId, "techUrl": f"/testing/{token.techToken}"}
@@ -201,7 +224,10 @@ def create_tech_link(request: Request, projectId: str, payload: dict) -> dict:
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/rotate")
 def rotate_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
-    token = _repo(request).rotate_tech_link_token(projectId=projectId, techLinkId=techLinkId)
+    try:
+        token = _repo(request).rotate_tech_link_token(projectId=projectId, techLinkId=techLinkId)
+    except KeyError:
+        raise http_error(404, code="TECH_LINK_NOT_FOUND", message="Tech link not found.")
     return {"techLinkId": techLinkId, "techUrl": f"/testing/{token.techToken}"}
 
 
@@ -227,7 +253,10 @@ def revoke_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
 
 
 @router.post("/projects/{projectId}/uploads")
-async def upload_apex(projectId: str, apex: UploadFile) -> dict:
+async def upload_apex(request: Request, projectId: str, apex: UploadFile) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
     if not apex.filename:
         raise http_error(400, code="VALIDATION_ERROR", message="Apex filename is required.")
     content = await apex.read()
@@ -235,6 +264,7 @@ async def upload_apex(projectId: str, apex: UploadFile) -> dict:
         raise http_error(400, code="VALIDATION_ERROR", message="Apex file is empty.")
     upload_id = str(uuid4())
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
+    _repo(request).record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
     return {"uploadId": upload_id, "projectId": projectId, "originalFilename": apex.filename, "storagePath": str(path)}
 
 
@@ -251,11 +281,14 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
 
     upload_id = str(uuid4())
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
+    _repo(request).record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
 
     try:
         generation = pipeline.regenerate_project(projectId=projectId, apex_path=path)
     except Exception as e:
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
+    _repo(request).set_project_active_upload(projectId=projectId, uploadId=upload_id)
+    active_upload = _active_upload_payload(repo=_repo(request), projectId=projectId)
 
     try:
         _broker(request).publish(
@@ -265,6 +298,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
                 "status": "READY",
                 "uploadId": upload_id,
                 "originalFilename": apex.filename,
+                "activeUpload": active_upload,
             },
         )
     except Exception:
@@ -275,12 +309,16 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         "uploadId": upload_id,
         "originalFilename": apex.filename,
         "storagePath": str(path),
+        "activeUpload": active_upload,
         "generation": {"status": "READY", **(generation or {})},
     }
 
 
 @router.post("/projects/{projectId}/regenerate")
-def regenerate(projectId: str, payload: dict) -> dict:
+def regenerate(request: Request, projectId: str, payload: dict) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
     upload_id = payload.get("uploadId")
     if upload_id is None:
         raise http_error(400, code="VALIDATION_ERROR", message="uploadId is required for MVP regenerate.")
@@ -289,8 +327,29 @@ def regenerate(projectId: str, payload: dict) -> dict:
     if not candidates:
         raise http_error(404, code="UPLOAD_NOT_FOUND", message="Upload not found.")
     apex_path = candidates[0]
-    pipeline.regenerate_project(projectId=projectId, apex_path=apex_path)
-    return {"projectId": projectId, "status": "READY"}
+    try:
+        pipeline.regenerate_project(projectId=projectId, apex_path=apex_path)
+    except Exception as e:
+        raise http_error(500, code="REGENERATE_FAILED", message=str(e))
+
+    original_filename = apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name
+    _repo(request).record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
+    _repo(request).set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
+    active_upload = _active_upload_payload(repo=_repo(request), projectId=projectId)
+    try:
+        _broker(request).publish(
+            projectId=projectId,
+            event={
+                "type": "generation",
+                "status": "READY",
+                "uploadId": str(upload_id),
+                "originalFilename": original_filename,
+                "activeUpload": active_upload,
+            },
+        )
+    except Exception:
+        log.exception("[commissioning-ws] publish:generation-failed projectId=%s", projectId)
+    return {"projectId": projectId, "status": "READY", "activeUpload": active_upload}
 
 
 @router.get("/projects/{projectId}/fails")

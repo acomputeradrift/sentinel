@@ -9,6 +9,10 @@ from uuid import uuid4
 from sentinel.server.persistence import db
 
 
+class DuplicateClientNameError(ValueError):
+    pass
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -26,10 +30,16 @@ def create_client(database_url: str, *, name: str) -> str:
     con = db.connect(database_url)
     try:
         cur = con.cursor()
-        cur.execute(
-            "insert into clients (client_id, name, created_at_utc) values (%s, %s, %s)",
-            (client_id, name, _utc_now()),
-        )
+        try:
+            cur.execute(
+                "insert into clients (client_id, name, created_at_utc) values (%s, %s, %s)",
+                (client_id, name, _utc_now()),
+            )
+        except Exception as e:
+            msg = str(e)
+            if "clients_name_uq" in msg:
+                raise DuplicateClientNameError(name) from e
+            raise
         con.commit()
         return client_id
     finally:
@@ -71,6 +81,57 @@ def list_projects_for_client(database_url: str, *, client_id: str) -> list[dict[
             "select project_id as \"projectId\", client_id as \"clientId\", name, status, created_at_utc as \"createdAtUtc\" "
             "from projects where client_id=%s order by created_at_utc desc",
             (client_id,),
+        )
+    finally:
+        con.close()
+
+
+def upsert_upload_record(
+    database_url: str,
+    *,
+    project_id: str,
+    upload_id: str,
+    original_filename: str,
+    storage_path: str,
+) -> None:
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "insert into uploads (upload_id, project_id, original_filename, storage_path, uploaded_at_utc) "
+            "values (%s, %s, %s, %s, %s) "
+            "on conflict (upload_id) do update set "
+            "project_id=excluded.project_id, original_filename=excluded.original_filename, storage_path=excluded.storage_path",
+            (upload_id, project_id, original_filename, storage_path, _utc_now()),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def set_project_active_upload(database_url: str, *, project_id: str, upload_id: str) -> None:
+    con = db.connect(database_url)
+    try:
+        owned = db.fetch_one(con, "select 1 from uploads where upload_id=%s and project_id=%s", (upload_id, project_id))
+        if owned is None:
+            raise KeyError("UPLOAD_NOT_FOUND")
+        cur = con.cursor()
+        cur.execute("update projects set active_upload_id=%s where project_id=%s", (upload_id, project_id))
+        con.commit()
+    finally:
+        con.close()
+
+
+def get_project_active_upload(database_url: str, *, project_id: str) -> dict[str, Any] | None:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_one(
+            con,
+            "select u.upload_id as \"uploadId\", u.project_id as \"projectId\", u.original_filename as \"originalFilename\", "
+            "u.storage_path as \"storagePath\", u.uploaded_at_utc as \"uploadedAtUtc\" "
+            "from projects p left join uploads u on u.upload_id=p.active_upload_id "
+            "where p.project_id=%s",
+            (project_id,),
         )
     finally:
         con.close()
@@ -129,7 +190,7 @@ def revoke_tech_link_tokens(database_url: str, *, project_id: str, tech_link_id:
         con.close()
 
 
-def rotate_tech_link_token(database_url: str, *, tech_link_id: str) -> dict[str, Any]:
+def rotate_tech_link_token(database_url: str, *, tech_link_id: str, project_id: str | None = None) -> dict[str, Any]:
     tech_token = uuid4().hex
     token_hash = _hash_token(tech_token)
     token_id = _new_uuid()
@@ -137,6 +198,14 @@ def rotate_tech_link_token(database_url: str, *, tech_link_id: str) -> dict[str,
 
     con = db.connect(database_url)
     try:
+        if project_id is not None:
+            exists = db.fetch_one(
+                con,
+                "select 1 from tech_links where tech_link_id=%s and project_id=%s",
+                (tech_link_id, project_id),
+            )
+            if exists is None:
+                raise KeyError("TECH_LINK_NOT_FOUND")
         cur = con.cursor()
         cur.execute("update tech_link_tokens set revoked_at_utc=%s where tech_link_id=%s and revoked_at_utc is null", (issued_at, tech_link_id))
         cur.execute(

@@ -88,6 +88,7 @@ Example expected behavior:
   - the files proposed for editing
   - the reason each file is included
   - any relevant context that makes those files necessary
+  - a numbered and itemized todo list that it cannot skip any part of without my approval
 - Approval of that proposed scope counts as approval for all listed files within that change.
 - The AI must not expand beyond the approved file scope without returning for approval.
 - If new files become necessary during implementation, the AI must stop and present the expanded scope before editing them.

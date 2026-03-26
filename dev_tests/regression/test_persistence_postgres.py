@@ -153,3 +153,46 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
 
         failures = queries.list_latest_failed_targets(database_url, project_id=project_id)
         self.assertEqual([r["targetKey"] for r in failures], ["btn:81:513:48551:Macro"])
+
+    def test_active_upload_tracking_and_project_pointer(self):
+        from sentinel.server.persistence import db, queries
+
+        database_url = _database_url()
+        assert database_url is not None
+        db.apply_migrations(database_url)
+
+        suffix = uuid4().hex
+        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        project_id = queries.create_project(database_url, client_id=client_id, name=f"Test Project {suffix}")
+
+        upload_id = str(uuid4())
+        queries.upsert_upload_record(
+            database_url,
+            project_id=project_id,
+            upload_id=upload_id,
+            original_filename="Project v1.apex",
+            storage_path=f"/tmp/{upload_id}__Project v1.apex",
+        )
+        queries.set_project_active_upload(database_url, project_id=project_id, upload_id=upload_id)
+
+        active = queries.get_project_active_upload(database_url, project_id=project_id)
+        self.assertIsNotNone(active)
+        assert active is not None
+        self.assertEqual(active["uploadId"], upload_id)
+        self.assertEqual(active["originalFilename"], "Project v1.apex")
+
+    def test_rotate_rejects_mismatched_project(self):
+        from sentinel.server.persistence import db, queries
+
+        database_url = _database_url()
+        assert database_url is not None
+        db.apply_migrations(database_url)
+
+        suffix = uuid4().hex
+        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        p1 = queries.create_project(database_url, client_id=client_id, name=f"Project A {suffix}")
+        p2 = queries.create_project(database_url, client_id=client_id, name=f"Project B {suffix}")
+
+        link = queries.create_tech_link(database_url, project_id=p1, label="Onsite Tech")
+        with self.assertRaises(KeyError):
+            queries.rotate_tech_link_token(database_url, tech_link_id=link["techLinkId"], project_id=p2)

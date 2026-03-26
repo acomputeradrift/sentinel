@@ -252,6 +252,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertIn("rollups", snap)
             self.assertIn("activities", snap)
             self.assertIn("fails", snap)
+            self.assertIn("activeUpload", snap)
 
             with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as tech_ws:
                 tech_ws.send_text(

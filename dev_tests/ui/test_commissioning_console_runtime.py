@@ -353,10 +353,12 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 (() => {
   let wsConnectCount = 0;
   let wsCloseCount = 0;
+  const wsPeers = new Set();
   class FakeWebSocket {
     constructor(url) {
       this.url = url;
       this.readyState = 0;
+      wsPeers.add(this);
       wsConnectCount += 1;
       setTimeout(() => {
         this.readyState = 1;
@@ -366,6 +368,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             {
               type: "commissioning_snapshot",
               projectId: "proj-1",
+              activeUpload: null,
               progress: {
                 projectId: "proj-1",
                 asOfGenerationRunId: "gen-1",
@@ -483,10 +486,54 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
     send(_data) {}
     close() {
       this.readyState = 3;
+      wsPeers.delete(this);
       wsCloseCount += 1;
       if (this.onclose) this.onclose({});
     }
   }
+  window.__broadcastWsEvent = (payload) => {
+    for (const ws of wsPeers) {
+      try {
+        if (ws.readyState === 1 && ws.onmessage) ws.onmessage({ data: JSON.stringify(payload) });
+      } catch (_e) {}
+    }
+  };
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    this.__sentinelUrl = String(url || "");
+    return originalOpen.call(this, method, url, ...rest);
+  };
+  XMLHttpRequest.prototype.send = function(body) {
+    this.addEventListener("load", () => {
+      const url = String(this.__sentinelUrl || "");
+      if (!url.includes("/commissioning/projects/") || !url.includes("/upload")) return;
+      let parsed = {};
+      try {
+        parsed = JSON.parse(String(this.responseText || "{}"));
+      } catch (_e) {
+        return;
+      }
+      const projectId = String(parsed.projectId || "proj-1");
+      const uploadId = String(parsed.uploadId || "");
+      const originalFilename = String(parsed.originalFilename || "");
+      window.__broadcastWsEvent({
+        type: "generation",
+        status: "READY",
+        projectId,
+        uploadId,
+        originalFilename,
+        activeUpload: {
+          uploadId,
+          projectId,
+          originalFilename,
+          storagePath: String(parsed.storagePath || ""),
+          uploadedAtUtc: "2026-03-21T00:00:00Z",
+        },
+      });
+    });
+    return originalSend.call(this, body);
+  };
   window.__wsConnectCount = () => wsConnectCount;
   window.__wsCloseCount = () => wsCloseCount;
   window.WebSocket = FakeWebSocket;
@@ -502,20 +549,44 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
         expect(page.get_by_role("heading", name="Sentinel Console")).to_be_visible()
         expect(page.locator("#panel-manage")).to_be_visible()
-        expect(page.locator("#panel-manage").get_by_role("heading", name="Upload + Generate")).to_be_visible()
+        expect(page.locator("#manageClientCard")).to_be_visible()
+        expect(page.locator("#manageProjectCard")).to_be_hidden()
+        expect(page.locator("#manageProjectDetails")).to_be_hidden()
 
         # Manage must not render Progress/Fails sections.
         expect(page.locator("#panel-manage [data-testid='progress']")).to_have_count(0)
         expect(page.locator("#panel-manage [data-testid='fails-count']")).to_have_count(0)
         expect(page.locator("#panel-manage [data-testid='fails-list']")).to_have_count(0)
+        expect(page.locator("#newClientName")).to_have_attribute("placeholder", "Enter here...")
+        expect(page.locator("#newProjectName")).to_have_attribute("placeholder", "Enter here...")
 
         page.get_by_label("New client name").fill("Client A")
         page.get_by_role("button", name="Create client").click()
         expect(page.get_by_label("Client", exact=True)).to_have_value("client-1")
+        expect(page.get_by_label("New client name")).to_have_value("")
+        expect(page.locator("#manageProjectCard")).to_be_visible()
+        expect(page.locator("#manageProjectDetails")).to_be_hidden()
 
         page.get_by_label("New project name").fill("Project 1")
         page.get_by_role("button", name="Create project").click()
         expect(page.get_by_label("Project", exact=True)).to_have_value("proj-1")
+        expect(page.get_by_label("New project name")).to_have_value("")
+        expect(page.locator("#manageProjectDetails")).to_be_visible()
+        expect(page.locator("#panel-manage")).to_contain_text("Current File")
+        expect(page.locator("#panel-manage")).to_contain_text("Current Tech Links")
+        expect(page.locator("#manageProjectDetails h3", has_text="Upload + Generate")).to_have_count(0)
+        expect(page.locator("#manageProjectDetails span", has_text=".apex file")).to_have_count(0)
+        expect(page.locator("#clientStatus")).to_have_count(0)
+        expect(page.locator("#projectStatus")).to_have_count(0)
+        expect(page.locator("#regenProgress")).to_have_count(0)
+        expect(page.locator("#regenProgressLabel")).to_have_count(0)
+        expect(page.locator("#regenStatus")).to_have_count(0)
+        expect(page.locator("#lastGeneratedLabel")).to_have_text("None")
+        self.assertLessEqual(page.locator("#manageProjectDetails").evaluate("el => parseFloat(getComputedStyle(el).marginTop)"), 12)
+        self.assertIn(
+            page.locator("#manageProjectDetails").evaluate("el => getComputedStyle(el).borderTopStyle"),
+            ("none", "hidden"),
+        )
 
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
@@ -524,8 +595,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
         expect(page.locator("#uploadProgressLabel")).to_have_count(1)
         self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
-        expect(page.locator("#panel-manage")).to_contain_text(apex_path.name)
-        expect(page.locator("#panel-manage")).to_contain_text("Last generated")
+        expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name)
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
         self.assertEqual(state["last_upload_body_contains_expected"], True)
@@ -603,7 +673,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
-        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 1)
+        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 2)
         self.assertEqual(page.evaluate("window.__wsCloseCount()"), 0)
 
         page.get_by_role("button", name="Manage").click()
@@ -617,9 +687,6 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             page.set_input_files("input[type=file][name=apex]", str(other_path))
             page.get_by_role("button", name="Upload + Generate").click()
             expect(page.get_by_test_id("upload-status")).to_contain_text("upload-2")
-            expect(page.get_by_test_id("upload-status")).to_contain_text("WARNING")
-            expect(page.get_by_test_id("upload-status")).to_contain_text("Previous:")
-            expect(page.get_by_test_id("upload-status")).to_contain_text("New:")
 
         self.assertEqual(state.get("progress_fetch_count"), 0)
         self.assertEqual(state.get("fails_fetch_count"), 0)

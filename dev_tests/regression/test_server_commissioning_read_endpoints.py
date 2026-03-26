@@ -21,6 +21,23 @@ def _require_fastapi():
 
 
 class CommissioningReadEndpointsTest(unittest.TestCase):
+    def test_create_client_duplicate_name_returns_conflict(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        first = client.post("/api/v1/commissioning/clients", json={"name": "Client A"})
+        self.assertEqual(first.status_code, 200)
+
+        dup = client.post("/api/v1/commissioning/clients", json={"name": "Client A"})
+        self.assertEqual(dup.status_code, 409)
+        body = dup.json()
+        self.assertEqual(((body.get("detail") or {}).get("error") or {}).get("code"), "CLIENT_EXISTS")
+
     def test_list_clients_and_projects(self):
         TestClient = _require_fastapi()
 
@@ -256,3 +273,25 @@ class CommissioningReadEndpointsTest(unittest.TestCase):
             self.assertEqual(progress["counts"]["pass"], 3)
             self.assertEqual(progress["counts"]["fail"], 1)
             self.assertEqual(progress["counts"]["untested"], 2)
+
+    def test_tech_link_rotate_and_revoke_require_matching_project(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p1 = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project 1"}).json()
+        p2 = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project 2"}).json()
+
+        link = client.post(f"/api/v1/commissioning/projects/{p1['projectId']}/tech-links", json={"label": "Onsite"}).json()
+        tech_link_id = link["techLinkId"]
+
+        wrong_rotate = client.post(f"/api/v1/commissioning/projects/{p2['projectId']}/tech-links/{tech_link_id}/rotate")
+        self.assertEqual(wrong_rotate.status_code, 404)
+
+        wrong_revoke = client.post(f"/api/v1/commissioning/projects/{p2['projectId']}/tech-links/{tech_link_id}/revoke")
+        self.assertEqual(wrong_revoke.status_code, 404)

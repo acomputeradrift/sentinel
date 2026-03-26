@@ -117,6 +117,11 @@ h2 {
   font-size: 16px;
 }
 
+#panel-manage h3 {
+  margin: 16px 0 10px 0;
+  font-size: 16px;
+}
+
 .sub {
   margin: 0;
   color: #4e6a7f;
@@ -130,6 +135,41 @@ h2 {
   padding: 14px;
   margin: 12px 0;
   box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06);
+}
+
+#manageProjectDetails {
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#manageProjectDetails[hidden] {
+  display: none !important;
+}
+
+.manage-create-btn {
+  min-width: 116px;
+}
+
+#manageProjectDetails .manage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#manageProjectDetails .row {
+  margin: 0;
+}
+
+#manageProjectDetails h3 {
+  margin: 0;
+}
+
+#uploadStatus:empty {
+  display: none;
 }
 
 .row {
