@@ -541,6 +541,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 """
         )
         page.goto(url)
+        self.assertTrue(
+            page.evaluate(
+                "(() => !!(window.__sentinelProjectWsManager && typeof window.__sentinelProjectWsManager.dispatchIncoming === 'function'))()"
+            )
+        )
 
         # Shell + tabs
         expect(page.get_by_role("button", name="Manage")).to_be_visible()

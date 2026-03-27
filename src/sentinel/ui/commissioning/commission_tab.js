@@ -325,6 +325,20 @@ function ensureSharedProjectWsManager() {
     }
   }
 
+  function dispatchIncoming(payload) {
+    if (!payload || typeof payload !== "object") return;
+    fanOut(payload);
+  }
+
+  function dispatchIncomingRaw(raw) {
+    try {
+      const payload = JSON.parse(String(raw || "{}"));
+      dispatchIncoming(payload);
+    } catch (e) {
+      logProjectWs("recv:json-parse-failed", String(e?.message || e || ""));
+    }
+  }
+
   function clearReconnectTimer() {
     if (!wsReconnectTimer) return;
     clearTimeout(wsReconnectTimer);
@@ -419,12 +433,7 @@ function ensureSharedProjectWsManager() {
         logProjectWs("recv:stale-conn", connId);
         return;
       }
-      try {
-        const payload = JSON.parse(String(evt.data || "{}"));
-        fanOut(payload);
-      } catch (e) {
-        logProjectWs("recv:json-parse-failed", String(e?.message || e || ""));
-      }
+      dispatchIncomingRaw(evt.data);
     };
   }
 
@@ -443,6 +452,7 @@ function ensureSharedProjectWsManager() {
   }
 
   window.__sentinelProjectWsManager = {
+    dispatchIncoming,
     setConsumer(id, state) {
       const key = String(id || "").trim();
       if (!key) {
