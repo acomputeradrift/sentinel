@@ -427,6 +427,12 @@ function stopManageWs() {
   });
 }
 
+let manageStoreUnsubscribe = null;
+
+function getSharedProjectStore() {
+  return window.__sentinelProjectStore || null;
+}
+
 function applyActiveUpload(projectId, activeUpload) {
   const pid = String(projectId || "").trim();
   if (!pid) return;
@@ -443,19 +449,41 @@ function applyActiveUpload(projectId, activeUpload) {
   if (pid === currentProjectId()) setLastGeneratedLabel();
 }
 
+function syncManageFromStore(projectId) {
+  const pid = String(projectId || currentProjectId() || "").trim();
+  if (!pid) return;
+  const store = getSharedProjectStore();
+  if (!store || typeof store.getState !== "function") return;
+  const root = store.getState();
+  const projects = root && root.projects && typeof root.projects === "object" ? root.projects : {};
+  const slice = projects[pid] || null;
+  const activeUpload = slice?.activeUpload || null;
+  applyActiveUpload(pid, activeUpload);
+  state.generationReadyByProject[pid] = !!activeUpload;
+  updateTechLinkEnabled();
+}
+
+function ensureManageStoreSubscription() {
+  if (manageStoreUnsubscribe) return;
+  const store = getSharedProjectStore();
+  if (!store || typeof store.subscribe !== "function") {
+    setTimeout(ensureManageStoreSubscription, 0);
+    return;
+  }
+  manageStoreUnsubscribe = store.subscribe(() => {
+    syncManageFromStore(currentProjectId());
+  });
+  syncManageFromStore(currentProjectId());
+}
+
 function handleManageWsPayload(projectId, payload) {
   const t = String(payload?.type || "").trim();
   if (!t || t === "keepalive") return;
-  if (t === "commissioning_snapshot" || t === "generation") {
-    const activeUpload = payload?.activeUpload || null;
-    applyActiveUpload(projectId, activeUpload);
-    state.generationReadyByProject[projectId] = !!activeUpload;
-    updateTechLinkEnabled();
-  }
+  syncManageFromStore(projectId);
 }
 
-function handleManageWsPayloadForConsumer(payload) {
-  handleManageWsPayload(currentProjectId(), payload);
+function handleManageWsPayloadForConsumer() {
+  syncManageFromStore(currentProjectId());
 }
 
 function startManageWs(projectId) {
@@ -510,6 +538,8 @@ async function run() {
     }
   };
 
+  ensureManageStoreSubscription();
+
   $("clientSelect").addEventListener("change", () =>
     safe(async () => {
       await refreshProjects();
@@ -528,6 +558,7 @@ async function run() {
       setLastGeneratedLabel();
       updateManageVisibility();
       startManageWs(projectId);
+      syncManageFromStore(projectId);
       await loadTechLinks();
     }, projectStatusEl)
   );
@@ -547,6 +578,7 @@ async function run() {
   renderTechLinks();
   setPanelContext();
   startManageWs(currentProjectId());
+  syncManageFromStore(currentProjectId());
   setLastGeneratedLabel();
   updateManageVisibility();
   setActiveTab("manage");

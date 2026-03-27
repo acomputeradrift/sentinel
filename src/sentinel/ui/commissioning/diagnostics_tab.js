@@ -92,10 +92,16 @@ const diagRt = {
   progress: null,
   pies: null,
 };
+let diagStoreUnsubscribe = null;
 
 function getSharedProjectWsManager() {
   if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
   throw new Error("Shared project websocket manager not found.");
+}
+
+function getSharedProjectStore() {
+  if (window.__sentinelProjectStore) return window.__sentinelProjectStore;
+  throw new Error("Shared project store not found.");
 }
 
 function disconnectDiagnosticsWs() {
@@ -122,10 +128,8 @@ function connectDiagnosticsWs(projectId) {
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: true,
     projectId: pid,
-    onMessage: (payload) => {
-      const t = String(payload?.type || "").trim();
-      logDiagnosticsWs("recv", t || "(unknown)");
-      handleDiagnosticsEvent(payload);
+    onMessage: () => {
+      handleDiagnosticsEvent({ type: "store_refresh" });
     },
   });
 }
@@ -518,6 +522,46 @@ function applyDiagnosticsSnapshot(snapshot) {
   });
 }
 
+function _snapshotFromStore(projectId) {
+  const store = getSharedProjectStore();
+  const state = store.getState();
+  const projects = state && state.projects && typeof state.projects === "object" ? state.projects : {};
+  const slice = projects[String(projectId || "").trim()] || null;
+  if (!slice) return null;
+  return {
+    type: "commissioning_snapshot",
+    projectId: String(projectId || ""),
+    progress: slice.progress || null,
+    rollups: slice.rollups || null,
+    fails: Array.isArray(slice.fails) ? slice.fails : [],
+    activities: Array.isArray(slice.activities) ? slice.activities : [],
+    activeUpload: slice.activeUpload || null,
+  };
+}
+
+function applyDiagnosticsFromStore(projectId) {
+  const pid = String(projectId || currentDiagProjectId() || "").trim();
+  if (!pid) {
+    clearDiagnosticsView();
+    return;
+  }
+  const snapshot = _snapshotFromStore(pid);
+  if (!snapshot) {
+    clearDiagnosticsView();
+    return;
+  }
+  applyDiagnosticsSnapshot(snapshot);
+}
+
+function ensureDiagnosticsStoreSubscription() {
+  if (diagStoreUnsubscribe) return;
+  const store = getSharedProjectStore();
+  diagStoreUnsubscribe = store.subscribe(() => {
+    if (!isDiagnosticsVisible()) return;
+    applyDiagnosticsFromStore(currentDiagProjectId());
+  });
+}
+
 function _ensureDiagPiesCached() {
   if (!diagRt.pies) diagRt.pies = _ensurePieDom();
   return diagRt.pies;
@@ -664,83 +708,11 @@ function handleDiagnosticsEvent(payload) {
     logDiagnosticsWs("recv:ignored", t || "(empty)");
     return;
   }
-  if (t === "commissioning_snapshot") {
-    applyDiagnosticsSnapshot(ev);
-    return;
-  }
-  const projectId = String(ev?.projectId || diagRt.projectId || currentDiagProjectId() || "");
-  const progress = ev?.progress || ev?.data?.progress || null;
-  const rollups = ev?.rollups || ev?.data?.rollups || null;
-  if (progress) diagRt.progress = progress;
-  if (rollups) diagRt.rollups = rollups;
-  if (t === "fail_tag_updated") {
-    const targetKey = String(ev?.targetKey || "");
-    const tag = String(ev?.tag || "").trim().toUpperCase();
-    const task = diagRt.tasksByKey.get(targetKey);
-    if (task && tag) {
-      task.tag = tag;
-      const row = diagRt.rowByKey.get(targetKey);
-      if (row) row.sel.value = tagDisplayFromEnum(tag);
-      updateTaskCompletionPie();
-    }
-    return;
-  }
-  if (t === "test_result" || t === "test_result.recorded") {
-    const data = ev?.data && typeof ev.data === "object" ? ev.data : ev;
-    const targetKey = String(data?.targetKey || "");
-    const outcome = String(data?.outcome || "").trim().toUpperCase();
-    const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
-    if (!targetKey || (outcome !== "PASS" && outcome !== "FAIL")) {
-      logDiagnosticsWs("recv:ignored", { reason: "invalid-result", targetKey, outcome });
-      return;
-    }
-    if (outcome === "PASS") {
-      const existing = diagRt.tasksByKey.get(targetKey);
-      if (existing) {
-        diagRt.tasksByKey.delete(targetKey);
-        const row = diagRt.rowByKey.get(targetKey);
-        if (row && row.tr && row.tr.parentElement) row.tr.parentElement.removeChild(row.tr);
-        diagRt.rowByKey.delete(targetKey);
-        updateFailureTypesPie();
-        updateTaskCompletionPie();
-      }
-      if (progress || rollups) updateFailureRatePie();
-      return;
-    }
-
-    const prev = diagRt.tasksByKey.get(targetKey);
-    const next = {
-      targetKey,
-      tag: prev?.tag || "NOT_STARTED",
-      lastTestedAtUtc: String(data?.recordedAtUtc || ""),
-      deviceName: String(refs?.deviceName || ""),
-      pageName: String(refs?.pageName || ""),
-      buttonName: String(refs?.buttonName || ""),
-      scope: String(refs?.scope || ""),
-      targetName: String(data?.targetName || ""),
-      resolvedData: refs?.resolvedData,
-      lastFailNote: String(data?.failNote || ""),
-    };
-    diagRt.tasksByKey.set(targetKey, next);
-
-    const tbody = diag$("diagnosticsTaskBody");
-    const existingRow = diagRt.rowByKey.get(targetKey);
-    if (existingRow) {
-      _updateTaskRowDom(existingRow, next);
-      if (existingRow.tr && tbody.firstChild !== existingRow.tr) tbody.prepend(existingRow.tr);
-    } else {
-      const row = _makeTaskRow(projectId, next);
-      _updateTaskRowDom(row, next);
-      tbody.prepend(row.tr);
-      diagRt.rowByKey.set(targetKey, row);
-    }
-    updateFailureTypesPie();
-    updateTaskCompletionPie();
-    if (progress || rollups) updateFailureRatePie();
-  }
+  applyDiagnosticsFromStore(currentDiagProjectId());
 }
 
 function initDiagnosticsTab() {
+  ensureDiagnosticsStoreSubscription();
   const refreshBtn = document.getElementById("refreshDiagnosticsBtn");
   if (refreshBtn) {
     refreshBtn.style.display = "none";
@@ -751,6 +723,7 @@ function initDiagnosticsTab() {
     tabDiag.addEventListener("click", () => {
       const projectId = currentDiagProjectId();
       connectDiagnosticsWs(projectId);
+      applyDiagnosticsFromStore(projectId);
       setDiagStatus("");
       updateDiagnosticsTitle();
     });
@@ -765,12 +738,14 @@ function initDiagnosticsTab() {
     projectSelect.addEventListener("change", () => {
       const projectId = currentDiagProjectId();
       if (isDiagnosticsVisible()) connectDiagnosticsWs(projectId);
+      if (isDiagnosticsVisible()) applyDiagnosticsFromStore(projectId);
       updateDiagnosticsTitle();
       setDiagStatus("");
       if (!projectId) clearDiagnosticsView();
     });
     const initialProjectId = currentDiagProjectId();
     if (isDiagnosticsVisible()) connectDiagnosticsWs(initialProjectId);
+    if (isDiagnosticsVisible()) applyDiagnosticsFromStore(initialProjectId);
     updateDiagnosticsTitle();
     if (!initialProjectId) clearDiagnosticsView();
   }

@@ -644,6 +644,8 @@ function ensureSharedProjectWsManager() {
 }
 
 const sharedProjectWsManager = ensureSharedProjectWsManager();
+const sharedProjectStore = ensureSharedProjectStore();
+let commissionStoreUnsubscribe = null;
 
 function syncAfterReconnect(projectId) {
   const pid = String(projectId || "").trim();
@@ -691,41 +693,42 @@ function setActivityRows(rows) {
   logCommissionWs("snapshot:activities-applied", capped.length);
 }
 
-function handleCommissionWsPayload(payload) {
-  try {
-    const t = String(payload?.type || "").trim();
-    logCommissionWs("recv", t || "(unknown)");
-    if (t === "keepalive") return;
-    if (t === "commissioning_snapshot") {
-      const progress = payload?.progress || null;
-      const activities = Array.isArray(payload?.activities) ? payload.activities : [];
-      setActivityRows(activities);
-      if (progress) updatePies(progress);
-      const counts = progress?.counts || {};
-      logCommissionWs("snapshot:applied", {
-        activities: activities.length,
-        pass: Number(counts.pass || 0),
-        fail: Number(counts.fail || 0),
-      });
-      return;
-    }
-    if (t === "test_result" || t === "test_result.recorded") {
-      const norm = normalizeEventMessage(payload);
-      logCommissionWs("normalize", {
-        hasDevice: !!norm.device,
-        hasPage: !!norm.page,
-        hasButton: !!norm.button,
-        hasTarget: !!norm.testTarget,
-        hasKey: !!norm.targetKey,
-        status: norm.status,
-      });
-      appendActivityRow(norm);
-      const progress = payload?.progress || payload?.data?.progress || null;
-      if (progress) updatePies(progress);
-    }
-  } catch (e) {
-    logCommissionWs("payload:handle-failed", String(e?.message || e || ""));
+function getProjectStoreSlice(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return null;
+  const state = sharedProjectStore.getState();
+  const projects = state && state.projects && typeof state.projects === "object" ? state.projects : {};
+  return projects[pid] || null;
+}
+
+function renderCommissionFromStore(projectId) {
+  const slice = getProjectStoreSlice(projectId);
+  if (!slice) {
+    setActivityRows([]);
+    updatePies(null);
+    return;
   }
+  const activities = Array.isArray(slice.activities) ? slice.activities : [];
+  const progress = slice.progress || null;
+  setActivityRows(activities);
+  updatePies(progress);
+}
+
+function handleCommissionWsPayload() {
+  if (!isCommissionVisible()) return;
+  renderCommissionFromStore(currentProjectId());
+}
+
+function handleCommissionStoreChange() {
+  if (!isCommissionVisible()) return;
+  renderCommissionFromStore(currentProjectId());
+}
+
+function ensureCommissionStoreSubscription() {
+  if (commissionStoreUnsubscribe) return;
+  commissionStoreUnsubscribe = sharedProjectStore.subscribe(() => {
+    handleCommissionStoreChange();
+  });
 }
 
 function startWs(projectId) {
@@ -758,10 +761,12 @@ async function refreshCommission() {
     return;
   }
   startWs(projectId);
+  renderCommissionFromStore(projectId);
   await refreshCommissionTopboxTitle(projectId);
 }
 
 function runCommissionTab() {
+  ensureCommissionStoreSubscription();
   const tabCommission = document.getElementById("tab-commission");
   if (tabCommission) tabCommission.addEventListener("click", () => void refreshCommission());
   const tabManage = document.getElementById("tab-manage");
