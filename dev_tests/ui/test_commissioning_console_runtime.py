@@ -673,7 +673,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
-        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 2)
+        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 1)
         self.assertEqual(page.evaluate("window.__wsCloseCount()"), 0)
 
         page.get_by_role("button", name="Manage").click()

@@ -417,20 +417,14 @@ async function uploadAndRegenerate() {
   }
 }
 
-let manageWs = null;
-let manageWsProjectId = "";
-let manageWsSeq = 0;
-
 function stopManageWs() {
-  if (!manageWs) {
-    manageWsProjectId = "";
-    return;
-  }
-  try {
-    manageWs.close();
-  } catch (_e) {}
-  manageWs = null;
-  manageWsProjectId = "";
+  const manager = window.__sentinelProjectWsManager;
+  if (!manager || typeof manager.setConsumer !== "function") return;
+  manager.setConsumer("manage", {
+    active: false,
+    projectId: String(currentProjectId() || "").trim(),
+    onMessage: handleManageWsPayloadForConsumer,
+  });
 }
 
 function applyActiveUpload(projectId, activeUpload) {
@@ -460,37 +454,26 @@ function handleManageWsPayload(projectId, payload) {
   }
 }
 
+function handleManageWsPayloadForConsumer(payload) {
+  handleManageWsPayload(currentProjectId(), payload);
+}
+
 function startManageWs(projectId) {
   const pid = String(projectId || "").trim();
   if (!pid) {
     stopManageWs();
     return;
   }
-  if (manageWs && manageWsProjectId === pid) return;
-  stopManageWs();
-
-  const seq = ++manageWsSeq;
-  const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(pid)}/ws`));
-  manageWsProjectId = pid;
-  manageWs = new WebSocket(url);
-  manageWs.onmessage = (evt) => {
-    if (seq !== manageWsSeq) return;
-    try {
-      const payload = JSON.parse(String(evt.data || "{}"));
-      handleManageWsPayload(pid, payload);
-    } catch (_e) {}
-  };
-  manageWs.onclose = () => {
-    if (seq !== manageWsSeq) return;
-    manageWs = null;
-    manageWsProjectId = "";
-  };
-  manageWs.onerror = () => {
-    if (seq !== manageWsSeq) return;
-    try {
-      if (manageWs) manageWs.close();
-    } catch (_e) {}
-  };
+  const manager = window.__sentinelProjectWsManager;
+  if (!manager || typeof manager.setConsumer !== "function") {
+    setTimeout(() => startManageWs(pid), 0);
+    return;
+  }
+  manager.setConsumer("manage", {
+    active: true,
+    projectId: pid,
+    onMessage: handleManageWsPayloadForConsumer,
+  });
 }
 
 async function createTechLink() {

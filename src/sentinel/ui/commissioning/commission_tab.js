@@ -289,6 +289,8 @@ function ensureSharedProjectWsManager() {
   let wsIntentionalClose = false;
   let idleCloseTimer = null;
   const consumers = new Map();
+  const recentByProject = new Map();
+  const RECENT_MAX = 100;
 
   function desiredProjectId() {
     for (const consumer of consumers.values()) {
@@ -300,8 +302,21 @@ function ensureSharedProjectWsManager() {
   }
 
   function fanOut(payload) {
+    const activeProjectId = String(wsProjectId || "").trim();
+    const payloadProjectId = String(payload?.projectId || "").trim();
+    const cacheProjectId = payloadProjectId || activeProjectId;
+    if (cacheProjectId) {
+      const existing = recentByProject.get(cacheProjectId) || [];
+      const next = existing.concat([payload]).slice(-RECENT_MAX);
+      recentByProject.set(cacheProjectId, next);
+    }
     for (const consumer of consumers.values()) {
       if (!consumer || typeof consumer.onMessage !== "function") continue;
+      if (!consumer.active) continue;
+      const consumerProjectId = String(consumer.projectId || "").trim();
+      if (!consumerProjectId) continue;
+      if (activeProjectId && consumerProjectId !== activeProjectId) continue;
+      if (payloadProjectId && consumerProjectId !== payloadProjectId) continue;
       try {
         consumer.onMessage(payload);
       } catch (e) {
@@ -442,6 +457,17 @@ function ensureSharedProjectWsManager() {
         active: state && Object.prototype.hasOwnProperty.call(state, "active") ? !!state.active : !!prev.active,
       };
       consumers.set(key, next);
+      const shouldReplay = !!next.active && (!prev.active || String(prev.projectId || "").trim() !== next.projectId);
+      if (shouldReplay && typeof next.onMessage === "function" && next.projectId) {
+        const cached = recentByProject.get(next.projectId) || [];
+        for (const payload of cached) {
+          try {
+            next.onMessage(payload);
+          } catch (e) {
+            logProjectWs("consumer:replay-failed", String(e?.message || e || ""));
+          }
+        }
+      }
       reconcile();
     },
   };
