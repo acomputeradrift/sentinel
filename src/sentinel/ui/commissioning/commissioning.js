@@ -96,7 +96,9 @@ async function refreshClients() {
 
 async function refreshProjects() {
   const clientId = $("clientSelect").value;
+  const requestSeq = ++state.refreshProjectsRequestSeq;
   if (!clientId) {
+    if (requestSeq !== state.refreshProjectsRequestSeq) return [];
     setSelectOptions($("projectSelect"), [], () => "", () => "");
     $("projectSelect").dispatchEvent(new Event("change"));
     updateManageVisibility();
@@ -105,11 +107,15 @@ async function refreshProjects() {
   const prevSelectedProjectId = String($("projectSelect").value || "").trim();
   const rememberedProjectId = String(state.selectedProjectIdByClient[clientId] || "").trim();
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
+  if (requestSeq !== state.refreshProjectsRequestSeq) return projects;
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
+  const liveSelectedProjectId = String($("projectSelect").value || "").trim();
   const projectIds = new Set((Array.isArray(projects) ? projects : []).map((p) => String(p?.projectId || "").trim()).filter(Boolean));
   const nextProjectId = projectIds.has(rememberedProjectId)
     ? rememberedProjectId
-    : projectIds.has(prevSelectedProjectId)
+    : projectIds.has(liveSelectedProjectId)
+      ? liveSelectedProjectId
+      : projectIds.has(prevSelectedProjectId)
       ? prevSelectedProjectId
       : "";
   if (nextProjectId) $("projectSelect").value = nextProjectId;
@@ -128,6 +134,7 @@ const state = {
   activeUploadByProject: {},
   techLinksByProject: {},
   selectedProjectIdByClient: {},
+  refreshProjectsRequestSeq: 0,
 };
 
 function setProgressHidden(el, hidden) {
