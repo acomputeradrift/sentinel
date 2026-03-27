@@ -780,12 +780,6 @@ const sharedProjectWsManager = ensureSharedProjectWsManager();
 const sharedProjectStore = ensureSharedProjectStore();
 let commissionStoreUnsubscribe = null;
 
-function syncAfterReconnect(projectId) {
-  const pid = String(projectId || "").trim();
-  if (!pid) return;
-  logCommissionWs("reconnect-sync", pid);
-}
-
 function ensureCommissionHeader() {
   const div = document.getElementById("commissionSelection");
   if (div) div.remove();
@@ -873,7 +867,6 @@ function startWs(projectId) {
     active: true,
     onMessage: noopCommissionSocketConsumer,
   });
-  syncAfterReconnect(pid);
 }
 
 function stopWs(reason) {
