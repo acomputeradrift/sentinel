@@ -1,5 +1,6 @@
 import json
 import unittest
+import asyncio
 from pathlib import Path
 import sys
 
@@ -22,14 +23,76 @@ def _recv_until(ws, predicate, *, max_messages: int = 10):
     for _ in range(max_messages):
         raw = ws.receive_text()
         msg = json.loads(raw)
+        if not isinstance(msg, dict):
+            continue
         if predicate(msg):
             return msg
     raise AssertionError("Did not receive expected websocket message.")
 
 
 class CommissioningWsEventsTest(unittest.TestCase):
+    def test_commissioning_ws_send_loop_failure_does_not_leave_zombie_stream(self):
+        _require_fastapi()
+        from types import SimpleNamespace
+
+        from fastapi import WebSocketDisconnect
+
+        from sentinel.server.api import commissioning
+        from sentinel.server.services.repositories import InMemoryRepository
+        from sentinel.server.services.ws_broker import ProjectEventBroker
+
+        class _FakeWs:
+            def __init__(self, app) -> None:
+                self.app = app
+                self._send_count = 0
+                self.closed = asyncio.Event()
+                self.accepted = False
+
+            async def accept(self):
+                self.accepted = True
+
+            async def send_text(self, _text):
+                self._send_count += 1
+                # Snapshot send (first) succeeds; event send hangs forever.
+                if self._send_count == 1:
+                    return
+                await asyncio.sleep(3600)
+
+            async def receive_text(self):
+                # Keep recv loop alive until websocket is explicitly closed.
+                await self.closed.wait()
+                raise WebSocketDisconnect()
+
+            async def close(self, code=1000):
+                _ = code
+                self.closed.set()
+
+        async def _scenario():
+            repo = InMemoryRepository()
+            client = repo.create_client(name="Client A")
+            project = repo.create_project(clientId=client.clientId, name="Project A")
+            broker = ProjectEventBroker()
+
+            app = SimpleNamespace(state=SimpleNamespace(repo=repo, project_event_broker=broker))
+            ws = _FakeWs(app)
+
+            old_timeout = commissioning.WS_SEND_TIMEOUT_S
+            commissioning.WS_SEND_TIMEOUT_S = 0.05
+            try:
+                stream_task = asyncio.create_task(commissioning.project_ws(ws, project.projectId))
+                await asyncio.sleep(0.02)
+                broker.publish(projectId=project.projectId, event={"type": "test_result", "projectId": project.projectId, "targetKey": "t1", "outcome": "FAIL"})
+                await asyncio.wait_for(stream_task, timeout=0.8)
+            finally:
+                commissioning.WS_SEND_TIMEOUT_S = old_timeout
+
+            # Stream must exit, not hang forever with a dead send loop.
+            self.assertTrue(ws.accepted)
+            self.assertTrue(ws.closed.is_set())
+
+        asyncio.run(_scenario())
+
     def test_wait_for_next_timeout_does_not_block_subsequent_delivery(self):
-        import asyncio
         import queue
 
         from sentinel.server.services.ws_broker import wait_for_next
@@ -110,18 +173,19 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertIsNotNone(broker)
 
             ws.portal.call(
-                broker.publish,
-                projectId=project_id,
-                event={
-                    "type": "test_result",
-                    "projectId": project_id,
-                    "recordedAtUtc": "2026-03-22T12:34:56.789123+00:00",
-                    "targetKey": target_key,
-                    "outcome": "PASS",
-                    "targetName": "Button A",
-                    "kind": "BUTTON",
-                    "refs": {"deviceName": "Device 1"},
-                },
+                lambda: broker.publish(
+                    projectId=project_id,
+                    event={
+                        "type": "test_result",
+                        "projectId": project_id,
+                        "recordedAtUtc": "2026-03-22T12:34:56.789123+00:00",
+                        "targetKey": target_key,
+                        "outcome": "PASS",
+                        "targetName": "Button A",
+                        "kind": "BUTTON",
+                        "refs": {"deviceName": "Device 1"},
+                    },
+                )
             )
 
             msg1 = _recv_until(ws, lambda m: m.get("type") == "test_result" and m.get("targetKey") == target_key)
@@ -131,19 +195,20 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertIsNone(msg1.get("failNote"))
 
             ws.portal.call(
-                broker.publish,
-                projectId=project_id,
-                event={
-                    "type": "test_result",
-                    "projectId": project_id,
-                    "recordedAtUtc": "2026-03-22T12:36:56.789123+00:00",
-                    "targetKey": target_key,
-                    "outcome": "FAIL",
-                    "targetName": "Button A",
-                    "kind": "BUTTON",
-                    "refs": {"deviceName": "Device 1"},
-                    "failNote": "Button not responding",
-                },
+                lambda: broker.publish(
+                    projectId=project_id,
+                    event={
+                        "type": "test_result",
+                        "projectId": project_id,
+                        "recordedAtUtc": "2026-03-22T12:36:56.789123+00:00",
+                        "targetKey": target_key,
+                        "outcome": "FAIL",
+                        "targetName": "Button A",
+                        "kind": "BUTTON",
+                        "refs": {"deviceName": "Device 1"},
+                        "failNote": "Button not responding",
+                    },
+                )
             )
 
             msg1b = _recv_until(ws, lambda m: m.get("type") == "test_result" and m.get("outcome") == "FAIL")
@@ -153,15 +218,16 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg1b.get("failNote"), "Button not responding")
 
             ws.portal.call(
-                broker.publish,
-                projectId=project_id,
-                event={
-                    "type": "fail_tag_updated",
-                    "projectId": project_id,
-                    "recordedAtUtc": "2026-03-22T12:35:56.789123+00:00",
-                    "targetKey": target_key,
-                    "tag": "IN_PROGRESS",
-                },
+                lambda: broker.publish(
+                    projectId=project_id,
+                    event={
+                        "type": "fail_tag_updated",
+                        "projectId": project_id,
+                        "recordedAtUtc": "2026-03-22T12:35:56.789123+00:00",
+                        "targetKey": target_key,
+                        "tag": "IN_PROGRESS",
+                    },
+                )
             )
 
             msg2 = _recv_until(ws, lambda m: m.get("type") == "fail_tag_updated" and m.get("targetKey") == target_key)

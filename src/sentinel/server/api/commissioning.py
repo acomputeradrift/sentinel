@@ -19,6 +19,8 @@ from sentinel.server.services.repositories import Repository
 
 router = APIRouter(prefix="/api/v1/commissioning", tags=["commissioning"])
 log = logging.getLogger("uvicorn.error")
+WS_KEEPALIVE_TIMEOUT_S = 15.0
+WS_SEND_TIMEOUT_S = 5.0
 
 
 def _repo(request: Request) -> Repository:
@@ -158,6 +160,25 @@ def _commissioning_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
         "fails": _fails_from_latest(repo=repo, projectId=projectId, latest_results=latest),
         "activeUpload": _active_upload_payload(repo=repo, projectId=projectId),
     }
+
+
+async def _send_text_or_fail(*, websocket: WebSocket, text: str, projectId: str) -> None:
+    try:
+        await asyncio.wait_for(websocket.send_text(text), timeout=float(WS_SEND_TIMEOUT_S))
+    except asyncio.TimeoutError:
+        log.error("[commissioning-ws] send-timeout projectId=%s", projectId)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            log.exception("[commissioning-ws] close-after-timeout-failed projectId=%s", projectId)
+        raise
+    except Exception:
+        log.exception("[commissioning-ws] send-failed projectId=%s", projectId)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            log.exception("[commissioning-ws] close-after-send-failed projectId=%s", projectId)
+        raise
 
 
 @router.get("/clients")
@@ -453,13 +474,13 @@ async def project_ws(websocket: WebSocket, projectId: str):
     q = broker.subscribe(projectId=projectId)
     try:
         snapshot = _commissioning_snapshot(repo=repo, projectId=projectId, seq=broker.latest_seq(projectId=projectId))
-        await websocket.send_text(json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False))
+        await _send_text_or_fail(websocket=websocket, text=json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False), projectId=projectId)
 
         async def send_loop():
             while True:
-                msg = await ws_broker.wait_for_next(q, timeout_s=15.0)
+                msg = await ws_broker.wait_for_next(q, timeout_s=WS_KEEPALIVE_TIMEOUT_S)
                 if msg is None:
-                    await websocket.send_text(json.dumps({"type": "keepalive"}))
+                    await _send_text_or_fail(websocket=websocket, text=json.dumps({"type": "keepalive"}), projectId=projectId)
                     continue
                 try:
                     parsed = json.loads(msg)
@@ -469,7 +490,7 @@ async def project_ws(websocket: WebSocket, projectId: str):
                             log.info("[commissioning-ws] send type=%s projectId=%s", t, projectId)
                 except Exception:
                     log.warning("[commissioning-ws] send:parse-failed projectId=%s", projectId)
-                await websocket.send_text(msg)
+                await _send_text_or_fail(websocket=websocket, text=msg, projectId=projectId)
 
         async def recv_loop():
             while True:
@@ -481,7 +502,7 @@ async def project_ws(websocket: WebSocket, projectId: str):
                     continue
                 msg_type = str(payload.get("type") or "").strip()
                 if msg_type != "sync.request":
-                    await websocket.send_text(json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}))
+                    await _send_text_or_fail(websocket=websocket, text=json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}), projectId=projectId)
                     continue
 
                 last_applied = int(payload.get("lastAppliedSeq") or 0)
@@ -491,10 +512,11 @@ async def project_ws(websocket: WebSocket, projectId: str):
                 events = replay.get("events") or []
                 if replayable_from > (last_applied + 1):
                     snap = _commissioning_snapshot(repo=repo, projectId=projectId, seq=latest_seq)
-                    await websocket.send_text(json.dumps(snap, separators=(",", ":"), ensure_ascii=False))
+                    await _send_text_or_fail(websocket=websocket, text=json.dumps(snap, separators=(",", ":"), ensure_ascii=False), projectId=projectId)
                     continue
-                await websocket.send_text(
-                    json.dumps(
+                await _send_text_or_fail(
+                    websocket=websocket,
+                    text=json.dumps(
                         {
                             "type": "replay.batch",
                             "projectId": projectId,
@@ -504,16 +526,32 @@ async def project_ws(websocket: WebSocket, projectId: str):
                         },
                         separators=(",", ":"),
                         ensure_ascii=False,
-                    )
+                    ),
+                    projectId=projectId,
                 )
 
         send_task = asyncio.create_task(send_loop())
+        recv_task = asyncio.create_task(recv_loop())
         try:
-            await recv_loop()
+            done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            for task in done:
+                if task.cancelled():
+                    continue
+                exc = task.exception()
+                if exc is None:
+                    continue
+                if isinstance(exc, (WebSocketDisconnect, asyncio.CancelledError)):
+                    raise exc
+                raise exc
         finally:
             send_task.cancel()
-            await asyncio.gather(send_task, return_exceptions=True)
-    except WebSocketDisconnect:
+            recv_task.cancel()
+            await asyncio.gather(send_task, recv_task, return_exceptions=True)
+    except (WebSocketDisconnect, asyncio.CancelledError):
         log.info("[commissioning-ws] disconnect projectId=%s", projectId)
         return
     except Exception:

@@ -19,6 +19,8 @@ from sentinel.server.services.repositories import Repository
 
 router = APIRouter(tags=["testing"])
 log = logging.getLogger("uvicorn.error")
+WS_KEEPALIVE_TIMEOUT_S = 15.0
+WS_SEND_TIMEOUT_S = 5.0
 
 
 def _repo(request: Request) -> Repository:
@@ -121,6 +123,25 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
             }
         )
     return {"type": "testing_snapshot", "seq": int(seq or 0), "projectId": projectId, "results": results}
+
+
+async def _send_text_or_fail(*, websocket: WebSocket, text: str, project_id: str, tech_token: str) -> None:
+    try:
+        await asyncio.wait_for(websocket.send_text(text), timeout=float(WS_SEND_TIMEOUT_S))
+    except asyncio.TimeoutError:
+        log.error("[testing-ws] send-timeout projectId=%s techToken=%s", project_id, tech_token)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            log.exception("[testing-ws] close-after-timeout-failed projectId=%s techToken=%s", project_id, tech_token)
+        raise
+    except Exception:
+        log.exception("[testing-ws] send-failed projectId=%s techToken=%s", project_id, tech_token)
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            log.exception("[testing-ws] close-after-send-failed projectId=%s techToken=%s", project_id, tech_token)
+        raise
 
 
 def _generated_root() -> Path:
@@ -255,17 +276,22 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     try:
         snapshot = _build_testing_snapshot(repo=repo, projectId=project_id, seq=broker.latest_seq(projectId=project_id))
         log.info("[testing-ws] snapshot-send projectId=%s count=%s", project_id, len(snapshot.get("results") or []))
-        await websocket.send_text(json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False))
+        await _send_text_or_fail(
+            websocket=websocket,
+            text=json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False),
+            project_id=project_id,
+            tech_token=techToken,
+        )
     except Exception:
         log.exception("[testing-ws] snapshot-send-failed projectId=%s techToken=%s", project_id, techToken)
 
     async def send_loop():
         while True:
-            msg = await ws_broker.wait_for_next(q, timeout_s=15.0)
+            msg = await ws_broker.wait_for_next(q, timeout_s=WS_KEEPALIVE_TIMEOUT_S)
             if msg is None:
-                await websocket.send_text(json.dumps({"type": "keepalive"}))
+                await _send_text_or_fail(websocket=websocket, text=json.dumps({"type": "keepalive"}), project_id=project_id, tech_token=techToken)
                 continue
-            await websocket.send_text(msg)
+            await _send_text_or_fail(websocket=websocket, text=msg, project_id=project_id, tech_token=techToken)
 
     async def recv_loop():
         while True:
@@ -285,10 +311,16 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 events = replay.get("events") or []
                 if replayable_from > (last_applied + 1):
                     snap = _build_testing_snapshot(repo=repo, projectId=project_id, seq=latest_seq)
-                    await websocket.send_text(json.dumps(snap, separators=(",", ":"), ensure_ascii=False))
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps(snap, separators=(",", ":"), ensure_ascii=False),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
                     continue
-                await websocket.send_text(
-                    json.dumps(
+                await _send_text_or_fail(
+                    websocket=websocket,
+                    text=json.dumps(
                         {
                             "type": "replay.batch",
                             "projectId": project_id,
@@ -298,20 +330,37 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                         },
                         separators=(",", ":"),
                         ensure_ascii=False,
-                    )
+                    ),
+                    project_id=project_id,
+                    tech_token=techToken,
                 )
                 continue
             if msg_type not in ("test_result.submit", "test_result"):
-                await websocket.send_text(json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}))
+                await _send_text_or_fail(
+                    websocket=websocket,
+                    text=json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}),
+                    project_id=project_id,
+                    tech_token=techToken,
+                )
                 continue
             target = payload.get("target") or {}
             outcome = str(payload.get("outcome") or "").strip().upper()
             fail_note = payload.get("failNote")
             if outcome not in ("PASS", "FAIL"):
-                await websocket.send_text(json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS or FAIL."}))
+                await _send_text_or_fail(
+                    websocket=websocket,
+                    text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS or FAIL."}),
+                    project_id=project_id,
+                    tech_token=techToken,
+                )
                 continue
             if outcome == "FAIL" and not str(fail_note or "").strip():
-                await websocket.send_text(json.dumps({"type": "error", "code": "FAIL_NOTE_REQUIRED", "message": "Fail note is required when outcome is FAIL."}))
+                await _send_text_or_fail(
+                    websocket=websocket,
+                    text=json.dumps({"type": "error", "code": "FAIL_NOTE_REQUIRED", "message": "Fail note is required when outcome is FAIL."}),
+                    project_id=project_id,
+                    tech_token=techToken,
+                )
                 continue
             try:
                 rec = repo.append_test_result(
@@ -321,11 +370,19 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                     failNote=(str(fail_note).strip() if fail_note is not None else None),
                 )
             except KeyError:
-                await websocket.send_text(json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}))
+                await _send_text_or_fail(
+                    websocket=websocket,
+                    text=json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}),
+                    project_id=project_id,
+                    tech_token=techToken,
+                )
                 await websocket.close(code=1008)
                 return
             event = _build_test_result_event(repo=repo, rec=rec)
             published_event = broker.publish(projectId=rec.projectId, event=event)
+            if not isinstance(published_event, dict):
+                published_event = dict(event)
+                published_event["seq"] = int(broker.latest_seq(projectId=rec.projectId))
             log.info(
                 "[testing-ws] publish projectId=%s targetKey=%s outcome=%s broker_id=%s",
                 rec.projectId,
@@ -334,18 +391,38 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 id(broker),
             )
             try:
-                await websocket.send_text(json.dumps(published_event, separators=(",", ":"), ensure_ascii=False))
+                await _send_text_or_fail(
+                    websocket=websocket,
+                    text=json.dumps(published_event, separators=(",", ":"), ensure_ascii=False),
+                    project_id=project_id,
+                    tech_token=techToken,
+                )
             except Exception:
                 log.exception("[testing-ws] direct_send_failed techToken=%s", techToken)
 
     send_task = asyncio.create_task(send_loop())
+    recv_task = asyncio.create_task(recv_loop())
     try:
-        await recv_loop()
-    except WebSocketDisconnect:
+        done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        for task in done:
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc is None:
+                continue
+            if isinstance(exc, (WebSocketDisconnect, asyncio.CancelledError)):
+                raise exc
+            raise exc
+    except (WebSocketDisconnect, asyncio.CancelledError):
         log.info("[testing-ws] disconnect techToken=%s", techToken)
     finally:
         send_task.cancel()
-        await asyncio.gather(send_task, return_exceptions=True)
+        recv_task.cancel()
+        await asyncio.gather(send_task, recv_task, return_exceptions=True)
         try:
             broker.unsubscribe(projectId=project_id, q=q)
         except Exception:
