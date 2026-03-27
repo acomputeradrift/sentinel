@@ -28,6 +28,32 @@ def _recv_until(ws, predicate, *, max_messages: int = 10):
 
 
 class CommissioningWsEventsTest(unittest.TestCase):
+    def test_wait_for_next_timeout_does_not_block_subsequent_delivery(self):
+        import asyncio
+        import queue
+
+        from sentinel.server.services.ws_broker import wait_for_next
+
+        async def scenario():
+            q: queue.Queue[str] = queue.Queue()
+
+            # First call should timeout quickly.
+            t0 = asyncio.get_running_loop().time()
+            first = await wait_for_next(q, timeout_s=0.05)
+            t1 = asyncio.get_running_loop().time()
+            self.assertIsNone(first)
+            self.assertLess(t1 - t0, 0.5)
+
+            # Then delivery on the same queue must still work immediately.
+            q.put_nowait("x")
+            t2 = asyncio.get_running_loop().time()
+            second = await wait_for_next(q, timeout_s=0.5)
+            t3 = asyncio.get_running_loop().time()
+            self.assertEqual(second, "x")
+            self.assertLess(t3 - t2, 0.25)
+
+        asyncio.run(scenario())
+
     def test_broker_assigns_seq_and_can_replay_since(self):
         from sentinel.server.services.ws_broker import ProjectEventBroker
 
