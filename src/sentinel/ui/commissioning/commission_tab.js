@@ -277,8 +277,166 @@ function appendActivityRow(msg) {
   }
 }
 
+function _cloneValue(value) {
+  if (Array.isArray(value)) return value.map((item) => _cloneValue(item));
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) out[k] = _cloneValue(v);
+  return out;
+}
+
+function _storeInitialState() {
+  return { projects: {} };
+}
+
+function _ensureProjectState(root, projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return null;
+  if (!root.projects[pid]) {
+    root.projects[pid] = {
+      projectId: pid,
+      progress: null,
+      rollups: null,
+      activities: [],
+      fails: [],
+      activeUpload: null,
+      lastEventType: "",
+      lastRecordedAtUtc: "",
+    };
+  }
+  return root.projects[pid];
+}
+
+function _asEventActivity(payload) {
+  return {
+    type: "test_result",
+    projectId: String(payload?.projectId || ""),
+    recordedAtUtc: String(payload?.recordedAtUtc || payload?.tsUtc || ""),
+    targetKey: String(payload?.targetKey || payload?.data?.targetKey || ""),
+    outcome: String(payload?.outcome || payload?.currentOutcome || payload?.data?.outcome || ""),
+    targetName: String(payload?.targetName || payload?.data?.targetName || ""),
+    kind: String(payload?.kind || payload?.targetKind || payload?.data?.kind || payload?.data?.targetKind || ""),
+    refs: _cloneValue(payload?.refs && typeof payload.refs === "object" ? payload.refs : payload?.data?.refs && typeof payload.data.refs === "object" ? payload.data.refs : {}),
+    failNote: payload?.failNote == null ? null : String(payload.failNote),
+  };
+}
+
+function _upsertFailRecord(fails, payload) {
+  const targetKey = String(payload?.targetKey || payload?.data?.targetKey || "").trim();
+  if (!targetKey) return fails;
+  const outcome = String(payload?.outcome || payload?.currentOutcome || payload?.data?.outcome || "").trim().toUpperCase();
+  const existing = Array.isArray(fails) ? fails.slice() : [];
+  const idx = existing.findIndex((row) => String(row?.targetKey || "") === targetKey);
+  if (outcome === "PASS") {
+    if (idx >= 0) existing.splice(idx, 1);
+    return existing;
+  }
+  if (outcome !== "FAIL") return existing;
+
+  const refs = payload?.refs && typeof payload.refs === "object" ? payload.refs : payload?.data?.refs && typeof payload.data.refs === "object" ? payload.data.refs : {};
+  const prev = idx >= 0 ? existing[idx] : null;
+  const next = {
+    targetKey,
+    currentOutcome: "FAIL",
+    lastTestedAtUtc: String(payload?.recordedAtUtc || payload?.tsUtc || payload?.lastTestedAtUtc || ""),
+    lastFailNote: payload?.failNote == null ? String(prev?.lastFailNote || "") : String(payload.failNote || ""),
+    tag: String(prev?.tag || "NOT_STARTED"),
+    deviceName: String(refs?.deviceName || prev?.deviceName || ""),
+    pageName: String(refs?.pageName || prev?.pageName || ""),
+    buttonName: String(refs?.buttonName || prev?.buttonName || ""),
+    scope: String(refs?.scope || prev?.scope || ""),
+    targetName: String(payload?.targetName || prev?.targetName || ""),
+    resolvedData: refs?.resolvedData == null ? prev?.resolvedData : refs.resolvedData,
+  };
+  if (idx >= 0) existing[idx] = next;
+  else existing.unshift(next);
+  return existing;
+}
+
+function reduceProjectStore(prevState, payload) {
+  const state = prevState && typeof prevState === "object" ? _cloneValue(prevState) : _storeInitialState();
+  const t = String(payload?.type || "").trim();
+  if (!t || t === "keepalive") return state;
+
+  const projectId = String(payload?.projectId || "").trim();
+  if (!projectId) return state;
+
+  const project = _ensureProjectState(state, projectId);
+  if (!project) return state;
+
+  project.lastEventType = t;
+  project.lastRecordedAtUtc = String(payload?.recordedAtUtc || payload?.tsUtc || "");
+
+  if (t === "commissioning_snapshot") {
+    project.progress = payload?.progress ? _cloneValue(payload.progress) : null;
+    project.rollups = payload?.rollups ? _cloneValue(payload.rollups) : null;
+    project.activities = Array.isArray(payload?.activities) ? _cloneValue(payload.activities).slice(0, 50) : [];
+    project.fails = Array.isArray(payload?.fails) ? _cloneValue(payload.fails) : [];
+    project.activeUpload = payload?.activeUpload ? _cloneValue(payload.activeUpload) : null;
+    return state;
+  }
+
+  if (t === "generation") {
+    project.activeUpload = payload?.activeUpload
+      ? _cloneValue(payload.activeUpload)
+      : {
+          uploadId: payload?.uploadId || null,
+          projectId,
+          originalFilename: payload?.originalFilename || "",
+          storagePath: "",
+          uploadedAtUtc: "",
+        };
+    return state;
+  }
+
+  if (t === "fail_tag_updated") {
+    const targetKey = String(payload?.targetKey || "").trim();
+    const tag = String(payload?.tag || "").trim().toUpperCase();
+    project.fails = project.fails.map((row) => (String(row?.targetKey || "") === targetKey ? { ...row, tag: tag || row?.tag } : row));
+    return state;
+  }
+
+  if (t === "test_result" || t === "test_result.recorded") {
+    if (payload?.progress) project.progress = _cloneValue(payload.progress);
+    if (payload?.rollups) project.rollups = _cloneValue(payload.rollups);
+    const activity = _asEventActivity(payload);
+    project.activities = [activity, ...project.activities].slice(0, 50);
+    project.fails = _upsertFailRecord(project.fails, payload);
+    return state;
+  }
+
+  return state;
+}
+
+function ensureSharedProjectStore() {
+  if (window.__sentinelProjectStore) return window.__sentinelProjectStore;
+  let state = _storeInitialState();
+  const listeners = new Set();
+
+  window.__sentinelProjectStore = {
+    getState() {
+      return _cloneValue(state);
+    },
+    dispatch(payload) {
+      state = reduceProjectStore(state, payload);
+      for (const listener of Array.from(listeners)) {
+        try {
+          listener(state, payload);
+        } catch (_e) {}
+      }
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") return () => {};
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  return window.__sentinelProjectStore;
+}
+
 function ensureSharedProjectWsManager() {
   if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
+  const sharedStore = ensureSharedProjectStore();
 
   let ws = null;
   let wsProjectId = "";
@@ -327,6 +485,7 @@ function ensureSharedProjectWsManager() {
 
   function dispatchIncoming(payload) {
     if (!payload || typeof payload !== "object") return;
+    sharedStore.dispatch(payload);
     fanOut(payload);
   }
 

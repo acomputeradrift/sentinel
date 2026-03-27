@@ -546,6 +546,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 "(() => !!(window.__sentinelProjectWsManager && typeof window.__sentinelProjectWsManager.dispatchIncoming === 'function'))()"
             )
         )
+        self.assertTrue(
+            page.evaluate(
+                "(() => !!(window.__sentinelProjectStore && typeof window.__sentinelProjectStore.getState === 'function' && typeof window.__sentinelProjectStore.dispatch === 'function'))()"
+            )
+        )
 
         # Shell + tabs
         expect(page.get_by_role("button", name="Manage")).to_be_visible()
@@ -643,6 +648,20 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionActivityBody")).to_contain_text("FAIL")
         expect(page.get_by_test_id("commission-pie-project")).to_contain_text("3/12")
         expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("2/4")
+        self.assertEqual(
+            page.evaluate(
+                """
+(() => {
+  const store = window.__sentinelProjectStore;
+  if (!store || typeof store.getState !== "function") return -1;
+  const state = store.getState();
+  const project = state && state.projects ? state.projects["proj-1"] : null;
+  return project && Array.isArray(project.activities) ? project.activities.length : -1;
+})()
+"""
+            ),
+            2,
+        )
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
