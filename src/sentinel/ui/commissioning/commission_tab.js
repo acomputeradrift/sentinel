@@ -714,9 +714,8 @@ function renderCommissionFromStore(projectId) {
   updatePies(progress);
 }
 
-function handleCommissionWsPayload() {
-  if (!isCommissionVisible()) return;
-  renderCommissionFromStore(currentProjectId());
+function noopCommissionSocketConsumer() {
+  // Store subscription is the canonical UI render path.
 }
 
 function handleCommissionStoreChange() {
@@ -740,7 +739,7 @@ function startWs(projectId) {
   sharedProjectWsManager.setConsumer("commission", {
     active: true,
     projectId: pid,
-    onMessage: handleCommissionWsPayload,
+    onMessage: noopCommissionSocketConsumer,
   });
   syncAfterReconnect(pid);
 }
@@ -749,7 +748,7 @@ function stopWs() {
   sharedProjectWsManager.setConsumer("commission", {
     active: false,
     projectId: String(currentProjectId() || "").trim(),
-    onMessage: handleCommissionWsPayload,
+    onMessage: noopCommissionSocketConsumer,
   });
 }
 

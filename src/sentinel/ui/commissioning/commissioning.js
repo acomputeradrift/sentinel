@@ -423,7 +423,7 @@ function stopManageWs() {
   manager.setConsumer("manage", {
     active: false,
     projectId: String(currentProjectId() || "").trim(),
-    onMessage: handleManageWsPayloadForConsumer,
+    onMessage: noopManageSocketConsumer,
   });
 }
 
@@ -476,15 +476,7 @@ function ensureManageStoreSubscription() {
   syncManageFromStore(currentProjectId());
 }
 
-function handleManageWsPayload(projectId, payload) {
-  const t = String(payload?.type || "").trim();
-  if (!t || t === "keepalive") return;
-  syncManageFromStore(projectId);
-}
-
-function handleManageWsPayloadForConsumer() {
-  syncManageFromStore(currentProjectId());
-}
+function noopManageSocketConsumer() {}
 
 function startManageWs(projectId) {
   const pid = String(projectId || "").trim();
@@ -500,7 +492,7 @@ function startManageWs(projectId) {
   manager.setConsumer("manage", {
     active: true,
     projectId: pid,
-    onMessage: handleManageWsPayloadForConsumer,
+    onMessage: noopManageSocketConsumer,
   });
 }
 

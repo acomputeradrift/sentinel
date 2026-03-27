@@ -648,6 +648,24 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionActivityBody")).to_contain_text("FAIL")
         expect(page.get_by_test_id("commission-pie-project")).to_contain_text("3/12")
         expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("2/4")
+        page.evaluate(
+            """
+() => {
+  if (!window.__sentinelProjectWsManager || typeof window.__sentinelProjectWsManager.dispatchIncoming !== "function") return;
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "test_result.recorded",
+    projectId: "proj-1",
+    recordedAtUtc: "2026-03-21T00:00:04Z",
+    targetKey: "btn:101:1:2:Store Driven",
+    outcome: "PASS",
+    targetName: "Store Driven",
+    kind: "BUTTON",
+    refs: { deviceName: "Device A", pageName: "Home", buttonName: "Button X", scope: "BUTTON" },
+  });
+}
+"""
+        )
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Store Driven")
         self.assertEqual(
             page.evaluate(
                 """
@@ -660,7 +678,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 })()
 """
             ),
-            2,
+            3,
         )
 
         page.get_by_role("button", name="Diagnostics").click()

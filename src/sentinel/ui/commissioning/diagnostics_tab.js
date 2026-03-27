@@ -108,7 +108,7 @@ function disconnectDiagnosticsWs() {
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: false,
     projectId: String(currentDiagProjectId() || "").trim(),
-    onMessage: handleDiagnosticsEvent,
+    onMessage: noopDiagnosticsSocketConsumer,
   });
   diagRt.projectId = null;
   logDiagnosticsWs("close");
@@ -128,9 +128,7 @@ function connectDiagnosticsWs(projectId) {
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: true,
     projectId: pid,
-    onMessage: () => {
-      handleDiagnosticsEvent({ type: "store_refresh" });
-    },
+    onMessage: noopDiagnosticsSocketConsumer,
   });
 }
 
@@ -710,6 +708,8 @@ function handleDiagnosticsEvent(payload) {
   }
   applyDiagnosticsFromStore(currentDiagProjectId());
 }
+
+function noopDiagnosticsSocketConsumer() {}
 
 function initDiagnosticsTab() {
   ensureDiagnosticsStoreSubscription();
