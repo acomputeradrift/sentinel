@@ -76,10 +76,34 @@ function diagWsUrlCandidates(path) {
 }
 
 function logDiagnosticsWs(action, detail) {
+  const a = String(action || "").trim();
+  let code = "WS-INFO-170";
+  let label = "DIAGNOSTICS_EVENT";
+  if (a === "connect") {
+    code = "WS-INFO-110";
+    label = "SOCKET_REUSED";
+  } else if (a === "conn-id") {
+    code = "WS-INFO-103";
+    label = "CONNECT_ATTEMPT";
+  } else if (a === "close") {
+    code = "WS-INFO-151";
+    label = "CONSUMER_CLOSE";
+  } else if (a === "snapshot:applied") {
+    code = "WS-INFO-140";
+    label = "SNAPSHOT_APPLIED";
+  } else if (a === "connect:missing-project-id") {
+    code = "WS-WARN-201";
+    label = "MISSING_PROJECT";
+  }
   try {
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[diagnostics-ws]", action, detail == null ? "" : detail);
+    const logger = window.__sentinelWsLog;
+    if (typeof logger === "function") {
+      logger(code, label, "diagnostics-ws", { action: a, detail: detail == null ? "" : detail });
+      return;
     }
+  } catch (_e) {}
+  try {
+    if (typeof console !== "undefined" && console.log) console.log(`[diagnostics-ws] ${a}`, detail == null ? "" : detail);
   } catch (_e) {}
 }
 

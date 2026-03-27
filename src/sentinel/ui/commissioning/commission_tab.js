@@ -15,18 +15,72 @@ function wsUrl(path) {
 }
 
 function logProjectWs(action, detail) {
-  try {
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[project-ws]", action, detail == null ? "" : detail);
+  const a = String(action || "").trim();
+  let code = "WS-INFO-101";
+  let label = "SOCKET_EVENT";
+  if (a === "open") {
+    code = "WS-INFO-100";
+    label = "SOCKET_OPEN";
+  } else if (a === "sync.request") {
+    code = "WS-INFO-120";
+    label = "SYNC_REQUEST";
+  } else if (a === "close") {
+    const d = String(detail || "").trim().toLowerCase();
+    if (d === "unexpected") {
+      code = "WS-ERR-310";
+      label = "SOCKET_CLOSE_UNEXPECTED";
+    } else {
+      code = "WS-INFO-150";
+      label = "SOCKET_CLOSE";
     }
+  } else if (a === "connect") {
+    code = "WS-INFO-102";
+    label = "SOCKET_CONNECT";
+  } else if (a === "error") {
+    code = "WS-WARN-230";
+    label = "SOCKET_ERROR";
+  } else if (a === "conn-id") {
+    code = "WS-INFO-103";
+    label = "CONNECT_ATTEMPT";
+  } else if (a === "recv:json-parse-failed") {
+    code = "WS-WARN-240";
+    label = "JSON_PARSE_FAILED";
+  }
+  try {
+    const logger = window.__sentinelWsLog;
+    if (typeof logger === "function") {
+      logger(code, label, "project-ws", { action: a, detail: detail == null ? "" : detail });
+      return;
+    }
+  } catch (_e) {}
+  try {
+    if (typeof console !== "undefined" && console.log) console.log(`[project-ws] ${a}`, detail == null ? "" : detail);
   } catch (_e) {}
 }
 
 function logCommissionWs(action, detail) {
+  const a = String(action || "").trim();
+  let code = "WS-INFO-160";
+  let label = "COMMISSION_EVENT";
+  if (a === "reconnect-sync") {
+    code = "WS-INFO-121";
+    label = "SYNC_RECONCILE";
+  } else if (a === "snapshot:activities-applied") {
+    code = "WS-INFO-140";
+    label = "SNAPSHOT_APPLIED";
+  } else if (a === "close") {
+    code = "WS-INFO-151";
+    label = "CONSUMER_CLOSE";
+  }
   try {
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[commission-ws]", action, detail == null ? "" : detail);
+    const logger = window.__sentinelWsLog;
+    if (typeof logger === "function") {
+      logger(code, label, "commission-ws", { action: a, detail: detail == null ? "" : detail });
+      return;
     }
+  } catch (_e) {}
+  try {
+    if (typeof console !== "undefined" && console.log) console.log(`[commission-ws] ${a}`, detail == null ? "" : detail);
   } catch (_e) {}
 }
 

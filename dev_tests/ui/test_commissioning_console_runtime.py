@@ -792,6 +792,14 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             any("[diagnostics-ws] close" in line for line in console_logs),
             f"Unexpected diagnostics close log in same-project tab movement: {console_logs}",
         )
+        self.assertTrue(
+            any("WS-INFO-100 SOCKET_OPEN" in line for line in console_logs),
+            f"Expected readable WS open code in console logs: {console_logs}",
+        )
+        self.assertFalse(
+            any("WS-ERR-310 SOCKET_CLOSE_UNEXPECTED" in line for line in console_logs),
+            f"Unexpected close code seen in console logs: {console_logs}",
+        )
 
         # Upload a completely different file name (should warn).
         with tempfile.TemporaryDirectory() as td:

@@ -166,7 +166,7 @@ async def _send_text_or_fail(*, websocket: WebSocket, text: str, projectId: str)
     try:
         await asyncio.wait_for(websocket.send_text(text), timeout=float(WS_SEND_TIMEOUT_S))
     except asyncio.TimeoutError:
-        log.error("[commissioning-ws] send-timeout projectId=%s", projectId)
+        log.error("WS-ERR-320 SEND_TIMEOUT [commissioning-ws] projectId=%s", projectId)
         try:
             await websocket.close(code=1011)
         except Exception:

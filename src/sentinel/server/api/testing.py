@@ -129,7 +129,7 @@ async def _send_text_or_fail(*, websocket: WebSocket, text: str, project_id: str
     try:
         await asyncio.wait_for(websocket.send_text(text), timeout=float(WS_SEND_TIMEOUT_S))
     except asyncio.TimeoutError:
-        log.error("[testing-ws] send-timeout projectId=%s techToken=%s", project_id, tech_token)
+        log.error("WS-ERR-320 SEND_TIMEOUT [testing-ws] projectId=%s techToken=%s", project_id, tech_token)
         try:
             await websocket.close(code=1011)
         except Exception:
@@ -263,7 +263,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
         tok = repo.resolve_active_token(techToken=techToken)
     except KeyError:
         try:
-            log.info("[testing-ws] revoked techToken=%s", techToken)
+            log.error("WS-ERR-330 TERMINAL_AUTH_REVOKED [testing-ws] techToken=%s", techToken)
             await websocket.send_text(json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}))
         finally:
             await websocket.close(code=1008)

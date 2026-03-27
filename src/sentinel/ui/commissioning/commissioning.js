@@ -14,6 +14,19 @@ function wsUrl(path) {
   return `${proto}://${host}${path}`;
 }
 
+function ensureWsConsoleLogger() {
+  if (window.__sentinelWsLog) return window.__sentinelWsLog;
+  window.__sentinelWsLog = function wsLog(code, label, scope, detail) {
+    try {
+      if (typeof console === "undefined" || !console.log) return;
+      const prefix = `${String(code || "WS-INFO-000")} ${String(label || "EVENT")} [${String(scope || "ws")}]`;
+      console.log(prefix, detail == null ? "" : detail);
+    } catch (_e) {}
+  };
+  return window.__sentinelWsLog;
+}
+ensureWsConsoleLogger();
+
 function setActiveTab(tabName) {
   const tabs = ["manage", "commission", "diagnostics"];
   for (const t of tabs) {
