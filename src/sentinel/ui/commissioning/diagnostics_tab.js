@@ -60,6 +60,10 @@ function isDiagnosticsVisible() {
   return !!panel && !panel.hidden;
 }
 
+function isCommissioningHydrating() {
+  return !!window.__sentinelCommissioningHydrating;
+}
+
 function diagWsUrl(path) {
   const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
   const host = window.location && window.location.host ? window.location.host : "localhost";
@@ -141,6 +145,7 @@ function disconnectDiagnosticsWs(reason) {
 }
 
 function connectDiagnosticsWs(projectId) {
+  if (isCommissioningHydrating()) return;
   const pid = String(projectId || "").trim();
   if (!pid) {
     logDiagnosticsWs("connect:missing-project-id");
@@ -746,6 +751,7 @@ function initDiagnosticsTab() {
   const tabDiag = document.getElementById("tab-diagnostics");
   if (tabDiag) {
     tabDiag.addEventListener("click", () => {
+      if (isCommissioningHydrating()) return;
       const projectId = currentDiagProjectId();
       connectDiagnosticsWs(projectId);
       applyDiagnosticsFromStore(projectId);
@@ -757,6 +763,10 @@ function initDiagnosticsTab() {
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
+      if (isCommissioningHydrating()) {
+        updateDiagnosticsTitle();
+        return;
+      }
       const projectId = currentDiagProjectId();
       connectDiagnosticsWs(projectId);
       if (isDiagnosticsVisible()) applyDiagnosticsFromStore(projectId);
@@ -765,10 +775,17 @@ function initDiagnosticsTab() {
       if (!projectId) clearDiagnosticsView();
     });
     const initialProjectId = currentDiagProjectId();
-    if (initialProjectId) connectDiagnosticsWs(initialProjectId);
+    if (initialProjectId && !isCommissioningHydrating()) connectDiagnosticsWs(initialProjectId);
     if (isDiagnosticsVisible()) applyDiagnosticsFromStore(initialProjectId);
     updateDiagnosticsTitle();
     if (!initialProjectId) clearDiagnosticsView();
+  }
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("sentinel:commissioning-hydrated", () => {
+      const projectId = currentDiagProjectId();
+      if (projectId) connectDiagnosticsWs(projectId);
+      if (isDiagnosticsVisible()) applyDiagnosticsFromStore(projectId);
+    });
   }
 }
 

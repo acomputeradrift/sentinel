@@ -106,6 +106,10 @@ function isCommissionVisible() {
   return !!panel && !panel.hidden;
 }
 
+function isCommissioningHydrating() {
+  return !!window.__sentinelCommissioningHydrating;
+}
+
 async function refreshCommissionTopboxTitle(projectId) {
   const panel = document.getElementById("panel-commission");
   if (!panel) return;
@@ -868,6 +872,7 @@ function stopWs(reason) {
 }
 
 async function refreshCommission() {
+  if (isCommissioningHydrating()) return;
   const projectId = currentProjectId();
   updateSelectedNames();
   if (!projectId) {
@@ -890,6 +895,10 @@ function runCommissionTab() {
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
+      if (isCommissioningHydrating()) {
+        updateSelectedNames();
+        return;
+      }
       const nextProjectId = String(currentProjectId() || "").trim();
       if (nextProjectId) startWs(nextProjectId);
       else stopWs("missing-project");
@@ -910,7 +919,13 @@ function runCommissionTab() {
 
   updateSelectedNames();
   const initialProjectId = String(currentProjectId() || "").trim();
-  if (initialProjectId) startWs(initialProjectId);
+  if (initialProjectId && !isCommissioningHydrating()) startWs(initialProjectId);
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("sentinel:commissioning-hydrated", () => {
+      const pid = String(currentProjectId() || "").trim();
+      if (pid) startWs(pid);
+    });
+  }
 }
 
 runCommissionTab();

@@ -26,6 +26,7 @@ function ensureWsConsoleLogger() {
   return window.__sentinelWsLog;
 }
 ensureWsConsoleLogger();
+window.__sentinelCommissioningHydrating = true;
 
 const LAST_CLIENT_KEY = "sentinel.commissioning.lastClientId";
 const LAST_PROJECT_BY_CLIENT_KEY = "sentinel.commissioning.lastProjectByClient";
@@ -597,6 +598,7 @@ async function createTechLink() {
 }
 
 async function run() {
+  window.__sentinelCommissioningHydrating = true;
   const clientStatusEl = document.getElementById("clientStatus");
   const projectStatusEl = document.getElementById("projectStatus");
 
@@ -632,6 +634,14 @@ async function run() {
         persistedByClient[clientId] = String(projectId || "");
         _safeStorageSetJsonObject(LAST_PROJECT_BY_CLIENT_KEY, persistedByClient);
       }
+      if (window.__sentinelCommissioningHydrating) {
+        setPanelContext();
+        setLastGeneratedLabel();
+        updateManageVisibility();
+        updateTechLinkEnabled();
+        renderTechLinks();
+        return;
+      }
       setActiveProjectWsContext(projectId);
       if (projectId) state.generationReadyByProject[projectId] = false;
       updateTechLinkEnabled();
@@ -664,6 +674,10 @@ async function run() {
   syncManageFromStore(currentProjectId());
   setLastGeneratedLabel();
   updateManageVisibility();
+  window.__sentinelCommissioningHydrating = false;
+  try {
+    window.dispatchEvent(new Event("sentinel:commissioning-hydrated"));
+  } catch (_e) {}
   setActiveTab("manage");
 }
 
