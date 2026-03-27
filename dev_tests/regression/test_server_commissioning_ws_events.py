@@ -28,6 +28,20 @@ def _recv_until(ws, predicate, *, max_messages: int = 10):
 
 
 class CommissioningWsEventsTest(unittest.TestCase):
+    def test_broker_assigns_seq_and_can_replay_since(self):
+        from sentinel.server.services.ws_broker import ProjectEventBroker
+
+        broker = ProjectEventBroker(replay_capacity=4)
+        broker.publish(projectId="p1", event={"type": "a", "projectId": "p1"})
+        broker.publish(projectId="p1", event={"type": "b", "projectId": "p1"})
+        broker.publish(projectId="p1", event={"type": "c", "projectId": "p1"})
+
+        replay = broker.replay_since(projectId="p1", after_seq=1)
+        self.assertEqual(replay["latestSeq"], 3)
+        self.assertEqual(replay["replayableFromSeq"], 1)
+        self.assertEqual([e.get("seq") for e in replay["events"]], [2, 3])
+        self.assertEqual([e.get("type") for e in replay["events"]], ["b", "c"])
+
     def test_no_duplicate_commissioning_project_ws_route(self):
         _require_fastapi()
 
@@ -169,6 +183,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg.get("targetKey"), "btn:1:2:3:Button A")
             self.assertIn("progress", msg)
             self.assertIn("rollups", msg)
+            self.assertIsInstance(msg.get("seq"), int)
 
     def test_testing_ws_submits_and_receives_progress_rollups(self):
         TestClient = _require_fastapi()
@@ -206,6 +221,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg.get("projectId"), project_id)
             self.assertIn("progress", msg)
             self.assertIn("rollups", msg)
+            self.assertIsInstance(msg.get("seq"), int)
 
             ws.send_text(
                 json.dumps(
@@ -227,6 +243,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg2.get("failNote"), "Button not responding")
             self.assertIn("progress", msg2)
             self.assertIn("rollups", msg2)
+            self.assertIsInstance(msg2.get("seq"), int)
 
     def test_testing_submit_fanout_reaches_commissioning_ws(self):
         TestClient = _require_fastapi()
@@ -253,6 +270,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertIn("activities", snap)
             self.assertIn("fails", snap)
             self.assertIn("activeUpload", snap)
+            self.assertIsInstance(snap.get("seq"), int)
 
             with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as tech_ws:
                 tech_ws.send_text(

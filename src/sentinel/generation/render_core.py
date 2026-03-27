@@ -789,6 +789,7 @@ let currentDeviceTop=0;
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
+ let techLastAppliedSeq=0;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
  function _logTechWs(action, data) {{
@@ -819,9 +820,14 @@ let currentDeviceTop=0;
   }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
   techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
  }}
- function _handleTechWsMessage(evt) {{
+ function _sendTechSyncRequest() {{
+  if (!techWs || techWs.readyState !== 1) return;
   try {{
-   const payload = JSON.parse(String(evt.data || "{{}}"));
+   techWs.send(JSON.stringify({{ type:"sync.request", lastAppliedSeq:Number(techLastAppliedSeq||0) }}));
+   _logTechWs("sync.request", Number(techLastAppliedSeq||0));
+  }} catch (_e) {{}}
+ }}
+ function _applyTechPayload(payload) {{
    const t = String(payload?.type || "").trim();
    _logTechWs("recv", t || "(unknown)");
    if (t === "error") {{
@@ -831,6 +837,21 @@ let currentDeviceTop=0;
     setPosting(false);
     setPostStatus(`Error: ${{msg}}`, "error");
     return;
+   }}
+   if (t === "replay.batch") {{
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    for (const ev of events) _applyTechPayload(ev);
+    return;
+   }}
+   const seq = Number(payload?.seq || 0);
+   const isSnapshot = t === "testing_snapshot";
+   if (seq > 0) {{
+    if (seq <= techLastAppliedSeq) return;
+    if (!isSnapshot && seq > techLastAppliedSeq + 1) {{
+     _sendTechSyncRequest();
+     return;
+    }}
+    techLastAppliedSeq = seq;
    }}
    if (t === "testing_snapshot") {{
     const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -874,6 +895,11 @@ let currentDeviceTop=0;
    }} else if (pendingTargetKey) {{
     _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
    }}
+ }}
+ function _handleTechWsMessage(evt) {{
+  try {{
+   const payload = JSON.parse(String(evt.data || "{{}}"));
+   _applyTechPayload(payload);
   }} catch (_e) {{
    _logTechWs("recv:parse-failed");
   }}
@@ -886,10 +912,11 @@ let currentDeviceTop=0;
    try {{ techWs.close(); }} catch (_e) {{}}
   }}
   techWsToken = techToken;
+  techLastAppliedSeq = 0;
   _logTechWs("connect", techToken);
   const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
   techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); }};
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); }};
   ws.onclose = () => {{
    techWs = null;
    _logTechWs("close");
@@ -2498,9 +2525,14 @@ const APP_UI={app_json};
   }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
   techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
  }}
- function _handleTechWsMessage(evt) {{
+ function _sendTechSyncRequest() {{
+  if (!techWs || techWs.readyState !== 1) return;
   try {{
-   const payload = JSON.parse(String(evt.data || "{{}}"));
+   techWs.send(JSON.stringify({{ type:"sync.request", lastAppliedSeq:Number(techLastAppliedSeq||0) }}));
+   _logTechWs("sync.request", Number(techLastAppliedSeq||0));
+  }} catch (_e) {{}}
+ }}
+ function _applyTechPayload(payload) {{
    const t = String(payload?.type || "").trim();
    _logTechWs("recv", t || "(unknown)");
    if (t === "error") {{
@@ -2510,6 +2542,21 @@ const APP_UI={app_json};
     setPosting(false);
     setPostStatus(`Error: ${{msg}}`, "error");
     return;
+   }}
+   if (t === "replay.batch") {{
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    for (const ev of events) _applyTechPayload(ev);
+    return;
+   }}
+   const seq = Number(payload?.seq || 0);
+   const isSnapshot = t === "testing_snapshot";
+   if (seq > 0) {{
+    if (seq <= techLastAppliedSeq) return;
+    if (!isSnapshot && seq > techLastAppliedSeq + 1) {{
+      _sendTechSyncRequest();
+      return;
+    }}
+    techLastAppliedSeq = seq;
    }}
    if (t === "testing_snapshot") {{
     const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -2551,6 +2598,11 @@ const APP_UI={app_json};
    }} else if (pendingTargetKey) {{
     _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
    }}
+ }}
+ function _handleTechWsMessage(evt) {{
+  try {{
+   const payload = JSON.parse(String(evt.data || "{{}}"));
+   _applyTechPayload(payload);
   }} catch (_e) {{}}
  }}
  function _connectTechWs() {{
@@ -2561,10 +2613,11 @@ const APP_UI={app_json};
    try {{ techWs.close(); }} catch (_e) {{}}
   }}
   techWsToken = techToken;
+  techLastAppliedSeq = 0;
   _logTechWs("connect", techToken);
   const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
   techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); }};
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); }};
   ws.onclose = () => {{
    techWs = null;
    _logTechWs("close");

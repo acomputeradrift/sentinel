@@ -102,7 +102,7 @@ def _build_test_result_event(*, repo: Repository, rec) -> dict:
     }
 
 
-def _build_testing_snapshot(*, repo: Repository, projectId: str) -> dict:
+def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -> dict:
     latest = repo.get_latest_results_for_project(projectId=projectId)
     rows = list(latest.values())
     rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
@@ -120,7 +120,7 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str) -> dict:
                 "failNote": rec.failNote,
             }
         )
-    return {"type": "testing_snapshot", "projectId": projectId, "results": results}
+    return {"type": "testing_snapshot", "seq": int(seq or 0), "projectId": projectId, "results": results}
 
 
 def _generated_root() -> Path:
@@ -253,7 +253,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     log.info("[testing-ws] broker_id=%s projectId=%s", id(broker), project_id)
     q = broker.subscribe(projectId=project_id)
     try:
-        snapshot = _build_testing_snapshot(repo=repo, projectId=project_id)
+        snapshot = _build_testing_snapshot(repo=repo, projectId=project_id, seq=broker.latest_seq(projectId=project_id))
         log.info("[testing-ws] snapshot-send projectId=%s count=%s", project_id, len(snapshot.get("results") or []))
         await websocket.send_text(json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False))
     except Exception:
@@ -277,6 +277,30 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 continue
             msg_type = str(payload.get("type") or "").strip()
             log.info("[testing-ws] recv type=%s techToken=%s", msg_type, techToken)
+            if msg_type == "sync.request":
+                last_applied = int(payload.get("lastAppliedSeq") or 0)
+                replay = broker.replay_since(projectId=project_id, after_seq=last_applied)
+                replayable_from = int(replay.get("replayableFromSeq") or 0)
+                latest_seq = int(replay.get("latestSeq") or 0)
+                events = replay.get("events") or []
+                if replayable_from > (last_applied + 1):
+                    snap = _build_testing_snapshot(repo=repo, projectId=project_id, seq=latest_seq)
+                    await websocket.send_text(json.dumps(snap, separators=(",", ":"), ensure_ascii=False))
+                    continue
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "replay.batch",
+                            "projectId": project_id,
+                            "afterSeq": last_applied,
+                            "latestSeq": latest_seq,
+                            "events": events,
+                        },
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    )
+                )
+                continue
             if msg_type not in ("test_result.submit", "test_result"):
                 await websocket.send_text(json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}))
                 continue
@@ -301,6 +325,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 await websocket.close(code=1008)
                 return
             event = _build_test_result_event(repo=repo, rec=rec)
+            published_event = broker.publish(projectId=rec.projectId, event=event)
             log.info(
                 "[testing-ws] publish projectId=%s targetKey=%s outcome=%s broker_id=%s",
                 rec.projectId,
@@ -309,10 +334,9 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 id(broker),
             )
             try:
-                await websocket.send_text(json.dumps(event, separators=(",", ":"), ensure_ascii=False))
+                await websocket.send_text(json.dumps(published_event, separators=(",", ":"), ensure_ascii=False))
             except Exception:
                 log.exception("[testing-ws] direct_send_failed techToken=%s", techToken)
-            broker.publish(projectId=rec.projectId, event=event)
 
     send_task = asyncio.create_task(send_loop())
     try:

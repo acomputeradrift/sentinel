@@ -449,6 +449,14 @@ function ensureSharedProjectWsManager() {
   const consumers = new Map();
   const recentByProject = new Map();
   const RECENT_MAX = 100;
+  const syncByProject = new Map();
+
+  function syncStateFor(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return { lastAppliedSeq: 0, syncInFlight: false };
+    if (!syncByProject.has(pid)) syncByProject.set(pid, { lastAppliedSeq: 0, syncInFlight: false });
+    return syncByProject.get(pid);
+  }
 
   function desiredProjectId() {
     for (const consumer of consumers.values()) {
@@ -483,10 +491,60 @@ function ensureSharedProjectWsManager() {
     }
   }
 
-  function dispatchIncoming(payload) {
-    if (!payload || typeof payload !== "object") return;
+  function sendSyncRequest(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return;
+    if (!ws || ws.readyState !== 1 || String(wsProjectId || "").trim() !== pid) return;
+    const sync = syncStateFor(pid);
+    if (sync.syncInFlight) return;
+    sync.syncInFlight = true;
+    try {
+      ws.send(
+        JSON.stringify({
+          type: "sync.request",
+          projectId: pid,
+          lastAppliedSeq: Number(sync.lastAppliedSeq || 0),
+        })
+      );
+      logProjectWs("sync.request", { projectId: pid, lastAppliedSeq: Number(sync.lastAppliedSeq || 0) });
+    } catch (_e) {}
+  }
+
+  function applySequencedEvent(payload) {
+    const pid = String(payload?.projectId || wsProjectId || "").trim();
+    const t = String(payload?.type || "").trim();
+    const seq = Number(payload?.seq || 0);
+    const isSnapshot = t === "commissioning_snapshot" || t === "testing_snapshot";
+    const sync = syncStateFor(pid);
+    if (seq <= 0) {
+      sharedStore.dispatch(payload);
+      fanOut(payload);
+      return;
+    }
+    if (seq <= Number(sync.lastAppliedSeq || 0)) return;
+    if (!isSnapshot && seq > Number(sync.lastAppliedSeq || 0) + 1) {
+      sendSyncRequest(pid);
+      return;
+    }
+    sync.lastAppliedSeq = seq;
+    sync.syncInFlight = false;
     sharedStore.dispatch(payload);
     fanOut(payload);
+  }
+
+  function dispatchIncoming(payload) {
+    if (!payload || typeof payload !== "object") return;
+    const t = String(payload?.type || "").trim();
+    if (t === "keepalive") return;
+    if (t === "replay.batch") {
+      const pid = String(payload?.projectId || wsProjectId || "").trim();
+      const sync = syncStateFor(pid);
+      sync.syncInFlight = false;
+      const events = Array.isArray(payload?.events) ? payload.events : [];
+      for (const ev of events) applySequencedEvent(ev);
+      return;
+    }
+    applySequencedEvent(payload);
   }
 
   function dispatchIncomingRaw(raw) {
@@ -561,6 +619,7 @@ function ensureSharedProjectWsManager() {
       wsState = "open";
       wsReconnectDelayMs = 500;
       logProjectWs("open", wsProjectId);
+      sendSyncRequest(wsProjectId);
     };
     ws.onclose = () => {
       if (connId !== wsConnSeq) {
@@ -569,9 +628,12 @@ function ensureSharedProjectWsManager() {
       }
       const intentional = wsIntentionalClose;
       wsIntentionalClose = false;
+      const closingProjectId = String(wsProjectId || "").trim();
       ws = null;
       wsProjectId = "";
       wsState = "closed";
+      const sync = syncStateFor(closingProjectId);
+      sync.syncInFlight = false;
       logProjectWs("close", intentional ? "intentional" : "unexpected");
       if (!intentional && desiredProjectId()) scheduleReconnect();
     };

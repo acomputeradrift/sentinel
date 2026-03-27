@@ -153,6 +153,8 @@ class TestingResultPostingTest(unittest.TestCase):
         self.assertIn("function buildTargetPayload", html)
         self.assertIn("function _connectTechWs", html)
         self.assertEqual(html.count("function _connectTechWs"), 1, "Expected a single _connectTechWs definition")
+        self.assertIn("lastAppliedSeq", html)
+        self.assertIn("sync.request", html)
         self.assertNotIn("await fetch(", html, "HTML should not contain top-level await fetch fallback")
 
     def _install_fake_ws(self, page) -> None:  # noqa: ANN001
@@ -208,11 +210,16 @@ class TestingResultPostingTest(unittest.TestCase):
 """
         )
 
-    def _wait_for_ws_outbox(self, page, *, min_posts: int = 1, timeout_s: float = 3.0) -> None:  # noqa: ANN001
+    def _wait_for_ws_outbox(self, page, *, min_posts: int = 1, timeout_s: float = 3.0, include_sync: bool = False) -> None:  # noqa: ANN001
         deadline = time.time() + timeout_s
         while time.time() < deadline:
             try:
-                count = page.evaluate("window.__wsOutbox ? window.__wsOutbox.length : 0")
+                if include_sync:
+                    count = page.evaluate("window.__wsOutbox ? window.__wsOutbox.length : 0")
+                else:
+                    count = page.evaluate(
+                        "window.__wsOutbox ? window.__wsOutbox.filter(x => !(x && typeof x === 'object' && x.type === 'sync.request')).length : 0"
+                    )
             except Exception:
                 count = 0
             if count >= min_posts:
@@ -220,8 +227,12 @@ class TestingResultPostingTest(unittest.TestCase):
             time.sleep(0.05)
         self.fail(f"Expected at least {min_posts} WS send(s).")
 
-    def _ws_payload(self, page, index: int = 0):  # noqa: ANN001
-        return page.evaluate(f"window.__wsOutbox[{index}]")
+    def _ws_payload(self, page, index: int = 0, include_sync: bool = False):  # noqa: ANN001
+        if include_sync:
+            return page.evaluate(f"window.__wsOutbox[{index}]")
+        return page.evaluate(
+            f"(window.__wsOutbox || []).filter(x => !(x && typeof x === 'object' && x.type === 'sync.request'))[{index}]"
+        )
 
     def _wait_for_log_contains(self, logs: list[str], text: str, *, timeout_s: float = 3.0) -> None:
         deadline = time.time() + timeout_s
