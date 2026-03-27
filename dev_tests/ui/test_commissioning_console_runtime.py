@@ -800,6 +800,16 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             any("WS-ERR-310 SOCKET_CLOSE_UNEXPECTED" in line for line in console_logs),
             f"Unexpected close code seen in console logs: {console_logs}",
         )
+        diag_connect_attempts = [
+            line
+            for line in console_logs
+            if "WS-INFO-103 CONNECT_ATTEMPT [diagnostics-ws]" in line
+        ]
+        self.assertLessEqual(
+            len(diag_connect_attempts),
+            1,
+            f"Expected single diagnostics connect attempt on initial stable project load: {console_logs}",
+        )
 
         # Upload a completely different file name (should warn).
         with tempfile.TemporaryDirectory() as td:

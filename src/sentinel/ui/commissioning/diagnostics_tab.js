@@ -152,6 +152,7 @@ function connectDiagnosticsWs(projectId) {
     disconnectDiagnosticsWs("missing-project");
     return;
   }
+  if (diagRt.projectId === pid) return;
   diagRt.projectId = pid;
   logDiagnosticsWs("conn-id", ++diagRt.connSeq);
   logDiagnosticsWs("url", { protocol: window.location && window.location.protocol, host: window.location && window.location.host });
