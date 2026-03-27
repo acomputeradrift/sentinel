@@ -104,21 +104,24 @@ function getSharedProjectStore() {
   throw new Error("Shared project store not found.");
 }
 
-function disconnectDiagnosticsWs() {
+function disconnectDiagnosticsWs(reason) {
+  const hadProject = !!String(diagRt.projectId || "").trim();
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: false,
     projectId: String(currentDiagProjectId() || "").trim(),
     onMessage: noopDiagnosticsSocketConsumer,
   });
   diagRt.projectId = null;
-  logDiagnosticsWs("close");
+  if (hadProject || String(reason || "") !== "missing-project") {
+    logDiagnosticsWs("close", String(reason || "manual"));
+  }
 }
 
 function connectDiagnosticsWs(projectId) {
   const pid = String(projectId || "").trim();
   if (!pid) {
     logDiagnosticsWs("connect:missing-project-id");
-    disconnectDiagnosticsWs();
+    disconnectDiagnosticsWs("missing-project");
     return;
   }
   diagRt.projectId = pid;
@@ -728,23 +731,19 @@ function initDiagnosticsTab() {
       updateDiagnosticsTitle();
     });
   }
-  const tabManage = document.getElementById("tab-manage");
-  if (tabManage) tabManage.addEventListener("click", () => disconnectDiagnosticsWs());
-  const tabCommission = document.getElementById("tab-commission");
-  if (tabCommission) tabCommission.addEventListener("click", () => disconnectDiagnosticsWs());
 
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
       const projectId = currentDiagProjectId();
-      if (isDiagnosticsVisible()) connectDiagnosticsWs(projectId);
+      connectDiagnosticsWs(projectId);
       if (isDiagnosticsVisible()) applyDiagnosticsFromStore(projectId);
       updateDiagnosticsTitle();
       setDiagStatus("");
       if (!projectId) clearDiagnosticsView();
     });
     const initialProjectId = currentDiagProjectId();
-    if (isDiagnosticsVisible()) connectDiagnosticsWs(initialProjectId);
+    if (initialProjectId) connectDiagnosticsWs(initialProjectId);
     if (isDiagnosticsVisible()) applyDiagnosticsFromStore(initialProjectId);
     updateDiagnosticsTitle();
     if (!initialProjectId) clearDiagnosticsView();

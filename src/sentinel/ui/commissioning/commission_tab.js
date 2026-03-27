@@ -806,12 +806,13 @@ function startWs(projectId) {
   syncAfterReconnect(pid);
 }
 
-function stopWs() {
+function stopWs(reason) {
   sharedProjectWsManager.setConsumer("commission", {
     active: false,
     projectId: String(currentProjectId() || "").trim(),
     onMessage: noopCommissionSocketConsumer,
   });
+  logCommissionWs("close", String(reason || "manual"));
 }
 
 async function refreshCommission() {
@@ -830,16 +831,6 @@ function runCommissionTab() {
   ensureCommissionStoreSubscription();
   const tabCommission = document.getElementById("tab-commission");
   if (tabCommission) tabCommission.addEventListener("click", () => void refreshCommission());
-  const tabManage = document.getElementById("tab-manage");
-  if (tabManage)
-    tabManage.addEventListener("click", () => {
-      stopWs();
-    });
-  const tabDiagnostics = document.getElementById("tab-diagnostics");
-  if (tabDiagnostics)
-    tabDiagnostics.addEventListener("click", () => {
-      stopWs();
-    });
 
   const clientSelect = document.getElementById("clientSelect");
   if (clientSelect) clientSelect.addEventListener("change", () => void refreshCommissionTopboxTitle(currentProjectId()));
@@ -847,9 +838,12 @@ function runCommissionTab() {
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
-      stopWs();
+      const nextProjectId = String(currentProjectId() || "").trim();
+      if (nextProjectId) startWs(nextProjectId);
+      else stopWs("missing-project");
       updateSelectedNames();
       if (isCommissionVisible()) void refreshCommission();
+      if (!isCommissionVisible()) renderCommissionFromStore(nextProjectId);
     });
   }
 
@@ -863,6 +857,8 @@ function runCommissionTab() {
   $("commissionActivity").appendChild(empty);
 
   updateSelectedNames();
+  const initialProjectId = String(currentProjectId() || "").trim();
+  if (initialProjectId) startWs(initialProjectId);
 }
 
 runCommissionTab();
