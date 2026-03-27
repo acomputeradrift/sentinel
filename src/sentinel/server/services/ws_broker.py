@@ -99,13 +99,10 @@ class ProjectEventBroker:
 
 
 async def wait_for_next(q: queue.Queue[str], *, timeout_s: float) -> str | None:
-    log = logging.getLogger("uvicorn.error")
     deadline = asyncio.get_running_loop().time() + max(0.0, float(timeout_s or 0.0))
     while True:
         try:
-            log.info("[broker-wait] enter thread=%s qsize=%s", threading.current_thread().name, q.qsize() if hasattr(q, "qsize") else "na")
             item = q.get_nowait()
-            log.info("[broker-wait] exit thread=%s qsize=%s", threading.current_thread().name, q.qsize() if hasattr(q, "qsize") else "na")
             return item
         except queue.Empty:
             if asyncio.get_running_loop().time() >= deadline:

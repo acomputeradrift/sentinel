@@ -31,6 +31,37 @@ def _recv_until(ws, predicate, *, max_messages: int = 10):
 
 
 class CommissioningWsEventsTest(unittest.TestCase):
+    def test_wait_for_next_timeout_does_not_emit_poll_spam_logs(self):
+        import logging
+        import queue
+
+        from sentinel.server.services.ws_broker import wait_for_next
+
+        class _Capture(logging.Handler):
+            def __init__(self):
+                super().__init__()
+                self.messages = []
+
+            def emit(self, record):
+                self.messages.append(self.format(record))
+
+        async def scenario():
+            q: queue.Queue[str] = queue.Queue()
+            logger = logging.getLogger("uvicorn.error")
+            capture = _Capture()
+            capture.setFormatter(logging.Formatter("%(message)s"))
+            logger.addHandler(capture)
+            try:
+                value = await wait_for_next(q, timeout_s=0.05)
+            finally:
+                logger.removeHandler(capture)
+            self.assertIsNone(value)
+            spam = [line for line in capture.messages if "[broker-wait]" in line]
+            self.assertEqual(spam, [])
+
+        logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+        asyncio.run(scenario())
+
     def test_commissioning_ws_send_loop_failure_does_not_leave_zombie_stream(self):
         _require_fastapi()
         from types import SimpleNamespace
