@@ -102,8 +102,17 @@ async function refreshProjects() {
     updateManageVisibility();
     return [];
   }
+  const prevSelectedProjectId = String($("projectSelect").value || "").trim();
+  const rememberedProjectId = String(state.selectedProjectIdByClient[clientId] || "").trim();
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
+  const projectIds = new Set((Array.isArray(projects) ? projects : []).map((p) => String(p?.projectId || "").trim()).filter(Boolean));
+  const nextProjectId = projectIds.has(rememberedProjectId)
+    ? rememberedProjectId
+    : projectIds.has(prevSelectedProjectId)
+      ? prevSelectedProjectId
+      : "";
+  if (nextProjectId) $("projectSelect").value = nextProjectId;
   $("projectSelect").dispatchEvent(new Event("change"));
   updateManageVisibility();
   return projects;
@@ -118,6 +127,7 @@ const state = {
   generationReadyByProject: {},
   activeUploadByProject: {},
   techLinksByProject: {},
+  selectedProjectIdByClient: {},
 };
 
 function setProgressHidden(el, hidden) {
@@ -435,7 +445,6 @@ function stopManageWs() {
   if (!manager || typeof manager.setConsumer !== "function") return;
   manager.setConsumer("manage", {
     active: false,
-    projectId: String(currentProjectId() || "").trim(),
     onMessage: noopManageSocketConsumer,
   });
 }
@@ -504,9 +513,14 @@ function startManageWs(projectId) {
   }
   manager.setConsumer("manage", {
     active: true,
-    projectId: pid,
     onMessage: noopManageSocketConsumer,
   });
+}
+
+function setActiveProjectWsContext(projectId) {
+  const manager = window.__sentinelProjectWsManager;
+  if (!manager || typeof manager.setActiveProject !== "function") return;
+  manager.setActiveProject(String(projectId || "").trim());
 }
 
 async function createTechLink() {
@@ -556,6 +570,9 @@ async function run() {
   $("projectSelect").addEventListener("change", () =>
     safe(async () => {
       const projectId = currentProjectId();
+      const clientId = String($("clientSelect").value || "").trim();
+      if (clientId) state.selectedProjectIdByClient[clientId] = projectId;
+      setActiveProjectWsContext(projectId);
       if (projectId) state.generationReadyByProject[projectId] = false;
       updateTechLinkEnabled();
       renderTechLinks();
@@ -582,6 +599,7 @@ async function run() {
   updateTechLinkEnabled();
   renderTechLinks();
   setPanelContext();
+  setActiveProjectWsContext(currentProjectId());
   startManageWs(currentProjectId());
   syncManageFromStore(currentProjectId());
   setLastGeneratedLabel();

@@ -500,6 +500,7 @@ function ensureSharedProjectWsManager() {
   let wsState = "closed";
   let wsIntentionalClose = false;
   let idleCloseTimer = null;
+  let activeProjectId = "";
   const consumers = new Map();
   const recentByProject = new Map();
   const RECENT_MAX = 100;
@@ -513,12 +514,9 @@ function ensureSharedProjectWsManager() {
   }
 
   function desiredProjectId() {
-    for (const consumer of consumers.values()) {
-      if (!consumer || !consumer.active) continue;
-      const pid = String(consumer.projectId || "").trim();
-      if (pid) return pid;
-    }
-    return "";
+    const hasActiveConsumer = Array.from(consumers.values()).some((consumer) => !!consumer && !!consumer.active);
+    if (!hasActiveConsumer) return "";
+    return String(activeProjectId || "").trim();
   }
 
   function fanOut(payload) {
@@ -533,10 +531,6 @@ function ensureSharedProjectWsManager() {
     for (const consumer of consumers.values()) {
       if (!consumer || typeof consumer.onMessage !== "function") continue;
       if (!consumer.active) continue;
-      const consumerProjectId = String(consumer.projectId || "").trim();
-      if (!consumerProjectId) continue;
-      if (activeProjectId && consumerProjectId !== activeProjectId) continue;
-      if (payloadProjectId && consumerProjectId !== payloadProjectId) continue;
       try {
         consumer.onMessage(payload);
       } catch (e) {
@@ -728,6 +722,12 @@ function ensureSharedProjectWsManager() {
 
   window.__sentinelProjectWsManager = {
     dispatchIncoming,
+    setActiveProject(projectId) {
+      const pid = String(projectId || "").trim();
+      if (pid === activeProjectId) return;
+      activeProjectId = pid;
+      reconcile();
+    },
     setConsumer(id, state) {
       const key = String(id || "").trim();
       if (!key) {
@@ -738,13 +738,13 @@ function ensureSharedProjectWsManager() {
       const next = {
         ...prev,
         ...state,
-        projectId: String(state?.projectId ?? prev.projectId ?? "").trim(),
         active: state && Object.prototype.hasOwnProperty.call(state, "active") ? !!state.active : !!prev.active,
       };
       consumers.set(key, next);
-      const shouldReplay = !!next.active && (!prev.active || String(prev.projectId || "").trim() !== next.projectId);
-      if (shouldReplay && typeof next.onMessage === "function" && next.projectId) {
-        const cached = recentByProject.get(next.projectId) || [];
+      const pid = desiredProjectId();
+      const shouldReplay = !!next.active && !prev.active;
+      if (shouldReplay && typeof next.onMessage === "function" && pid) {
+        const cached = recentByProject.get(pid) || [];
         for (const payload of cached) {
           try {
             next.onMessage(payload);
@@ -854,7 +854,6 @@ function startWs(projectId) {
   }
   sharedProjectWsManager.setConsumer("commission", {
     active: true,
-    projectId: pid,
     onMessage: noopCommissionSocketConsumer,
   });
   syncAfterReconnect(pid);
@@ -863,7 +862,6 @@ function startWs(projectId) {
 function stopWs(reason) {
   sharedProjectWsManager.setConsumer("commission", {
     active: false,
-    projectId: String(currentProjectId() || "").trim(),
     onMessage: noopCommissionSocketConsumer,
   });
   logCommissionWs("close", String(reason || "manual"));

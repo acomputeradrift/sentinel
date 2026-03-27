@@ -132,7 +132,6 @@ function disconnectDiagnosticsWs(reason) {
   const hadProject = !!String(diagRt.projectId || "").trim();
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: false,
-    projectId: String(currentDiagProjectId() || "").trim(),
     onMessage: noopDiagnosticsSocketConsumer,
   });
   diagRt.projectId = null;
@@ -154,7 +153,6 @@ function connectDiagnosticsWs(projectId) {
   logDiagnosticsWs("connect", diagWsUrl(diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`)));
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: true,
-    projectId: pid,
     onMessage: noopDiagnosticsSocketConsumer,
   });
 }
