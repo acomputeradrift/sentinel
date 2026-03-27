@@ -90,6 +90,19 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
             time.sleep(0.2)
         self.fail(f"Expected project options to include ids={sorted(expected)}")
 
+    def _wait_for_select_value(self, page, selector: str, expected_value: str, *, timeout_s: float = 30.0) -> None:  # noqa: ANN001
+        deadline = time.time() + timeout_s
+        want = str(expected_value or "").strip()
+        while time.time() < deadline:
+            try:
+                got = str(page.locator(selector).input_value() or "").strip()
+            except Exception:
+                got = ""
+            if got == want:
+                return
+            time.sleep(0.2)
+        self.fail(f"Expected {selector} value={want!r}")
+
     def _wait_for_health(self, base_url: str, *, timeout_s: float = 60.0) -> None:
         deadline = time.time() + timeout_s
         while time.time() < deadline:
@@ -260,6 +273,50 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         self._wait_for_text(page, "#commissionActivityBody", name2, timeout_s=40.0)
         page.get_by_role("button", name="Diagnostics").click()
         self._wait_for_text(page, "#diagnosticsTaskBody", name1.lower(), timeout_s=40.0)
+        context.close()
+
+    def test_live_refresh_keeps_selected_project_context(self):
+        base_url = str(os.environ.get("SENTINEL_LIVE_BASE_URL") or "http://24.199.106.213").rstrip("/")
+        apex_path = Path(os.environ.get("SENTINEL_LIVE_APEX") or (ROOT / "Assets" / "TEST - System Manager v11.3.apex"))
+        if not apex_path.exists():
+            raise unittest.SkipTest(f"Missing apex file for live acceptance test: {apex_path}")
+
+        self._wait_for_health(base_url)
+        run_id = str(int(time.time()))
+        client_name = f"Resilience Refresh Client {run_id}"
+        project_a_name = f"Resilience Refresh Project A {run_id}"
+        project_b_name = f"Resilience Refresh Project B {run_id}"
+        client = _json_request(f"{base_url}/api/v1/commissioning/clients", method="POST", payload={"name": client_name})
+        client_id = str((client or {}).get("clientId") or "")
+        self.assertTrue(client_id)
+        project_a_id = self._create_live_project_for_client(base_url, client_id, project_a_name)
+        self._create_live_project_for_client(base_url, client_id, project_b_name)
+
+        _multipart_upload(f"{base_url}/api/v1/commissioning/projects/{project_a_id}/upload-and-regenerate", file_path=apex_path)
+        link = _json_request(f"{base_url}/api/v1/commissioning/projects/{project_a_id}/tech-links", method="POST", payload={})
+        tech_url = str((link or {}).get("techUrl") or "")
+        self.assertTrue(tech_url.startswith("/testing/"), f"Unexpected techUrl: {tech_url}")
+        tech_token = tech_url.split("/")[-1]
+
+        context = self._browser.new_context()
+        page = context.new_page()
+        page.goto(f"{base_url}/commissioning/")
+        page.select_option("#clientSelect", label=client_name)
+        self._wait_for_project_options(page, [project_a_id], timeout_s=30.0)
+        page.select_option("#projectSelect", value=project_a_id)
+        self._wait_for_select_value(page, "#projectSelect", project_a_id, timeout_s=10.0)
+
+        page.reload()
+        self._wait_for_select_value(page, "#clientSelect", client_id, timeout_s=30.0)
+        self._wait_for_select_value(page, "#projectSelect", project_a_id, timeout_s=30.0)
+        page.get_by_role("button", name="Commission").click()
+
+        key = f"live:refresh-ctx:{int(time.time())}:1"
+        name = "Refresh Context Event 1"
+        self._post_result(base_url, tech_token, key=key, name=name, outcome="FAIL", fail_note="refresh selected project context")
+        self._wait_for_text(page, "#commissionActivityBody", name, timeout_s=40.0)
+        page.get_by_role("button", name="Diagnostics").click()
+        self._wait_for_text(page, "#diagnosticsTaskBody", name.lower(), timeout_s=40.0)
         context.close()
 
     def test_live_server_restart_recovery_optional(self):

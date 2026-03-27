@@ -27,6 +27,42 @@ function ensureWsConsoleLogger() {
 }
 ensureWsConsoleLogger();
 
+const LAST_CLIENT_KEY = "sentinel.commissioning.lastClientId";
+const LAST_PROJECT_BY_CLIENT_KEY = "sentinel.commissioning.lastProjectByClient";
+
+function _safeStorageGet(key) {
+  try {
+    if (!window || !window.localStorage) return "";
+    return String(window.localStorage.getItem(String(key || "")) || "");
+  } catch (_e) {
+    return "";
+  }
+}
+
+function _safeStorageSet(key, value) {
+  try {
+    if (!window || !window.localStorage) return;
+    window.localStorage.setItem(String(key || ""), String(value == null ? "" : value));
+  } catch (_e) {}
+}
+
+function _safeStorageGetJsonObject(key) {
+  const raw = _safeStorageGet(key).trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_e) {
+    return {};
+  }
+}
+
+function _safeStorageSetJsonObject(key, obj) {
+  try {
+    _safeStorageSet(key, JSON.stringify(obj && typeof obj === "object" ? obj : {}));
+  } catch (_e) {}
+}
+
 function setActiveTab(tabName) {
   const tabs = ["manage", "commission", "diagnostics"];
   for (const t of tabs) {
@@ -87,8 +123,17 @@ function updateManageVisibility() {
 }
 
 async function refreshClients() {
+  const prevClientId = String($("clientSelect").value || "").trim();
+  const rememberedClientId = _safeStorageGet(LAST_CLIENT_KEY).trim();
   const clients = await jsonFetch(api("/commissioning/clients"));
   setSelectOptions($("clientSelect"), clients, (c) => c.clientId, (c) => c.name);
+  const clientIds = new Set((Array.isArray(clients) ? clients : []).map((c) => String(c?.clientId || "").trim()).filter(Boolean));
+  const nextClientId = clientIds.has(rememberedClientId)
+    ? rememberedClientId
+    : clientIds.has(prevClientId)
+      ? prevClientId
+      : "";
+  if (nextClientId) $("clientSelect").value = nextClientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   updateManageVisibility();
   return clients;
@@ -109,7 +154,8 @@ async function refreshProjects() {
   if (requestSeq !== state.refreshProjectsRequestSeq) return projects;
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
   const liveSelectedProjectId = String($("projectSelect").value || "").trim();
-  const rememberedProjectId = String(state.selectedProjectIdByClient[clientId] || "").trim();
+  const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
+  const rememberedProjectId = String((persistedByClient && persistedByClient[clientId]) || state.selectedProjectIdByClient[clientId] || "").trim();
   const projectIds = new Set((Array.isArray(projects) ? projects : []).map((p) => String(p?.projectId || "").trim()).filter(Boolean));
   const nextProjectId = projectIds.has(rememberedProjectId)
     ? rememberedProjectId
@@ -568,6 +614,8 @@ async function run() {
 
   $("clientSelect").addEventListener("change", () =>
     safe(async () => {
+      const clientId = String($("clientSelect").value || "").trim();
+      _safeStorageSet(LAST_CLIENT_KEY, clientId);
       await refreshProjects();
       setPanelContext();
       setLastGeneratedLabel();
@@ -578,7 +626,12 @@ async function run() {
     safe(async () => {
       const projectId = currentProjectId();
       const clientId = String($("clientSelect").value || "").trim();
-      if (clientId) state.selectedProjectIdByClient[clientId] = projectId;
+      if (clientId) {
+        state.selectedProjectIdByClient[clientId] = projectId;
+        const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
+        persistedByClient[clientId] = String(projectId || "");
+        _safeStorageSetJsonObject(LAST_PROJECT_BY_CLIENT_KEY, persistedByClient);
+      }
       setActiveProjectWsContext(projectId);
       if (projectId) state.generationReadyByProject[projectId] = false;
       updateTechLinkEnabled();
