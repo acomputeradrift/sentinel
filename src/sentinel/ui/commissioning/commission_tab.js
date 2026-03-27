@@ -562,6 +562,19 @@ function ensureSharedProjectWsManager() {
     } catch (_e) {}
   }
 
+  function maybeRequestSyncOnOpen(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return;
+    const sync = syncStateFor(pid);
+    // Fresh connect gets authoritative snapshot from server subscribe path.
+    // Request replay only when we already have prior sequence state.
+    if (Number(sync.lastAppliedSeq || 0) <= 0) {
+      sync.syncInFlight = false;
+      return;
+    }
+    sendSyncRequest(pid);
+  }
+
   function applySequencedEvent(payload) {
     const pid = String(payload?.projectId || wsProjectId || "").trim();
     const t = String(payload?.type || "").trim();
@@ -671,7 +684,7 @@ function ensureSharedProjectWsManager() {
       wsState = "open";
       wsReconnectDelayMs = 500;
       logProjectWs("open", wsProjectId);
-      sendSyncRequest(wsProjectId);
+      maybeRequestSyncOnOpen(wsProjectId);
     };
     ws.onclose = () => {
       if (connId !== wsConnSeq) {
