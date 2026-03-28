@@ -87,7 +87,7 @@ class TestingUiServingTest(unittest.TestCase):
             self.assertEqual(r.status_code, 200)
             self.assertIn("<title>NEWER</title>", r.text)
 
-    def test_testing_ui_payload_mode_serves_shell_and_manifest(self):
+    def test_testing_ui_payload_mode_serves_project_home_when_manifest_exists(self):
         TestClient = _require_fastapi()
 
         with tempfile.TemporaryDirectory() as td:
@@ -109,12 +109,17 @@ class TestingUiServingTest(unittest.TestCase):
                 '{"format":"sentinel-testing-payload-v1","projectStem":"unittest","devices":[]}',
                 encoding="utf-8",
             )
+            (project_dir / "unittest__project-home.html").write_text(
+                "<!doctype html><html><head><meta charset='utf-8'><title>Home</title></head>"
+                "<body><a href='device.html'>Device</a></body></html>",
+                encoding="utf-8",
+            )
 
             r = client.get(f"/testing/{tech_token}?runtime=payload")
             self.assertEqual(r.status_code, 200)
-            self.assertIn("Sentinel Testing Runtime", r.text)
+            self.assertIn("<title>Home</title>", r.text)
+            self.assertIn("Device", r.text)
             self.assertIn("/testing/" + tech_token + "/files/", r.text)
-            self.assertIn("unittest__project-manifest.json", r.text)
 
     def test_testing_ui_payload_mode_handles_missing_manifest(self):
         TestClient = _require_fastapi()
