@@ -341,14 +341,14 @@ pre.mono {
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
-  padding-left: 0;
+  padding-left: 10px;
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
 .mini-table td.tech-link-actions .tech-link-action-btn {
-  min-width: 84px;
+  width: 96px;
   height: 34px;
   padding: 0 12px;
   box-sizing: border-box;
