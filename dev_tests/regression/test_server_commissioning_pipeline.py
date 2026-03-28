@@ -31,6 +31,7 @@ class CommissioningPipelineTest(unittest.TestCase):
         api_file = ROOT / "src" / "sentinel" / "server" / "api" / "commissioning.py"
         text = api_file.read_text(encoding="utf-8")
         self.assertIn('"type": "generation_phase"', text)
+        self.assertIn('"percent": percent', text)
         self.assertIn("phase_hook=", text)
         self.assertIn('status="READY"', text)
 
@@ -40,8 +41,10 @@ class CommissioningPipelineTest(unittest.TestCase):
         self.assertIn("generation_phase", text)
         self.assertIn("Extracting...", text)
         self.assertIn("Generating...", text)
-        self.assertIn("pct >= 100", text)
-        self.assertIn("setProgress($(\"uploadProgress\"), null)", text)
+        self.assertIn("setProgress($(\"uploadProgress\"), pct)", text)
+        self.assertIn("setStatus($(\"uploadProgressLabel\"), \"Uploading...\")", text)
+        index_file = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "index.html"
+        self.assertIn(">Load File<", index_file.read_text(encoding="utf-8"))
 
     def test_upload_then_regenerate_writes_generated_html(self):
         TestClient = _require_fastapi()
@@ -166,8 +169,10 @@ class CommissioningPipelineTest(unittest.TestCase):
 
             def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None):
                 if callable(phase_hook):
-                    phase_hook("extracting")
-                    phase_hook("generating")
+                    phase_hook("extracting", 10)
+                    phase_hook("extracting", 100)
+                    phase_hook("generating", 50)
+                    phase_hook("generating", 100)
                 return {"projectId": projectId, "outDir": str(Path(td) / "generated" / projectId), "projectData": "x.json"}
 
             with apex_path.open("rb") as f:
@@ -184,4 +189,10 @@ class CommissioningPipelineTest(unittest.TestCase):
                 for row in published
                 if str((row.get("event") or {}).get("type") or "") in {"generation_phase", "generation"}
             ]
-            self.assertEqual(statuses, ["EXTRACTING", "GENERATING", "READY"])
+            self.assertEqual(statuses, ["EXTRACTING", "EXTRACTING", "GENERATING", "GENERATING", "READY"])
+            percents = [
+                (row.get("event") or {}).get("percent")
+                for row in published
+                if str((row.get("event") or {}).get("type") or "") == "generation_phase"
+            ]
+            self.assertEqual(percents, [10, 100, 50, 100, 100])

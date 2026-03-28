@@ -40,6 +40,7 @@ def _publish_generation_phase(
     *,
     projectId: str,
     status: str,
+    percent: int | None = None,
     uploadId: str | None = None,
     originalFilename: str | None = None,
     activeUpload: dict | None = None,
@@ -51,6 +52,7 @@ def _publish_generation_phase(
                 "type": "generation_phase",
                 "projectId": projectId,
                 "status": str(status or "").strip().upper(),
+                "percent": percent,
                 "uploadId": uploadId,
                 "originalFilename": originalFilename,
                 "activeUpload": activeUpload,
@@ -332,13 +334,15 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
     _repo(request).record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
 
     try:
-        generation = pipeline.regenerate_project(
+        generation = await asyncio.to_thread(
+            pipeline.regenerate_project,
             projectId=projectId,
             apex_path=path,
-            phase_hook=lambda phase: _publish_generation_phase(
+            phase_hook=lambda phase, percent=0: _publish_generation_phase(
                 request,
                 projectId=projectId,
                 status=str(phase or ""),
+                percent=int(percent or 0),
                 uploadId=upload_id,
                 originalFilename=apex.filename,
             ),
@@ -351,6 +355,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         request,
         projectId=projectId,
         status="READY",
+        percent=100,
         uploadId=upload_id,
         originalFilename=apex.filename,
         activeUpload=active_upload,
@@ -381,7 +386,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
 
 
 @router.post("/projects/{projectId}/regenerate")
-def regenerate(request: Request, projectId: str, payload: dict) -> dict:
+async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     proj = _repo(request).get_project(projectId=projectId)
     if proj is None:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
@@ -394,13 +399,15 @@ def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         raise http_error(404, code="UPLOAD_NOT_FOUND", message="Upload not found.")
     apex_path = candidates[0]
     try:
-        pipeline.regenerate_project(
+        await asyncio.to_thread(
+            pipeline.regenerate_project,
             projectId=projectId,
             apex_path=apex_path,
-            phase_hook=lambda phase: _publish_generation_phase(
+            phase_hook=lambda phase, percent=0: _publish_generation_phase(
                 request,
                 projectId=projectId,
                 status=str(phase or ""),
+                percent=int(percent or 0),
                 uploadId=str(upload_id),
                 originalFilename=apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name,
             ),
@@ -416,6 +423,7 @@ def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         request,
         projectId=projectId,
         status="READY",
+        percent=100,
         uploadId=str(upload_id),
         originalFilename=original_filename,
         activeUpload=active_upload,

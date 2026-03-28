@@ -36,6 +36,14 @@ def main() -> int:
     started_perf = time.perf_counter()
 
     try:
+        def _emit_progress(percent: int) -> None:
+            pct = int(percent or 0)
+            if pct < 0:
+                pct = 0
+            if pct > 100:
+                pct = 100
+            print(f"SENTINEL_PROGRESS EXTRACTING {pct}", flush=True)
+
         log.info(f"Extractor start version={SCRIPT_VERSION}")
         log.info(f"Extraction started_at={started_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
         if not apex.exists():
@@ -47,7 +55,7 @@ def main() -> int:
 
         out_dir.mkdir(parents=True, exist_ok=True)
         log.info(f"Loading apex database: {apex}")
-        data = extract_project_data(ExtractContext(apex_path=apex, project_structure_path=project_structure))
+        data = extract_project_data(ExtractContext(apex_path=apex, project_structure_path=project_structure), progress_hook=_emit_progress)
         data.setdefault("source", {})
         data["source"]["scriptVersion"] = SCRIPT_VERSION
 

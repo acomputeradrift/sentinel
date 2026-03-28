@@ -35,6 +35,14 @@ def main() -> int:
     started_perf = time.perf_counter()
 
     try:
+        def _emit_progress(percent: int) -> None:
+            pct = int(percent or 0)
+            if pct < 0:
+                pct = 0
+            if pct > 100:
+                pct = 100
+            print(f"SENTINEL_PROGRESS GENERATING {pct}", flush=True)
+
         log.info(f"Generator start version={SCRIPT_VERSION}")
         log.info(f"Generation started_at={started_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
         if not project_data_path.exists():
@@ -52,13 +60,23 @@ def main() -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
         written = 0
 
+        devices = project_data.get("devices", [])
+        renderable_device_count = 0
+        for device in devices:
+            user = device.get("userFacing", {})
+            pages = user.get("pages", [])
+            if isinstance(pages, list) and pages:
+                renderable_device_count += 1
+        total_units = 1 + renderable_device_count
+
+        _emit_progress(0)
         home_html = render_project_home_html(project_data, app_ui, project_stem=project_data_path.stem)
         home_out_path = out_dir / project_home_filename(project_data_path.stem)
         log.info(f"Writing html output: {home_out_path}")
         home_out_path.write_text(home_html, encoding="utf-8")
         written += 1
+        _emit_progress(int((written * 100) / max(total_units, 1)))
 
-        devices = project_data.get("devices", [])
         for device_index, device in enumerate(devices):
             user = device.get("userFacing", {})
             pages = user.get("pages", [])
@@ -70,6 +88,7 @@ def main() -> int:
             log.info(f"Writing html output: {out_path}")
             out_path.write_text(html, encoding="utf-8")
             written += 1
+            _emit_progress(int((written * 100) / max(total_units, 1)))
 
         ended_at = datetime.now(timezone.utc)
         elapsed_seconds = time.perf_counter() - started_perf

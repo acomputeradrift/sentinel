@@ -1029,7 +1029,7 @@ def _merge_diag_ui_items(existing: list[dict[str, Any]], viewport_button_ids: li
     return out
 
 
-def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
+def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict[str, Any]:
     _ = json_load(ctx.project_structure_path)
     con = sqlite3.connect(ctx.apex_path)
     con.row_factory = sqlite3.Row
@@ -1372,6 +1372,75 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
     )
     device_rows = cur.fetchall()
 
+    progress_enabled = callable(progress_hook)
+    total_work_units = 0
+    completed_work_units = 0
+    last_percent_reported = -1
+
+    def _emit_progress(force: bool = False) -> None:
+        nonlocal last_percent_reported
+        if not progress_enabled:
+            return
+        if total_work_units <= 0:
+            percent = 100
+        else:
+            percent = int((completed_work_units * 100) / total_work_units)
+        if percent < 0:
+            percent = 0
+        if percent > 100:
+            percent = 100
+        if force or percent != last_percent_reported:
+            last_percent_reported = percent
+            try:
+                progress_hook(percent)
+            except Exception:
+                pass
+
+    if progress_enabled:
+        rti_addresses = [int(row["RTIAddress"] or 0) for row in device_rows]
+        valid_rti_addresses = [addr for addr in rti_addresses if addr > 0]
+        if valid_rti_addresses:
+            placeholders = ",".join("?" for _ in valid_rti_addresses)
+            cur.execute(
+                f"""
+                select count(*)
+                from RTIDeviceButtonData b
+                join Layers l on l.SharedLayerId = b.SharedLayerId
+                join RTIDevicePageData p on p.PageId = l.PageId
+                where l.ViewPortButtonId is null
+                  and p.RTIAddress in ({placeholders})
+                """,
+                tuple(valid_rti_addresses),
+            )
+            row = cur.fetchone()
+            total_work_units += int((row[0] if row else 0) or 0)
+
+            cur.execute(
+                f"""
+                select distinct l.ViewPortButtonId
+                from Layers l
+                join RTIDevicePageData p on p.PageId = l.PageId
+                where l.ViewPortButtonId is not null
+                  and p.RTIAddress in ({placeholders})
+                """,
+                tuple(valid_rti_addresses),
+            )
+            selected_viewport_ids = [int(r[0]) for r in cur.fetchall() if r[0] is not None]
+            if selected_viewport_ids:
+                vp_placeholders = ",".join("?" for _ in selected_viewport_ids)
+                cur.execute(
+                    f"""
+                    select count(*)
+                    from RTIDeviceButtonData b
+                    join Layers l on l.SharedLayerId = b.SharedLayerId
+                    where l.ViewPortButtonId in ({vp_placeholders})
+                    """,
+                    tuple(selected_viewport_ids),
+                )
+                row = cur.fetchone()
+                total_work_units += int((row[0] if row else 0) or 0)
+        _emit_progress(force=True)
+
     for drow in device_rows:
         device_id = int(drow["DeviceId"])
         rti_address = int(drow["RTIAddress"])
@@ -1472,6 +1541,8 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         lowest_nonzero_device_room_id,
                     )
                     diag_buttons.append(diag_button)
+                    completed_work_units += 1
+                    _emit_progress()
 
                     if button_id in viewport_button_ids:
                         frames = _resolve_viewport_frames(
@@ -1501,6 +1572,8 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                             page_rti_address,
                             lowest_nonzero_device_room_id,
                         )
+                        completed_work_units += int(frames.get("frame_button_count") or 0)
+                        _emit_progress()
                         layer_user["viewports"].append(
                             {
                                 "viewportIdentity": {"viewportButtonId": button_id},
@@ -1579,6 +1652,8 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
             }
         )
 
+    _emit_progress(force=True)
+
     con.close()
     return out
 
@@ -1618,6 +1693,7 @@ def _resolve_viewport_frames(
     layer_links: list[dict[str, Any]] = []
     viewport_layers: list[dict[str, Any]] = []
     viewport_ui_item_button_ids: list[int] = []
+    frame_button_count = 0
 
     cur.execute("select SharedLayerId, Name from SharedLayers")
     shared_layer_name_by_id = {int(row["SharedLayerId"]): str(row["Name"] or "") for row in cur.fetchall()}
@@ -1635,6 +1711,7 @@ def _resolve_viewport_frames(
         )
         cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
         for b in cur.fetchall():
+            frame_button_count += 1
             frame_id = int(b["FrameNumber"] or 0)
             frame_user.setdefault(
                 frame_id,
@@ -1700,6 +1777,7 @@ def _resolve_viewport_frames(
         "layer_links": layer_links,
         "viewport_layers": viewport_layers,
         "ui_item_button_ids": viewport_ui_item_button_ids,
+        "frame_button_count": frame_button_count,
     }
 
 

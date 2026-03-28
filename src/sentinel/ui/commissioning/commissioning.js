@@ -355,22 +355,29 @@ function _baseSimilarity(a, b) {
   return inter / denom;
 }
 
-function _setGenerationPhaseUi(projectId, phaseRaw) {
+function _setGenerationPhaseUi(projectId, phaseRaw, percentRaw) {
   const pid = String(projectId || "").trim();
   if (!pid || pid !== String(currentProjectId() || "").trim()) return;
   const phase = String(phaseRaw || "").trim().toLowerCase();
   if (!state.uploadInFlightByProject[pid]) return;
+  const pct = Number(percentRaw);
+  const hasPct = Number.isFinite(pct);
 
   if (phase === "extracting") {
     setProgressHidden($("uploadProgressRow"), false);
-    setProgress($("uploadProgress"), null);
+    if (hasPct) setProgress($("uploadProgress"), pct);
     setStatus($("uploadProgressLabel"), "Extracting...");
     return;
   }
   if (phase === "generating") {
     setProgressHidden($("uploadProgressRow"), false);
-    setProgress($("uploadProgress"), null);
+    if (hasPct) setProgress($("uploadProgress"), pct);
     setStatus($("uploadProgressLabel"), "Generating...");
+    return;
+  }
+  if (phase === "ready") {
+    setProgressHidden($("uploadProgressRow"), false);
+    setProgress($("uploadProgress"), 100);
   }
 }
 
@@ -471,26 +478,25 @@ async function uploadAndRegenerate() {
         if (!uploadPhaseComplete && pct >= 100) {
           uploadPhaseComplete = true;
           setStatus($("uploadProgressLabel"), "Extracting...");
-          setProgress($("uploadProgress"), null);
+          setProgress($("uploadProgress"), 0);
           return;
         }
         if (!uploadPhaseComplete) {
           setProgress($("uploadProgress"), pct);
-          setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
+          setStatus($("uploadProgressLabel"), "Uploading...");
         }
       });
     } catch (e) {
       // Back-compat fallback: upload then regenerate.
-      setStatus($("uploadProgressLabel"), "Uploading (fallback)...");
+      setStatus($("uploadProgressLabel"), "Uploading...");
       const upload = await _xhrPostFormData(api(`/commissioning/projects/${encodeURIComponent(projectId)}/uploads`), fd, (loaded, total) => {
         const pct = (loaded / total) * 100;
         setProgress($("uploadProgress"), pct);
-        setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
+        setStatus($("uploadProgressLabel"), "Uploading...");
       });
       state.lastUploadIdByProject[projectId] = upload.uploadId;
-      setProgress($("uploadProgress"), 100);
+      setProgress($("uploadProgress"), 0);
       setStatus($("uploadProgressLabel"), "Extracting...");
-      setProgress($("uploadProgress"), null);
       const regenOut = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/regenerate`), {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -507,7 +513,6 @@ async function uploadAndRegenerate() {
     const nextName = String((uploadObj?.originalFilename || file.name) || "");
 
     setProgress($("uploadProgress"), 100);
-    setStatus($("uploadProgressLabel"), "Done");
     let msg = uploadId ? `Uploaded: ${uploadId} (${nextName})` : `Uploaded: ${nextName}`;
     if (prevName && nextName) {
       const sim = _baseSimilarity(prevName, nextName);
@@ -588,7 +593,7 @@ function noopManageSocketConsumer(payload) {
   const t = String(payload?.type || "").trim();
   if (t !== "generation_phase") return;
   const projectId = String(payload?.projectId || currentProjectId() || "").trim();
-  _setGenerationPhaseUi(projectId, payload?.status);
+  _setGenerationPhaseUi(projectId, payload?.status, payload?.percent);
 }
 
 function startManageWs(projectId) {

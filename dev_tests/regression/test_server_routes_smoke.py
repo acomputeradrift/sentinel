@@ -33,8 +33,11 @@ class ServerRoutesSmokeTest(unittest.TestCase):
             calls: dict[str, object] = {"regen_called": False}
             original_regen = pipeline.regenerate_project
 
-            def _regen_stub(*, projectId: str, apex_path: Path) -> dict:  # noqa: ARG001
+            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:  # noqa: ARG001
                 calls["regen_called"] = True
+                if callable(phase_hook):
+                    phase_hook("extracting", 100)
+                    phase_hook("generating", 100)
                 out_dir = Path(td) / "generated" / projectId
                 out_dir.mkdir(parents=True, exist_ok=True)
                 (out_dir / "ProjectA_project_data.json").write_text(

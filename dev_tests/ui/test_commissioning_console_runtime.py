@@ -667,7 +667,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
-        page.get_by_role("button", name="Upload + Generate").click()
+        page.get_by_role("button", name="Load File").click()
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
         expect(page.locator("#uploadProgressLabel")).to_have_count(1)
         self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
@@ -817,7 +817,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             other_path.write_bytes(apex_path.read_bytes())
             state["expected_upload_filename"] = other_path.name
             page.set_input_files("input[type=file][name=apex]", str(other_path))
-            page.get_by_role("button", name="Upload + Generate").click()
+            page.get_by_role("button", name="Load File").click()
             expect(page.get_by_test_id("upload-status")).to_contain_text("upload-2")
 
         self.assertEqual(state.get("progress_fetch_count"), 0)
@@ -859,7 +859,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 self.assertTrue(project_id, "Expected selected project id.")
 
                 page.set_input_files("input[type=file][name=apex]", str(apex_path))
-                page.get_by_role("button", name="Upload + Generate").click()
+                page.get_by_role("button", name="Load File").click()
                 expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
                 expect(page.get_by_test_id("upload-status")).to_contain_text(apex_path.name, timeout=120000)
 
