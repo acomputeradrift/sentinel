@@ -338,12 +338,14 @@ pre.mono {
 }
 
 .mini-table td.tech-link-actions {
-  text-align: left;
+  text-align: right;
   vertical-align: middle;
   white-space: nowrap;
   padding-left: 10px;
+  padding-right: 10px;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
 }
 
