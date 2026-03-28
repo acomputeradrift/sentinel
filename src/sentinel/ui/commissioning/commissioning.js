@@ -465,10 +465,19 @@ async function uploadAndRegenerate() {
     const combinedUrl = api(`/commissioning/projects/${encodeURIComponent(projectId)}/upload-and-regenerate`);
     let combined;
     try {
+      let uploadPhaseComplete = false;
       combined = await _xhrPostFormData(combinedUrl, fd, (loaded, total) => {
         const pct = (loaded / total) * 100;
-        setProgress($("uploadProgress"), pct);
-        setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
+        if (!uploadPhaseComplete && pct >= 100) {
+          uploadPhaseComplete = true;
+          setStatus($("uploadProgressLabel"), "Extracting...");
+          setProgress($("uploadProgress"), null);
+          return;
+        }
+        if (!uploadPhaseComplete) {
+          setProgress($("uploadProgress"), pct);
+          setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
+        }
       });
     } catch (e) {
       // Back-compat fallback: upload then regenerate.

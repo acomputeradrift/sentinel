@@ -140,6 +140,16 @@ If test have been run on the new work, already, skip the retest below, but tell 
      - `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_testing_result_posting`
      - `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_commissioning_console_runtime`
 
+Intent Check Gate (required before deploy)
+- Question: `Did this solution fix the exact user-visible problem Jamie reported?`
+- Record evidence in this exact format:
+  - `Original problem: ...`
+  - `Test run that directly reproduces it: ...`
+  - `Observed before: ...`
+  - `Observed after: ...`
+  - `Pass/Fail: ...`
+- Deploy is blocked unless `Pass/Fail` is explicitly `Pass`.
+
 3) Deploy to droplet
    - Commit changes before archiving (git archive uses `HEAD` only):
      - `git add src`

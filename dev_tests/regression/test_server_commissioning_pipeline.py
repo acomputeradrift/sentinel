@@ -40,6 +40,8 @@ class CommissioningPipelineTest(unittest.TestCase):
         self.assertIn("generation_phase", text)
         self.assertIn("Extracting...", text)
         self.assertIn("Generating...", text)
+        self.assertIn("pct >= 100", text)
+        self.assertIn("setProgress($(\"uploadProgress\"), null)", text)
 
     def test_upload_then_regenerate_writes_generated_html(self):
         TestClient = _require_fastapi()
