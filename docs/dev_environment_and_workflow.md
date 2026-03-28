@@ -149,3 +149,28 @@ If test have been run on the new work, already, skip the retest below, but tell 
    - Extract: `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`
    - Restart: `sudo systemctl restart sentinel`
    - Validate: `curl http://127.0.0.1/health`
+
+## Post-test cleanup workflow (required)
+
+Goal: do not leave disposable test/deploy artifacts behind after local runs.
+
+Run this cleanup step after test or perf runs:
+
+1) Remove known disposable temp run folders:
+   - `Remove-Item -Recurse -Force .tmp_perf_*`
+   - `Remove-Item -Recurse -Force .tmp_run_*`
+
+2) Remove disposable deployment/test zip artifacts from repo root:
+   - `Remove-Item -Force deploy_*.zip`
+   - `Remove-Item -Force sentinel_patch.zip`
+
+3) Keep persistent tooling env:
+   - Do not delete `.tmp_apex_env` (shared Playwright/runtime environment).
+
+4) Verify workspace is clean of disposable artifacts:
+   - `git status --short`
+   - `Get-ChildItem -Force -Name .tmp_*`
+   - `Get-ChildItem -Force -Name *.zip`
+
+Operator rule:
+- If a disposable artifact appears repeatedly from a command, either run cleanup immediately after that command or add the command to a wrapper that runs cleanup in a `finally` step.

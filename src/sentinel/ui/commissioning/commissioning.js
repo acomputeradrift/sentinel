@@ -181,6 +181,7 @@ const state = {
   activeUploadByProject: {},
   techLinksByProject: {},
   selectedProjectIdByClient: {},
+  uploadInFlightByProject: {},
   refreshProjectsRequestSeq: 0,
 };
 
@@ -354,6 +355,25 @@ function _baseSimilarity(a, b) {
   return inter / denom;
 }
 
+function _setGenerationPhaseUi(projectId, phaseRaw) {
+  const pid = String(projectId || "").trim();
+  if (!pid || pid !== String(currentProjectId() || "").trim()) return;
+  const phase = String(phaseRaw || "").trim().toLowerCase();
+  if (!state.uploadInFlightByProject[pid]) return;
+
+  if (phase === "extracting") {
+    setProgressHidden($("uploadProgressRow"), false);
+    setProgress($("uploadProgress"), null);
+    setStatus($("uploadProgressLabel"), "Extracting...");
+    return;
+  }
+  if (phase === "generating") {
+    setProgressHidden($("uploadProgressRow"), false);
+    setProgress($("uploadProgress"), null);
+    setStatus($("uploadProgressLabel"), "Generating...");
+  }
+}
+
 async function createClient() {
   const name = $("newClientName").value.trim();
   if (!name) return;
@@ -437,6 +457,7 @@ async function uploadAndRegenerate() {
 
   try {
     state.generationReadyByProject[projectId] = false;
+    state.uploadInFlightByProject[projectId] = true;
     updateTechLinkEnabled();
 
     // Preferred server endpoint: upload + extract + generate in one step.
@@ -459,7 +480,8 @@ async function uploadAndRegenerate() {
       });
       state.lastUploadIdByProject[projectId] = upload.uploadId;
       setProgress($("uploadProgress"), 100);
-      setStatus($("uploadProgressLabel"), "Upload done");
+      setStatus($("uploadProgressLabel"), "Extracting...");
+      setProgress($("uploadProgress"), null);
       const regenOut = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/regenerate`), {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -488,6 +510,7 @@ async function uploadAndRegenerate() {
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
   } finally {
+    state.uploadInFlightByProject[projectId] = false;
     setProgressHidden($("uploadProgressRow"), true);
     setStatus($("uploadProgressLabel"), "");
     uploadBtn.disabled = false;
@@ -552,7 +575,12 @@ function ensureManageStoreSubscription() {
   syncManageFromStore(currentProjectId());
 }
 
-function noopManageSocketConsumer() {}
+function noopManageSocketConsumer(payload) {
+  const t = String(payload?.type || "").trim();
+  if (t !== "generation_phase") return;
+  const projectId = String(payload?.projectId || currentProjectId() || "").trim();
+  _setGenerationPhaseUi(projectId, payload?.status);
+}
 
 function startManageWs(projectId) {
   const pid = String(projectId || "").trim();

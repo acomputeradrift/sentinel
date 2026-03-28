@@ -44,7 +44,7 @@ def save_upload(*, projectId: str, uploadId: str, filename: str, content: bytes)
     return path
 
 
-def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
+def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:
     root = _repo_root()
     extract = root / "src" / "sentinel" / "extraction" / "extract_project_data.py"
     generate = root / "src" / "sentinel" / "generation" / "generate_html.py"
@@ -53,6 +53,9 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
 
     out_dir = _project_out_dir(projectId=projectId)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if callable(phase_hook):
+        phase_hook("extracting")
 
     try:
         subprocess.run(
@@ -79,6 +82,9 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
     project_data = next(iter(sorted(out_dir.glob("*_project_data.json"))), None)
     if project_data is None:
         raise RuntimeError("Extraction did not produce *_project_data.json")
+
+    if callable(phase_hook):
+        phase_hook("generating")
 
     try:
         subprocess.run(

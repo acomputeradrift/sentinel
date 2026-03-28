@@ -35,6 +35,31 @@ def _broker(request: Request) -> ws_broker.ProjectEventBroker:
     return broker
 
 
+def _publish_generation_phase(
+    request: Request,
+    *,
+    projectId: str,
+    status: str,
+    uploadId: str | None = None,
+    originalFilename: str | None = None,
+    activeUpload: dict | None = None,
+) -> None:
+    try:
+        _broker(request).publish(
+            projectId=projectId,
+            event={
+                "type": "generation_phase",
+                "projectId": projectId,
+                "status": str(status or "").strip().upper(),
+                "uploadId": uploadId,
+                "originalFilename": originalFilename,
+                "activeUpload": activeUpload,
+            },
+        )
+    except Exception:
+        log.exception("[commissioning-ws] publish:generation-phase-failed projectId=%s status=%s", projectId, status)
+
+
 def _safe_progress(*, repo: Repository, projectId: str) -> dict:
     try:
         latest = repo.get_latest_results_for_project(projectId=projectId)
@@ -307,11 +332,29 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
     _repo(request).record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
 
     try:
-        generation = pipeline.regenerate_project(projectId=projectId, apex_path=path)
+        generation = pipeline.regenerate_project(
+            projectId=projectId,
+            apex_path=path,
+            phase_hook=lambda phase: _publish_generation_phase(
+                request,
+                projectId=projectId,
+                status=str(phase or ""),
+                uploadId=upload_id,
+                originalFilename=apex.filename,
+            ),
+        )
     except Exception as e:
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
     _repo(request).set_project_active_upload(projectId=projectId, uploadId=upload_id)
     active_upload = _active_upload_payload(repo=_repo(request), projectId=projectId)
+    _publish_generation_phase(
+        request,
+        projectId=projectId,
+        status="READY",
+        uploadId=upload_id,
+        originalFilename=apex.filename,
+        activeUpload=active_upload,
+    )
 
     try:
         _broker(request).publish(
@@ -351,7 +394,17 @@ def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         raise http_error(404, code="UPLOAD_NOT_FOUND", message="Upload not found.")
     apex_path = candidates[0]
     try:
-        pipeline.regenerate_project(projectId=projectId, apex_path=apex_path)
+        pipeline.regenerate_project(
+            projectId=projectId,
+            apex_path=apex_path,
+            phase_hook=lambda phase: _publish_generation_phase(
+                request,
+                projectId=projectId,
+                status=str(phase or ""),
+                uploadId=str(upload_id),
+                originalFilename=apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name,
+            ),
+        )
     except Exception as e:
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
 
@@ -359,6 +412,14 @@ def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     _repo(request).record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
     _repo(request).set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
     active_upload = _active_upload_payload(repo=_repo(request), projectId=projectId)
+    _publish_generation_phase(
+        request,
+        projectId=projectId,
+        status="READY",
+        uploadId=str(upload_id),
+        originalFilename=original_filename,
+        activeUpload=active_upload,
+    )
     try:
         _broker(request).publish(
             projectId=projectId,
