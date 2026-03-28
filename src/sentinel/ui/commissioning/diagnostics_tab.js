@@ -60,6 +60,10 @@ function isDiagnosticsVisible() {
   return !!panel && !panel.hidden;
 }
 
+function isCommissioningHydrating() {
+  return !!window.__sentinelCommissioningHydrating;
+}
+
 function diagWsUrl(path) {
   const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
   const host = window.location && window.location.host ? window.location.host : "localhost";
@@ -76,10 +80,34 @@ function diagWsUrlCandidates(path) {
 }
 
 function logDiagnosticsWs(action, detail) {
+  const a = String(action || "").trim();
+  let code = "WS-INFO-170";
+  let label = "DIAGNOSTICS_EVENT";
+  if (a === "connect") {
+    code = "WS-INFO-110";
+    label = "SOCKET_REUSED";
+  } else if (a === "conn-id") {
+    code = "WS-INFO-103";
+    label = "CONNECT_ATTEMPT";
+  } else if (a === "close") {
+    code = "WS-INFO-151";
+    label = "CONSUMER_CLOSE";
+  } else if (a === "snapshot:applied") {
+    code = "WS-INFO-140";
+    label = "SNAPSHOT_APPLIED";
+  } else if (a === "connect:missing-project-id") {
+    code = "WS-WARN-201";
+    label = "MISSING_PROJECT";
+  }
   try {
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[diagnostics-ws]", action, detail == null ? "" : detail);
+    const logger = window.__sentinelWsLog;
+    if (typeof logger === "function") {
+      logger(code, label, "diagnostics-ws", { action: a, detail: detail == null ? "" : detail });
+      return;
     }
+  } catch (_e) {}
+  try {
+    if (typeof console !== "undefined" && console.log) console.log(`[diagnostics-ws] ${a}`, detail == null ? "" : detail);
   } catch (_e) {}
 }
 
@@ -92,41 +120,46 @@ const diagRt = {
   progress: null,
   pies: null,
 };
+let diagStoreUnsubscribe = null;
 
 function getSharedProjectWsManager() {
   if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
   throw new Error("Shared project websocket manager not found.");
 }
 
-function disconnectDiagnosticsWs() {
+function getSharedProjectStore() {
+  if (window.__sentinelProjectStore) return window.__sentinelProjectStore;
+  throw new Error("Shared project store not found.");
+}
+
+function disconnectDiagnosticsWs(reason) {
+  const hadProject = !!String(diagRt.projectId || "").trim();
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: false,
-    projectId: String(currentDiagProjectId() || "").trim(),
-    onMessage: handleDiagnosticsEvent,
+    onMessage: noopDiagnosticsSocketConsumer,
   });
   diagRt.projectId = null;
-  logDiagnosticsWs("close");
+  if (hadProject || String(reason || "") !== "missing-project") {
+    logDiagnosticsWs("close", String(reason || "manual"));
+  }
 }
 
 function connectDiagnosticsWs(projectId) {
+  if (isCommissioningHydrating()) return;
   const pid = String(projectId || "").trim();
   if (!pid) {
     logDiagnosticsWs("connect:missing-project-id");
-    disconnectDiagnosticsWs();
+    disconnectDiagnosticsWs("missing-project");
     return;
   }
+  if (diagRt.projectId === pid) return;
   diagRt.projectId = pid;
   logDiagnosticsWs("conn-id", ++diagRt.connSeq);
   logDiagnosticsWs("url", { protocol: window.location && window.location.protocol, host: window.location && window.location.host });
   logDiagnosticsWs("connect", diagWsUrl(diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/ws`)));
   getSharedProjectWsManager().setConsumer("diagnostics", {
     active: true,
-    projectId: pid,
-    onMessage: (payload) => {
-      const t = String(payload?.type || "").trim();
-      logDiagnosticsWs("recv", t || "(unknown)");
-      handleDiagnosticsEvent(payload);
-    },
+    onMessage: noopDiagnosticsSocketConsumer,
   });
 }
 
@@ -518,6 +551,46 @@ function applyDiagnosticsSnapshot(snapshot) {
   });
 }
 
+function _snapshotFromStore(projectId) {
+  const store = getSharedProjectStore();
+  const state = store.getState();
+  const projects = state && state.projects && typeof state.projects === "object" ? state.projects : {};
+  const slice = projects[String(projectId || "").trim()] || null;
+  if (!slice) return null;
+  return {
+    type: "commissioning_snapshot",
+    projectId: String(projectId || ""),
+    progress: slice.progress || null,
+    rollups: slice.rollups || null,
+    fails: Array.isArray(slice.fails) ? slice.fails : [],
+    activities: Array.isArray(slice.activities) ? slice.activities : [],
+    activeUpload: slice.activeUpload || null,
+  };
+}
+
+function applyDiagnosticsFromStore(projectId) {
+  const pid = String(projectId || currentDiagProjectId() || "").trim();
+  if (!pid) {
+    clearDiagnosticsView();
+    return;
+  }
+  const snapshot = _snapshotFromStore(pid);
+  if (!snapshot) {
+    clearDiagnosticsView();
+    return;
+  }
+  applyDiagnosticsSnapshot(snapshot);
+}
+
+function ensureDiagnosticsStoreSubscription() {
+  if (diagStoreUnsubscribe) return;
+  const store = getSharedProjectStore();
+  diagStoreUnsubscribe = store.subscribe(() => {
+    if (!isDiagnosticsVisible()) return;
+    applyDiagnosticsFromStore(currentDiagProjectId());
+  });
+}
+
 function _ensureDiagPiesCached() {
   if (!diagRt.pies) diagRt.pies = _ensurePieDom();
   return diagRt.pies;
@@ -664,83 +737,13 @@ function handleDiagnosticsEvent(payload) {
     logDiagnosticsWs("recv:ignored", t || "(empty)");
     return;
   }
-  if (t === "commissioning_snapshot") {
-    applyDiagnosticsSnapshot(ev);
-    return;
-  }
-  const projectId = String(ev?.projectId || diagRt.projectId || currentDiagProjectId() || "");
-  const progress = ev?.progress || ev?.data?.progress || null;
-  const rollups = ev?.rollups || ev?.data?.rollups || null;
-  if (progress) diagRt.progress = progress;
-  if (rollups) diagRt.rollups = rollups;
-  if (t === "fail_tag_updated") {
-    const targetKey = String(ev?.targetKey || "");
-    const tag = String(ev?.tag || "").trim().toUpperCase();
-    const task = diagRt.tasksByKey.get(targetKey);
-    if (task && tag) {
-      task.tag = tag;
-      const row = diagRt.rowByKey.get(targetKey);
-      if (row) row.sel.value = tagDisplayFromEnum(tag);
-      updateTaskCompletionPie();
-    }
-    return;
-  }
-  if (t === "test_result" || t === "test_result.recorded") {
-    const data = ev?.data && typeof ev.data === "object" ? ev.data : ev;
-    const targetKey = String(data?.targetKey || "");
-    const outcome = String(data?.outcome || "").trim().toUpperCase();
-    const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
-    if (!targetKey || (outcome !== "PASS" && outcome !== "FAIL")) {
-      logDiagnosticsWs("recv:ignored", { reason: "invalid-result", targetKey, outcome });
-      return;
-    }
-    if (outcome === "PASS") {
-      const existing = diagRt.tasksByKey.get(targetKey);
-      if (existing) {
-        diagRt.tasksByKey.delete(targetKey);
-        const row = diagRt.rowByKey.get(targetKey);
-        if (row && row.tr && row.tr.parentElement) row.tr.parentElement.removeChild(row.tr);
-        diagRt.rowByKey.delete(targetKey);
-        updateFailureTypesPie();
-        updateTaskCompletionPie();
-      }
-      if (progress || rollups) updateFailureRatePie();
-      return;
-    }
-
-    const prev = diagRt.tasksByKey.get(targetKey);
-    const next = {
-      targetKey,
-      tag: prev?.tag || "NOT_STARTED",
-      lastTestedAtUtc: String(data?.recordedAtUtc || ""),
-      deviceName: String(refs?.deviceName || ""),
-      pageName: String(refs?.pageName || ""),
-      buttonName: String(refs?.buttonName || ""),
-      scope: String(refs?.scope || ""),
-      targetName: String(data?.targetName || ""),
-      resolvedData: refs?.resolvedData,
-      lastFailNote: String(data?.failNote || ""),
-    };
-    diagRt.tasksByKey.set(targetKey, next);
-
-    const tbody = diag$("diagnosticsTaskBody");
-    const existingRow = diagRt.rowByKey.get(targetKey);
-    if (existingRow) {
-      _updateTaskRowDom(existingRow, next);
-      if (existingRow.tr && tbody.firstChild !== existingRow.tr) tbody.prepend(existingRow.tr);
-    } else {
-      const row = _makeTaskRow(projectId, next);
-      _updateTaskRowDom(row, next);
-      tbody.prepend(row.tr);
-      diagRt.rowByKey.set(targetKey, row);
-    }
-    updateFailureTypesPie();
-    updateTaskCompletionPie();
-    if (progress || rollups) updateFailureRatePie();
-  }
+  applyDiagnosticsFromStore(currentDiagProjectId());
 }
 
+function noopDiagnosticsSocketConsumer() {}
+
 function initDiagnosticsTab() {
+  ensureDiagnosticsStoreSubscription();
   const refreshBtn = document.getElementById("refreshDiagnosticsBtn");
   if (refreshBtn) {
     refreshBtn.style.display = "none";
@@ -749,30 +752,41 @@ function initDiagnosticsTab() {
   const tabDiag = document.getElementById("tab-diagnostics");
   if (tabDiag) {
     tabDiag.addEventListener("click", () => {
+      if (isCommissioningHydrating()) return;
       const projectId = currentDiagProjectId();
       connectDiagnosticsWs(projectId);
+      applyDiagnosticsFromStore(projectId);
       setDiagStatus("");
       updateDiagnosticsTitle();
     });
   }
-  const tabManage = document.getElementById("tab-manage");
-  if (tabManage) tabManage.addEventListener("click", () => disconnectDiagnosticsWs());
-  const tabCommission = document.getElementById("tab-commission");
-  if (tabCommission) tabCommission.addEventListener("click", () => disconnectDiagnosticsWs());
 
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
+      if (isCommissioningHydrating()) {
+        updateDiagnosticsTitle();
+        return;
+      }
       const projectId = currentDiagProjectId();
-      if (isDiagnosticsVisible()) connectDiagnosticsWs(projectId);
+      connectDiagnosticsWs(projectId);
+      if (isDiagnosticsVisible()) applyDiagnosticsFromStore(projectId);
       updateDiagnosticsTitle();
       setDiagStatus("");
       if (!projectId) clearDiagnosticsView();
     });
     const initialProjectId = currentDiagProjectId();
-    if (isDiagnosticsVisible()) connectDiagnosticsWs(initialProjectId);
+    if (initialProjectId && !isCommissioningHydrating()) connectDiagnosticsWs(initialProjectId);
+    if (isDiagnosticsVisible()) applyDiagnosticsFromStore(initialProjectId);
     updateDiagnosticsTitle();
     if (!initialProjectId) clearDiagnosticsView();
+  }
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("sentinel:commissioning-hydrated", () => {
+      const projectId = currentDiagProjectId();
+      if (projectId) connectDiagnosticsWs(projectId);
+      if (isDiagnosticsVisible()) applyDiagnosticsFromStore(projectId);
+    });
   }
 }
 

@@ -1,5 +1,7 @@
 import json
+import os
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -8,6 +10,7 @@ import re
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib import request as urlrequest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,6 +63,67 @@ class _StaticServer:
             self._httpd = None
 
 
+class _AppServer:
+    def __init__(self, *, generated_root: Path, upload_root: Path):
+        self._generated_root = generated_root
+        self._upload_root = upload_root
+        self._proc: subprocess.Popen[str] | None = None
+        self.base_url: str | None = None
+
+    def start(self) -> None:
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        host, port = sock.getsockname()
+        sock.close()
+        self.base_url = f"http://{host}:{port}"
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(SRC)
+        env["SENTINEL_GENERATED_ROOT"] = str(self._generated_root)
+        env["SENTINEL_UPLOAD_ROOT"] = str(self._upload_root)
+
+        self._proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "sentinel.server.app.main:app",
+                "--host",
+                host,
+                "--port",
+                str(port),
+            ],
+            cwd=str(ROOT),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+
+        deadline = time.time() + 25.0
+        while time.time() < deadline:
+            if self._proc.poll() is not None:
+                raise RuntimeError("App server exited before becoming healthy.")
+            try:
+                with urlrequest.urlopen(f"{self.base_url}/health", timeout=0.5) as resp:
+                    if int(resp.status) == 200:
+                        return
+            except Exception:
+                time.sleep(0.1)
+        raise RuntimeError("App server failed health check.")
+
+    def stop(self) -> None:
+        if self._proc is None:
+            return
+        self._proc.terminate()
+        try:
+            self._proc.wait(timeout=10.0)
+        except Exception:
+            self._proc.kill()
+            self._proc.wait(timeout=5.0)
+        self._proc = None
+
+
 class CommissioningConsoleRuntimeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -90,6 +154,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         from playwright.sync_api import expect
 
         page = self._browser.new_page()
+        console_logs: list[str] = []
+        page.on("console", lambda msg: console_logs.append(str(msg.text or "")))
 
         state: dict[str, object] = {
             "clients": [],
@@ -541,6 +607,16 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 """
         )
         page.goto(url)
+        self.assertTrue(
+            page.evaluate(
+                "(() => !!(window.__sentinelProjectWsManager && typeof window.__sentinelProjectWsManager.dispatchIncoming === 'function'))()"
+            )
+        )
+        self.assertTrue(
+            page.evaluate(
+                "(() => !!(window.__sentinelProjectStore && typeof window.__sentinelProjectStore.getState === 'function' && typeof window.__sentinelProjectStore.dispatch === 'function'))()"
+            )
+        )
 
         # Shell + tabs
         expect(page.get_by_role("button", name="Manage")).to_be_visible()
@@ -591,7 +667,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
-        page.get_by_role("button", name="Upload + Generate").click()
+        page.get_by_role("button", name="Load File").click()
         expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
         expect(page.locator("#uploadProgressLabel")).to_have_count(1)
         self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
@@ -638,6 +714,38 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionActivityBody")).to_contain_text("FAIL")
         expect(page.get_by_test_id("commission-pie-project")).to_contain_text("3/12")
         expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("2/4")
+        page.evaluate(
+            """
+() => {
+  if (!window.__sentinelProjectWsManager || typeof window.__sentinelProjectWsManager.dispatchIncoming !== "function") return;
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "test_result.recorded",
+    projectId: "proj-1",
+    recordedAtUtc: "2026-03-21T00:00:04Z",
+    targetKey: "btn:101:1:2:Store Driven",
+    outcome: "PASS",
+    targetName: "Store Driven",
+    kind: "BUTTON",
+    refs: { deviceName: "Device A", pageName: "Home", buttonName: "Button X", scope: "BUTTON" },
+  });
+}
+"""
+        )
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Store Driven")
+        self.assertEqual(
+            page.evaluate(
+                """
+(() => {
+  const store = window.__sentinelProjectStore;
+  if (!store || typeof store.getState !== "function") return -1;
+  const state = store.getState();
+  const project = state && state.projects ? state.projects["proj-1"] : null;
+  return project && Array.isArray(project.activities) ? project.activities.length : -1;
+})()
+"""
+            ),
+            3,
+        )
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
@@ -673,11 +781,35 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()
-        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 2)
+        self.assertEqual(page.evaluate("window.__wsConnectCount()"), 1)
         self.assertEqual(page.evaluate("window.__wsCloseCount()"), 0)
 
         page.get_by_role("button", name="Manage").click()
         expect(page.locator("#panel-manage")).to_be_visible()
+
+        # Tab switches inside same project should not force diagnostics consumer close churn.
+        self.assertFalse(
+            any("[diagnostics-ws] close" in line for line in console_logs),
+            f"Unexpected diagnostics close log in same-project tab movement: {console_logs}",
+        )
+        self.assertTrue(
+            any("WS-INFO-100 SOCKET_OPEN" in line for line in console_logs),
+            f"Expected readable WS open code in console logs: {console_logs}",
+        )
+        self.assertFalse(
+            any("WS-ERR-310 SOCKET_CLOSE_UNEXPECTED" in line for line in console_logs),
+            f"Unexpected close code seen in console logs: {console_logs}",
+        )
+        diag_connect_attempts = [
+            line
+            for line in console_logs
+            if "WS-INFO-103 CONNECT_ATTEMPT [diagnostics-ws]" in line
+        ]
+        self.assertLessEqual(
+            len(diag_connect_attempts),
+            1,
+            f"Expected single diagnostics connect attempt on initial stable project load: {console_logs}",
+        )
 
         # Upload a completely different file name (should warn).
         with tempfile.TemporaryDirectory() as td:
@@ -685,7 +817,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             other_path.write_bytes(apex_path.read_bytes())
             state["expected_upload_filename"] = other_path.name
             page.set_input_files("input[type=file][name=apex]", str(other_path))
-            page.get_by_role("button", name="Upload + Generate").click()
+            page.get_by_role("button", name="Load File").click()
             expect(page.get_by_test_id("upload-status")).to_contain_text("upload-2")
 
         self.assertEqual(state.get("progress_fetch_count"), 0)
@@ -693,3 +825,105 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertEqual(state.get("rollups_fetch_count"), 0)
 
         page.close()
+
+    def test_live_smoke_real_asset_no_unexpected_ws_disconnects(self):
+        from playwright.sync_api import expect
+
+        try:
+            import websockets  # noqa: F401
+        except Exception as e:
+            raise unittest.SkipTest("websockets runtime is not installed in this environment") from e
+
+        apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
+        if not apex_path.exists():
+            raise unittest.SkipTest(f"Missing apex fixture: {apex_path}")
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
+            app_server.start()
+            try:
+                base_url = str(app_server.base_url or "").rstrip("/")
+                page = self._browser.new_page()
+                console_logs: list[str] = []
+                page.on("console", lambda msg: console_logs.append(str(msg.text or "")))
+
+                page.goto(f"{base_url}/commissioning/index.html")
+                page.get_by_label("New client name").fill("Live Client")
+                page.get_by_role("button", name="Create client").click()
+                page.get_by_label("New project name").fill("Live Project")
+                page.get_by_role("button", name="Create project").click()
+                expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
+
+                project_id = str(page.locator("#projectSelect").input_value() or "").strip()
+                self.assertTrue(project_id, "Expected selected project id.")
+
+                page.set_input_files("input[type=file][name=apex]", str(apex_path))
+                page.get_by_role("button", name="Load File").click()
+                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
+                expect(page.get_by_test_id("upload-status")).to_contain_text(apex_path.name, timeout=120000)
+
+                page.get_by_role("button", name="Commission").click()
+                expect(page.locator("#panel-commission")).to_be_visible()
+                page.get_by_role("button", name="Diagnostics").click()
+                expect(page.locator("#panel-diagnostics")).to_be_visible()
+                page.get_by_role("button", name="Manage").click()
+                expect(page.locator("#panel-manage")).to_be_visible()
+                page.get_by_role("button", name="Commission").click()
+                expect(page.locator("#panel-commission")).to_be_visible()
+                page.get_by_role("button", name="Diagnostics").click()
+                expect(page.locator("#panel-diagnostics")).to_be_visible()
+
+                create_link_req = urlrequest.Request(
+                    f"{base_url}/api/v1/commissioning/projects/{project_id}/tech-links",
+                    data=b"{}",
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlrequest.urlopen(create_link_req, timeout=10.0) as resp:
+                    tech_link = json.loads(resp.read().decode("utf-8"))
+                tech_url = str(tech_link.get("techUrl") or "").strip()
+                self.assertTrue(tech_url.startswith("/testing/"), f"Unexpected techUrl: {tech_url}")
+                tech_token = tech_url.split("/")[-1]
+                self.assertTrue(tech_token, "Expected tech token.")
+
+                result_payload = {
+                    "target": {
+                        "targetKey": "live:smoke:target:1",
+                        "targetName": "Live Smoke Target",
+                        "kind": "BUTTON",
+                        "refs": {
+                            "deviceName": "Live Device",
+                            "pageName": "Live Page",
+                            "buttonName": "Live Button",
+                            "scope": "BUTTON",
+                        },
+                    },
+                    "outcome": "FAIL",
+                    "failNote": "Live smoke fail note",
+                }
+                post_req = urlrequest.Request(
+                    f"{base_url}/api/v1/testing/{tech_token}/results",
+                    data=json.dumps(result_payload).encode("utf-8"),
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlrequest.urlopen(post_req, timeout=10.0) as resp:
+                    self.assertEqual(int(resp.status), 200)
+
+                page.get_by_role("button", name="Commission").click()
+                expect(page.locator("#commissionActivityBody")).to_contain_text("Live Smoke Target", timeout=30000)
+                page.get_by_role("button", name="Diagnostics").click()
+                expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("live smoke target", timeout=30000)
+
+                self.assertFalse(
+                    any("[project-ws] close unexpected" in line for line in console_logs),
+                    f"Unexpected project ws close seen in smoke logs: {console_logs}",
+                )
+                self.assertFalse(
+                    any("[diagnostics-ws] close" in line and "missing-project" not in line for line in console_logs),
+                    f"Unexpected diagnostics close seen in smoke logs: {console_logs}",
+                )
+                page.close()
+            finally:
+                app_server.stop()

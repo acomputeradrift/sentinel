@@ -29,9 +29,8 @@ class CommissioningUiServingTest(unittest.TestCase):
         r = client.get("/commissioning/")
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/html", r.headers.get("content-type", ""))
-        self.assertIn("Commissioning Console", r.text)
+        self.assertIn("Sentinel Console", r.text)
 
         js = client.get("/commissioning/commissioning.js")
         self.assertEqual(js.status_code, 200)
         self.assertIn("javascript", js.headers.get("content-type", ""))
-

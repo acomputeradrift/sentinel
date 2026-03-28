@@ -133,12 +133,25 @@ Goal: ensure tested code only is deployed.
 If test have been run on the new work, already, skip the retest below, but tell me.
 
 1) Unit/regression tests (local)
-   - `python -m unittest discover -s dev_tests/regression -p "test_*.py"`
+   - Use temp env interpreter (required):
+     - `Y:\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest discover -s dev_tests/regression -p "test_*.py"`
+   - Do not run local tests with system/default `python`.
+   - If a test skips for missing dependencies, re-run once with the temp env interpreter before reporting a skip.
 
 2) UI runtime tests (Playwright)
    - Use the temp env:
      - `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_testing_result_posting`
      - `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_commissioning_console_runtime`
+
+Intent Check Gate (required before deploy)
+- Question: `Did this solution fix the exact user-visible problem Jamie reported?`
+- Record evidence in this exact format:
+  - `Original problem: ...`
+  - `Test run that directly reproduces it: ...`
+  - `Observed before: ...`
+  - `Observed after: ...`
+  - `Pass/Fail: ...`
+- Deploy is blocked unless `Pass/Fail` is explicitly `Pass`.
 
 3) Deploy to droplet
    - Commit changes before archiving (git archive uses `HEAD` only):
@@ -149,3 +162,28 @@ If test have been run on the new work, already, skip the retest below, but tell 
    - Extract: `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`
    - Restart: `sudo systemctl restart sentinel`
    - Validate: `curl http://127.0.0.1/health`
+
+## Post-test cleanup workflow (required)
+
+Goal: do not leave disposable test/deploy artifacts behind after local runs.
+
+Run this cleanup step after test or perf runs:
+
+1) Remove known disposable temp run folders:
+   - `Remove-Item -Recurse -Force .tmp_perf_*`
+   - `Remove-Item -Recurse -Force .tmp_run_*`
+
+2) Remove disposable deployment/test zip artifacts from repo root:
+   - `Remove-Item -Force deploy_*.zip`
+   - `Remove-Item -Force sentinel_patch.zip`
+
+3) Keep persistent tooling env:
+   - Do not delete `.tmp_apex_env` (shared Playwright/runtime environment).
+
+4) Verify workspace is clean of disposable artifacts:
+   - `git status --short`
+   - `Get-ChildItem -Force -Name .tmp_*`
+   - `Get-ChildItem -Force -Name *.zip`
+
+Operator rule:
+- If a disposable artifact appears repeatedly from a command, either run cleanup immediately after that command or add the command to a wrapper that runs cleanup in a `finally` step.

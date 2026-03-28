@@ -553,7 +553,7 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("class='zoom-btn zoom-inc'", html)
             self.assertIn("<div class='zoom-controls' id='zoomControls'>", html)
             self.assertIn("const ZOOM_DEFAULT=100;", html)
-            self.assertIn("const ZOOM_MAX=200;", html)
+            self.assertIn("const ZOOM_MAX=300;", html)
             self.assertIn("const ZOOM_STEP=10;", html)
             self.assertIn("let currentViewportIndexes=VP_FRAMES.map(()=>0);", html)
             self.assertIn("function applyViewportState()", html)

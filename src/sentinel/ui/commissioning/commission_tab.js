@@ -15,18 +15,72 @@ function wsUrl(path) {
 }
 
 function logProjectWs(action, detail) {
-  try {
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[project-ws]", action, detail == null ? "" : detail);
+  const a = String(action || "").trim();
+  let code = "WS-INFO-101";
+  let label = "SOCKET_EVENT";
+  if (a === "open") {
+    code = "WS-INFO-100";
+    label = "SOCKET_OPEN";
+  } else if (a === "sync.request") {
+    code = "WS-INFO-120";
+    label = "SYNC_REQUEST";
+  } else if (a === "close") {
+    const d = String(detail || "").trim().toLowerCase();
+    if (d === "unexpected") {
+      code = "WS-ERR-310";
+      label = "SOCKET_CLOSE_UNEXPECTED";
+    } else {
+      code = "WS-INFO-150";
+      label = "SOCKET_CLOSE";
     }
+  } else if (a === "connect") {
+    code = "WS-INFO-102";
+    label = "SOCKET_CONNECT";
+  } else if (a === "error") {
+    code = "WS-WARN-230";
+    label = "SOCKET_ERROR";
+  } else if (a === "conn-id") {
+    code = "WS-INFO-103";
+    label = "CONNECT_ATTEMPT";
+  } else if (a === "recv:json-parse-failed") {
+    code = "WS-WARN-240";
+    label = "JSON_PARSE_FAILED";
+  }
+  try {
+    const logger = window.__sentinelWsLog;
+    if (typeof logger === "function") {
+      logger(code, label, "project-ws", { action: a, detail: detail == null ? "" : detail });
+      return;
+    }
+  } catch (_e) {}
+  try {
+    if (typeof console !== "undefined" && console.log) console.log(`[project-ws] ${a}`, detail == null ? "" : detail);
   } catch (_e) {}
 }
 
 function logCommissionWs(action, detail) {
+  const a = String(action || "").trim();
+  let code = "WS-INFO-160";
+  let label = "COMMISSION_EVENT";
+  if (a === "reconnect-sync") {
+    code = "WS-INFO-121";
+    label = "SYNC_RECONCILE";
+  } else if (a === "snapshot:activities-applied") {
+    code = "WS-INFO-140";
+    label = "SNAPSHOT_APPLIED";
+  } else if (a === "close") {
+    code = "WS-INFO-151";
+    label = "CONSUMER_CLOSE";
+  }
   try {
-    if (typeof console !== "undefined" && console.log) {
-      console.log("[commission-ws]", action, detail == null ? "" : detail);
+    const logger = window.__sentinelWsLog;
+    if (typeof logger === "function") {
+      logger(code, label, "commission-ws", { action: a, detail: detail == null ? "" : detail });
+      return;
     }
+  } catch (_e) {}
+  try {
+    if (typeof console !== "undefined" && console.log) console.log(`[commission-ws] ${a}`, detail == null ? "" : detail);
   } catch (_e) {}
 }
 
@@ -50,6 +104,10 @@ function currentProjectId() {
 function isCommissionVisible() {
   const panel = document.getElementById("panel-commission");
   return !!panel && !panel.hidden;
+}
+
+function isCommissioningHydrating() {
+  return !!window.__sentinelCommissioningHydrating;
 }
 
 async function refreshCommissionTopboxTitle(projectId) {
@@ -277,8 +335,166 @@ function appendActivityRow(msg) {
   }
 }
 
+function _cloneValue(value) {
+  if (Array.isArray(value)) return value.map((item) => _cloneValue(item));
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) out[k] = _cloneValue(v);
+  return out;
+}
+
+function _storeInitialState() {
+  return { projects: {} };
+}
+
+function _ensureProjectState(root, projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return null;
+  if (!root.projects[pid]) {
+    root.projects[pid] = {
+      projectId: pid,
+      progress: null,
+      rollups: null,
+      activities: [],
+      fails: [],
+      activeUpload: null,
+      lastEventType: "",
+      lastRecordedAtUtc: "",
+    };
+  }
+  return root.projects[pid];
+}
+
+function _asEventActivity(payload) {
+  return {
+    type: "test_result",
+    projectId: String(payload?.projectId || ""),
+    recordedAtUtc: String(payload?.recordedAtUtc || payload?.tsUtc || ""),
+    targetKey: String(payload?.targetKey || payload?.data?.targetKey || ""),
+    outcome: String(payload?.outcome || payload?.currentOutcome || payload?.data?.outcome || ""),
+    targetName: String(payload?.targetName || payload?.data?.targetName || ""),
+    kind: String(payload?.kind || payload?.targetKind || payload?.data?.kind || payload?.data?.targetKind || ""),
+    refs: _cloneValue(payload?.refs && typeof payload.refs === "object" ? payload.refs : payload?.data?.refs && typeof payload.data.refs === "object" ? payload.data.refs : {}),
+    failNote: payload?.failNote == null ? null : String(payload.failNote),
+  };
+}
+
+function _upsertFailRecord(fails, payload) {
+  const targetKey = String(payload?.targetKey || payload?.data?.targetKey || "").trim();
+  if (!targetKey) return fails;
+  const outcome = String(payload?.outcome || payload?.currentOutcome || payload?.data?.outcome || "").trim().toUpperCase();
+  const existing = Array.isArray(fails) ? fails.slice() : [];
+  const idx = existing.findIndex((row) => String(row?.targetKey || "") === targetKey);
+  if (outcome === "PASS") {
+    if (idx >= 0) existing.splice(idx, 1);
+    return existing;
+  }
+  if (outcome !== "FAIL") return existing;
+
+  const refs = payload?.refs && typeof payload.refs === "object" ? payload.refs : payload?.data?.refs && typeof payload.data.refs === "object" ? payload.data.refs : {};
+  const prev = idx >= 0 ? existing[idx] : null;
+  const next = {
+    targetKey,
+    currentOutcome: "FAIL",
+    lastTestedAtUtc: String(payload?.recordedAtUtc || payload?.tsUtc || payload?.lastTestedAtUtc || ""),
+    lastFailNote: payload?.failNote == null ? String(prev?.lastFailNote || "") : String(payload.failNote || ""),
+    tag: String(prev?.tag || "NOT_STARTED"),
+    deviceName: String(refs?.deviceName || prev?.deviceName || ""),
+    pageName: String(refs?.pageName || prev?.pageName || ""),
+    buttonName: String(refs?.buttonName || prev?.buttonName || ""),
+    scope: String(refs?.scope || prev?.scope || ""),
+    targetName: String(payload?.targetName || prev?.targetName || ""),
+    resolvedData: refs?.resolvedData == null ? prev?.resolvedData : refs.resolvedData,
+  };
+  if (idx >= 0) existing[idx] = next;
+  else existing.unshift(next);
+  return existing;
+}
+
+function reduceProjectStore(prevState, payload) {
+  const state = prevState && typeof prevState === "object" ? _cloneValue(prevState) : _storeInitialState();
+  const t = String(payload?.type || "").trim();
+  if (!t || t === "keepalive") return state;
+
+  const projectId = String(payload?.projectId || "").trim();
+  if (!projectId) return state;
+
+  const project = _ensureProjectState(state, projectId);
+  if (!project) return state;
+
+  project.lastEventType = t;
+  project.lastRecordedAtUtc = String(payload?.recordedAtUtc || payload?.tsUtc || "");
+
+  if (t === "commissioning_snapshot") {
+    project.progress = payload?.progress ? _cloneValue(payload.progress) : null;
+    project.rollups = payload?.rollups ? _cloneValue(payload.rollups) : null;
+    project.activities = Array.isArray(payload?.activities) ? _cloneValue(payload.activities).slice(0, 50) : [];
+    project.fails = Array.isArray(payload?.fails) ? _cloneValue(payload.fails) : [];
+    project.activeUpload = payload?.activeUpload ? _cloneValue(payload.activeUpload) : null;
+    return state;
+  }
+
+  if (t === "generation") {
+    project.activeUpload = payload?.activeUpload
+      ? _cloneValue(payload.activeUpload)
+      : {
+          uploadId: payload?.uploadId || null,
+          projectId,
+          originalFilename: payload?.originalFilename || "",
+          storagePath: "",
+          uploadedAtUtc: "",
+        };
+    return state;
+  }
+
+  if (t === "fail_tag_updated") {
+    const targetKey = String(payload?.targetKey || "").trim();
+    const tag = String(payload?.tag || "").trim().toUpperCase();
+    project.fails = project.fails.map((row) => (String(row?.targetKey || "") === targetKey ? { ...row, tag: tag || row?.tag } : row));
+    return state;
+  }
+
+  if (t === "test_result" || t === "test_result.recorded") {
+    if (payload?.progress) project.progress = _cloneValue(payload.progress);
+    if (payload?.rollups) project.rollups = _cloneValue(payload.rollups);
+    const activity = _asEventActivity(payload);
+    project.activities = [activity, ...project.activities].slice(0, 50);
+    project.fails = _upsertFailRecord(project.fails, payload);
+    return state;
+  }
+
+  return state;
+}
+
+function ensureSharedProjectStore() {
+  if (window.__sentinelProjectStore) return window.__sentinelProjectStore;
+  let state = _storeInitialState();
+  const listeners = new Set();
+
+  window.__sentinelProjectStore = {
+    getState() {
+      return _cloneValue(state);
+    },
+    dispatch(payload) {
+      state = reduceProjectStore(state, payload);
+      for (const listener of Array.from(listeners)) {
+        try {
+          listener(state, payload);
+        } catch (_e) {}
+      }
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") return () => {};
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  return window.__sentinelProjectStore;
+}
+
 function ensureSharedProjectWsManager() {
   if (window.__sentinelProjectWsManager) return window.__sentinelProjectWsManager;
+  const sharedStore = ensureSharedProjectStore();
 
   let ws = null;
   let wsProjectId = "";
@@ -288,25 +504,120 @@ function ensureSharedProjectWsManager() {
   let wsState = "closed";
   let wsIntentionalClose = false;
   let idleCloseTimer = null;
+  let activeProjectId = "";
   const consumers = new Map();
+  const recentByProject = new Map();
+  const RECENT_MAX = 100;
+  const syncByProject = new Map();
+
+  function syncStateFor(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return { lastAppliedSeq: 0, syncInFlight: false };
+    if (!syncByProject.has(pid)) syncByProject.set(pid, { lastAppliedSeq: 0, syncInFlight: false });
+    return syncByProject.get(pid);
+  }
 
   function desiredProjectId() {
-    for (const consumer of consumers.values()) {
-      if (!consumer || !consumer.active) continue;
-      const pid = String(consumer.projectId || "").trim();
-      if (pid) return pid;
-    }
-    return "";
+    const hasActiveConsumer = Array.from(consumers.values()).some((consumer) => !!consumer && !!consumer.active);
+    if (!hasActiveConsumer) return "";
+    return String(activeProjectId || "").trim();
   }
 
   function fanOut(payload) {
+    const activeProjectId = String(wsProjectId || "").trim();
+    const payloadProjectId = String(payload?.projectId || "").trim();
+    const cacheProjectId = payloadProjectId || activeProjectId;
+    if (cacheProjectId) {
+      const existing = recentByProject.get(cacheProjectId) || [];
+      const next = existing.concat([payload]).slice(-RECENT_MAX);
+      recentByProject.set(cacheProjectId, next);
+    }
     for (const consumer of consumers.values()) {
       if (!consumer || typeof consumer.onMessage !== "function") continue;
+      if (!consumer.active) continue;
       try {
         consumer.onMessage(payload);
       } catch (e) {
         logProjectWs("consumer:onMessage-failed", String(e?.message || e || ""));
       }
+    }
+  }
+
+  function sendSyncRequest(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return;
+    if (!ws || ws.readyState !== 1 || String(wsProjectId || "").trim() !== pid) return;
+    const sync = syncStateFor(pid);
+    if (sync.syncInFlight) return;
+    sync.syncInFlight = true;
+    try {
+      ws.send(
+        JSON.stringify({
+          type: "sync.request",
+          projectId: pid,
+          lastAppliedSeq: Number(sync.lastAppliedSeq || 0),
+        })
+      );
+      logProjectWs("sync.request", { projectId: pid, lastAppliedSeq: Number(sync.lastAppliedSeq || 0) });
+    } catch (_e) {}
+  }
+
+  function maybeRequestSyncOnOpen(projectId) {
+    const pid = String(projectId || "").trim();
+    if (!pid) return;
+    const sync = syncStateFor(pid);
+    // Fresh connect gets authoritative snapshot from server subscribe path.
+    // Request replay only when we already have prior sequence state.
+    if (Number(sync.lastAppliedSeq || 0) <= 0) {
+      sync.syncInFlight = false;
+      return;
+    }
+    sendSyncRequest(pid);
+  }
+
+  function applySequencedEvent(payload) {
+    const pid = String(payload?.projectId || wsProjectId || "").trim();
+    const t = String(payload?.type || "").trim();
+    const seq = Number(payload?.seq || 0);
+    const isSnapshot = t === "commissioning_snapshot" || t === "testing_snapshot";
+    const sync = syncStateFor(pid);
+    if (seq <= 0) {
+      sharedStore.dispatch(payload);
+      fanOut(payload);
+      return;
+    }
+    if (seq <= Number(sync.lastAppliedSeq || 0)) return;
+    if (!isSnapshot && seq > Number(sync.lastAppliedSeq || 0) + 1) {
+      sendSyncRequest(pid);
+      return;
+    }
+    sync.lastAppliedSeq = seq;
+    sync.syncInFlight = false;
+    sharedStore.dispatch(payload);
+    fanOut(payload);
+  }
+
+  function dispatchIncoming(payload) {
+    if (!payload || typeof payload !== "object") return;
+    const t = String(payload?.type || "").trim();
+    if (t === "keepalive") return;
+    if (t === "replay.batch") {
+      const pid = String(payload?.projectId || wsProjectId || "").trim();
+      const sync = syncStateFor(pid);
+      sync.syncInFlight = false;
+      const events = Array.isArray(payload?.events) ? payload.events : [];
+      for (const ev of events) applySequencedEvent(ev);
+      return;
+    }
+    applySequencedEvent(payload);
+  }
+
+  function dispatchIncomingRaw(raw) {
+    try {
+      const payload = JSON.parse(String(raw || "{}"));
+      dispatchIncoming(payload);
+    } catch (e) {
+      logProjectWs("recv:json-parse-failed", String(e?.message || e || ""));
     }
   }
 
@@ -373,6 +684,7 @@ function ensureSharedProjectWsManager() {
       wsState = "open";
       wsReconnectDelayMs = 500;
       logProjectWs("open", wsProjectId);
+      maybeRequestSyncOnOpen(wsProjectId);
     };
     ws.onclose = () => {
       if (connId !== wsConnSeq) {
@@ -381,9 +693,12 @@ function ensureSharedProjectWsManager() {
       }
       const intentional = wsIntentionalClose;
       wsIntentionalClose = false;
+      const closingProjectId = String(wsProjectId || "").trim();
       ws = null;
       wsProjectId = "";
       wsState = "closed";
+      const sync = syncStateFor(closingProjectId);
+      sync.syncInFlight = false;
       logProjectWs("close", intentional ? "intentional" : "unexpected");
       if (!intentional && desiredProjectId()) scheduleReconnect();
     };
@@ -404,12 +719,7 @@ function ensureSharedProjectWsManager() {
         logProjectWs("recv:stale-conn", connId);
         return;
       }
-      try {
-        const payload = JSON.parse(String(evt.data || "{}"));
-        fanOut(payload);
-      } catch (e) {
-        logProjectWs("recv:json-parse-failed", String(e?.message || e || ""));
-      }
+      dispatchIncomingRaw(evt.data);
     };
   }
 
@@ -428,6 +738,13 @@ function ensureSharedProjectWsManager() {
   }
 
   window.__sentinelProjectWsManager = {
+    dispatchIncoming,
+    setActiveProject(projectId) {
+      const pid = String(projectId || "").trim();
+      if (pid === activeProjectId) return;
+      activeProjectId = pid;
+      reconcile();
+    },
     setConsumer(id, state) {
       const key = String(id || "").trim();
       if (!key) {
@@ -438,10 +755,21 @@ function ensureSharedProjectWsManager() {
       const next = {
         ...prev,
         ...state,
-        projectId: String(state?.projectId ?? prev.projectId ?? "").trim(),
         active: state && Object.prototype.hasOwnProperty.call(state, "active") ? !!state.active : !!prev.active,
       };
       consumers.set(key, next);
+      const pid = desiredProjectId();
+      const shouldReplay = !!next.active && !prev.active;
+      if (shouldReplay && typeof next.onMessage === "function" && pid) {
+        const cached = recentByProject.get(pid) || [];
+        for (const payload of cached) {
+          try {
+            next.onMessage(payload);
+          } catch (e) {
+            logProjectWs("consumer:replay-failed", String(e?.message || e || ""));
+          }
+        }
+      }
       reconcile();
     },
   };
@@ -449,12 +777,8 @@ function ensureSharedProjectWsManager() {
 }
 
 const sharedProjectWsManager = ensureSharedProjectWsManager();
-
-function syncAfterReconnect(projectId) {
-  const pid = String(projectId || "").trim();
-  if (!pid) return;
-  logCommissionWs("reconnect-sync", pid);
-}
+const sharedProjectStore = ensureSharedProjectStore();
+let commissionStoreUnsubscribe = null;
 
 function ensureCommissionHeader() {
   const div = document.getElementById("commissionSelection");
@@ -496,41 +820,41 @@ function setActivityRows(rows) {
   logCommissionWs("snapshot:activities-applied", capped.length);
 }
 
-function handleCommissionWsPayload(payload) {
-  try {
-    const t = String(payload?.type || "").trim();
-    logCommissionWs("recv", t || "(unknown)");
-    if (t === "keepalive") return;
-    if (t === "commissioning_snapshot") {
-      const progress = payload?.progress || null;
-      const activities = Array.isArray(payload?.activities) ? payload.activities : [];
-      setActivityRows(activities);
-      if (progress) updatePies(progress);
-      const counts = progress?.counts || {};
-      logCommissionWs("snapshot:applied", {
-        activities: activities.length,
-        pass: Number(counts.pass || 0),
-        fail: Number(counts.fail || 0),
-      });
-      return;
-    }
-    if (t === "test_result" || t === "test_result.recorded") {
-      const norm = normalizeEventMessage(payload);
-      logCommissionWs("normalize", {
-        hasDevice: !!norm.device,
-        hasPage: !!norm.page,
-        hasButton: !!norm.button,
-        hasTarget: !!norm.testTarget,
-        hasKey: !!norm.targetKey,
-        status: norm.status,
-      });
-      appendActivityRow(norm);
-      const progress = payload?.progress || payload?.data?.progress || null;
-      if (progress) updatePies(progress);
-    }
-  } catch (e) {
-    logCommissionWs("payload:handle-failed", String(e?.message || e || ""));
+function getProjectStoreSlice(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) return null;
+  const state = sharedProjectStore.getState();
+  const projects = state && state.projects && typeof state.projects === "object" ? state.projects : {};
+  return projects[pid] || null;
+}
+
+function renderCommissionFromStore(projectId) {
+  const slice = getProjectStoreSlice(projectId);
+  if (!slice) {
+    setActivityRows([]);
+    updatePies(null);
+    return;
   }
+  const activities = Array.isArray(slice.activities) ? slice.activities : [];
+  const progress = slice.progress || null;
+  setActivityRows(activities);
+  updatePies(progress);
+}
+
+function noopCommissionSocketConsumer() {
+  // Store subscription is the canonical UI render path.
+}
+
+function handleCommissionStoreChange() {
+  if (!isCommissionVisible()) return;
+  renderCommissionFromStore(currentProjectId());
+}
+
+function ensureCommissionStoreSubscription() {
+  if (commissionStoreUnsubscribe) return;
+  commissionStoreUnsubscribe = sharedProjectStore.subscribe(() => {
+    handleCommissionStoreChange();
+  });
 }
 
 function startWs(projectId) {
@@ -541,21 +865,20 @@ function startWs(projectId) {
   }
   sharedProjectWsManager.setConsumer("commission", {
     active: true,
-    projectId: pid,
-    onMessage: handleCommissionWsPayload,
+    onMessage: noopCommissionSocketConsumer,
   });
-  syncAfterReconnect(pid);
 }
 
-function stopWs() {
+function stopWs(reason) {
   sharedProjectWsManager.setConsumer("commission", {
     active: false,
-    projectId: String(currentProjectId() || "").trim(),
-    onMessage: handleCommissionWsPayload,
+    onMessage: noopCommissionSocketConsumer,
   });
+  logCommissionWs("close", String(reason || "manual"));
 }
 
 async function refreshCommission() {
+  if (isCommissioningHydrating()) return;
   const projectId = currentProjectId();
   updateSelectedNames();
   if (!projectId) {
@@ -563,22 +886,14 @@ async function refreshCommission() {
     return;
   }
   startWs(projectId);
+  renderCommissionFromStore(projectId);
   await refreshCommissionTopboxTitle(projectId);
 }
 
 function runCommissionTab() {
+  ensureCommissionStoreSubscription();
   const tabCommission = document.getElementById("tab-commission");
   if (tabCommission) tabCommission.addEventListener("click", () => void refreshCommission());
-  const tabManage = document.getElementById("tab-manage");
-  if (tabManage)
-    tabManage.addEventListener("click", () => {
-      stopWs();
-    });
-  const tabDiagnostics = document.getElementById("tab-diagnostics");
-  if (tabDiagnostics)
-    tabDiagnostics.addEventListener("click", () => {
-      stopWs();
-    });
 
   const clientSelect = document.getElementById("clientSelect");
   if (clientSelect) clientSelect.addEventListener("change", () => void refreshCommissionTopboxTitle(currentProjectId()));
@@ -586,9 +901,16 @@ function runCommissionTab() {
   const projectSelect = document.getElementById("projectSelect");
   if (projectSelect) {
     projectSelect.addEventListener("change", () => {
-      stopWs();
+      if (isCommissioningHydrating()) {
+        updateSelectedNames();
+        return;
+      }
+      const nextProjectId = String(currentProjectId() || "").trim();
+      if (nextProjectId) startWs(nextProjectId);
+      else stopWs("missing-project");
       updateSelectedNames();
       if (isCommissionVisible()) void refreshCommission();
+      if (!isCommissionVisible()) renderCommissionFromStore(nextProjectId);
     });
   }
 
@@ -602,6 +924,14 @@ function runCommissionTab() {
   $("commissionActivity").appendChild(empty);
 
   updateSelectedNames();
+  const initialProjectId = String(currentProjectId() || "").trim();
+  if (initialProjectId && !isCommissioningHydrating()) startWs(initialProjectId);
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener("sentinel:commissioning-hydrated", () => {
+      const pid = String(currentProjectId() || "").trim();
+      if (pid) startWs(pid);
+    });
+  }
 }
 
 runCommissionTab();

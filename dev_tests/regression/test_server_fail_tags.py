@@ -75,7 +75,7 @@ class FailTagsTest(unittest.TestCase):
         self.assertTrue(fails2)
         self.assertEqual(fails2[0]["tag"], "IN_PROGRESS")
 
-    def test_put_fail_tag_emits_sse_event(self):
+    def test_put_fail_tag_sse_endpoint_is_removed(self):
         TestClient = _require_fastapi()
 
         from sentinel.server.app.main import create_app
@@ -105,24 +105,8 @@ class FailTagsTest(unittest.TestCase):
         )
         self.assertEqual(set_tag.status_code, 200)
 
-        with client.stream("GET", f"/api/v1/commissioning/projects/{project_id}/events?once=1") as resp:
-            self.assertEqual(resp.status_code, 200)
-            found = None
-            found_event = None
-            for line in resp.iter_lines():
-                s = (line.decode("utf-8") if isinstance(line, (bytes, bytearray)) else str(line)).strip()
-                if s.startswith("event:"):
-                    found_event = s[len("event:") :].strip()
-                if s.startswith("data:"):
-                    payload = s[len("data:") :].strip()
-                    import json
-
-                    found = json.loads(payload)
-                    break
-
-            self.assertEqual(found_event, "fail_tag_updated")
-            self.assertIsNotNone(found)
-            self.assertEqual(found.get("type"), "fail_tag_updated")
-            self.assertEqual(found.get("projectId"), project_id)
-            self.assertEqual(found.get("targetKey"), target_key)
-            self.assertEqual(found.get("tag"), "DONE")
+        resp = client.get(f"/api/v1/commissioning/projects/{project_id}/events?once=1")
+        self.assertEqual(resp.status_code, 410)
+        body = resp.json()
+        error = (body.get("detail") or {}).get("error") if isinstance(body.get("detail"), dict) else body.get("error")
+        self.assertEqual((error or {}).get("code"), "SSE_REMOVED")

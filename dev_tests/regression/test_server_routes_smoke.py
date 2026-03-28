@@ -33,8 +33,11 @@ class ServerRoutesSmokeTest(unittest.TestCase):
             calls: dict[str, object] = {"regen_called": False}
             original_regen = pipeline.regenerate_project
 
-            def _regen_stub(*, projectId: str, apex_path: Path) -> dict:  # noqa: ARG001
+            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:  # noqa: ARG001
                 calls["regen_called"] = True
+                if callable(phase_hook):
+                    phase_hook("extracting", 100)
+                    phase_hook("generating", 100)
                 out_dir = Path(td) / "generated" / projectId
                 out_dir.mkdir(parents=True, exist_ok=True)
                 (out_dir / "ProjectA_project_data.json").write_text(
@@ -57,11 +60,11 @@ class ServerRoutesSmokeTest(unittest.TestCase):
                 self.assertIn("projectId", p)
                 self.assertEqual(p["clientId"], c["clientId"])
 
-                with client.stream("GET", f"/api/v1/commissioning/projects/{p['projectId']}/events") as sse:
-                    self.assertEqual(sse.status_code, 200)
-                    self.assertIn("text/event-stream", sse.headers.get("content-type", ""))
-                    first = next(sse.iter_text())
-                    self.assertIn(": connected", first)
+                sse_removed = client.get(f"/api/v1/commissioning/projects/{p['projectId']}/events")
+                self.assertEqual(sse_removed.status_code, 410)
+                body = sse_removed.json()
+                error = (body.get("detail") or {}).get("error") if isinstance(body.get("detail"), dict) else body.get("error")
+                self.assertEqual((error or {}).get("code"), "SSE_REMOVED")
 
                 up = client.post(
                     f"/api/v1/commissioning/projects/{p['projectId']}/upload-and-regenerate",

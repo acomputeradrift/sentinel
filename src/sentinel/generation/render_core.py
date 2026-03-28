@@ -189,15 +189,25 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
             layer_key = _layer_key(layer_index)
             layer_order = int(layer.get("layerOrder", 0) or 0)
             cats = layer.get("buttonCategories", {})
-            for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
+            for cat, label in (
+                ("screenLabels", "Screen Label"),
+                ("screenButtons", "Screen Button"),
+                ("hardButtons", "Hard Button"),
+                ("uiItems", "UI Item"),
+            ):
                 for btn in cats.get(cat, []):
-                    if _is_ui_only_button(btn):
+                    if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
                     items.append((btn, label, 0, 0, layer_key, layer_order))
         return items
-    for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
+    for cat, label in (
+        ("screenLabels", "Screen Label"),
+        ("screenButtons", "Screen Button"),
+        ("hardButtons", "Hard Button"),
+        ("uiItems", "UI Item"),
+    ):
         for btn in page.get("buttonCategories", {}).get(cat, []):
-            if _is_ui_only_button(btn):
+            if cat != "uiItems" and _is_ui_only_button(btn):
                 continue
             items.append((btn, label, 0, 0, _layer_key(0), 0))
     return items
@@ -344,9 +354,14 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
             frame = entry_frame["frame"]
             frame_id = int(frame.get("frameId", 0))
             cats = frame.get("buttonCategories", {})
-            for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
+            for cat, label in (
+                ("screenLabels", "Screen Label"),
+                ("screenButtons", "Screen Button"),
+                ("hardButtons", "Hard Button"),
+                ("uiItems", "UI Item"),
+            ):
                 for btn in cats.get(cat, []):
-                    if _is_ui_only_button(btn):
+                    if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
                     out.append(
                         {
@@ -767,7 +782,7 @@ const VIEWPORT_NAV={json.dumps(app_ui.get("viewportNavigation", {}))};
 const ZOOM_CONTROLS={json.dumps(app_ui.get("zoomControls", {}))};
 const LAYER_PANEL={json.dumps(layer_panel_cfg)};
 const ZOOM_DEFAULT={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("defaultPercent", 100))};
-const ZOOM_MAX={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 200))};
+const ZOOM_MAX={max(300, int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 300)))};
 const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
@@ -789,8 +804,44 @@ let currentDeviceTop=0;
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
+ let techLastAppliedSeq=0;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
+ const _perfNow=()=>((typeof performance!=="undefined"&&performance.now)?performance.now():Date.now());
+ const techPerf={{layoutCalls:0,layoutTotalMs:0,wsCalls:0,wsTotalMs:0,lastConsoleAt:0}};
+ function _emitTechPerf(reason, lastMs) {{
+  const now=_perfNow();
+  if (now-techPerf.lastConsoleAt<5000 && reason!=="boot") return;
+  techPerf.lastConsoleAt=now;
+  const layoutAvgMs=techPerf.layoutCalls ? Number((techPerf.layoutTotalMs/techPerf.layoutCalls).toFixed(2)) : 0;
+  const wsAvgMs=techPerf.wsCalls ? Number((techPerf.wsTotalMs/techPerf.wsCalls).toFixed(2)) : 0;
+  try {{
+   if (typeof console!=="undefined" && console.log) {{
+    console.log("[tech-perf]", {{
+     reason,
+     lastMs:Number((Number(lastMs)||0).toFixed(2)),
+     layoutCalls:techPerf.layoutCalls,
+     layoutTotalMs:Number(techPerf.layoutTotalMs.toFixed(2)),
+     layoutAvgMs,
+     wsCalls:techPerf.wsCalls,
+     wsTotalMs:Number(techPerf.wsTotalMs.toFixed(2)),
+     wsAvgMs
+    }});
+   }}
+  }} catch (_e) {{}}
+ }}
+ function _recordLayoutPerf(ms) {{
+  const n=Number(ms)||0;
+  techPerf.layoutCalls+=1;
+  techPerf.layoutTotalMs+=n;
+  if (n>=50 || techPerf.layoutCalls%20===0) _emitTechPerf("layout", n);
+ }}
+ function _recordWsPerf(ms, kind) {{
+  const n=Number(ms)||0;
+  techPerf.wsCalls+=1;
+  techPerf.wsTotalMs+=n;
+  if (n>=30 || techPerf.wsCalls%25===0) _emitTechPerf(`ws:${{String(kind||"unknown")}}`, n);
+ }}
  function _logTechWs(action, data) {{
   try {{
    if (typeof console !== "undefined" && console.log) {{
@@ -819,61 +870,91 @@ let currentDeviceTop=0;
   }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
   techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
  }}
+ function _sendTechSyncRequest() {{
+  if (!techWs || techWs.readyState !== 1) return;
+  try {{
+   techWs.send(JSON.stringify({{ type:"sync.request", lastAppliedSeq:Number(techLastAppliedSeq||0) }}));
+   _logTechWs("sync.request", Number(techLastAppliedSeq||0));
+  }} catch (_e) {{}}
+ }}
+ function _applyTechPayload(payload) {{
+   const _wsT0=_perfNow();
+   const t = String(payload?.type || "").trim();
+   try {{
+    _logTechWs("recv", t || "(unknown)");
+    if (t === "error") {{
+     const code = payload?.code;
+     const message = payload?.message;
+     const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
+     setPosting(false);
+     setPostStatus(`Error: ${{msg}}`, "error");
+     return;
+    }}
+    if (t === "replay.batch") {{
+     const events = Array.isArray(payload?.events) ? payload.events : [];
+     for (const ev of events) _applyTechPayload(ev);
+     return;
+    }}
+    const seq = Number(payload?.seq || 0);
+    const isSnapshot = t === "testing_snapshot";
+    if (seq > 0) {{
+     if (seq <= techLastAppliedSeq) return;
+     if (!isSnapshot && seq > techLastAppliedSeq + 1) {{
+      _sendTechSyncRequest();
+      return;
+     }}
+     techLastAppliedSeq = seq;
+    }}
+    if (t === "testing_snapshot") {{
+     const results = Array.isArray(payload?.results) ? payload.results : [];
+     let applied = 0;
+     for (const rec of results) {{
+      const targetKey = String(rec?.targetKey || "");
+      if (!targetKey) continue;
+      const outcome = String(rec?.outcome || "").toUpperCase();
+      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      const statusEl = rowStatusByTargetKey.get(targetKey);
+      if (statusEl) {{
+       setRowStatus(statusEl, outcome, at);
+       statusEl.classList.toggle("is-pass", outcome === "PASS");
+       statusEl.classList.toggle("is-fail", outcome === "FAIL");
+       applied += 1;
+      }}
+     }}
+     _logTechWs("snapshot:applied", {{ total: results.length, applied }});
+     return;
+    }}
+    if (t !== "test_result.recorded" && t !== "test_result") return;
+    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
+    if (!targetKey) return;
+    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
+    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+    const statusEl = rowStatusByTargetKey.get(targetKey);
+    if (!statusEl) {{
+     _logTechWs("row-miss", targetKey);
+    }} else {{
+     setRowStatus(statusEl, outcome, at);
+     statusEl.classList.toggle("is-pass", outcome === "PASS");
+     statusEl.classList.toggle("is-fail", outcome === "FAIL");
+    }}
+    if (pendingTargetKey && pendingTargetKey === targetKey) {{
+     _logTechWs("ack-match", targetKey);
+     pendingTargetKey = null;
+     setPosting(false);
+     setPostStatus("Saved", "success");
+    }} else if (pendingTargetKey) {{
+     _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
+    }}
+   }} finally {{
+    _recordWsPerf(_perfNow()-_wsT0, t || "(unknown)");
+   }}
+ }}
  function _handleTechWsMessage(evt) {{
   try {{
    const payload = JSON.parse(String(evt.data || "{{}}"));
-   const t = String(payload?.type || "").trim();
-   _logTechWs("recv", t || "(unknown)");
-   if (t === "error") {{
-    const code = payload?.code;
-    const message = payload?.message;
-    const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-    setPosting(false);
-    setPostStatus(`Error: ${{msg}}`, "error");
-    return;
-   }}
-   if (t === "testing_snapshot") {{
-    const results = Array.isArray(payload?.results) ? payload.results : [];
-    let applied = 0;
-    for (const rec of results) {{
-     const targetKey = String(rec?.targetKey || "");
-     if (!targetKey) continue;
-     const outcome = String(rec?.outcome || "").toUpperCase();
-     const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-     const statusEl = rowStatusByTargetKey.get(targetKey);
-     if (statusEl) {{
-      setRowStatus(statusEl, outcome, at);
-      statusEl.classList.toggle("is-pass", outcome === "PASS");
-      statusEl.classList.toggle("is-fail", outcome === "FAIL");
-      applied += 1;
-     }}
-    }}
-    _logTechWs("snapshot:applied", {{ total: results.length, applied }});
-    return;
-   }}
-   if (t !== "test_result.recorded" && t !== "test_result") return;
-   const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
-   if (!targetKey) return;
-   const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
-   const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-   const statusEl = rowStatusByTargetKey.get(targetKey);
-   if (!statusEl) {{
-    _logTechWs("row-miss", targetKey);
-   }} else {{
-    setRowStatus(statusEl, outcome, at);
-    statusEl.classList.toggle("is-pass", outcome === "PASS");
-    statusEl.classList.toggle("is-fail", outcome === "FAIL");
-   }}
-   if (pendingTargetKey && pendingTargetKey === targetKey) {{
-    _logTechWs("ack-match", targetKey);
-    pendingTargetKey = null;
-    setPosting(false);
-    setPostStatus("Saved", "success");
-   }} else if (pendingTargetKey) {{
-    _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
-   }}
+   _applyTechPayload(payload);
   }} catch (_e) {{
    _logTechWs("recv:parse-failed");
   }}
@@ -886,10 +967,11 @@ let currentDeviceTop=0;
    try {{ techWs.close(); }} catch (_e) {{}}
   }}
   techWsToken = techToken;
+  techLastAppliedSeq = 0;
   _logTechWs("connect", techToken);
   const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
   techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); }};
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); }};
   ws.onclose = () => {{
    techWs = null;
    _logTechWs("close");
@@ -1851,6 +1933,8 @@ function syncHeader() {{
    zoomReset.textContent = `${{activeZoomPercent()}}%`;
   }}
 function applyRtiLayout() {{
+ const _layoutT0=_perfNow();
+ try {{
  const appCanvas=document.getElementById('appCanvas');
  const topControls=document.getElementById('topControls');
  const bottomControls=document.getElementById('bottomControls');
@@ -1926,6 +2010,15 @@ function applyRtiLayout() {{
  currentTotalScale=totalScale;
  currentDeviceLeft=offsetLeft;
  currentDeviceTop=offsetTop;
+ if (_pendingZoomCenter) {{
+  const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
+  const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
+  const cx=Number(_pendingZoomCenter.centerX||0);
+  const cy=Number(_pendingZoomCenter.centerY||0);
+  rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(cx*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
+  rtiCanvas.scrollTop=clamp((currentDeviceTop+(cy*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
+  _pendingZoomCenter=null;
+ }}
  rtiCanvas.classList.toggle('scroll-hover', Boolean(ZOOM_CONTROLS.scrollbars?.showOnHover) && currentZoomPercent > 100);
 
   const pageEl=activePageEl();
@@ -2047,7 +2140,20 @@ function applyRtiLayout() {{
   syncViewportControls();
   applyViewportState();
   if (viewportMode.active) applyViewportPopupLayout();
+ }} finally {{
+  _recordLayoutPerf(_perfNow()-_layoutT0);
  }}
+}}
+let _rtiLayoutScheduled=false;
+let _pendingZoomCenter=null;
+function scheduleRtiLayout(reason) {{
+ if (_rtiLayoutScheduled) return;
+ _rtiLayoutScheduled=true;
+ requestAnimationFrame(() => {{
+  _rtiLayoutScheduled=false;
+  applyRtiLayout();
+ }});
+}}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
 function updateZoom(nextPercent){{
  if (viewportMode.active) {{
@@ -2064,12 +2170,9 @@ function updateZoom(nextPercent){{
  const centerX=(rtiCanvas.scrollLeft+(rtiCanvas.clientWidth/2)-oldLeft)/oldScale;
  const centerY=(rtiCanvas.scrollTop+(rtiCanvas.clientHeight/2)-oldTop)/oldScale;
  currentZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
- applyRtiLayout();
+ _pendingZoomCenter={{centerX, centerY}};
  syncZoomResetText();
- const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
- const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
- rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(centerX*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
- rtiCanvas.scrollTop=clamp((currentDeviceTop+(centerY*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
+ scheduleRtiLayout("zoom");
 }}
 function setActivePage(nextPageIndex) {{
  const target=Number(nextPageIndex);
@@ -2498,9 +2601,14 @@ const APP_UI={app_json};
   }}, Math.min(5000, Math.max(250, techWsReconnectDelayMs)));
   techWsReconnectDelayMs = Math.min(5000, techWsReconnectDelayMs * 2);
  }}
- function _handleTechWsMessage(evt) {{
+ function _sendTechSyncRequest() {{
+  if (!techWs || techWs.readyState !== 1) return;
   try {{
-   const payload = JSON.parse(String(evt.data || "{{}}"));
+   techWs.send(JSON.stringify({{ type:"sync.request", lastAppliedSeq:Number(techLastAppliedSeq||0) }}));
+   _logTechWs("sync.request", Number(techLastAppliedSeq||0));
+  }} catch (_e) {{}}
+ }}
+ function _applyTechPayload(payload) {{
    const t = String(payload?.type || "").trim();
    _logTechWs("recv", t || "(unknown)");
    if (t === "error") {{
@@ -2510,6 +2618,21 @@ const APP_UI={app_json};
     setPosting(false);
     setPostStatus(`Error: ${{msg}}`, "error");
     return;
+   }}
+   if (t === "replay.batch") {{
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    for (const ev of events) _applyTechPayload(ev);
+    return;
+   }}
+   const seq = Number(payload?.seq || 0);
+   const isSnapshot = t === "testing_snapshot";
+   if (seq > 0) {{
+    if (seq <= techLastAppliedSeq) return;
+    if (!isSnapshot && seq > techLastAppliedSeq + 1) {{
+      _sendTechSyncRequest();
+      return;
+    }}
+    techLastAppliedSeq = seq;
    }}
    if (t === "testing_snapshot") {{
     const results = Array.isArray(payload?.results) ? payload.results : [];
@@ -2551,6 +2674,11 @@ const APP_UI={app_json};
    }} else if (pendingTargetKey) {{
     _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
    }}
+ }}
+ function _handleTechWsMessage(evt) {{
+  try {{
+   const payload = JSON.parse(String(evt.data || "{{}}"));
+   _applyTechPayload(payload);
   }} catch (_e) {{}}
  }}
  function _connectTechWs() {{
@@ -2561,10 +2689,11 @@ const APP_UI={app_json};
    try {{ techWs.close(); }} catch (_e) {{}}
   }}
   techWsToken = techToken;
+  techLastAppliedSeq = 0;
   _logTechWs("connect", techToken);
   const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
   techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); }};
+  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); }};
   ws.onclose = () => {{
    techWs = null;
    _logTechWs("close");

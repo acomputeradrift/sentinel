@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 import sys
@@ -8,6 +9,9 @@ import sys
 
 class PipelineNotImplementedError(RuntimeError):
     pass
+
+
+_PROGRESS_RE = re.compile(r"^SENTINEL_PROGRESS\s+([A-Z_]+)\s+(\d{1,3})\s*$")
 
 
 def _python_exe() -> str:
@@ -44,7 +48,53 @@ def save_upload(*, projectId: str, uploadId: str, filename: str, content: bytes)
     return path
 
 
-def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
+def _call_phase_hook(phase_hook, phase: str, percent: int) -> None:
+    if not callable(phase_hook):
+        return
+    pct = int(percent or 0)
+    if pct < 0:
+        pct = 0
+    if pct > 100:
+        pct = 100
+    try:
+        phase_hook(str(phase or ""), pct)
+        return
+    except TypeError:
+        pass
+    phase_hook(str(phase or ""))
+
+
+def _run_subprocess_with_progress(*, args: list[str], cwd: Path, env: dict[str, str], phase_hook=None) -> tuple[str, str]:
+    proc = subprocess.Popen(
+        args,
+        cwd=str(cwd),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    stdout_chunks: list[str] = []
+    stderr_text = ""
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+    for line in proc.stdout:
+        stdout_chunks.append(line)
+        m = _PROGRESS_RE.match(str(line or "").strip())
+        if not m:
+            continue
+        phase = str(m.group(1) or "").strip().lower()
+        percent = int(m.group(2) or 0)
+        _call_phase_hook(phase_hook, phase, percent)
+    stderr_text = proc.stderr.read()
+    rc = proc.wait()
+    stdout_text = "".join(stdout_chunks)
+    if rc != 0:
+        raise subprocess.CalledProcessError(rc, args, output=stdout_text, stderr=stderr_text)
+    return stdout_text, stderr_text
+
+
+def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:
     root = _repo_root()
     extract = root / "src" / "sentinel" / "extraction" / "extract_project_data.py"
     generate = root / "src" / "sentinel" / "generation" / "generate_html.py"
@@ -54,9 +104,11 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
     out_dir = _project_out_dir(projectId=projectId)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    _call_phase_hook(phase_hook, "extracting", 0)
+
     try:
-        subprocess.run(
-            [
+        _run_subprocess_with_progress(
+            args=[
                 _python_exe(),
                 str(extract),
                 "--apex",
@@ -66,11 +118,9 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
                 "--out-dir",
                 str(out_dir),
             ],
-            check=True,
-            cwd=str(root),
-            env={**os.environ, "PYTHONPATH": str(root / "src")},
-            capture_output=True,
-            text=True,
+            cwd=root,
+            env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
+            phase_hook=phase_hook,
         )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Extraction failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
@@ -80,9 +130,11 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
     if project_data is None:
         raise RuntimeError("Extraction did not produce *_project_data.json")
 
+    _call_phase_hook(phase_hook, "generating", 0)
+
     try:
-        subprocess.run(
-            [
+        _run_subprocess_with_progress(
+            args=[
                 _python_exe(),
                 str(generate),
                 "--project-data",
@@ -92,11 +144,9 @@ def regenerate_project(*, projectId: str, apex_path: Path) -> dict:
                 "--out-dir",
                 str(out_dir),
             ],
-            check=True,
-            cwd=str(root),
-            env={**os.environ, "PYTHONPATH": str(root / "src")},
-            capture_output=True,
-            text=True,
+            cwd=root,
+            env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
+            phase_hook=phase_hook,
         )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Generation failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e

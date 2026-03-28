@@ -77,6 +77,15 @@ Example expected behavior:
 - The AI must verify the existing test framework before writing tests.
 - No implementation is allowed without first creating tests.
 - HTML UI testing must use Playwright runtime UI tests.
+- Before deploy, the AI must pass an Intent Check Gate and answer this exact question:
+  - `Did this solution fix the exact user-visible problem Jamie reported?`
+- The AI must record evidence in this exact format:
+  - `Original problem: ...`
+  - `Test run that directly reproduces it: ...`
+  - `Observed before: ...`
+  - `Observed after: ...`
+  - `Pass/Fail: ...`
+- Deployment is blocked unless the Intent Check Gate result is explicitly `Pass`.
 
 ---
 

@@ -300,11 +300,11 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             self.assertGreater(vw_after2, vw_after)
             self.assertEqual(page.locator(".zoom-reset").inner_text().strip(), "120%")
 
-            # Zoom caps at 200% and keeps the label in sync.
+            # Zoom caps at 300% and keeps the label in sync.
             for _ in range(20):
                 page.locator(".zoom-inc").click()
             zoom_txt = page.locator(".zoom-reset").inner_text().strip()
-            self.assertEqual(zoom_txt, "200%")
+            self.assertEqual(zoom_txt, "300%")
 
             # When zoomed in, the popup scroller must allow panning (like RTI canvas zoom).
             scrollable = page.evaluate(
@@ -2885,8 +2885,8 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
                 self.assertLessEqual(abs(m0["dx"]), 1, m0)
                 self.assertLessEqual(abs(m0["dy"]), 1, m0)
 
-                # Continuous zoom contract 100% -> 200%.
-                for _i in range(10):
+                # Continuous zoom contract 100% -> 300%.
+                for _i in range(20):
                     page.locator(".zoom-inc").click()
                     m = measure()
                     self.assertIsNotNone(m)

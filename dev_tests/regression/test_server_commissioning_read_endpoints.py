@@ -36,7 +36,8 @@ class CommissioningReadEndpointsTest(unittest.TestCase):
         dup = client.post("/api/v1/commissioning/clients", json={"name": "Client A"})
         self.assertEqual(dup.status_code, 409)
         body = dup.json()
-        self.assertEqual(((body.get("detail") or {}).get("error") or {}).get("code"), "CLIENT_EXISTS")
+        error = (body.get("detail") or {}).get("error") if isinstance(body.get("detail"), dict) else body.get("error")
+        self.assertEqual((error or {}).get("code"), "CLIENT_EXISTS")
 
     def test_list_clients_and_projects(self):
         TestClient = _require_fastapi()

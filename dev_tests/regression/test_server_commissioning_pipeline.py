@@ -27,6 +27,25 @@ def _write_test_apex(path: Path) -> None:
 
 
 class CommissioningPipelineTest(unittest.TestCase):
+    def test_upload_and_regenerate_contract_includes_phase_event_type(self):
+        api_file = ROOT / "src" / "sentinel" / "server" / "api" / "commissioning.py"
+        text = api_file.read_text(encoding="utf-8")
+        self.assertIn('"type": "generation_phase"', text)
+        self.assertIn('"percent": percent', text)
+        self.assertIn("phase_hook=", text)
+        self.assertIn('status="READY"', text)
+
+    def test_commissioning_ui_handles_generation_phase_status(self):
+        ui_file = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "commissioning.js"
+        text = ui_file.read_text(encoding="utf-8")
+        self.assertIn("generation_phase", text)
+        self.assertIn("Extracting...", text)
+        self.assertIn("Generating...", text)
+        self.assertIn("setProgress($(\"uploadProgress\"), pct)", text)
+        self.assertIn("setStatus($(\"uploadProgressLabel\"), \"Uploading...\")", text)
+        index_file = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "index.html"
+        self.assertIn(">Load File<", index_file.read_text(encoding="utf-8"))
+
     def test_upload_then_regenerate_writes_generated_html(self):
         TestClient = _require_fastapi()
 
@@ -121,3 +140,63 @@ class CommissioningPipelineTest(unittest.TestCase):
             self.assertIsNotNone(snap2)
             assert snap2 is not None
             self.assertEqual(snap2.uploadId, upload_1)
+
+    def test_upload_and_regenerate_publishes_phase_events_before_ready(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.app.main import create_app
+            from sentinel.server.api import commissioning as commissioning_api
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            project_id = p["projectId"]
+
+            apex_path = Path(td) / "sample.apex"
+            _write_test_apex(apex_path)
+
+            published: list[dict] = []
+
+            class _FakeBroker:
+                def publish(self, *, projectId: str, event: dict) -> None:
+                    published.append({"projectId": projectId, "event": dict(event or {})})
+                def publish_transient(self, *, projectId: str, event: dict) -> None:
+                    published.append({"projectId": projectId, "event": dict(event or {})})
+
+            def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None):
+                if callable(phase_hook):
+                    phase_hook("extracting", 10)
+                    phase_hook("extracting", 100)
+                    phase_hook("generating", 50)
+                    phase_hook("generating", 100)
+                return {"projectId": projectId, "outDir": str(Path(td) / "generated" / projectId), "projectData": "x.json"}
+
+            with apex_path.open("rb") as f:
+                with mock.patch.object(commissioning_api, "_broker", return_value=_FakeBroker()):
+                    with mock.patch.object(commissioning_api.pipeline, "regenerate_project", side_effect=_fake_regenerate):
+                        resp = client.post(
+                            f"/api/v1/commissioning/projects/{project_id}/upload-and-regenerate",
+                            files={"apex": ("sample.apex", f, "application/octet-stream")},
+                        )
+
+            self.assertEqual(resp.status_code, 200)
+            statuses = [
+                str((row.get("event") or {}).get("status") or "")
+                for row in published
+                if str((row.get("event") or {}).get("type") or "") in {"generation_phase", "generation"}
+            ]
+            self.assertGreaterEqual(len(statuses), 5)
+            self.assertEqual(statuses[:4], ["EXTRACTING", "EXTRACTING", "GENERATING", "GENERATING"])
+            self.assertEqual(statuses[-1], "READY")
+            percents = [
+                (row.get("event") or {}).get("percent")
+                for row in published
+                if str((row.get("event") or {}).get("type") or "") == "generation_phase"
+            ]
+            self.assertEqual(percents, [10, 100, 50, 100, 100])

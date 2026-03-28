@@ -14,6 +14,56 @@ function wsUrl(path) {
   return `${proto}://${host}${path}`;
 }
 
+function ensureWsConsoleLogger() {
+  if (window.__sentinelWsLog) return window.__sentinelWsLog;
+  window.__sentinelWsLog = function wsLog(code, label, scope, detail) {
+    try {
+      if (typeof console === "undefined" || !console.log) return;
+      const prefix = `${String(code || "WS-INFO-000")} ${String(label || "EVENT")} [${String(scope || "ws")}]`;
+      console.log(prefix, detail == null ? "" : detail);
+    } catch (_e) {}
+  };
+  return window.__sentinelWsLog;
+}
+ensureWsConsoleLogger();
+window.__sentinelCommissioningHydrating = true;
+
+const LAST_CLIENT_KEY = "sentinel.commissioning.lastClientId";
+const LAST_PROJECT_BY_CLIENT_KEY = "sentinel.commissioning.lastProjectByClient";
+
+function _safeStorageGet(key) {
+  try {
+    if (!window || !window.localStorage) return "";
+    return String(window.localStorage.getItem(String(key || "")) || "");
+  } catch (_e) {
+    return "";
+  }
+}
+
+function _safeStorageSet(key, value) {
+  try {
+    if (!window || !window.localStorage) return;
+    window.localStorage.setItem(String(key || ""), String(value == null ? "" : value));
+  } catch (_e) {}
+}
+
+function _safeStorageGetJsonObject(key) {
+  const raw = _safeStorageGet(key).trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_e) {
+    return {};
+  }
+}
+
+function _safeStorageSetJsonObject(key, obj) {
+  try {
+    _safeStorageSet(key, JSON.stringify(obj && typeof obj === "object" ? obj : {}));
+  } catch (_e) {}
+}
+
 function setActiveTab(tabName) {
   const tabs = ["manage", "commission", "diagnostics"];
   for (const t of tabs) {
@@ -74,8 +124,17 @@ function updateManageVisibility() {
 }
 
 async function refreshClients() {
+  const prevClientId = String($("clientSelect").value || "").trim();
+  const rememberedClientId = _safeStorageGet(LAST_CLIENT_KEY).trim();
   const clients = await jsonFetch(api("/commissioning/clients"));
   setSelectOptions($("clientSelect"), clients, (c) => c.clientId, (c) => c.name);
+  const clientIds = new Set((Array.isArray(clients) ? clients : []).map((c) => String(c?.clientId || "").trim()).filter(Boolean));
+  const nextClientId = clientIds.has(rememberedClientId)
+    ? rememberedClientId
+    : clientIds.has(prevClientId)
+      ? prevClientId
+      : "";
+  if (nextClientId) $("clientSelect").value = nextClientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   updateManageVisibility();
   return clients;
@@ -83,14 +142,30 @@ async function refreshClients() {
 
 async function refreshProjects() {
   const clientId = $("clientSelect").value;
+  const requestSeq = ++state.refreshProjectsRequestSeq;
   if (!clientId) {
+    if (requestSeq !== state.refreshProjectsRequestSeq) return [];
     setSelectOptions($("projectSelect"), [], () => "", () => "");
     $("projectSelect").dispatchEvent(new Event("change"));
     updateManageVisibility();
     return [];
   }
+  const prevSelectedProjectId = String($("projectSelect").value || "").trim();
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
+  if (requestSeq !== state.refreshProjectsRequestSeq) return projects;
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
+  const liveSelectedProjectId = String($("projectSelect").value || "").trim();
+  const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
+  const rememberedProjectId = String((persistedByClient && persistedByClient[clientId]) || state.selectedProjectIdByClient[clientId] || "").trim();
+  const projectIds = new Set((Array.isArray(projects) ? projects : []).map((p) => String(p?.projectId || "").trim()).filter(Boolean));
+  const nextProjectId = projectIds.has(rememberedProjectId)
+    ? rememberedProjectId
+    : projectIds.has(liveSelectedProjectId)
+      ? liveSelectedProjectId
+      : projectIds.has(prevSelectedProjectId)
+      ? prevSelectedProjectId
+      : "";
+  if (nextProjectId) $("projectSelect").value = nextProjectId;
   $("projectSelect").dispatchEvent(new Event("change"));
   updateManageVisibility();
   return projects;
@@ -105,6 +180,9 @@ const state = {
   generationReadyByProject: {},
   activeUploadByProject: {},
   techLinksByProject: {},
+  selectedProjectIdByClient: {},
+  uploadInFlightByProject: {},
+  refreshProjectsRequestSeq: 0,
 };
 
 function setProgressHidden(el, hidden) {
@@ -277,6 +355,32 @@ function _baseSimilarity(a, b) {
   return inter / denom;
 }
 
+function _setGenerationPhaseUi(projectId, phaseRaw, percentRaw) {
+  const pid = String(projectId || "").trim();
+  if (!pid || pid !== String(currentProjectId() || "").trim()) return;
+  const phase = String(phaseRaw || "").trim().toLowerCase();
+  if (!state.uploadInFlightByProject[pid]) return;
+  const pct = Number(percentRaw);
+  const hasPct = Number.isFinite(pct);
+
+  if (phase === "extracting") {
+    setProgressHidden($("uploadProgressRow"), false);
+    if (hasPct) setProgress($("uploadProgress"), pct);
+    setStatus($("uploadProgressLabel"), "Extracting...");
+    return;
+  }
+  if (phase === "generating") {
+    setProgressHidden($("uploadProgressRow"), false);
+    if (hasPct) setProgress($("uploadProgress"), pct);
+    setStatus($("uploadProgressLabel"), "Generating...");
+    return;
+  }
+  if (phase === "ready") {
+    setProgressHidden($("uploadProgressRow"), false);
+    setProgress($("uploadProgress"), 100);
+  }
+}
+
 async function createClient() {
   const name = $("newClientName").value.trim();
   if (!name) return;
@@ -360,6 +464,7 @@ async function uploadAndRegenerate() {
 
   try {
     state.generationReadyByProject[projectId] = false;
+    state.uploadInFlightByProject[projectId] = true;
     updateTechLinkEnabled();
 
     // Preferred server endpoint: upload + extract + generate in one step.
@@ -367,22 +472,31 @@ async function uploadAndRegenerate() {
     const combinedUrl = api(`/commissioning/projects/${encodeURIComponent(projectId)}/upload-and-regenerate`);
     let combined;
     try {
+      let uploadPhaseComplete = false;
       combined = await _xhrPostFormData(combinedUrl, fd, (loaded, total) => {
         const pct = (loaded / total) * 100;
-        setProgress($("uploadProgress"), pct);
-        setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
+        if (!uploadPhaseComplete && pct >= 100) {
+          uploadPhaseComplete = true;
+          setStatus($("uploadProgressLabel"), "Extracting...");
+          setProgress($("uploadProgress"), 0);
+          return;
+        }
+        if (!uploadPhaseComplete) {
+          setProgress($("uploadProgress"), pct);
+          setStatus($("uploadProgressLabel"), "Uploading...");
+        }
       });
     } catch (e) {
       // Back-compat fallback: upload then regenerate.
-      setStatus($("uploadProgressLabel"), "Uploading (fallback)...");
+      setStatus($("uploadProgressLabel"), "Uploading...");
       const upload = await _xhrPostFormData(api(`/commissioning/projects/${encodeURIComponent(projectId)}/uploads`), fd, (loaded, total) => {
         const pct = (loaded / total) * 100;
         setProgress($("uploadProgress"), pct);
-        setStatus($("uploadProgressLabel"), `${Math.round(pct)}%`);
+        setStatus($("uploadProgressLabel"), "Uploading...");
       });
       state.lastUploadIdByProject[projectId] = upload.uploadId;
-      setProgress($("uploadProgress"), 100);
-      setStatus($("uploadProgressLabel"), "Upload done");
+      setProgress($("uploadProgress"), 0);
+      setStatus($("uploadProgressLabel"), "Extracting...");
       const regenOut = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/regenerate`), {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -399,7 +513,6 @@ async function uploadAndRegenerate() {
     const nextName = String((uploadObj?.originalFilename || file.name) || "");
 
     setProgress($("uploadProgress"), 100);
-    setStatus($("uploadProgressLabel"), "Done");
     let msg = uploadId ? `Uploaded: ${uploadId} (${nextName})` : `Uploaded: ${nextName}`;
     if (prevName && nextName) {
       const sim = _baseSimilarity(prevName, nextName);
@@ -411,26 +524,26 @@ async function uploadAndRegenerate() {
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
   } finally {
+    state.uploadInFlightByProject[projectId] = false;
     setProgressHidden($("uploadProgressRow"), true);
     setStatus($("uploadProgressLabel"), "");
     uploadBtn.disabled = false;
   }
 }
 
-let manageWs = null;
-let manageWsProjectId = "";
-let manageWsSeq = 0;
-
 function stopManageWs() {
-  if (!manageWs) {
-    manageWsProjectId = "";
-    return;
-  }
-  try {
-    manageWs.close();
-  } catch (_e) {}
-  manageWs = null;
-  manageWsProjectId = "";
+  const manager = window.__sentinelProjectWsManager;
+  if (!manager || typeof manager.setConsumer !== "function") return;
+  manager.setConsumer("manage", {
+    active: false,
+    onMessage: noopManageSocketConsumer,
+  });
+}
+
+let manageStoreUnsubscribe = null;
+
+function getSharedProjectStore() {
+  return window.__sentinelProjectStore || null;
 }
 
 function applyActiveUpload(projectId, activeUpload) {
@@ -449,15 +562,38 @@ function applyActiveUpload(projectId, activeUpload) {
   if (pid === currentProjectId()) setLastGeneratedLabel();
 }
 
-function handleManageWsPayload(projectId, payload) {
-  const t = String(payload?.type || "").trim();
-  if (!t || t === "keepalive") return;
-  if (t === "commissioning_snapshot" || t === "generation") {
-    const activeUpload = payload?.activeUpload || null;
-    applyActiveUpload(projectId, activeUpload);
-    state.generationReadyByProject[projectId] = !!activeUpload;
-    updateTechLinkEnabled();
+function syncManageFromStore(projectId) {
+  const pid = String(projectId || currentProjectId() || "").trim();
+  if (!pid) return;
+  const store = getSharedProjectStore();
+  if (!store || typeof store.getState !== "function") return;
+  const root = store.getState();
+  const projects = root && root.projects && typeof root.projects === "object" ? root.projects : {};
+  const slice = projects[pid] || null;
+  const activeUpload = slice?.activeUpload || null;
+  applyActiveUpload(pid, activeUpload);
+  state.generationReadyByProject[pid] = !!activeUpload;
+  updateTechLinkEnabled();
+}
+
+function ensureManageStoreSubscription() {
+  if (manageStoreUnsubscribe) return;
+  const store = getSharedProjectStore();
+  if (!store || typeof store.subscribe !== "function") {
+    setTimeout(ensureManageStoreSubscription, 0);
+    return;
   }
+  manageStoreUnsubscribe = store.subscribe(() => {
+    syncManageFromStore(currentProjectId());
+  });
+  syncManageFromStore(currentProjectId());
+}
+
+function noopManageSocketConsumer(payload) {
+  const t = String(payload?.type || "").trim();
+  if (t !== "generation_phase") return;
+  const projectId = String(payload?.projectId || currentProjectId() || "").trim();
+  _setGenerationPhaseUi(projectId, payload?.status, payload?.percent);
 }
 
 function startManageWs(projectId) {
@@ -466,31 +602,21 @@ function startManageWs(projectId) {
     stopManageWs();
     return;
   }
-  if (manageWs && manageWsProjectId === pid) return;
-  stopManageWs();
+  const manager = window.__sentinelProjectWsManager;
+  if (!manager || typeof manager.setConsumer !== "function") {
+    setTimeout(() => startManageWs(pid), 0);
+    return;
+  }
+  manager.setConsumer("manage", {
+    active: true,
+    onMessage: noopManageSocketConsumer,
+  });
+}
 
-  const seq = ++manageWsSeq;
-  const url = wsUrl(api(`/commissioning/projects/${encodeURIComponent(pid)}/ws`));
-  manageWsProjectId = pid;
-  manageWs = new WebSocket(url);
-  manageWs.onmessage = (evt) => {
-    if (seq !== manageWsSeq) return;
-    try {
-      const payload = JSON.parse(String(evt.data || "{}"));
-      handleManageWsPayload(pid, payload);
-    } catch (_e) {}
-  };
-  manageWs.onclose = () => {
-    if (seq !== manageWsSeq) return;
-    manageWs = null;
-    manageWsProjectId = "";
-  };
-  manageWs.onerror = () => {
-    if (seq !== manageWsSeq) return;
-    try {
-      if (manageWs) manageWs.close();
-    } catch (_e) {}
-  };
+function setActiveProjectWsContext(projectId) {
+  const manager = window.__sentinelProjectWsManager;
+  if (!manager || typeof manager.setActiveProject !== "function") return;
+  manager.setActiveProject(String(projectId || "").trim());
 }
 
 async function createTechLink() {
@@ -514,6 +640,7 @@ async function createTechLink() {
 }
 
 async function run() {
+  window.__sentinelCommissioningHydrating = true;
   const clientStatusEl = document.getElementById("clientStatus");
   const projectStatusEl = document.getElementById("projectStatus");
 
@@ -527,8 +654,12 @@ async function run() {
     }
   };
 
+  ensureManageStoreSubscription();
+
   $("clientSelect").addEventListener("change", () =>
     safe(async () => {
+      const clientId = String($("clientSelect").value || "").trim();
+      _safeStorageSet(LAST_CLIENT_KEY, clientId);
       await refreshProjects();
       setPanelContext();
       setLastGeneratedLabel();
@@ -538,6 +669,22 @@ async function run() {
   $("projectSelect").addEventListener("change", () =>
     safe(async () => {
       const projectId = currentProjectId();
+      const clientId = String($("clientSelect").value || "").trim();
+      if (clientId) {
+        state.selectedProjectIdByClient[clientId] = projectId;
+        const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
+        persistedByClient[clientId] = String(projectId || "");
+        _safeStorageSetJsonObject(LAST_PROJECT_BY_CLIENT_KEY, persistedByClient);
+      }
+      if (window.__sentinelCommissioningHydrating) {
+        setPanelContext();
+        setLastGeneratedLabel();
+        updateManageVisibility();
+        updateTechLinkEnabled();
+        renderTechLinks();
+        return;
+      }
+      setActiveProjectWsContext(projectId);
       if (projectId) state.generationReadyByProject[projectId] = false;
       updateTechLinkEnabled();
       renderTechLinks();
@@ -545,6 +692,7 @@ async function run() {
       setLastGeneratedLabel();
       updateManageVisibility();
       startManageWs(projectId);
+      syncManageFromStore(projectId);
       await loadTechLinks();
     }, projectStatusEl)
   );
@@ -563,9 +711,15 @@ async function run() {
   updateTechLinkEnabled();
   renderTechLinks();
   setPanelContext();
+  setActiveProjectWsContext(currentProjectId());
   startManageWs(currentProjectId());
+  syncManageFromStore(currentProjectId());
   setLastGeneratedLabel();
   updateManageVisibility();
+  window.__sentinelCommissioningHydrating = false;
+  try {
+    window.dispatchEvent(new Event("sentinel:commissioning-hydrated"));
+  } catch (_e) {}
   setActiveTab("manage");
 }
 
