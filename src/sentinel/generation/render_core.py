@@ -782,7 +782,7 @@ const VIEWPORT_NAV={json.dumps(app_ui.get("viewportNavigation", {}))};
 const ZOOM_CONTROLS={json.dumps(app_ui.get("zoomControls", {}))};
 const LAYER_PANEL={json.dumps(layer_panel_cfg)};
 const ZOOM_DEFAULT={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("defaultPercent", 100))};
-const ZOOM_MAX={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 200))};
+const ZOOM_MAX={max(300, int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 300)))};
 const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
@@ -2010,6 +2010,15 @@ function applyRtiLayout() {{
  currentTotalScale=totalScale;
  currentDeviceLeft=offsetLeft;
  currentDeviceTop=offsetTop;
+ if (_pendingZoomCenter) {{
+  const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
+  const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
+  const cx=Number(_pendingZoomCenter.centerX||0);
+  const cy=Number(_pendingZoomCenter.centerY||0);
+  rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(cx*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
+  rtiCanvas.scrollTop=clamp((currentDeviceTop+(cy*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
+  _pendingZoomCenter=null;
+ }}
  rtiCanvas.classList.toggle('scroll-hover', Boolean(ZOOM_CONTROLS.scrollbars?.showOnHover) && currentZoomPercent > 100);
 
   const pageEl=activePageEl();
@@ -2135,6 +2144,16 @@ function applyRtiLayout() {{
   _recordLayoutPerf(_perfNow()-_layoutT0);
  }}
 }}
+let _rtiLayoutScheduled=false;
+let _pendingZoomCenter=null;
+function scheduleRtiLayout(reason) {{
+ if (_rtiLayoutScheduled) return;
+ _rtiLayoutScheduled=true;
+ requestAnimationFrame(() => {{
+  _rtiLayoutScheduled=false;
+  applyRtiLayout();
+ }});
+}}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
 function updateZoom(nextPercent){{
  if (viewportMode.active) {{
@@ -2151,12 +2170,9 @@ function updateZoom(nextPercent){{
  const centerX=(rtiCanvas.scrollLeft+(rtiCanvas.clientWidth/2)-oldLeft)/oldScale;
  const centerY=(rtiCanvas.scrollTop+(rtiCanvas.clientHeight/2)-oldTop)/oldScale;
  currentZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
- applyRtiLayout();
+ _pendingZoomCenter={{centerX, centerY}};
  syncZoomResetText();
- const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
- const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
- rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(centerX*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
- rtiCanvas.scrollTop=clamp((currentDeviceTop+(centerY*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
+ scheduleRtiLayout("zoom");
 }}
 function setActivePage(nextPageIndex) {{
  const target=Number(nextPageIndex);

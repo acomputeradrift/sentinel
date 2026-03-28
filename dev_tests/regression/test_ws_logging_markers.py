@@ -70,7 +70,7 @@ def _minimal_app_ui() -> dict:
         "uiHierarchy": {"appCanvas": ["appUIControls", "rtiCanvas"], "rtiCanvas": ["rtiDeviceCanvas"], "rtiDeviceUI": ["projectButtons", "projectViewports"], "appUIControls": ["header", "appNavigation", "viewportNavigation"], "rtiDeviceCanvas": ["rtiDeviceUI"]},
         "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
         "appNavigation": {"enabled": True, "placement": "canvas-adjacent", "showPageControls": True, "pageLinks": {"enabled": True, "showLinkAffordanceOnHover": True, "iconPlacement": "right-center-inside-button", "iconStyle": "inline-svg", "iconSize": 16, "iconPaddingRight": 8, "hoverActivationArea": {"width": 28, "fullButtonHeight": True}}},
-        "zoomControls": {"enabled": True, "placement": {"anchor": "left-control-space", "alignTopToRtiCanvas": True, "centerHorizontallyInControlSpace": True}, "buttons": {"decrease": "-", "reset": "100%", "increase": "+"}, "zoom": {"defaultPercent": 100, "maxPercent": 200, "stepPercent": 10}, "scrollbars": {"showOnHover": True, "thickness": 10}},
+        "zoomControls": {"enabled": True, "placement": {"anchor": "left-control-space", "alignTopToRtiCanvas": True, "centerHorizontallyInControlSpace": True}, "buttons": {"decrease": "-", "reset": "100%", "increase": "+"}, "zoom": {"defaultPercent": 100, "maxPercent": 300, "stepPercent": 10}, "scrollbars": {"showOnHover": True, "thickness": 10}},
         "viewportNavigation": {"enabled": False, "placement": {"previous": "canvas-left-center", "next": "canvas-right-center", "frameIndicator": "canvas-bottom-center", "edgeOffset": 36}, "indicatorStyle": "dots", "labels": {"previous": "Prev", "next": "Next"}, "behavior": {"wrapFrames": False}},
         "testingPopup": {"enabled": True, "titleTemplate": "{category} Test - {identity}", "includeButtonTypeInTitle": True, "showIdentity": True, "variableLabelTemplate": "Variable - {variableType}", "targetGroupStyle": "single-group-per-target", "showOnlyTrueTargets": True, "failNoteRequiredOnFail": True},
         "buttonPresentation": {"useProjectFontSize": True, "fallbackFontSize": 10, "preserveRtiCoordinates": True, "scaleRtiDerivedFontSizes": True},
@@ -86,6 +86,8 @@ class WsLoggingMarkerTest(unittest.TestCase):
         self.assertIn("[tech-perf]", html)
         self.assertIn("layoutAvgMs", html)
         self.assertIn("wsAvgMs", html)
+        self.assertIn("const ZOOM_MAX=300;", html)
+        self.assertIn("scheduleRtiLayout", html)
         self.assertIn("blocked:isPosting", html)
         self.assertIn("blocked:no-target", html)
         self.assertIn("send-abort:not-open", html)
