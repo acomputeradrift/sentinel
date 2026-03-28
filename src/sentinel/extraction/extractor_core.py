@@ -22,6 +22,22 @@ class ExtractContext:
     project_structure_path: Path
 
 
+def _map_staged_progress(stage: str, percent: int) -> int:
+    s = str(stage or "").strip().lower()
+    p = int(percent or 0)
+    if p < 0:
+        p = 0
+    if p > 100:
+        p = 100
+    if s == "setup":
+        return int((15 * p) / 100)
+    if s == "work":
+        return 15 + int((77 * p) / 100)
+    if s == "finalize":
+        return 92 + int((8 * p) / 100)
+    return p
+
+
 def _has_dimensions(width: Any, height: Any) -> bool:
     return int(width or 0) > 0 and int(height or 0) > 0
 
@@ -1035,12 +1051,55 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     con.row_factory = sqlite3.Row
     cur = con.cursor()
 
+    progress_enabled = callable(progress_hook)
+    last_percent_reported = -1
+    total_work_units = 0
+    completed_work_units = 0
+    setup_steps_total = 8
+    setup_steps_done = 0
+
+    def _emit_stage(stage: str, stage_percent: int, force: bool = False) -> None:
+        nonlocal last_percent_reported
+        if not progress_enabled:
+            return
+        mapped = _map_staged_progress(stage, stage_percent)
+        if force or mapped != last_percent_reported:
+            last_percent_reported = mapped
+            try:
+                progress_hook(mapped)
+            except Exception:
+                pass
+
+    def _mark_setup() -> None:
+        nonlocal setup_steps_done
+        if not progress_enabled:
+            return
+        setup_steps_done += 1
+        pct = int((setup_steps_done * 100) / max(setup_steps_total, 1))
+        if pct > 100:
+            pct = 100
+        _emit_stage("setup", pct)
+
+    def _emit_work(force: bool = False) -> None:
+        if total_work_units <= 0:
+            pct = 100
+        else:
+            pct = int((completed_work_units * 100) / total_work_units)
+        if pct < 0:
+            pct = 0
+        if pct > 100:
+            pct = 100
+        _emit_stage("work", pct, force=force)
+
+    _emit_stage("setup", 0, force=True)
+
     tag_name_by_id = _fetch_map(cur, "select ButtonTagId, ButtonTagName from ButtonTagNames")
     page_name_by_id = _fetch_map(cur, "select PageNameId, PageName from PageNames")
     room_name_by_id = _fetch_map(cur, "select RoomId, Name from Rooms")
     device_columns = _table_columns(cur, "Devices")
     driver_data_columns = _table_columns(cur, "DriverData") if "DriverData" in {row[0] for row in cur.execute("select name from sqlite_master where type='table'").fetchall()} else set()
     driver_config_columns = _table_columns(cur, "DriverConfig") if "DriverConfig" in {row[0] for row in cur.execute("select name from sqlite_master where type='table'").fetchall()} else set()
+    _mark_setup()
 
     cur.execute("select DeviceId, DisplayName, Name from Devices")
     driver_name_by_device_id: dict[int, str] = {}
@@ -1051,6 +1110,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     variables_by_tag: dict[int, list[sqlite3.Row]] = defaultdict(list)
     for row in cur.fetchall():
         variables_by_tag[int(row["ButtonTagId"] or -1)].append(row)
+    _mark_setup()
 
     cur.execute("select ButtonId from ButtonTextTags")
     button_text_tag_ids = {int(r[0]) for r in cur.fetchall()}
@@ -1086,6 +1146,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     for row in cur.fetchall():
         macro_flag_summary_rows.append((int(row["MacroId"] or 0), row["FlagIndex"], row["FlagType"]))
     macro_flag_summaries_by_macro_id = _build_macro_flag_summary_cache(macro_flag_summary_rows)
+    _mark_setup()
 
     cur.execute("select PageId, PageName, RoomId from PagesView")
     page_name_by_page_id: dict[int, str] = {}
@@ -1146,6 +1207,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             pair = (select_source_id, select_source_room_id)
             if select_source_id > 0 and pair not in select_sources_by_macro[macro_id]:
                 select_sources_by_macro[macro_id].append(pair)
+    _mark_setup()
 
     cur.execute(
         """
@@ -1199,6 +1261,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             ):
                 if target not in room_event_targets_by_room[room_id]:
                     room_event_targets_by_room[room_id].append(target)
+    _mark_setup()
 
     cur.execute("select PageLinkId, DeviceId, ButtonTagId, LinkType, PageId from PageLinks where ButtonTagId is not null")
     page_links_by_device_and_tag: dict[tuple[int, int], sqlite3.Row] = {}
@@ -1228,6 +1291,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
         if device_id <= 0 or device_id in first_page_target_by_device_id:
             continue
         first_page_target_by_device_id[device_id] = (int(row["PageId"] or 0), str(row["PageName"] or "").strip() or None)
+    _mark_setup()
 
     cur.execute("select * from Events where Enabled = 1")
     event_rows = cur.fetchall()
@@ -1245,6 +1309,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
         cur.execute("select DriverDeviceId, Name, Value from DriverConfig")
         for row in cur.fetchall():
             driver_config_by_driver_device_id[int(row["DriverDeviceId"] or -1)][str(row["Name"] or "")] = str(row["Value"] or "")
+    _mark_setup()
 
     out: dict[str, Any] = {
         "source": {
@@ -1372,30 +1437,6 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     )
     device_rows = cur.fetchall()
 
-    progress_enabled = callable(progress_hook)
-    total_work_units = 0
-    completed_work_units = 0
-    last_percent_reported = -1
-
-    def _emit_progress(force: bool = False) -> None:
-        nonlocal last_percent_reported
-        if not progress_enabled:
-            return
-        if total_work_units <= 0:
-            percent = 100
-        else:
-            percent = int((completed_work_units * 100) / total_work_units)
-        if percent < 0:
-            percent = 0
-        if percent > 100:
-            percent = 100
-        if force or percent != last_percent_reported:
-            last_percent_reported = percent
-            try:
-                progress_hook(percent)
-            except Exception:
-                pass
-
     if progress_enabled:
         rti_addresses = [int(row["RTIAddress"] or 0) for row in device_rows]
         valid_rti_addresses = [addr for addr in rti_addresses if addr > 0]
@@ -1439,7 +1480,9 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                 )
                 row = cur.fetchone()
                 total_work_units += int((row[0] if row else 0) or 0)
-        _emit_progress(force=True)
+        _mark_setup()
+        _emit_stage("setup", 100, force=True)
+        _emit_work(force=True)
 
     for drow in device_rows:
         device_id = int(drow["DeviceId"])
@@ -1542,7 +1585,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
-                    _emit_progress()
+                    _emit_work()
 
                     if button_id in viewport_button_ids:
                         frames = _resolve_viewport_frames(
@@ -1573,7 +1616,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             lowest_nonzero_device_room_id,
                         )
                         completed_work_units += int(frames.get("frame_button_count") or 0)
-                        _emit_progress()
+                        _emit_work()
                         layer_user["viewports"].append(
                             {
                                 "viewportIdentity": {"viewportButtonId": button_id},
@@ -1652,9 +1695,11 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             }
         )
 
-    _emit_progress(force=True)
+    _emit_work(force=True)
+    _emit_stage("finalize", 35, force=True)
 
     con.close()
+    _emit_stage("finalize", 100, force=True)
     return out
 
 
