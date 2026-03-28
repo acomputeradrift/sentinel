@@ -341,19 +341,17 @@ pre.mono {
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
+  padding-left: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .mini-table td.tech-link-actions .tech-link-action-btn {
-  width: 96px;
-  min-width: 96px;
-  height: 40px;
+  min-width: 84px;
+  height: 34px;
   padding: 0 12px;
-  margin: 0 10px 0 0;
   box-sizing: border-box;
-}
-
-.mini-table td.tech-link-actions .tech-link-action-btn:last-child {
-  margin-right: 0;
 }
 
 .empty {
