@@ -206,6 +206,14 @@ Diagnostics text-variable scope method:
 - `true` when `LayerButtons.PageLinkId != 0`.
 
 ## Button Categories
+### Evaluation order (applies to page buttons and viewport frame buttons)
+1. Viewport container buttons are routed to viewport handling and are not included in page-level category buckets.
+2. `hardButtons`
+3. `uiItems`
+4. `screenLabels`
+5. `emptyTag`
+6. `screenButtons`
+
 ### `buttonCategories.screenLabels`
 Apex-direct rule set:
 1. Button is not in hard-button designation.
@@ -222,7 +230,7 @@ Apex-direct rule set:
 
 ### `buttonCategories.screenButtons`
 Apex-direct rule set:
-- Any non-hard button not classified as `screenLabels`.
+- Any button not classified as `hardButtons`, `uiItems`, `screenLabels`, or `emptyTag`.
 
 ### `buttonCategories.hardButtons`
 Approved designation used for this file set:
@@ -230,6 +238,24 @@ Approved designation used for this file set:
 
 Observed evidence in approved sample:
 - T2i designated physical/remote keys are represented with zero-size button geometry on a dedicated layer.
+
+### `buttonCategories.emptyTag`
+Apex-direct rule set:
+1. Button has a tag field present.
+2. Tag value is empty/blank.
+3. Button is not already classified as `hardButtons`, `uiItems`, or `screenLabels`.
+
+### `buttonCategories.uiItems`
+Apex-direct rule set:
+1. Candidate rows come from the same page button traversal (`Layers` + `LayerButtons`).
+2. A row is a `uiItem` when all are true:
+- no tag field present
+- `Text` is empty/null
+- no macro target
+- no variable target
+3. `uiItems` classification consumes button geometry (`top`, `left`, `height`, `width`) for category decisions.
+4. `hardButtons` classification is evaluated first, so zero-size buttons are classified as `hardButtons` (not `uiItems`).
+5. `uiItems` are included in user-facing `buttonCategories`.
 
 ## Viewports
 ### `devices[].userFacing.pages[].viewports[]`
@@ -249,7 +275,7 @@ Apex-direct method:
 - `buttonIdentity`
 - `buttonUI`
 - `testTargets`
-- category split (`screenLabels`, `screenButtons`, `hardButtons`).
+- category split (`screenLabels`, `screenButtons`, `hardButtons`, `emptyTag`, `uiItems`).
 
 ### `devices[].diagnostics.pages[].viewports[]`
 Apex-direct method:
@@ -264,15 +290,7 @@ Apex-direct method:
 
 ### `diagnostics.pages[].uiItems`
 Apex-direct rule set:
-1. Candidate rows come from the same page button traversal (`Layers` + `LayerButtons`).
-2. A row is a `uiItem` when all are true:
-- `ButtonTagName` is empty/null
-- `Text` is empty/null
-- no text-variable signal:
-  - no `Variables.ButtonText` for resolved variable rows
-  - no `ButtonTextTags` row for that `ButtonId`
-3. `uiItems` are excluded from user-facing button categories.
-4. `uiItems` are kept in diagnostics with:
+1. `uiItems` are also listed in diagnostics with:
 - `buttonId` only.
 
 ## Validation Notes

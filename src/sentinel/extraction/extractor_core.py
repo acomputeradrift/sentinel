@@ -354,6 +354,26 @@ def _resolve_macro_flag_summaries(cur: sqlite3.Cursor, macro_id: int) -> list[st
     return _dedupe_non_empty(summaries)
 
 
+def _build_macro_flag_summary_cache(rows: list[tuple[int, Any, Any]]) -> dict[int, list[str]]:
+    out: dict[int, list[str]] = {}
+    for macro_id, flag_index, flag_type in rows:
+        mid = int(macro_id or 0)
+        if mid <= 0:
+            continue
+        parts: list[str] = []
+        if flag_index is not None:
+            parts.append(f"FlagIndex={int(flag_index)}")
+        if flag_type is not None:
+            parts.append(f"FlagType={int(flag_type)}")
+        if not parts:
+            continue
+        summary = ", ".join(parts)
+        bucket = out.setdefault(mid, [])
+        if summary not in bucket:
+            bucket.append(summary)
+    return out
+
+
 def _resolve_driver_action(
     cur: sqlite3.Cursor,
     macro_id: int,
@@ -714,10 +734,11 @@ def _resolve_button(
     activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
     room_home_target_pages_by_room: dict[int, list[tuple[int, int]]],
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
+    macro_flag_summaries_by_macro_id: dict[int, list[str]],
     page_room_id: int,
     current_rti_address: int,
     global_room_fallback_id: int | None,
-) -> tuple[dict[str, Any], dict[str, Any], bool]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
     text = button_row["Text"] or ""
@@ -774,7 +795,7 @@ def _resolve_button(
         macro_id = int(macro_row["MacroId"] or 0)
         if macro_id <= 0:
             continue
-        for summary in _resolve_macro_flag_summaries(cur, macro_id):
+        for summary in macro_flag_summaries_by_macro_id.get(macro_id, []):
             if summary not in resolved_macro_summaries:
                 resolved_macro_summaries.append(summary)
 
@@ -895,7 +916,6 @@ def _resolve_button(
                 break
 
     button_ui = _button_ui(button_row)
-    is_hard = _is_hard_button(button_ui)
 
     user_button = {
         "buttonIdentity": {
@@ -968,8 +988,45 @@ def _resolve_button(
         or command_enabled
         or list_enabled
     )
-    is_ui_item = bool(tag_id <= 0 and _empty(text) and not has_macros_target and not has_any_variable_target)
-    return user_button, diag_button, is_hard or is_ui_item
+    return user_button, diag_button
+
+
+def _has_any_variable_target(button: dict[str, Any]) -> bool:
+    variables = button.get("testTargets", {}).get("variables", {})
+    if not isinstance(variables, dict):
+        return False
+    return any(bool(v) for v in variables.values())
+
+
+def _classify_user_button_category(
+    *,
+    button: dict[str, Any],
+    has_tag_field: bool,
+    raw_text: str,
+    has_macros_target: bool,
+    has_any_variable_target: bool,
+) -> str:
+    if _is_hard_button(button["buttonUI"]):
+        return "hardButtons"
+    if (not has_tag_field) and _empty(raw_text) and (not has_macros_target) and (not has_any_variable_target):
+        return "uiItems"
+    if _is_screen_label(button):
+        return "screenLabels"
+    if has_tag_field and _empty(button.get("buttonIdentity", {}).get("buttonTagName")):
+        return "emptyTag"
+    return "screenButtons"
+
+
+def _merge_diag_ui_items(existing: list[dict[str, Any]], viewport_button_ids: list[int]) -> list[dict[str, Any]]:
+    out = list(existing or [])
+    seen_ids = {int(row.get("buttonId")) for row in out if isinstance(row, dict) and row.get("buttonId") is not None}
+    for button_id in viewport_button_ids:
+        bid = int(button_id or 0)
+        if bid <= 0 or bid in seen_ids:
+            continue
+        seen_ids.add(bid)
+        out.append({"buttonId": bid})
+    return out
 
 
 def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
@@ -1017,6 +1074,18 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
         macro_id: bool(step_types)
         for macro_id, step_types in macro_types_by_macro.items()
     }
+    cur.execute(
+        """
+        select MacroId, FlagIndex, FlagType
+        from MacroStepsView
+        where Type = 15
+        order by MacroId, StepIndex, MacroStepId
+        """
+    )
+    macro_flag_summary_rows: list[tuple[int, Any, Any]] = []
+    for row in cur.fetchall():
+        macro_flag_summary_rows.append((int(row["MacroId"] or 0), row["FlagIndex"], row["FlagType"]))
+    macro_flag_summaries_by_macro_id = _build_macro_flag_summary_cache(macro_flag_summary_rows)
 
     cur.execute("select PageId, PageName, RoomId from PagesView")
     page_name_by_page_id: dict[int, str] = {}
@@ -1369,13 +1438,13 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                 layer_user = {
                     "layerName": shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
                     "layerOrder": int(layer["LayerOrder"] or 0),
-                    "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                    "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "emptyTag": [], "uiItems": []},
                     "viewports": [],
                 }
                 cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
                 for b in cur.fetchall():
                     button_id = int(b["ButtonId"])
-                    user_button, diag_button, is_special = _resolve_button(
+                    user_button, diag_button = _resolve_button(
                         cur,
                         b,
                         device_id,
@@ -1397,6 +1466,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                         activity_target_pages_by_room_and_device,
                         room_home_target_pages_by_room,
                         variable_command_rows_by_variable_id,
+                        macro_flag_summaries_by_macro_id,
                         page_room_id,
                         page_rti_address,
                         lowest_nonzero_device_room_id,
@@ -1426,6 +1496,7 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                             activity_target_pages_by_room_and_device,
                             room_home_target_pages_by_room,
                             variable_command_rows_by_variable_id,
+                            macro_flag_summaries_by_macro_id,
                             page_room_id,
                             page_rti_address,
                             lowest_nonzero_device_room_id,
@@ -1451,20 +1522,19 @@ def extract_project_data(ctx: ExtractContext) -> dict[str, Any]:
                                 "frames": frames["diag_frames"],
                             }
                         )
+                        diag_ui_items = _merge_diag_ui_items(diag_ui_items, frames["ui_item_button_ids"])
                         continue
 
-                    if is_special:
-                        if _empty(user_button["buttonIdentity"]["buttonTagName"]) and _empty(user_button["buttonIdentity"]["text"]):
-                            diag_ui_items.append({"buttonId": button_id})
-                            continue
-                        if _is_hard_button(user_button["buttonUI"]):
-                            layer_user["buttonCategories"]["hardButtons"].append(user_button)
-                            continue
-
-                    if _is_screen_label(user_button):
-                        layer_user["buttonCategories"]["screenLabels"].append(user_button)
-                    else:
-                        layer_user["buttonCategories"]["screenButtons"].append(user_button)
+                    category = _classify_user_button_category(
+                        button=user_button,
+                        has_tag_field=diag_button["identifiers"].get("buttonTagId") is not None,
+                        raw_text=str(diag_button["identifiers"].get("text") or ""),
+                        has_macros_target=bool(user_button["testTargets"].get("macros")),
+                        has_any_variable_target=_has_any_variable_target(user_button),
+                    )
+                    layer_user["buttonCategories"][category].append(user_button)
+                    if category == "uiItems":
+                        diag_ui_items.append({"buttonId": button_id})
 
                 user_layers.append(layer_user)
 
@@ -1535,6 +1605,7 @@ def _resolve_viewport_frames(
     activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
     room_home_target_pages_by_room: dict[int, list[tuple[int, int]]],
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
+    macro_flag_summaries_by_macro_id: dict[int, list[str]],
     page_room_id: int,
     current_rti_address: int,
     global_room_fallback_id: int | None,
@@ -1546,6 +1617,7 @@ def _resolve_viewport_frames(
     frame_diag: dict[int, dict[str, Any]] = {}
     layer_links: list[dict[str, Any]] = []
     viewport_layers: list[dict[str, Any]] = []
+    viewport_ui_item_button_ids: list[int] = []
 
     cur.execute("select SharedLayerId, Name from SharedLayers")
     shared_layer_name_by_id = {int(row["SharedLayerId"]): str(row["Name"] or "") for row in cur.fetchall()}
@@ -1564,11 +1636,17 @@ def _resolve_viewport_frames(
         cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
         for b in cur.fetchall():
             frame_id = int(b["FrameNumber"] or 0)
-            frame_user.setdefault(frame_id, {"frameId": frame_id, "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []}})
+            frame_user.setdefault(
+                frame_id,
+                {"frameId": frame_id, "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "emptyTag": [], "uiItems": []}},
+            )
             frame_diag.setdefault(frame_id, {"frameId": frame_id, "buttons": []})
-            layer_frames.setdefault(frame_id, {"frameId": frame_id, "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []}})
+            layer_frames.setdefault(
+                frame_id,
+                {"frameId": frame_id, "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "emptyTag": [], "uiItems": []}},
+            )
 
-            user_button, diag_button, is_special = _resolve_button(
+            user_button, diag_button = _resolve_button(
                 cur,
                 b,
                 current_device_id,
@@ -1590,21 +1668,23 @@ def _resolve_viewport_frames(
                 activity_target_pages_by_room_and_device,
                 room_home_target_pages_by_room,
                 variable_command_rows_by_variable_id,
+                macro_flag_summaries_by_macro_id,
                 page_room_id,
                 current_rti_address,
                 global_room_fallback_id,
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
-
-            if is_special and _is_hard_button(user_button["buttonUI"]):
-                frame_user[frame_id]["buttonCategories"]["hardButtons"].append(user_button)
-                layer_frames[frame_id]["buttonCategories"]["hardButtons"].append(user_button)
-            elif _is_screen_label(user_button):
-                frame_user[frame_id]["buttonCategories"]["screenLabels"].append(user_button)
-                layer_frames[frame_id]["buttonCategories"]["screenLabels"].append(user_button)
-            else:
-                frame_user[frame_id]["buttonCategories"]["screenButtons"].append(user_button)
-                layer_frames[frame_id]["buttonCategories"]["screenButtons"].append(user_button)
+            category = _classify_user_button_category(
+                button=user_button,
+                has_tag_field=diag_button["identifiers"].get("buttonTagId") is not None,
+                raw_text=str(diag_button["identifiers"].get("text") or ""),
+                has_macros_target=bool(user_button["testTargets"].get("macros")),
+                has_any_variable_target=_has_any_variable_target(user_button),
+            )
+            frame_user[frame_id]["buttonCategories"][category].append(user_button)
+            layer_frames[frame_id]["buttonCategories"][category].append(user_button)
+            if category == "uiItems":
+                viewport_ui_item_button_ids.append(int(diag_button["buttonId"]))
 
         viewport_layers.append(
             {
@@ -1619,6 +1699,7 @@ def _resolve_viewport_frames(
         "diag_frames": [frame_diag[k] for k in sorted(frame_diag)],
         "layer_links": layer_links,
         "viewport_layers": viewport_layers,
+        "ui_item_button_ids": viewport_ui_item_button_ids,
     }
 
 
