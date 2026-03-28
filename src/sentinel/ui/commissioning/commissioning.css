@@ -337,6 +337,25 @@ pre.mono {
   display: inline-block;
 }
 
+.mini-table td.tech-link-actions {
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.mini-table td.tech-link-actions .tech-link-action-btn {
+  width: 96px;
+  min-width: 96px;
+  height: 40px;
+  padding: 0 12px;
+  margin: 0 10px 0 0;
+  box-sizing: border-box;
+}
+
+.mini-table td.tech-link-actions .tech-link-action-btn:last-child {
+  margin-right: 0;
+}
+
 .empty {
   margin-top: 10px;
   border: 1px dashed #a9bccd;

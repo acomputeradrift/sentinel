@@ -687,12 +687,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         open_popup = open_popup_info.value
         self.assertIn("/testing/token-abc?runtime=payload", str(open_popup.url))
         open_popup.close()
-        with page.expect_popup() as legacy_popup_info:
-            page.get_by_role("button", name="Legacy").click()
-        legacy_popup = legacy_popup_info.value
-        self.assertTrue(str(legacy_popup.url).endswith("/testing/token-abc"), legacy_popup.url)
-        self.assertNotIn("runtime=payload", str(legacy_popup.url))
-        legacy_popup.close()
+        expect(page.get_by_role("button", name="Legacy")).to_have_count(0)
+        row_actions = page.locator("#techLinksBody tr").first.locator("td").nth(2).locator("button")
+        expect(row_actions).to_have_count(2)
+        expect(row_actions.nth(0)).to_have_text("Open")
+        expect(row_actions.nth(1)).to_have_text("Revoke")
         expect(page.locator("#panel-manage")).to_contain_text("Onsite Tech")
         expect(page.locator("#panel-manage")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
         expect(page.get_by_role("button", name="Revoke")).to_be_visible()

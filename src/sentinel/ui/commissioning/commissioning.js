@@ -251,19 +251,6 @@ function buildPayloadTechUrl(rawUrl) {
   }
 }
 
-function buildLegacyTechUrl(rawUrl) {
-  const s = String(rawUrl || "").trim();
-  if (!s) return "";
-  try {
-    const u = new URL(s, window.location.origin);
-    u.searchParams.delete("runtime");
-    const qs = u.searchParams.toString();
-    return `${u.pathname}${qs ? `?${qs}` : ""}${u.hash}`;
-  } catch (_e) {
-    return s.replace(/([?&])runtime=payload(&|$)/i, (m, p1, p2) => (p1 === "?" && p2 ? "?" : p2 ? p1 : "")).replace(/[?&]$/, "");
-  }
-}
-
 function renderTechLinks() {
   const body = $("techLinksBody");
   const empty = $("techLinksEmpty");
@@ -297,8 +284,10 @@ function renderTechLinks() {
     tdCreated.textContent = formatUtc(link.createdAtUtc || "");
 
     const tdActions = document.createElement("td");
+    tdActions.className = "tech-link-actions";
     const open = document.createElement("button");
     open.type = "button";
+    open.className = "tech-link-action-btn";
     open.textContent = "Open";
     open.addEventListener("click", () => {
       const url = String(link.techUrl || "").trim();
@@ -307,19 +296,9 @@ function renderTechLinks() {
     });
     tdActions.appendChild(open);
 
-    const legacy = document.createElement("button");
-    legacy.type = "button";
-    legacy.textContent = "Legacy";
-    legacy.addEventListener("click", () => {
-      const url = String(link.legacyTechUrl || buildLegacyTechUrl(link.techUrl) || "").trim();
-      if (!url) return;
-      window.open(url, "_blank", "noopener");
-    });
-    tdActions.appendChild(legacy);
-
     const revoke = document.createElement("button");
     revoke.type = "button";
-    revoke.className = "danger";
+    revoke.className = "danger tech-link-action-btn";
     revoke.textContent = "Revoke";
     revoke.addEventListener("click", () => {
       const projectIdNow = currentProjectId();
@@ -363,7 +342,6 @@ async function loadTechLinks() {
         label: r.label || "",
         createdAtUtc: r.createdAtUtc || "",
         techUrl: buildPayloadTechUrl(r.techUrl || ""),
-        legacyTechUrl: buildLegacyTechUrl(r.techUrl || ""),
       }));
     renderTechLinks();
   } catch (_e) {
@@ -677,11 +655,10 @@ async function createTechLink() {
     body: JSON.stringify({ label }),
   });
   const payloadTechUrl = buildPayloadTechUrl(out.techUrl || "");
-  const legacyTechUrl = buildLegacyTechUrl(out.techUrl || "");
   $("techUrl").textContent = payloadTechUrl || "";
   const createdAtUtc = new Date().toISOString();
   state.techLinksByProject[projectId] = [
-    { techLinkId: out.techLinkId, label: label || "", createdAtUtc, techUrl: payloadTechUrl, legacyTechUrl },
+    { techLinkId: out.techLinkId, label: label || "", createdAtUtc, techUrl: payloadTechUrl },
     ...techLinksForProject(projectId),
   ];
   renderTechLinks();
