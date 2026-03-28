@@ -87,6 +87,8 @@ class ServerRoutesSmokeTest(unittest.TestCase):
                 self.assertEqual(links[0]["techLinkId"], link["techLinkId"])
                 self.assertEqual(links[0]["label"], "Onsite")
                 self.assertIn("createdAtUtc", links[0])
+                self.assertIn("techUrl", links[0])
+                self.assertTrue(str(links[0]["techUrl"]).startswith("/testing/"))
 
                 token = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links/{link['techLinkId']}/rotate").json()
                 tech_url = token["techUrl"]

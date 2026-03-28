@@ -288,7 +288,14 @@ def list_active_tech_links(request: Request, projectId: str) -> list[dict]:
     if proj is None:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
     links = _repo(request).list_active_tech_links(projectId=projectId)
-    return [{"techLinkId": l.techLinkId, "label": l.label, "createdAtUtc": l.createdAtUtc} for l in links]
+    out: list[dict] = []
+    for l in links:
+        try:
+            token = _repo(request).rotate_tech_link_token(projectId=projectId, techLinkId=l.techLinkId)
+        except KeyError:
+            continue
+        out.append({"techLinkId": l.techLinkId, "label": l.label, "createdAtUtc": l.createdAtUtc, "techUrl": f"/testing/{token.techToken}"})
+    return out
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/revoke")
