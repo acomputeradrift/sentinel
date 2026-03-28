@@ -681,7 +681,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.get_by_label("Tech label").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
-        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc")
+        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc?runtime=payload")
+        with page.expect_popup() as open_popup_info:
+            page.get_by_role("button", name="Open").click()
+        open_popup = open_popup_info.value
+        self.assertIn("/testing/token-abc?runtime=payload", str(open_popup.url))
+        open_popup.close()
+        with page.expect_popup() as legacy_popup_info:
+            page.get_by_role("button", name="Legacy").click()
+        legacy_popup = legacy_popup_info.value
+        self.assertTrue(str(legacy_popup.url).endswith("/testing/token-abc"), legacy_popup.url)
+        self.assertNotIn("runtime=payload", str(legacy_popup.url))
+        legacy_popup.close()
         expect(page.locator("#panel-manage")).to_contain_text("Onsite Tech")
         expect(page.locator("#panel-manage")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
         expect(page.get_by_role("button", name="Revoke")).to_be_visible()

@@ -238,6 +238,32 @@ function setPanelContext() {
   }
 }
 
+function buildPayloadTechUrl(rawUrl) {
+  const s = String(rawUrl || "").trim();
+  if (!s) return "";
+  if (!/^\/testing\/[^/?#]+/i.test(s)) return s;
+  try {
+    const u = new URL(s, window.location.origin);
+    u.searchParams.set("runtime", "payload");
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch (_e) {
+    return s.includes("?") ? `${s}&runtime=payload` : `${s}?runtime=payload`;
+  }
+}
+
+function buildLegacyTechUrl(rawUrl) {
+  const s = String(rawUrl || "").trim();
+  if (!s) return "";
+  try {
+    const u = new URL(s, window.location.origin);
+    u.searchParams.delete("runtime");
+    const qs = u.searchParams.toString();
+    return `${u.pathname}${qs ? `?${qs}` : ""}${u.hash}`;
+  } catch (_e) {
+    return s.replace(/([?&])runtime=payload(&|$)/i, (m, p1, p2) => (p1 === "?" && p2 ? "?" : p2 ? p1 : "")).replace(/[?&]$/, "");
+  }
+}
+
 function renderTechLinks() {
   const body = $("techLinksBody");
   const empty = $("techLinksEmpty");
@@ -271,6 +297,26 @@ function renderTechLinks() {
     tdCreated.textContent = formatUtc(link.createdAtUtc || "");
 
     const tdActions = document.createElement("td");
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = "Open";
+    open.addEventListener("click", () => {
+      const url = String(link.techUrl || "").trim();
+      if (!url) return;
+      window.open(url, "_blank", "noopener");
+    });
+    tdActions.appendChild(open);
+
+    const legacy = document.createElement("button");
+    legacy.type = "button";
+    legacy.textContent = "Legacy";
+    legacy.addEventListener("click", () => {
+      const url = String(link.legacyTechUrl || buildLegacyTechUrl(link.techUrl) || "").trim();
+      if (!url) return;
+      window.open(url, "_blank", "noopener");
+    });
+    tdActions.appendChild(legacy);
+
     const revoke = document.createElement("button");
     revoke.type = "button";
     revoke.className = "danger";
@@ -316,6 +362,8 @@ async function loadTechLinks() {
         techLinkId: r.techLinkId,
         label: r.label || "",
         createdAtUtc: r.createdAtUtc || "",
+        techUrl: buildPayloadTechUrl(r.techUrl || ""),
+        legacyTechUrl: buildLegacyTechUrl(r.techUrl || ""),
       }));
     renderTechLinks();
   } catch (_e) {
@@ -628,10 +676,12 @@ async function createTechLink() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ label }),
   });
-  $("techUrl").textContent = out.techUrl || "";
+  const payloadTechUrl = buildPayloadTechUrl(out.techUrl || "");
+  const legacyTechUrl = buildLegacyTechUrl(out.techUrl || "");
+  $("techUrl").textContent = payloadTechUrl || "";
   const createdAtUtc = new Date().toISOString();
   state.techLinksByProject[projectId] = [
-    { techLinkId: out.techLinkId, label: label || "", createdAtUtc, techUrl: out.techUrl || "" },
+    { techLinkId: out.techLinkId, label: label || "", createdAtUtc, techUrl: payloadTechUrl, legacyTechUrl },
     ...techLinksForProject(projectId),
   ];
   renderTechLinks();
