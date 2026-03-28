@@ -133,7 +133,10 @@ Goal: ensure tested code only is deployed.
 If test have been run on the new work, already, skip the retest below, but tell me.
 
 1) Unit/regression tests (local)
-   - `python -m unittest discover -s dev_tests/regression -p "test_*.py"`
+   - Use temp env interpreter (required):
+     - `Y:\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest discover -s dev_tests/regression -p "test_*.py"`
+   - Do not run local tests with system/default `python`.
+   - If a test skips for missing dependencies, re-run once with the temp env interpreter before reporting a skip.
 
 2) UI runtime tests (Playwright)
    - Use the temp env:

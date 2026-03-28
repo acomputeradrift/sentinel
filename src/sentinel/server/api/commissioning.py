@@ -46,7 +46,7 @@ def _publish_generation_phase(
     activeUpload: dict | None = None,
 ) -> None:
     try:
-        _broker(request).publish(
+        _broker(request).publish_transient(
             projectId=projectId,
             event={
                 "type": "generation_phase",

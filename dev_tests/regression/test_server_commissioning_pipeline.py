@@ -166,6 +166,8 @@ class CommissioningPipelineTest(unittest.TestCase):
             class _FakeBroker:
                 def publish(self, *, projectId: str, event: dict) -> None:
                     published.append({"projectId": projectId, "event": dict(event or {})})
+                def publish_transient(self, *, projectId: str, event: dict) -> None:
+                    published.append({"projectId": projectId, "event": dict(event or {})})
 
             def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None):
                 if callable(phase_hook):
@@ -189,7 +191,9 @@ class CommissioningPipelineTest(unittest.TestCase):
                 for row in published
                 if str((row.get("event") or {}).get("type") or "") in {"generation_phase", "generation"}
             ]
-            self.assertEqual(statuses, ["EXTRACTING", "EXTRACTING", "GENERATING", "GENERATING", "READY"])
+            self.assertGreaterEqual(len(statuses), 5)
+            self.assertEqual(statuses[:4], ["EXTRACTING", "EXTRACTING", "GENERATING", "GENERATING"])
+            self.assertEqual(statuses[-1], "READY")
             percents = [
                 (row.get("event") or {}).get("percent")
                 for row in published

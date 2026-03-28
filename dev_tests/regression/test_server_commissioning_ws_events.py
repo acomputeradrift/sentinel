@@ -192,6 +192,29 @@ class CommissioningWsEventsTest(unittest.TestCase):
         self.assertEqual([e.get("seq") for e in replay["events"]], [2, 3])
         self.assertEqual([e.get("type") for e in replay["events"]], ["b", "c"])
 
+    def test_broker_transient_publish_does_not_affect_replay_or_seq(self):
+        from sentinel.server.services.ws_broker import ProjectEventBroker
+
+        broker = ProjectEventBroker(replay_capacity=4)
+        q = broker.subscribe(projectId="p1")
+        try:
+            broker.publish(projectId="p1", event={"type": "durable", "projectId": "p1"})
+            first = json.loads(q.get_nowait())
+            self.assertEqual(first.get("type"), "durable")
+            self.assertEqual(first.get("seq"), 1)
+
+            transient = broker.publish_transient(projectId="p1", event={"type": "generation_phase", "projectId": "p1"})
+            self.assertIsNone(transient.get("seq"))
+            second = json.loads(q.get_nowait())
+            self.assertEqual(second.get("type"), "generation_phase")
+            self.assertIsNone(second.get("seq"))
+
+            replay = broker.replay_since(projectId="p1", after_seq=0)
+            self.assertEqual(replay["latestSeq"], 1)
+            self.assertEqual([e.get("type") for e in replay["events"]], ["durable"])
+        finally:
+            broker.unsubscribe(projectId="p1", q=q)
+
     def test_no_duplicate_commissioning_project_ws_route(self):
         _require_fastapi()
 

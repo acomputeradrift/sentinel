@@ -97,6 +97,31 @@ class ProjectEventBroker:
                     self._log.exception("[broker] publish-delivery-failed projectId=%s broker_id=%s", projectId, id(self))
         return payload
 
+    def publish_transient(self, *, projectId: str, event: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(event or {})
+        payload.pop("seq", None)
+        msg = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        with self._lock:
+            subs = list(self._subscribers.get(projectId, set()))
+        self._log.info("[broker] publish_transient projectId=%s broker_id=%s subs=%s", projectId, id(self), len(subs))
+        for q in subs:
+            try:
+                q.put_nowait(msg)
+            except queue.Full:
+                try:
+                    _ = q.get_nowait()
+                except Exception:
+                    self._log.exception(
+                        "[broker] publish_transient-queue-drop-failed projectId=%s broker_id=%s", projectId, id(self)
+                    )
+                try:
+                    q.put_nowait(msg)
+                except Exception:
+                    self._log.exception(
+                        "[broker] publish_transient-delivery-failed projectId=%s broker_id=%s", projectId, id(self)
+                    )
+        return payload
+
 
 async def wait_for_next(q: queue.Queue[str], *, timeout_s: float) -> str | None:
     deadline = asyncio.get_running_loop().time() + max(0.0, float(timeout_s or 0.0))
