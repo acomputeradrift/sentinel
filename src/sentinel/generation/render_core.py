@@ -189,15 +189,25 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
             layer_key = _layer_key(layer_index)
             layer_order = int(layer.get("layerOrder", 0) or 0)
             cats = layer.get("buttonCategories", {})
-            for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
+            for cat, label in (
+                ("screenLabels", "Screen Label"),
+                ("screenButtons", "Screen Button"),
+                ("hardButtons", "Hard Button"),
+                ("uiItems", "UI Item"),
+            ):
                 for btn in cats.get(cat, []):
-                    if _is_ui_only_button(btn):
+                    if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
                     items.append((btn, label, 0, 0, layer_key, layer_order))
         return items
-    for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
+    for cat, label in (
+        ("screenLabels", "Screen Label"),
+        ("screenButtons", "Screen Button"),
+        ("hardButtons", "Hard Button"),
+        ("uiItems", "UI Item"),
+    ):
         for btn in page.get("buttonCategories", {}).get(cat, []):
-            if _is_ui_only_button(btn):
+            if cat != "uiItems" and _is_ui_only_button(btn):
                 continue
             items.append((btn, label, 0, 0, _layer_key(0), 0))
     return items
@@ -344,9 +354,14 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
             frame = entry_frame["frame"]
             frame_id = int(frame.get("frameId", 0))
             cats = frame.get("buttonCategories", {})
-            for cat, label in (("screenLabels", "Screen Label"), ("screenButtons", "Screen Button"), ("hardButtons", "Hard Button")):
+            for cat, label in (
+                ("screenLabels", "Screen Label"),
+                ("screenButtons", "Screen Button"),
+                ("hardButtons", "Hard Button"),
+                ("uiItems", "UI Item"),
+            ):
                 for btn in cats.get(cat, []):
-                    if _is_ui_only_button(btn):
+                    if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
                     out.append(
                         {
