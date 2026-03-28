@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from datetime import datetime, timezone
@@ -10,7 +11,17 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sentinel.generation.render_core import device_filename, load_json, project_home_filename, render_project_home_html, render_single_device_html
+from sentinel.generation.render_core import (
+    build_device_payload,
+    build_project_manifest,
+    device_filename,
+    device_payload_filename,
+    load_json,
+    project_home_filename,
+    project_manifest_filename,
+    render_project_home_html,
+    render_single_device_html,
+)
 from sentinel.logging.event_logger import EventLogger
 
 
@@ -67,13 +78,20 @@ def main() -> int:
             pages = user.get("pages", [])
             if isinstance(pages, list) and pages:
                 renderable_device_count += 1
-        total_units = 1 + renderable_device_count
+        total_units = 2 + (renderable_device_count * 2)
 
         _emit_progress(0)
         home_html = render_project_home_html(project_data, app_ui, project_stem=project_data_path.stem)
         home_out_path = out_dir / project_home_filename(project_data_path.stem)
         log.info(f"Writing html output: {home_out_path}")
         home_out_path.write_text(home_html, encoding="utf-8")
+        written += 1
+        _emit_progress(int((written * 100) / max(total_units, 1)))
+
+        manifest = build_project_manifest(project_data, project_stem=project_data_path.stem)
+        manifest_out_path = out_dir / project_manifest_filename(project_data_path.stem)
+        log.info(f"Writing payload output: {manifest_out_path}")
+        manifest_out_path.write_text(json.dumps(manifest, ensure_ascii=True, indent=2), encoding="utf-8")
         written += 1
         _emit_progress(int((written * 100) / max(total_units, 1)))
 
@@ -89,12 +107,18 @@ def main() -> int:
             out_path.write_text(html, encoding="utf-8")
             written += 1
             _emit_progress(int((written * 100) / max(total_units, 1)))
+            payload = build_device_payload(project_data, app_ui, project_stem=project_data_path.stem, device_index=device_index)
+            payload_path = out_dir / device_payload_filename(project_data_path.stem, str(device_name), device_index)
+            log.info(f"Writing payload output: {payload_path}")
+            payload_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+            written += 1
+            _emit_progress(int((written * 100) / max(total_units, 1)))
 
         ended_at = datetime.now(timezone.utc)
         elapsed_seconds = time.perf_counter() - started_perf
         log.info(f"Generation ended_at={ended_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
         log.info(f"Generation elapsed_seconds={elapsed_seconds:.3f}")
-        log.success(f"Generation complete: wrote {written} html file(s)")
+        log.success(f"Generation complete: wrote {written} output file(s)")
         return 0
     except Exception as exc:  # pragma: no cover
         ended_at = datetime.now(timezone.utc)

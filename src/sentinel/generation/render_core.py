@@ -42,6 +42,14 @@ def project_home_filename(project_stem: str) -> str:
     return f"{project_stem}__project-home.html"
 
 
+def project_manifest_filename(project_stem: str) -> str:
+    return f"{project_stem}__project-manifest.json"
+
+
+def device_payload_filename(project_stem: str, device_name: str, device_index: int) -> str:
+    return f"{project_stem}__device-{device_index}-{page_slug(device_name, device_index)}__payload.json"
+
+
 def _btn_text(identity: dict[str, Any]) -> str:
     text = str(identity.get("text") or "").strip()
     tag = str(identity.get("buttonTagName") or "").strip()
@@ -2961,3 +2969,76 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
         show_orientation_toggle,
         home_href=project_home_filename(project_stem),
     )
+
+
+def build_device_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> dict[str, Any]:
+    device = project_data["devices"][device_index]
+    uf = device["userFacing"]
+    device_ui = uf.get("deviceUI", {})
+    portrait = device_ui.get("portrait", {})
+    landscape = device_ui.get("landscape", {})
+    portrait_resolution = _resolution_or_default(portrait.get("resolution"), 480, 854)
+    landscape_resolution = _resolution_or_default(landscape.get("resolution"), 854, 480)
+    if bool(portrait.get("supported")):
+        active_orientation = "portrait"
+    elif bool(landscape.get("supported")):
+        active_orientation = "landscape"
+    else:
+        active_orientation = "portrait"
+    orientation_options = [name for name, cfg in (("portrait", portrait), ("landscape", landscape)) if bool(cfg.get("supported"))]
+    pages = uf.get("pages", [])
+    page_payloads: list[dict[str, Any]] = []
+    diag_pages = device.get("diagnostics", {}).get("pages", []) if isinstance(device, dict) else []
+    for page_index, _page in enumerate(pages):
+        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation)
+        diag_page = diag_pages[page_index] if isinstance(diag_pages, list) and page_index < len(diag_pages) else {}
+        page_payloads.append(
+            {
+                "pageName": payload.get("page_name", ""),
+                "pageIndex": int(payload.get("page_index", page_index)),
+                "pageId": diag_page.get("pageId") if isinstance(diag_page, dict) else None,
+                "layers": payload.get("layers", []),
+                "vpFrames": payload.get("vp_frames", []),
+            }
+        )
+    return {
+        "format": "sentinel-testing-payload-v1",
+        "projectStem": project_stem,
+        "deviceIndex": int(device_index),
+        "deviceName": str(uf.get("displayName", f"device-{device_index}")),
+        "deviceUI": device_ui,
+        "orientationState": {
+            "current": active_orientation,
+            "options": orientation_options,
+            "sizes": {"portrait": portrait_resolution, "landscape": landscape_resolution},
+        },
+        "pages": page_payloads,
+    }
+
+
+def build_project_manifest(project_data: dict[str, Any], project_stem: str) -> dict[str, Any]:
+    source = project_data.get("source", {})
+    devices = project_data.get("devices", [])
+    manifest_devices: list[dict[str, Any]] = []
+    for device_index, device in enumerate(devices):
+        user = device.get("userFacing", {})
+        pages = user.get("pages", [])
+        if not isinstance(pages, list) or not pages:
+            continue
+        device_name = str(user.get("displayName", f"device-{device_index}"))
+        manifest_devices.append(
+            {
+                "deviceIndex": int(device_index),
+                "deviceName": device_name,
+                "pageCount": len(pages),
+                "htmlFile": device_filename(project_stem, device_name, device_index),
+                "payloadFile": device_payload_filename(project_stem, device_name, device_index),
+            }
+        )
+    return {
+        "format": "sentinel-testing-payload-v1",
+        "projectStem": project_stem,
+        "projectHomeHtml": project_home_filename(project_stem),
+        "source": source,
+        "devices": manifest_devices,
+    }

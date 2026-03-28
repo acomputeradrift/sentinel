@@ -87,3 +87,52 @@ class TestingUiServingTest(unittest.TestCase):
             self.assertEqual(r.status_code, 200)
             self.assertIn("<title>NEWER</title>", r.text)
 
+    def test_testing_ui_payload_mode_serves_shell_and_manifest(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = td
+
+            from sentinel.server.app.main import create_app
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            link = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links", json={"label": "Onsite"}).json()
+            tech_token = link["techUrl"].split("/testing/")[1]
+
+            project_dir = Path(td) / p["projectId"]
+            project_dir.mkdir(parents=True, exist_ok=True)
+            (project_dir / "unittest__project-manifest.json").write_text(
+                '{"format":"sentinel-testing-payload-v1","projectStem":"unittest","devices":[]}',
+                encoding="utf-8",
+            )
+
+            r = client.get(f"/testing/{tech_token}?runtime=payload")
+            self.assertEqual(r.status_code, 200)
+            self.assertIn("Sentinel Testing Runtime", r.text)
+            self.assertIn("/testing/" + tech_token + "/files/", r.text)
+            self.assertIn("unittest__project-manifest.json", r.text)
+
+    def test_testing_ui_payload_mode_handles_missing_manifest(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = td
+
+            from sentinel.server.app.main import create_app
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            link = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links", json={"label": "Onsite"}).json()
+            tech_token = link["techUrl"].split("/testing/")[1]
+
+            r = client.get(f"/testing/{tech_token}?runtime=payload")
+            self.assertEqual(r.status_code, 200)
+            self.assertIn("Payload has not been generated yet", r.text)
+

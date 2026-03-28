@@ -163,6 +163,15 @@ def _find_project_home(project_dir: Path) -> Path | None:
     return fallback if fallback.exists() else None
 
 
+def _find_project_manifest(project_dir: Path) -> Path | None:
+    if not project_dir.exists() or not project_dir.is_dir():
+        return None
+    candidates = list(project_dir.glob("*__project-manifest.json"))
+    if candidates:
+        return max(candidates, key=lambda p: (p.stat().st_mtime, p.name))
+    return None
+
+
 def _inject_base_href(html: str, *, base_href: str) -> str:
     if "<base " in html or "<base>" in html:
         return html
@@ -178,6 +187,32 @@ def _inject_base_href(html: str, *, base_href: str) -> str:
     return f'<base href="{base_href}">' + html
 
 
+def _payload_runtime_shell(*, tech_token: str, manifest_name: str) -> str:
+    base_href = f"/testing/{tech_token}/files/"
+    manifest_url = f"{base_href}{manifest_name}"
+    return (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>Sentinel Testing Runtime</title>"
+        "<style>html,body{margin:0}body{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;padding:24px}"
+        ".card{max-width:960px;margin:0 auto;background:#f8fbfe;border:1px solid #c6d2dd;border-radius:16px;padding:20px}"
+        "h1{margin:0 0 10px;font-size:24px}.meta{font-size:13px;color:#4d6678;word-break:break-all}"
+        ".status{margin-top:14px;font-size:14px}</style></head><body>"
+        "<main class='card'><h1>Sentinel Testing Runtime</h1>"
+        f"<div class='meta'>Base: {base_href}</div>"
+        f"<div class='meta'>Manifest: {manifest_name}</div>"
+        "<div class='status' id='status'>Loading payload...</div>"
+        "</main><script>"
+        f"const MANIFEST_URL={json.dumps(manifest_url)};"
+        "const statusEl=document.getElementById('status');"
+        "fetch(MANIFEST_URL,{cache:'no-store'})"
+        ".then(r=>r.ok?r.json():Promise.reject(new Error('manifest_fetch_failed')))"
+        ".then(m=>{const n=Array.isArray(m.devices)?m.devices.length:0;statusEl.textContent=`Payload loaded. Devices: ${n}`;})"
+        ".catch(()=>{statusEl.textContent='Payload load failed.';});"
+        "</script></body></html>"
+    )
+
+
 @router.get("/testing/{techToken}", response_class=HTMLResponse)
 def testing_html(request: Request, techToken: str) -> HTMLResponse:
     try:
@@ -186,6 +221,18 @@ def testing_html(request: Request, techToken: str) -> HTMLResponse:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
 
     project_dir = _project_dir(projectId=tok.projectId)
+    runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
+    if runtime_mode == "payload":
+        manifest = _find_project_manifest(project_dir)
+        if manifest is None:
+            html = (
+                "<!doctype html><html><head><meta charset='utf-8'><title>Sentinel Testing Runtime</title></head>"
+                "<body><h1>Sentinel Testing Runtime</h1><p>Payload has not been generated yet.</p></body></html>"
+            )
+            with_base = _inject_base_href(html, base_href=f"/testing/{techToken}/files/")
+            return HTMLResponse(content=with_base)
+        return HTMLResponse(content=_payload_runtime_shell(tech_token=techToken, manifest_name=manifest.name))
+
     home = _find_project_home(project_dir)
     if home is None:
         html = "<!doctype html><html><head><meta charset='utf-8'><title>Sentinel Testing</title></head><body><h1>Sentinel Testing</h1><p>Testing UI has not been generated yet.</p></body></html>"
