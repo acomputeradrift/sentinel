@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import logging
+import time
 from pathlib import Path, PurePosixPath
 
 import asyncio
@@ -273,6 +274,12 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     broker = _ws_broker(websocket)
     log.info("[testing-ws] broker_id=%s projectId=%s", id(broker), project_id)
     q = broker.subscribe(projectId=project_id)
+    perf: dict[str, float | int] = {
+        "recv_count": 0,
+        "recv_total_ms": 0.0,
+        "send_count": 0,
+        "send_total_ms": 0.0,
+    }
     try:
         snapshot = _build_testing_snapshot(repo=repo, projectId=project_id, seq=broker.latest_seq(projectId=project_id))
         log.info("[testing-ws] snapshot-send projectId=%s count=%s", project_id, len(snapshot.get("results") or []))
@@ -288,117 +295,154 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     async def send_loop():
         while True:
             msg = await ws_broker.wait_for_next(q, timeout_s=WS_KEEPALIVE_TIMEOUT_S)
+            send_started = time.perf_counter()
+            send_kind = "event"
             if msg is None:
+                send_kind = "keepalive"
                 await _send_text_or_fail(websocket=websocket, text=json.dumps({"type": "keepalive"}), project_id=project_id, tech_token=techToken)
-                continue
-            await _send_text_or_fail(websocket=websocket, text=msg, project_id=project_id, tech_token=techToken)
+            else:
+                await _send_text_or_fail(websocket=websocket, text=msg, project_id=project_id, tech_token=techToken)
+            send_ms = (time.perf_counter() - send_started) * 1000.0
+            perf["send_count"] = int(perf["send_count"]) + 1
+            perf["send_total_ms"] = float(perf["send_total_ms"]) + float(send_ms)
+            send_count = int(perf["send_count"])
+            if send_ms >= 50.0 or (send_count % 25 == 0):
+                send_avg = float(perf["send_total_ms"]) / max(send_count, 1)
+                log.info(
+                    "[testing-ws] perf kind=send sendKind=%s sendMs=%.2f sendAvgMs=%.2f sendCount=%s projectId=%s techToken=%s",
+                    send_kind,
+                    send_ms,
+                    send_avg,
+                    send_count,
+                    project_id,
+                    techToken,
+                )
 
     async def recv_loop():
         while True:
             raw = await websocket.receive_text()
+            recv_started = time.perf_counter()
+            msg_type = "(unknown)"
             try:
                 payload = json.loads(raw)
             except Exception:
                 log.warning("[testing-ws] recv:json-parse-failed techToken=%s raw=%s", techToken, str(raw)[:200])
                 continue
-            msg_type = str(payload.get("type") or "").strip()
-            log.info("[testing-ws] recv type=%s techToken=%s", msg_type, techToken)
-            if msg_type == "sync.request":
-                last_applied = int(payload.get("lastAppliedSeq") or 0)
-                replay = broker.replay_since(projectId=project_id, after_seq=last_applied)
-                replayable_from = int(replay.get("replayableFromSeq") or 0)
-                latest_seq = int(replay.get("latestSeq") or 0)
-                events = replay.get("events") or []
-                if replayable_from > (last_applied + 1):
-                    snap = _build_testing_snapshot(repo=repo, projectId=project_id, seq=latest_seq)
+            try:
+                msg_type = str(payload.get("type") or "").strip()
+                log.info("[testing-ws] recv type=%s techToken=%s", msg_type, techToken)
+                if msg_type == "sync.request":
+                    last_applied = int(payload.get("lastAppliedSeq") or 0)
+                    replay = broker.replay_since(projectId=project_id, after_seq=last_applied)
+                    replayable_from = int(replay.get("replayableFromSeq") or 0)
+                    latest_seq = int(replay.get("latestSeq") or 0)
+                    events = replay.get("events") or []
+                    if replayable_from > (last_applied + 1):
+                        snap = _build_testing_snapshot(repo=repo, projectId=project_id, seq=latest_seq)
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps(snap, separators=(",", ":"), ensure_ascii=False),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        continue
                     await _send_text_or_fail(
                         websocket=websocket,
-                        text=json.dumps(snap, separators=(",", ":"), ensure_ascii=False),
+                        text=json.dumps(
+                            {
+                                "type": "replay.batch",
+                                "projectId": project_id,
+                                "afterSeq": last_applied,
+                                "latestSeq": latest_seq,
+                                "events": events,
+                            },
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                        ),
                         project_id=project_id,
                         tech_token=techToken,
                     )
                     continue
-                await _send_text_or_fail(
-                    websocket=websocket,
-                    text=json.dumps(
-                        {
-                            "type": "replay.batch",
-                            "projectId": project_id,
-                            "afterSeq": last_applied,
-                            "latestSeq": latest_seq,
-                            "events": events,
-                        },
-                        separators=(",", ":"),
-                        ensure_ascii=False,
-                    ),
-                    project_id=project_id,
-                    tech_token=techToken,
+                if msg_type not in ("test_result.submit", "test_result"):
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
+                    continue
+                target = payload.get("target") or {}
+                outcome = str(payload.get("outcome") or "").strip().upper()
+                fail_note = payload.get("failNote")
+                if outcome not in ("PASS", "FAIL"):
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS or FAIL."}),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
+                    continue
+                if outcome == "FAIL" and not str(fail_note or "").strip():
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps({"type": "error", "code": "FAIL_NOTE_REQUIRED", "message": "Fail note is required when outcome is FAIL."}),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
+                    continue
+                try:
+                    rec = repo.append_test_result(
+                        techToken=techToken,
+                        target=target,
+                        outcome=outcome,
+                        failNote=(str(fail_note).strip() if fail_note is not None else None),
+                    )
+                except KeyError:
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
+                    await websocket.close(code=1008)
+                    return
+                event = _build_test_result_event(repo=repo, rec=rec)
+                published_event = broker.publish(projectId=rec.projectId, event=event)
+                if not isinstance(published_event, dict):
+                    published_event = dict(event)
+                    published_event["seq"] = int(broker.latest_seq(projectId=rec.projectId))
+                log.info(
+                    "[testing-ws] publish projectId=%s targetKey=%s outcome=%s broker_id=%s",
+                    rec.projectId,
+                    str(event.get("targetKey") or ""),
+                    str(event.get("outcome") or ""),
+                    id(broker),
                 )
-                continue
-            if msg_type not in ("test_result.submit", "test_result"):
-                await _send_text_or_fail(
-                    websocket=websocket,
-                    text=json.dumps({"type": "error", "code": "UNKNOWN_MESSAGE"}),
-                    project_id=project_id,
-                    tech_token=techToken,
-                )
-                continue
-            target = payload.get("target") or {}
-            outcome = str(payload.get("outcome") or "").strip().upper()
-            fail_note = payload.get("failNote")
-            if outcome not in ("PASS", "FAIL"):
-                await _send_text_or_fail(
-                    websocket=websocket,
-                    text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS or FAIL."}),
-                    project_id=project_id,
-                    tech_token=techToken,
-                )
-                continue
-            if outcome == "FAIL" and not str(fail_note or "").strip():
-                await _send_text_or_fail(
-                    websocket=websocket,
-                    text=json.dumps({"type": "error", "code": "FAIL_NOTE_REQUIRED", "message": "Fail note is required when outcome is FAIL."}),
-                    project_id=project_id,
-                    tech_token=techToken,
-                )
-                continue
-            try:
-                rec = repo.append_test_result(
-                    techToken=techToken,
-                    target=target,
-                    outcome=outcome,
-                    failNote=(str(fail_note).strip() if fail_note is not None else None),
-                )
-            except KeyError:
-                await _send_text_or_fail(
-                    websocket=websocket,
-                    text=json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}),
-                    project_id=project_id,
-                    tech_token=techToken,
-                )
-                await websocket.close(code=1008)
-                return
-            event = _build_test_result_event(repo=repo, rec=rec)
-            published_event = broker.publish(projectId=rec.projectId, event=event)
-            if not isinstance(published_event, dict):
-                published_event = dict(event)
-                published_event["seq"] = int(broker.latest_seq(projectId=rec.projectId))
-            log.info(
-                "[testing-ws] publish projectId=%s targetKey=%s outcome=%s broker_id=%s",
-                rec.projectId,
-                str(event.get("targetKey") or ""),
-                str(event.get("outcome") or ""),
-                id(broker),
-            )
-            try:
-                await _send_text_or_fail(
-                    websocket=websocket,
-                    text=json.dumps(published_event, separators=(",", ":"), ensure_ascii=False),
-                    project_id=project_id,
-                    tech_token=techToken,
-                )
-            except Exception:
-                log.exception("[testing-ws] direct_send_failed techToken=%s", techToken)
+                try:
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps(published_event, separators=(",", ":"), ensure_ascii=False),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
+                except Exception:
+                    log.exception("[testing-ws] direct_send_failed techToken=%s", techToken)
+            finally:
+                recv_ms = (time.perf_counter() - recv_started) * 1000.0
+                perf["recv_count"] = int(perf["recv_count"]) + 1
+                perf["recv_total_ms"] = float(perf["recv_total_ms"]) + float(recv_ms)
+                recv_count = int(perf["recv_count"])
+                if recv_ms >= 50.0 or (recv_count % 25 == 0):
+                    recv_avg = float(perf["recv_total_ms"]) / max(recv_count, 1)
+                    log.info(
+                        "[testing-ws] perf kind=recv type=%s recvMs=%.2f recvAvgMs=%.2f recvCount=%s projectId=%s techToken=%s",
+                        msg_type or "(unknown)",
+                        recv_ms,
+                        recv_avg,
+                        recv_count,
+                        project_id,
+                        techToken,
+                    )
 
     send_task = asyncio.create_task(send_loop())
     recv_task = asyncio.create_task(recv_loop())

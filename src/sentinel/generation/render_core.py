@@ -807,6 +807,41 @@ let currentDeviceTop=0;
  let techLastAppliedSeq=0;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
+ const _perfNow=()=>((typeof performance!=="undefined"&&performance.now)?performance.now():Date.now());
+ const techPerf={{layoutCalls:0,layoutTotalMs:0,wsCalls:0,wsTotalMs:0,lastConsoleAt:0}};
+ function _emitTechPerf(reason, lastMs) {{
+  const now=_perfNow();
+  if (now-techPerf.lastConsoleAt<5000 && reason!=="boot") return;
+  techPerf.lastConsoleAt=now;
+  const layoutAvgMs=techPerf.layoutCalls ? Number((techPerf.layoutTotalMs/techPerf.layoutCalls).toFixed(2)) : 0;
+  const wsAvgMs=techPerf.wsCalls ? Number((techPerf.wsTotalMs/techPerf.wsCalls).toFixed(2)) : 0;
+  try {{
+   if (typeof console!=="undefined" && console.log) {{
+    console.log("[tech-perf]", {{
+     reason,
+     lastMs:Number((Number(lastMs)||0).toFixed(2)),
+     layoutCalls:techPerf.layoutCalls,
+     layoutTotalMs:Number(techPerf.layoutTotalMs.toFixed(2)),
+     layoutAvgMs,
+     wsCalls:techPerf.wsCalls,
+     wsTotalMs:Number(techPerf.wsTotalMs.toFixed(2)),
+     wsAvgMs
+    }});
+   }}
+  }} catch (_e) {{}}
+ }}
+ function _recordLayoutPerf(ms) {{
+  const n=Number(ms)||0;
+  techPerf.layoutCalls+=1;
+  techPerf.layoutTotalMs+=n;
+  if (n>=50 || techPerf.layoutCalls%20===0) _emitTechPerf("layout", n);
+ }}
+ function _recordWsPerf(ms, kind) {{
+  const n=Number(ms)||0;
+  techPerf.wsCalls+=1;
+  techPerf.wsTotalMs+=n;
+  if (n>=30 || techPerf.wsCalls%25===0) _emitTechPerf(`ws:${{String(kind||"unknown")}}`, n);
+ }}
  function _logTechWs(action, data) {{
   try {{
    if (typeof console !== "undefined" && console.log) {{
@@ -843,72 +878,77 @@ let currentDeviceTop=0;
   }} catch (_e) {{}}
  }}
  function _applyTechPayload(payload) {{
+   const _wsT0=_perfNow();
    const t = String(payload?.type || "").trim();
-   _logTechWs("recv", t || "(unknown)");
-   if (t === "error") {{
-    const code = payload?.code;
-    const message = payload?.message;
-    const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-    setPosting(false);
-    setPostStatus(`Error: ${{msg}}`, "error");
-    return;
-   }}
-   if (t === "replay.batch") {{
-    const events = Array.isArray(payload?.events) ? payload.events : [];
-    for (const ev of events) _applyTechPayload(ev);
-    return;
-   }}
-   const seq = Number(payload?.seq || 0);
-   const isSnapshot = t === "testing_snapshot";
-   if (seq > 0) {{
-    if (seq <= techLastAppliedSeq) return;
-    if (!isSnapshot && seq > techLastAppliedSeq + 1) {{
-     _sendTechSyncRequest();
+   try {{
+    _logTechWs("recv", t || "(unknown)");
+    if (t === "error") {{
+     const code = payload?.code;
+     const message = payload?.message;
+     const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
+     setPosting(false);
+     setPostStatus(`Error: ${{msg}}`, "error");
      return;
     }}
-    techLastAppliedSeq = seq;
-   }}
-   if (t === "testing_snapshot") {{
-    const results = Array.isArray(payload?.results) ? payload.results : [];
-    let applied = 0;
-    for (const rec of results) {{
-     const targetKey = String(rec?.targetKey || "");
-     if (!targetKey) continue;
-     const outcome = String(rec?.outcome || "").toUpperCase();
-     const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-     const statusEl = rowStatusByTargetKey.get(targetKey);
-     if (statusEl) {{
-      setRowStatus(statusEl, outcome, at);
-      statusEl.classList.toggle("is-pass", outcome === "PASS");
-      statusEl.classList.toggle("is-fail", outcome === "FAIL");
-      applied += 1;
-     }}
+    if (t === "replay.batch") {{
+     const events = Array.isArray(payload?.events) ? payload.events : [];
+     for (const ev of events) _applyTechPayload(ev);
+     return;
     }}
-    _logTechWs("snapshot:applied", {{ total: results.length, applied }});
-    return;
-   }}
-   if (t !== "test_result.recorded" && t !== "test_result") return;
-   const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
-   if (!targetKey) return;
-   const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
-   const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-   const statusEl = rowStatusByTargetKey.get(targetKey);
-   if (!statusEl) {{
-    _logTechWs("row-miss", targetKey);
-   }} else {{
-    setRowStatus(statusEl, outcome, at);
-    statusEl.classList.toggle("is-pass", outcome === "PASS");
-    statusEl.classList.toggle("is-fail", outcome === "FAIL");
-   }}
-   if (pendingTargetKey && pendingTargetKey === targetKey) {{
-    _logTechWs("ack-match", targetKey);
-    pendingTargetKey = null;
-    setPosting(false);
-    setPostStatus("Saved", "success");
-   }} else if (pendingTargetKey) {{
-    _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
+    const seq = Number(payload?.seq || 0);
+    const isSnapshot = t === "testing_snapshot";
+    if (seq > 0) {{
+     if (seq <= techLastAppliedSeq) return;
+     if (!isSnapshot && seq > techLastAppliedSeq + 1) {{
+      _sendTechSyncRequest();
+      return;
+     }}
+     techLastAppliedSeq = seq;
+    }}
+    if (t === "testing_snapshot") {{
+     const results = Array.isArray(payload?.results) ? payload.results : [];
+     let applied = 0;
+     for (const rec of results) {{
+      const targetKey = String(rec?.targetKey || "");
+      if (!targetKey) continue;
+      const outcome = String(rec?.outcome || "").toUpperCase();
+      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      const statusEl = rowStatusByTargetKey.get(targetKey);
+      if (statusEl) {{
+       setRowStatus(statusEl, outcome, at);
+       statusEl.classList.toggle("is-pass", outcome === "PASS");
+       statusEl.classList.toggle("is-fail", outcome === "FAIL");
+       applied += 1;
+      }}
+     }}
+     _logTechWs("snapshot:applied", {{ total: results.length, applied }});
+     return;
+    }}
+    if (t !== "test_result.recorded" && t !== "test_result") return;
+    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
+    if (!targetKey) return;
+    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
+    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+    const statusEl = rowStatusByTargetKey.get(targetKey);
+    if (!statusEl) {{
+     _logTechWs("row-miss", targetKey);
+    }} else {{
+     setRowStatus(statusEl, outcome, at);
+     statusEl.classList.toggle("is-pass", outcome === "PASS");
+     statusEl.classList.toggle("is-fail", outcome === "FAIL");
+    }}
+    if (pendingTargetKey && pendingTargetKey === targetKey) {{
+     _logTechWs("ack-match", targetKey);
+     pendingTargetKey = null;
+     setPosting(false);
+     setPostStatus("Saved", "success");
+    }} else if (pendingTargetKey) {{
+     _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
+    }}
+   }} finally {{
+    _recordWsPerf(_perfNow()-_wsT0, t || "(unknown)");
    }}
  }}
  function _handleTechWsMessage(evt) {{
@@ -1893,6 +1933,8 @@ function syncHeader() {{
    zoomReset.textContent = `${{activeZoomPercent()}}%`;
   }}
 function applyRtiLayout() {{
+ const _layoutT0=_perfNow();
+ try {{
  const appCanvas=document.getElementById('appCanvas');
  const topControls=document.getElementById('topControls');
  const bottomControls=document.getElementById('bottomControls');
@@ -2089,7 +2131,10 @@ function applyRtiLayout() {{
   syncViewportControls();
   applyViewportState();
   if (viewportMode.active) applyViewportPopupLayout();
+ }} finally {{
+  _recordLayoutPerf(_perfNow()-_layoutT0);
  }}
+}}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
 function updateZoom(nextPercent){{
  if (viewportMode.active) {{
