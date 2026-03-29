@@ -698,7 +698,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
- .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.10);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
+ .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
  .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:9000;pointer-events:none;display:none;}}
  .viewport-mode .vp-overlay{{display:block;}}
  .viewport-mode .vp-focus{{z-index:9500 !important;pointer-events:auto;}}
@@ -774,10 +774,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 <body><div class='app-canvas' id='appCanvas'>
 <div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
 {f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}
-<div class='app-ui-controls left-controls' id='leftControls'><button class='vp-nav vp-prev' id='vpPrev' aria-label='Previous frame'>&lsaquo;</button></div>
-<div class='app-ui-controls right-controls' id='rightControls'><button class='vp-nav vp-next' id='vpNext' aria-label='Next frame'>&rsaquo;</button></div>
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
-<div class='app-ui-controls bottom-controls' id='bottomControls'><div class='vp-indicator' id='vpIndicator'></div></div>
+<div class='app-ui-controls bottom-controls' id='bottomControls'></div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
  <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
  <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
@@ -1887,46 +1885,16 @@ function syncHeader() {{
  const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
  headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
 }}
- function syncViewportControls() {{
-  const state=activePageState();
-  const frames=state.vpFrames||[];
-  if (!viewportMode.active) {{
-   const prev=document.getElementById('vpPrev');
-   const next=document.getElementById('vpNext');
-   const indicator=document.getElementById('vpIndicator');
-   if (prev) prev.style.display='none';
-   if (next) next.style.display='none';
-   if (indicator) indicator.innerHTML='';
-   return;
-  }}
-  const vpIndex=activeViewportIndex();
-  const pageFrames=frames[vpIndex]||[];
-  const hasViewportNav=Boolean(VIEWPORT_NAV.enabled && pageFrames.length);
-  const prev=document.getElementById('vpPrev');
-  const next=document.getElementById('vpNext');
-  const indicator=document.getElementById('vpIndicator');
-  if (prev) prev.style.display=hasViewportNav?'':'none';
-  if (next) next.style.display=hasViewportNav?'':'none';
-  if (!indicator) return;
-  if (!hasViewportNav) {{
-    indicator.innerHTML='';
-    return;
-  }}
-  const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
-  indicator.innerHTML=pageFrames.map((_,i)=>`<span class="dot${{i===currentIndex?' active':''}}" data-dot="${{i}}"></span>`).join('');
- }}
+ function syncViewportControls() {{}}
   function applyViewportState() {{
    const pageEl=activePageEl();
    const state=activePageState();
    const frames=state.vpFrames||[];
    if (!pageEl) return;
-  const dots=[...document.querySelectorAll('#vpIndicator .dot')];
-  const activeVpIndex=activeViewportIndex();
   frames.forEach((pageFrames, vpIndex)=>{{
     if (!pageFrames.length) return;
     const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
     currentViewportIndexes[vpIndex]=currentIndex;
-    if (vpIndex===activeVpIndex) dots.forEach((d,i)=>d.classList.toggle('active',i===currentIndex));
   }});
    applyLayerVisibility();
   }}
@@ -1946,8 +1914,6 @@ function applyRtiLayout() {{
  const appCanvas=document.getElementById('appCanvas');
  const topControls=document.getElementById('topControls');
  const bottomControls=document.getElementById('bottomControls');
- const leftControls=document.getElementById('leftControls');
- const rightControls=document.getElementById('rightControls');
  const orientationControls=document.getElementById('orientationControls');
  const layerControls=document.getElementById('layerControls');
  const layerPanel=document.getElementById('layerPanel');
@@ -1955,7 +1921,7 @@ function applyRtiLayout() {{
  const rtiCanvas=document.getElementById('rtiCanvas');
  const rtiContent=document.getElementById('rtiContent');
  const rtiDeviceCanvas=document.getElementById('rtiDeviceCanvas');
- if (!appCanvas || !topControls || !bottomControls || !leftControls || !rightControls || !layerControls || !zoomControls || !rtiCanvas || !rtiContent || !rtiDeviceCanvas) return;
+ if (!appCanvas || !topControls || !bottomControls || !layerControls || !zoomControls || !rtiCanvas || !rtiContent || !rtiDeviceCanvas) return;
 
  const controls={{
    top:Number(APP_UI_CONTROLS.top||0),
@@ -1967,17 +1933,11 @@ function applyRtiLayout() {{
  const appHeight=window.innerHeight;
  topControls.style.height=`${{controls.top}}px`;
  bottomControls.style.height=`${{controls.bottom}}px`;
- leftControls.style.top=`${{controls.top}}px`;
- leftControls.style.bottom=`${{controls.bottom}}px`;
- leftControls.style.width=`${{controls.left}}px`;
  if (orientationControls) {{
   orientationControls.style.top='auto';
   orientationControls.style.bottom=`${{Math.max(controls.bottom + 16, 16)}}px`;
   orientationControls.style.width=`${{controls.left}}px`;
  }}
- rightControls.style.top=`${{controls.top}}px`;
- rightControls.style.bottom=`${{controls.bottom}}px`;
- rightControls.style.width=`${{controls.right}}px`;
  layerControls.style.top=`${{controls.top}}px`;
  layerControls.style.bottom=`${{controls.bottom}}px`;
  layerControls.style.width=`${{controls.right}}px`;
@@ -2008,7 +1968,6 @@ function applyRtiLayout() {{
  const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
  const offsetLeft=(contentWidth-fittedWidth)/2;
  const offsetTop=(contentHeight-fittedHeight)/2;
- const navEdgeOffset=Number(VIEWPORT_NAV.placement?.edgeOffset||36);
  rtiContent.style.width=`${{contentWidth}}px`;
  rtiContent.style.height=`${{contentHeight}}px`;
  rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
@@ -2029,36 +1988,6 @@ function applyRtiLayout() {{
  }}
  rtiCanvas.classList.toggle('scroll-hover', Boolean(ZOOM_CONTROLS.scrollbars?.showOnHover) && currentZoomPercent > 100);
 
-  const pageEl=activePageEl();
-  let viewportLeft=controls.left+currentDeviceLeft-rtiCanvas.scrollLeft;
-  let viewportRight=viewportLeft+fittedWidth;
-  let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;
-  let viewportBottom=viewportTop+fittedHeight;
-  const firstViewport=pageEl ? pageEl.querySelector('.vp-box') : null;
-   const vpIndex=activeViewportIndex();
-   const vpBox=pageEl ? pageEl.querySelector(`.vp-box[data-vp="${{vpIndex}}"]`) : null;
-   if (firstViewport && !vpBox) {{
-     viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
-     viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
-     viewportRight=viewportLeft+(Number(firstViewport.dataset.width||0)*totalScale);
-     viewportBottom=viewportTop+(Number(firstViewport.dataset.height||0)*totalScale);
-   }}
-   if (vpBox) {{
-     viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(vpBox.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);
-     viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(vpBox.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);
-     viewportRight=viewportLeft+(Number(vpBox.dataset.width||0)*totalScale);
-     viewportBottom=viewportTop+(Number(vpBox.dataset.height||0)*totalScale);
-   }}
-  const leftArrowLeft=Math.max(viewportLeft-navEdgeOffset-44,0);
-  const rightArrowLeft=Math.max(viewportRight+navEdgeOffset,0);
-  const arrowTop=Math.max(viewportTop+(((viewportBottom-viewportTop)-44)/2),0);
- leftControls.style.left=`${{leftArrowLeft}}px`;
- leftControls.style.width='44px';
- leftControls.style.height='44px';
- leftControls.style.top=`${{arrowTop}}px`;
- leftControls.style.bottom='auto';
- leftControls.style.right='auto';
-
  if (orientationControls) {{
    orientationControls.style.left='0';
    orientationControls.style.right='auto';
@@ -2066,13 +1995,6 @@ function applyRtiLayout() {{
    orientationControls.style.top='auto';
    orientationControls.style.bottom=`${{Math.max(controls.bottom + 16, 16)}}px`;
   }}
-
- rightControls.style.left=`${{rightArrowLeft}}px`;
- rightControls.style.width='44px';
- rightControls.style.height='44px';
- rightControls.style.top=`${{arrowTop}}px`;
- rightControls.style.bottom='auto';
- rightControls.style.right='auto';
 
  layerControls.style.height=`${{Math.max(appHeight-controls.top-controls.bottom,1)}}px`;
  layerControls.style.justifyContent=(LAYER_PANEL.placement?.centerVertically===false)?'flex-start':'center';
@@ -2278,28 +2200,6 @@ if (popupNext) popupNext.addEventListener('click',()=>{{
   renderViewportPopup();
  }}
 }});
- const prev=document.getElementById('vpPrev');
- const next=document.getElementById('vpNext');
- if (prev && next) {{
-   prev.addEventListener('click',()=>{{
-     const frames=activePageState().vpFrames||[];
-     const vpIndex=activeViewportIndex();
-     const pageFrames=frames[vpIndex]||[];
-     if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)>0) {{
-       currentViewportIndexes[vpIndex]--;
-       applyViewportState();
-     }}
-   }});
-   next.addEventListener('click',()=>{{
-     const frames=activePageState().vpFrames||[];
-     const vpIndex=activeViewportIndex();
-     const pageFrames=frames[vpIndex]||[];
-     if (pageFrames.length && (currentViewportIndexes[vpIndex] ?? 0)<pageFrames.length-1) {{
-       currentViewportIndexes[vpIndex]++;
-       applyViewportState();
-     }}
-   }});
- }}
 </script></body></html>"""
 
 
