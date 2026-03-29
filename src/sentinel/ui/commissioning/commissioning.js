@@ -182,6 +182,7 @@ const state = {
   techLinksByProject: {},
   selectedProjectIdByClient: {},
   uploadInFlightByProject: {},
+  uploadFinalizeTimerByProject: {},
   refreshProjectsRequestSeq: 0,
 };
 
@@ -385,7 +386,7 @@ function _setGenerationPhaseUi(projectId, phaseRaw, percentRaw) {
   const pid = String(projectId || "").trim();
   if (!pid || pid !== String(currentProjectId() || "").trim()) return;
   const phase = String(phaseRaw || "").trim().toLowerCase();
-  if (!state.uploadInFlightByProject[pid]) return;
+  if (!state.uploadInFlightByProject[pid] && phase !== "ready") return;
   const pct = Number(percentRaw);
   const hasPct = Number.isFinite(pct);
 
@@ -404,6 +405,7 @@ function _setGenerationPhaseUi(projectId, phaseRaw, percentRaw) {
   if (phase === "ready") {
     setProgressHidden($("uploadProgressRow"), false);
     setProgress($("uploadProgress"), 100);
+    setStatus($("uploadProgressLabel"), "Generating...");
   }
 }
 
@@ -480,6 +482,10 @@ async function uploadAndRegenerate() {
 
   const uploadBtn = $("uploadBtn");
   uploadBtn.disabled = true;
+  if (state.uploadFinalizeTimerByProject[projectId]) {
+    clearTimeout(state.uploadFinalizeTimerByProject[projectId]);
+    delete state.uploadFinalizeTimerByProject[projectId];
+  }
   setStatus($("uploadStatus"), "");
   setProgressHidden($("uploadProgressRow"), false);
   setProgress($("uploadProgress"), 0);
@@ -550,9 +556,17 @@ async function uploadAndRegenerate() {
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
   } finally {
-    state.uploadInFlightByProject[projectId] = false;
-    setProgressHidden($("uploadProgressRow"), true);
-    setStatus($("uploadProgressLabel"), "");
+    const finalizeUi = () => {
+      state.uploadInFlightByProject[projectId] = false;
+      setProgressHidden($("uploadProgressRow"), true);
+      setStatus($("uploadProgressLabel"), "");
+      delete state.uploadFinalizeTimerByProject[projectId];
+    };
+    if (state.generationReadyByProject[projectId]) {
+      state.uploadFinalizeTimerByProject[projectId] = setTimeout(finalizeUi, 1200);
+    } else {
+      finalizeUi();
+    }
     uploadBtn.disabled = false;
   }
 }

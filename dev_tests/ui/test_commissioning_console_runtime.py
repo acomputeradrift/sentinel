@@ -937,3 +937,135 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 page.close()
             finally:
                 app_server.stop()
+
+    def test_live_status_bar_shows_extracting_and_generating_phases(self):
+        from playwright.sync_api import expect
+
+        try:
+            import websockets  # noqa: F401
+        except Exception as e:
+            raise unittest.SkipTest("websockets runtime is not installed in this environment") from e
+
+        apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
+        if not apex_path.exists():
+            raise unittest.SkipTest(f"Missing apex fixture: {apex_path}")
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
+            app_server.start()
+            try:
+                base_url = str(app_server.base_url or "").rstrip("/")
+                page = self._browser.new_page()
+                page.goto(f"{base_url}/commissioning/index.html")
+
+                page.get_by_label("New client name").fill("Live Client")
+                page.get_by_role("button", name="Create client").click()
+                page.get_by_label("New project name").fill("Live Project")
+                page.get_by_role("button", name="Create project").click()
+                expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
+
+                # Record all phase-label transitions, even brief ones.
+                page.evaluate(
+                    """() => {
+                      window.__phaseLabelHistory = [];
+                      const target = document.getElementById('uploadProgressLabel');
+                      const push = () => {
+                        const t = String((target && target.textContent) || '').trim();
+                        if (!t) return;
+                        window.__phaseLabelHistory.push(t);
+                      };
+                      if (target) {
+                        push();
+                        const obs = new MutationObserver(push);
+                        obs.observe(target, { childList: true, subtree: true, characterData: true });
+                        window.__phaseObserver = obs;
+                      }
+                    }"""
+                )
+
+                page.set_input_files("input[type=file][name=apex]", str(apex_path))
+                page.get_by_role("button", name="Load File").click()
+                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
+
+                phases = page.evaluate("() => Array.isArray(window.__phaseLabelHistory) ? window.__phaseLabelHistory.slice() : []")
+                self.assertTrue(any(str(p) == "Extracting..." for p in phases), f"Missing Extracting... phase. history={phases}")
+                self.assertTrue(any(str(p) == "Generating..." for p in phases), f"Missing Generating... phase. history={phases}")
+                page.close()
+            finally:
+                app_server.stop()
+
+    def test_live_status_bar_recovers_phase_updates_after_manage_ws_gap(self):
+        from playwright.sync_api import expect
+
+        try:
+            import websockets  # noqa: F401
+        except Exception as e:
+            raise unittest.SkipTest("websockets runtime is not installed in this environment") from e
+
+        apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
+        if not apex_path.exists():
+            raise unittest.SkipTest(f"Missing apex fixture: {apex_path}")
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
+            app_server.start()
+            try:
+                base_url = str(app_server.base_url or "").rstrip("/")
+                page = self._browser.new_page()
+                page.goto(f"{base_url}/commissioning/index.html")
+
+                page.get_by_label("New client name").fill("Live Client")
+                page.get_by_role("button", name="Create client").click()
+                page.get_by_label("New project name").fill("Live Project")
+                page.get_by_role("button", name="Create project").click()
+                expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
+
+                page.evaluate(
+                    """() => {
+                      window.__phaseLabelHistory = [];
+                      const target = document.getElementById('uploadProgressLabel');
+                      const push = () => {
+                        const t = String((target && target.textContent) || '').trim();
+                        if (!t) return;
+                        window.__phaseLabelHistory.push(t);
+                      };
+                      if (target) {
+                        const obs = new MutationObserver(push);
+                        obs.observe(target, { childList: true, subtree: true, characterData: true });
+                        window.__phaseObserver = obs;
+                      }
+                    }"""
+                )
+
+                # Simulate a temporary manage-consumer drop during an in-flight upload/regenerate.
+                page.evaluate(
+                    """() => {
+                      const mgr = window.__sentinelProjectWsManager;
+                      if (mgr && typeof mgr.setConsumer === 'function') {
+                        mgr.setConsumer('manage', { active: false });
+                      }
+                    }"""
+                )
+
+                page.set_input_files("input[type=file][name=apex]", str(apex_path))
+                page.get_by_role("button", name="Load File").click()
+                page.wait_for_timeout(900)
+
+                page.evaluate(
+                    """() => {
+                      const mgr = window.__sentinelProjectWsManager;
+                      if (mgr && typeof mgr.setConsumer === 'function') {
+                        mgr.setConsumer('manage', { active: true });
+                      }
+                    }"""
+                )
+
+                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
+                phases = page.evaluate("() => Array.isArray(window.__phaseLabelHistory) ? window.__phaseLabelHistory.slice() : []")
+                self.assertTrue(any(str(p) == "Extracting..." for p in phases), f"Missing Extracting... after ws gap. history={phases}")
+                self.assertTrue(any(str(p) == "Generating..." for p in phases), f"Missing Generating... after ws gap. history={phases}")
+                page.close()
+            finally:
+                app_server.stop()
