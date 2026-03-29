@@ -698,7 +698,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
- .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:transparent;pointer-events:auto;cursor:pointer;z-index:1;box-sizing:border-box;}}
+ .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.10);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
  .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:9000;pointer-events:none;display:none;}}
  .viewport-mode .vp-overlay{{display:block;}}
  .viewport-mode .vp-focus{{z-index:9500 !important;pointer-events:auto;}}

@@ -132,6 +132,7 @@ class ViewportOrientationRenderingRegressionTest(unittest.TestCase):
         self.assertIn("class='vp-box'", html)
         self.assertIn("data-p-visible='1'", html)
         self.assertIn("data-l-visible='0'", html)
+        self.assertIn(".vp-box{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.10);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}", html)
 
         # Regression: viewport boxes must participate in orientation-based visibility.
         self.assertIn("const visKey=`${short}Visible`", html)
