@@ -2217,9 +2217,6 @@ if (zoomInc) zoomInc.addEventListener('click',()=>updateZoom(activeZoomPercent()
 if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
 const vpPopupClose=document.getElementById('vpPopupClose');
 if (vpPopupClose) vpPopupClose.addEventListener('click',()=>exitViewportMode());
-const vpPopup=document.getElementById('vpPopup');
-if (vpPopup) vpPopup.addEventListener('click', e=>{{ if (e.target===vpPopup) exitViewportMode(); }});
-document.addEventListener('keydown', e=>{{ if (e.key === 'Escape') exitViewportMode(); }});
 // Only the X closes the popup. Backdrop click and Escape are ignored on purpose.
 document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
  if (el.dataset.boundVpClick) return;

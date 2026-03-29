@@ -254,3 +254,81 @@ class CommissioningPipelineTest(unittest.TestCase):
             self.assertEqual(len(data_2), 1)
             self.assertFalse(first_home.exists(), "Old project-home artifact should be removed after regenerate.")
             self.assertFalse(first_data.exists(), "Old project-data artifact should be removed after regenerate.")
+
+    def test_regenerate_does_not_delete_foreign_stage_directories(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.services import pipeline
+
+            project_id = "proj-1"
+            out_dir = Path(os.environ["SENTINEL_GENERATED_ROOT"]) / project_id
+            out_dir.mkdir(parents=True, exist_ok=True)
+            foreign_stage = out_dir / ".stage-foreign-active"
+            foreign_stage.mkdir(parents=True, exist_ok=True)
+            foreign_marker = foreign_stage / "marker.txt"
+            foreign_marker.write_text("active", encoding="utf-8")
+
+            apex_path = Path(td) / "sample.apex"
+            apex_path.write_bytes(b"apex")
+
+            def _fake_run(*, args, cwd, env, phase_hook=None):
+                out_idx = args.index("--out-dir")
+                stage_dir = Path(args[out_idx + 1])
+                script = Path(args[1]).name
+                if script == "extract_project_data.py":
+                    (stage_dir / "sample_project_data.json").write_text("{}", encoding="utf-8")
+                elif script == "generate_html.py":
+                    (stage_dir / "sample_project_data__project-home.html").write_text("<html></html>", encoding="utf-8")
+                    (stage_dir / "sample_project_data__project-manifest.json").write_text("{}", encoding="utf-8")
+                    (stage_dir / "sample_project_data__device-0-test.html").write_text("<html></html>", encoding="utf-8")
+                    (stage_dir / "sample_project_data__device-0-test__payload.json").write_text("{}", encoding="utf-8")
+                return "", ""
+
+            with mock.patch.object(pipeline, "_run_subprocess_with_progress", side_effect=_fake_run):
+                result = pipeline.regenerate_project(projectId=project_id, apex_path=apex_path)
+
+            self.assertTrue((out_dir / "sample_project_data__project-home.html").exists())
+            self.assertEqual(result.get("projectId"), project_id)
+            self.assertTrue(foreign_stage.exists(), "Foreign in-flight stage dir should not be removed.")
+            self.assertTrue(foreign_marker.exists(), "Foreign stage contents should remain intact.")
+
+    def test_regenerate_uses_short_staging_path_not_nested_under_project_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.services import pipeline
+
+            project_id = "proj-2"
+            apex_path = Path(td) / "sample.apex"
+            apex_path.write_bytes(b"apex")
+
+            staged_out_dirs: list[Path] = []
+
+            def _fake_run(*, args, cwd, env, phase_hook=None):
+                out_idx = args.index("--out-dir")
+                stage_dir = Path(args[out_idx + 1])
+                staged_out_dirs.append(stage_dir)
+                script = Path(args[1]).name
+                if script == "extract_project_data.py":
+                    (stage_dir / "sample_project_data.json").write_text("{}", encoding="utf-8")
+                elif script == "generate_html.py":
+                    (stage_dir / "sample_project_data__project-home.html").write_text("<html></html>", encoding="utf-8")
+                    (stage_dir / "sample_project_data__project-manifest.json").write_text("{}", encoding="utf-8")
+                    (stage_dir / "sample_project_data__device-0-test.html").write_text("<html></html>", encoding="utf-8")
+                    (stage_dir / "sample_project_data__device-0-test__payload.json").write_text("{}", encoding="utf-8")
+                return "", ""
+
+            with mock.patch.object(pipeline, "_run_subprocess_with_progress", side_effect=_fake_run):
+                pipeline.regenerate_project(projectId=project_id, apex_path=apex_path)
+
+            project_out = (Path(os.environ["SENTINEL_GENERATED_ROOT"]) / project_id).resolve()
+            self.assertGreaterEqual(len(staged_out_dirs), 2)
+            for stage_dir in staged_out_dirs:
+                self.assertNotEqual(
+                    stage_dir.resolve().parent,
+                    project_out,
+                    "Staging dir must not be nested under project output dir to avoid long-path failures.",
+                )

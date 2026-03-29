@@ -1260,8 +1260,7 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
         finally:
             page.close()
 
-    def test_viewport_popup_can_be_blocked_by_layers_until_toggled_off(self):
-        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    def test_viewport_popup_remains_clickable_above_non_viewport_layers(self):
         from playwright.sync_api import expect
 
         def overlay_button(*, tag: str, text: str, left: int, top: int, width: int, height: int) -> dict:
@@ -1274,7 +1273,7 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
                 "testTargets": {"text": True, "macros": False, "macroSteps": True, "variables": {}},
             }
 
-        # Fixture: a full-screen overlay button on a higher-order layer that intercepts clicks.
+        # Fixture: a full-screen button on a higher-order layer; viewport overlay must still win click.
         project_data = {
             "devices": [
                 {
@@ -1378,9 +1377,10 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             page.goto(html_path.as_uri(), wait_until="domcontentloaded")
             expect(page.locator("#vpPopup")).to_be_hidden()
 
-            # With the blocking layer on, viewport click should be intercepted (popup stays hidden).
-            with self.assertRaises(PlaywrightTimeoutError):
-                page.locator(".vp-box").first.click(timeout=1500)
+            # Even with higher-order non-viewport layers, viewport click must open the popup.
+            page.locator(".vp-box").first.click(timeout=3000)
+            expect(page.locator("#vpPopup")).to_be_visible()
+            page.locator("#vpPopupClose").click()
             expect(page.locator("#vpPopup")).to_be_hidden()
 
             # Toggle off all non-viewport layers (simulate user intent via layer panel state).
@@ -1399,7 +1399,7 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
                 }"""
             )
 
-            # Now viewport click should open the popup.
+            # After toggling layers, viewport click still opens the popup.
             page.locator(".vp-box").first.click(timeout=3000)
             expect(page.locator("#vpPopup")).to_be_visible()
         finally:

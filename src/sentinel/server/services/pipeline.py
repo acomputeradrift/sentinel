@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import shutil
+import tempfile
 from pathlib import Path
 import sys
 from uuid import uuid4
@@ -115,8 +116,9 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
 
     out_dir = _project_out_dir(projectId=projectId)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stage_dir = out_dir / f".stage-{uuid4().hex}"
-    stage_dir.mkdir(parents=True, exist_ok=True)
+    stage_root = (_generated_root() / ".staging").resolve()
+    stage_root.mkdir(parents=True, exist_ok=True)
+    stage_dir = Path(tempfile.mkdtemp(prefix=f"{projectId[:8]}-", dir=str(stage_root))).resolve()
 
     _call_phase_hook(phase_hook, "extracting", 0)
 
@@ -182,10 +184,8 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
             if child.name in new_names:
                 continue
             if child.name.startswith(".stage-"):
-                if child.is_dir():
-                    shutil.rmtree(child, ignore_errors=True)
-                else:
-                    child.unlink(missing_ok=True)
+                # Never remove foreign in-flight stage dirs from another run.
+                # The current run always removes its own stage_dir in finally.
                 continue
             if child.is_dir():
                 shutil.rmtree(child)
