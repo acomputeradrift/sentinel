@@ -429,6 +429,21 @@ def _page_target_indexes(project_data: dict[str, Any], device_index: int) -> dic
     return out
 
 
+def _button_fill_class(label: str, btn: dict[str, Any]) -> str:
+    identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
+    tag_name = str(identity.get("buttonTagName") or "").strip()
+    text = str(identity.get("text") or "").strip()
+    if not tag_name and not text:
+        return "fill-empty-tag"
+    if label == "Screen Label":
+        return "fill-screen-label"
+    if label in ("Screen Button", "Hard Button"):
+        return "fill-screen-control"
+    if label == "UI Item":
+        return "fill-ui-item"
+    return "fill-screen-control"
+
+
 def _render_button_control(
     btn: dict[str, Any],
     label: str,
@@ -490,9 +505,11 @@ def _render_button_control(
                 f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
+    button_fill_class = _button_fill_class(label, btn)
+    button_text = escape(_btn_text(identity))
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
-        f"<button class='test-btn' data-meta='{meta_attr}'>{escape(_btn_text(identity))}</button>"
+        f"<button class='test-btn {button_fill_class} state-untested' data-meta='{meta_attr}'><span class='test-btn-label'>{button_text}</span><span class='test-btn-count' aria-hidden='true'>0/0</span></button>"
         f"{link_html}</div>"
     )
 
@@ -656,8 +673,6 @@ def _render_document(
     show_orientation_toggle: bool,
     home_href: str | None = None,
 ) -> str:
-    link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
-    link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
     layout_cfg = app_ui.get("layout", {})
     control_cfg = layout_cfg.get("appUIControls", {})
     rti_device_cfg = layout_cfg.get("rtiDeviceCanvas", {})
@@ -729,9 +744,19 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup-indicator.is-vertical{{flex-direction:column;}}
  .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
-.test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
-.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:{'0' if link_hover_enabled else '1'};pointer-events:{'none' if link_hover_enabled else 'auto'};transition:opacity .15s ease;}}
-.btn-wrap:hover .page-link-hit{{opacity:1;pointer-events:auto;}}
+.test-btn{{--state-color:#8ea4b6;--fill-color:#1e5f86;--text-color:#ffffff;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:3px solid var(--state-color);border-radius:10px;background:var(--fill-color);box-shadow:inset 0 0 0 1px rgba(20,50,75,.35);color:var(--text-color);line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:10px 34px 20px 10px;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease;}}
+.test-btn::before{{content:'';position:absolute;left:0;top:0;right:0;height:6px;background:var(--state-color);opacity:.95;pointer-events:none;}}
+.test-btn-label{{display:block;width:100%;text-align:center;font-weight:600;pointer-events:none;}}
+.test-btn-count{{position:absolute;left:8px;bottom:6px;font-size:11px;line-height:1;background:rgba(15,26,40,.28);border:1px solid rgba(255,255,255,.24);border-radius:999px;padding:2px 6px;pointer-events:none;color:inherit;}}
+.test-btn.fill-screen-label{{--fill-color:#58585a;--text-color:#f9fbfd;}}
+.test-btn.fill-screen-control{{--fill-color:#2c6fb7;--text-color:#f9fbfd;}}
+.test-btn.fill-ui-item{{--fill-color:#a7a9ac;--text-color:#102233;}}
+.test-btn.fill-empty-tag{{--fill-color:#ef4444;--text-color:#ffffff;}}
+.test-btn.state-untested{{--state-color:#9db0bf;}}
+.test-btn.state-pass{{--state-color:#39b54a;}}
+.test-btn.state-partial{{--state-color:#fcb040;}}
+.test-btn.state-fail{{--state-color:#ef4444;}}
+.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;}}
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;position:relative;z-index:21;}}
@@ -928,6 +953,7 @@ let currentDeviceTop=0;
        applied += 1;
       }}
      }}
+     applyButtonVisualStates(document);
      _logTechWs("snapshot:applied", {{ total: results.length, applied }});
      return;
     }}
@@ -945,6 +971,7 @@ let currentDeviceTop=0;
      statusEl.classList.toggle("is-pass", outcome === "PASS");
      statusEl.classList.toggle("is-fail", outcome === "FAIL");
     }}
+    applyButtonVisualStates(document);
     if (pendingTargetKey && pendingTargetKey === targetKey) {{
      _logTechWs("ack-match", targetKey);
      pendingTargetKey = null;
@@ -1023,7 +1050,7 @@ let currentDeviceTop=0;
   statusEl.classList.toggle("is-pass", outcome === "PASS");
   statusEl.classList.toggle("is-fail", outcome === "FAIL");
  }}
- function buildTargetPayload(ctxBtn, meta, targetLabel) {{
+function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
   const label = String(targetLabel || "").trim();
   const kind = String(m.kind || "").trim().toUpperCase();
@@ -1075,10 +1102,56 @@ let currentDeviceTop=0;
    targetKey,
    kind: scope,
    targetName,
-   refs
-  }};
+  refs
+ }};
+}}
+function buttonVisualSummary(btn) {{
+ const targetButton = btn || null;
+ if (!targetButton) return {{ pass: 0, total: 0, stateClass: "state-untested" }};
+ let meta = {{}};
+ try {{
+  meta = JSON.parse(targetButton.dataset.meta || "{{}}");
+ }} catch (_err) {{
+  meta = {{}};
  }}
- function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
+ const labels = Array.isArray(meta.targets) ? meta.targets : [];
+ let pass = 0;
+ let tested = 0;
+ for (const label of labels) {{
+  const target = buildTargetPayload(targetButton, meta, label);
+  const key = target && target.targetKey ? String(target.targetKey) : "";
+  if (!key) continue;
+  const rec = statusByTargetKey.get(key);
+  const outcome = String(rec?.outcome || "").toUpperCase();
+  if (outcome === "PASS") {{
+   pass += 1;
+   tested += 1;
+  }} else if (outcome === "FAIL") {{
+   tested += 1;
+  }}
+ }}
+ const total = labels.length;
+ let stateClass = "state-untested";
+ if (total > 0 && pass === total) stateClass = "state-pass";
+ else if (tested === 0) stateClass = "state-untested";
+ else if (pass === 0) stateClass = "state-fail";
+ else stateClass = "state-partial";
+ return {{ pass, total, stateClass }};
+}}
+function applyButtonVisualState(btn) {{
+ const targetButton = btn || null;
+ if (!targetButton) return;
+ const summary = buttonVisualSummary(targetButton);
+ targetButton.classList.remove("state-untested", "state-pass", "state-partial", "state-fail");
+ targetButton.classList.add(summary.stateClass);
+ const countEl = targetButton.querySelector(".test-btn-count");
+ if (countEl) countEl.textContent = `${{summary.pass}}/${{summary.total}}`;
+}}
+function applyButtonVisualStates(scope) {{
+ const root = scope || document;
+ root.querySelectorAll(".test-btn").forEach(applyButtonVisualState);
+}}
+function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
  function setPostStatus(text, kind) {{
   if (!postStatus) return;
   const t=String(text||'').trim();
@@ -1184,7 +1257,8 @@ let currentDeviceTop=0;
    }});
   }}
 bindTestButtonClicks(document);
- _connectTechWs();
+applyButtonVisualStates(document);
+_connectTechWs();
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
  function activePageEl() {{
@@ -1646,6 +1720,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}})
     viewportContent.appendChild(clone);
    }});
    bindTestButtonClicks(viewportContent);
+   applyButtonVisualStates(viewportContent);
    renderPopupIndicator();
 	   applyViewportPopupLayerVisibility();
 	   viewportMode.popupZoomPercent=ZOOM_DEFAULT;
@@ -2370,8 +2445,9 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
     system_rows = []
     for item in system_events:
         meta_attr = json.dumps(_event_meta(item, "system")).replace("'", "&apos;")
+        row_text = _event_button_text(item, "system")
         system_rows.append(
-            f"<button class='home-row event-row test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'system')}</button>"
+            f"<button class='home-row event-row test-btn fill-screen-control state-untested' type='button' data-meta='{meta_attr}'><span class='test-btn-label'>{row_text}</span><span class='test-btn-count' aria-hidden='true'>0/0</span></button>"
         )
 
     driver_rows = []
@@ -2384,8 +2460,9 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
         driver_rows.append(f"<div class='home-subtitle'>{driver_name}</div>")
         for item in items:
             meta_attr = json.dumps(_event_meta(item, "driver")).replace("'", "&apos;")
+            row_text = _event_button_text(item, "driver")
             driver_rows.append(
-                f"<button class='home-row event-row test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'driver')}</button>"
+                f"<button class='home-row event-row test-btn fill-screen-control state-untested' type='button' data-meta='{meta_attr}'><span class='test-btn-label'>{row_text}</span><span class='test-btn-count' aria-hidden='true'>0/0</span></button>"
             )
 
     device_rows = []
@@ -2426,6 +2503,18 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-row{{width:100%;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:1px solid #a9bccd;background:#1e5f86;color:#fff;text-decoration:none;font-size:15px;line-height:1.35;text-align:left;box-shadow:inset 0 0 0 1px #154665;}}
 .home-row:hover{{filter:brightness(1.05);}}
 .event-row{{cursor:pointer;}}
+.event-row.test-btn{{--state-color:#9db0bf;--fill-color:#2c6fb7;--text-color:#ffffff;position:relative;border:3px solid var(--state-color);background:var(--fill-color);color:var(--text-color);padding:14px 18px 30px 18px;overflow:hidden;transition:border-color .15s ease,background-color .15s ease;}}
+.event-row.test-btn::before{{content:'';position:absolute;left:0;top:0;right:0;height:6px;background:var(--state-color);opacity:.95;pointer-events:none;}}
+.event-row .test-btn-label{{display:block;pointer-events:none;}}
+.event-row .test-btn-count{{position:absolute;left:12px;bottom:8px;font-size:11px;line-height:1;background:rgba(15,26,40,.24);border:1px solid rgba(255,255,255,.24);border-radius:999px;padding:2px 6px;pointer-events:none;color:inherit;}}
+.test-btn.fill-screen-label{{--fill-color:#58585a;--text-color:#f9fbfd;}}
+.test-btn.fill-screen-control{{--fill-color:#2c6fb7;--text-color:#f9fbfd;}}
+.test-btn.fill-ui-item{{--fill-color:#a7a9ac;--text-color:#102233;}}
+.test-btn.fill-empty-tag{{--fill-color:#ef4444;--text-color:#ffffff;}}
+.test-btn.state-untested{{--state-color:#9db0bf;}}
+.test-btn.state-pass{{--state-color:#39b54a;}}
+.test-btn.state-partial{{--state-color:#fcb040;}}
+.test-btn.state-fail{{--state-color:#ef4444;}}
 .device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
@@ -2555,7 +2644,8 @@ const APP_UI={app_json};
       statusEl.classList.toggle("is-fail", outcome === "FAIL");
       applied += 1;
      }}
-    }}
+     }}
+    applyButtonVisualStates(document);
     _logTechWs("snapshot:applied", {{ total: results.length, applied }});
     return;
    }}
@@ -2571,6 +2661,7 @@ const APP_UI={app_json};
     statusEl.classList.toggle("is-pass", outcome === "PASS");
     statusEl.classList.toggle("is-fail", outcome === "FAIL");
    }}
+   applyButtonVisualStates(document);
    if (pendingTargetKey && pendingTargetKey === targetKey) {{
     _logTechWs("ack-match", targetKey);
     pendingTargetKey = null;
@@ -2696,10 +2787,56 @@ const APP_UI={app_json};
    targetKey,
    kind: scope,
    targetName,
-   refs
-  }};
+  refs
+ }};
+}}
+function buttonVisualSummary(btn) {{
+ const targetButton = btn || null;
+ if (!targetButton) return {{ pass: 0, total: 0, stateClass: "state-untested" }};
+ let meta = {{}};
+ try {{
+  meta = JSON.parse(targetButton.getAttribute("data-meta") || "{{}}");
+ }} catch (_err) {{
+  meta = {{}};
  }}
- function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
+ const labels = Array.isArray(meta.targets) ? meta.targets : [];
+ let pass = 0;
+ let tested = 0;
+ for (const label of labels) {{
+  const target = buildTargetPayload(targetButton, meta, label);
+  const key = target && target.targetKey ? String(target.targetKey) : "";
+  if (!key) continue;
+  const rec = statusByTargetKey.get(key);
+  const outcome = String(rec?.outcome || "").toUpperCase();
+  if (outcome === "PASS") {{
+   pass += 1;
+   tested += 1;
+  }} else if (outcome === "FAIL") {{
+   tested += 1;
+  }}
+ }}
+ const total = labels.length;
+ let stateClass = "state-untested";
+ if (total > 0 && pass === total) stateClass = "state-pass";
+ else if (tested === 0) stateClass = "state-untested";
+ else if (pass === 0) stateClass = "state-fail";
+ else stateClass = "state-partial";
+ return {{ pass, total, stateClass }};
+}}
+function applyButtonVisualState(btn) {{
+ const targetButton = btn || null;
+ if (!targetButton) return;
+ const summary = buttonVisualSummary(targetButton);
+ targetButton.classList.remove("state-untested", "state-pass", "state-partial", "state-fail");
+ targetButton.classList.add(summary.stateClass);
+ const countEl = targetButton.querySelector(".test-btn-count");
+ if (countEl) countEl.textContent = `${{summary.pass}}/${{summary.total}}`;
+}}
+function applyButtonVisualStates(scope) {{
+ const root = scope || document;
+ root.querySelectorAll(".test-btn").forEach(applyButtonVisualState);
+}}
+function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,function(m){{return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m];}});}}
  function setPostStatus(text, kind) {{
   if (!postStatus) return;
   const t=String(text||'').trim();
@@ -2783,7 +2920,7 @@ const APP_UI={app_json};
    failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
   }});
  }}
- Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
+Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
   b.addEventListener('click', function(){{
    const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
    const popupCfg=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
@@ -2795,8 +2932,9 @@ const APP_UI={app_json};
     setPostStatus('','');
     ov.classList.add('open');
    bindResultRows(m);
-  }});
  }});
+}});
+applyButtonVisualStates(document);
 _connectTechWs();
 document.getElementById('close').addEventListener('click', function(){{ov.classList.remove('open');}});
 ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('open');}});

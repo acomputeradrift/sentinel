@@ -104,6 +104,9 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
         self.assertEqual(html.count("<a class='page-link-hit'"), 1)
         self.assertIn("material-symbols-outlined", html)
         self.assertIn("link_2", html)
+        self.assertIn("opacity:1;pointer-events:auto;", html)
+        self.assertIn("class='test-btn fill-screen-control state-untested'", html)
+        self.assertIn("<span class='test-btn-count' aria-hidden='true'>0/0</span>", html)
         self.assertIn("sample_project_data__device-0-ist-5-global.html", html)
         self.assertIn("data-target-page-index='1'", html)
         self.assertIn("class='project-home-link' href='sample_project_data__project-home.html'", html)
@@ -147,7 +150,8 @@ class PageLinkRenderingRegressionTest(unittest.TestCase):
 
         html = render_project_home_html(project_data, app_ui, project_stem="sample_project_data")
         self.assertIn('"Hall Motion" | Hall Sensor, run macro: Hall Lights', html)
-        self.assertIn("class='home-row event-row test-btn'", html)
+        self.assertIn("class='home-row event-row test-btn fill-screen-control state-untested'", html)
+        self.assertIn("<span class='test-btn-count' aria-hidden='true'>0/0</span>", html)
         self.assertIn('"targets": ["Trigger", "Macro"]', html)
         self.assertIn("function esc(s)", html)
 
