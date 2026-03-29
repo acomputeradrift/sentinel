@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import shutil
 from pathlib import Path
 import sys
+from uuid import uuid4
 
 
 class PipelineNotImplementedError(RuntimeError):
@@ -78,20 +80,30 @@ def _run_subprocess_with_progress(*, args: list[str], cwd: Path, env: dict[str, 
     stderr_text = ""
     assert proc.stdout is not None
     assert proc.stderr is not None
-    for line in proc.stdout:
-        stdout_chunks.append(line)
-        m = _PROGRESS_RE.match(str(line or "").strip())
-        if not m:
-            continue
-        phase = str(m.group(1) or "").strip().lower()
-        percent = int(m.group(2) or 0)
-        _call_phase_hook(phase_hook, phase, percent)
-    stderr_text = proc.stderr.read()
-    rc = proc.wait()
-    stdout_text = "".join(stdout_chunks)
-    if rc != 0:
-        raise subprocess.CalledProcessError(rc, args, output=stdout_text, stderr=stderr_text)
-    return stdout_text, stderr_text
+    try:
+        for line in proc.stdout:
+            stdout_chunks.append(line)
+            m = _PROGRESS_RE.match(str(line or "").strip())
+            if not m:
+                continue
+            phase = str(m.group(1) or "").strip().lower()
+            percent = int(m.group(2) or 0)
+            _call_phase_hook(phase_hook, phase, percent)
+        stderr_text = proc.stderr.read()
+        rc = proc.wait()
+        stdout_text = "".join(stdout_chunks)
+        if rc != 0:
+            raise subprocess.CalledProcessError(rc, args, output=stdout_text, stderr=stderr_text)
+        return stdout_text, stderr_text
+    finally:
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+        try:
+            proc.stderr.close()
+        except Exception:
+            pass
 
 
 def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:
@@ -103,52 +115,85 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
 
     out_dir = _project_out_dir(projectId=projectId)
     out_dir.mkdir(parents=True, exist_ok=True)
+    stage_dir = out_dir / f".stage-{uuid4().hex}"
+    stage_dir.mkdir(parents=True, exist_ok=True)
 
     _call_phase_hook(phase_hook, "extracting", 0)
 
     try:
-        _run_subprocess_with_progress(
-            args=[
-                _python_exe(),
-                str(extract),
-                "--apex",
-                str(apex_path),
-                "--project-structure",
-                str(project_structure),
-                "--out-dir",
-                str(out_dir),
-            ],
-            cwd=root,
-            env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
-            phase_hook=phase_hook,
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Extraction failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
+        try:
+            _run_subprocess_with_progress(
+                args=[
+                    _python_exe(),
+                    str(extract),
+                    "--apex",
+                    str(apex_path),
+                    "--project-structure",
+                    str(project_structure),
+                    "--out-dir",
+                    str(stage_dir),
+                ],
+                cwd=root,
+                env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
+                phase_hook=phase_hook,
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Extraction failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
 
-    # Extraction produces "*_project_data.json" into out_dir; pass the first match into generation.
-    project_data = next(iter(sorted(out_dir.glob("*_project_data.json"))), None)
-    if project_data is None:
-        raise RuntimeError("Extraction did not produce *_project_data.json")
+        # Extraction produces "*_project_data.json" into stage_dir; pass the first match into generation.
+        project_data = next(iter(sorted(stage_dir.glob("*_project_data.json"))), None)
+        if project_data is None:
+            raise RuntimeError("Extraction did not produce *_project_data.json")
 
-    _call_phase_hook(phase_hook, "generating", 0)
+        _call_phase_hook(phase_hook, "generating", 0)
 
-    try:
-        _run_subprocess_with_progress(
-            args=[
-                _python_exe(),
-                str(generate),
-                "--project-data",
-                str(project_data),
-                "--app-ui",
-                str(app_ui),
-                "--out-dir",
-                str(out_dir),
-            ],
-            cwd=root,
-            env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
-            phase_hook=phase_hook,
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Generation failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
+        try:
+            _run_subprocess_with_progress(
+                args=[
+                    _python_exe(),
+                    str(generate),
+                    "--project-data",
+                    str(project_data),
+                    "--app-ui",
+                    str(app_ui),
+                    "--out-dir",
+                    str(stage_dir),
+                ],
+                cwd=root,
+                env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
+                phase_hook=phase_hook,
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Generation failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
 
-    return {"projectId": projectId, "outDir": str(out_dir), "projectData": str(project_data)}
+        # Move new artifacts into the project directory first, then remove anything stale.
+        new_names: set[str] = set()
+        for child in sorted(stage_dir.iterdir(), key=lambda p: p.name):
+            target = out_dir / child.name
+            if target.exists():
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            child.replace(target)
+            new_names.add(target.name)
+
+        for child in list(out_dir.iterdir()):
+            if child.name in new_names:
+                continue
+            if child.name.startswith(".stage-"):
+                if child.is_dir():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)
+                continue
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
+        final_project_data = out_dir / project_data.name
+        return {"projectId": projectId, "outDir": str(out_dir), "projectData": str(final_project_data)}
+    finally:
+        if stage_dir.exists():
+            shutil.rmtree(stage_dir, ignore_errors=True)

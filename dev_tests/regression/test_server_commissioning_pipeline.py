@@ -200,3 +200,57 @@ class CommissioningPipelineTest(unittest.TestCase):
                 if str((row.get("event") or {}).get("type") or "") == "generation_phase"
             ]
             self.assertEqual(percents, [10, 100, 50, 100, 100])
+
+    def test_second_regenerate_replaces_old_generated_artifacts(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.app.main import create_app
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            project_id = p["projectId"]
+
+            apex_path = Path(td) / "sample.apex"
+            _write_test_apex(apex_path)
+
+            with apex_path.open("rb") as f:
+                up1 = client.post(
+                    f"/api/v1/commissioning/projects/{project_id}/uploads",
+                    files={"apex": ("sample.apex", f, "application/octet-stream")},
+                )
+            self.assertEqual(up1.status_code, 200)
+            upload_1 = up1.json()["uploadId"]
+            regen1 = client.post(f"/api/v1/commissioning/projects/{project_id}/regenerate", json={"uploadId": upload_1})
+            self.assertEqual(regen1.status_code, 200)
+
+            out_dir = Path(os.environ["SENTINEL_GENERATED_ROOT"]) / project_id
+            homes_1 = list(out_dir.glob("*__project-home.html"))
+            data_1 = list(out_dir.glob("*_project_data.json"))
+            self.assertEqual(len(homes_1), 1)
+            self.assertEqual(len(data_1), 1)
+            first_home = homes_1[0]
+            first_data = data_1[0]
+
+            with apex_path.open("rb") as f:
+                up2 = client.post(
+                    f"/api/v1/commissioning/projects/{project_id}/uploads",
+                    files={"apex": ("sample2.apex", f, "application/octet-stream")},
+                )
+            self.assertEqual(up2.status_code, 200)
+            upload_2 = up2.json()["uploadId"]
+            regen2 = client.post(f"/api/v1/commissioning/projects/{project_id}/regenerate", json={"uploadId": upload_2})
+            self.assertEqual(regen2.status_code, 200)
+
+            homes_2 = list(out_dir.glob("*__project-home.html"))
+            data_2 = list(out_dir.glob("*_project_data.json"))
+            self.assertEqual(len(homes_2), 1)
+            self.assertEqual(len(data_2), 1)
+            self.assertFalse(first_home.exists(), "Old project-home artifact should be removed after regenerate.")
+            self.assertFalse(first_data.exists(), "Old project-data artifact should be removed after regenerate.")
