@@ -1033,7 +1033,8 @@ let currentDeviceTop=0;
    if (!techWs || techWs.readyState !== 1) {{
     _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
     setPosting(false);
-    setPostStatus("Error: websocket not connected", "error");
+    if (pendingTargetKey) setRowInlineError(pendingTargetKey, "websocket not connected");
+    setPostStatus("", "");
     return;
    }}
    _logTechWs("send", payload?.type || "");
@@ -1127,13 +1128,19 @@ let currentDeviceTop=0;
   }};
  }}
  function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
- function setPostStatus(text, kind) {{
-  if (!postStatus) return;
-  const t=String(text||'').trim();
-  postStatus.textContent=t;
-  postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
-  if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
- }}
+  function setPostStatus(text, kind) {{
+   if (!postStatus) return;
+   const t=String(text||'').trim();
+   postStatus.textContent=t;
+   postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
+   if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
+  }}
+  function setRowInlineError(targetKey, message) {{
+   const key = String(targetKey || "").trim();
+   const rowUi = rowStatusByTargetKey.get(key);
+   if (!rowUi || !rowUi.lastTestEl) return;
+   rowUi.lastTestEl.textContent = `Error: ${{String(message || "").trim()}}`;
+  }}
  function clearPassAllQueue() {{
   passAllQueue = [];
   passAllContext = null;
@@ -1218,7 +1225,7 @@ let currentDeviceTop=0;
   }};
   _logTechWs("expect", target.targetKey);
   setPosting(true);
-  setPostStatus('Saving…','saving');
+  setPostStatus('','');
   pendingTargetKey = target.targetKey;
   if (rowUi) rowStatusByTargetKey.set(target.targetKey, rowUi);
   if (rowUi) setRowStatus(rowUi, payload.outcome, "");
@@ -2632,12 +2639,13 @@ const APP_UI={app_json};
    if (t === "error") {{
      const code = payload?.code;
      const message = payload?.message;
-     const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-     setPosting(false);
-     setPostStatus(`Error: ${{msg}}`, "error");
-     drainPassAllQueue();
-     return;
-    }}
+      const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
+      setPosting(false);
+      if (pendingTargetKey) setRowInlineError(pendingTargetKey, msg);
+      setPostStatus("", "");
+      drainPassAllQueue();
+      return;
+     }}
    if (t === "replay.batch") {{
     const events = Array.isArray(payload?.events) ? payload.events : [];
     for (const ev of events) _applyTechPayload(ev);
@@ -2681,11 +2689,11 @@ const APP_UI={app_json};
    if (rowUi) {{
     setRowStatus(rowUi, outcome, at);
    }}
-   if (pendingTargetKey && pendingTargetKey === targetKey) {{
+    if (pendingTargetKey && pendingTargetKey === targetKey) {{
      _logTechWs("ack-match", targetKey);
      pendingTargetKey = null;
      setPosting(false);
-     setPostStatus("", "");
+      setPostStatus("", "");
      drainPassAllQueue();
     }} else if (pendingTargetKey) {{
      _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
@@ -2725,12 +2733,13 @@ const APP_UI={app_json};
   if (!techWs || techWs.readyState !== 1) {{
    _connectTechWs();
   }}
-  if (!techWs || techWs.readyState !== 1) {{
-   _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
-   setPosting(false);
-   setPostStatus("Error: websocket not connected", "error");
-   return;
-  }}
+    if (!techWs || techWs.readyState !== 1) {{
+     _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
+     setPosting(false);
+     if (pendingTargetKey) setRowInlineError(pendingTargetKey, "websocket not connected");
+     setPostStatus("", "");
+     return;
+    }}
   _logTechWs("send", payload?.type || "");
   techWs.send(JSON.stringify(payload));
  }}
@@ -2829,6 +2838,12 @@ const APP_UI={app_json};
   postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
   if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
  }}
+ function setRowInlineError(targetKey, message) {{
+  const key = String(targetKey || "").trim();
+  const rowUi = rowStatusByTargetKey.get(key);
+  if (!rowUi || !rowUi.lastTestEl) return;
+  rowUi.lastTestEl.textContent = `Error: ${{String(message || "").trim()}}`;
+ }}
  function clearPassAllQueue() {{
   passAllQueue = [];
   passAllContext = null;
@@ -2920,8 +2935,8 @@ const APP_UI={app_json};
   }};
   _logTechWs("expect", target.targetKey);
   setPosting(true);
- setPostStatus('Saving…','saving');
- pendingTargetKey = target.targetKey;
+  setPostStatus('','');
+  pendingTargetKey = target.targetKey;
  if (rowUi) rowStatusByTargetKey.set(target.targetKey, rowUi);
  if (rowUi) setRowStatus(rowUi, payload.outcome, "");
  _sendTechWs(payload);
