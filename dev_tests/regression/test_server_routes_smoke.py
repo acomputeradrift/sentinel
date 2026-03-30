@@ -81,6 +81,9 @@ class ServerRoutesSmokeTest(unittest.TestCase):
                 link = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links", json={"label": "Onsite"}).json()
                 self.assertIn("techLinkId", link)
                 self.assertIn("techUrl", link)
+                initial_tech_url = str(link.get("techUrl") or "")
+                self.assertTrue(initial_tech_url.startswith("/testing/"))
+                initial_tech_token = initial_tech_url.split("/testing/")[1]
 
                 links = client.get(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links").json()
                 self.assertEqual(len(links), 1)
@@ -88,7 +91,18 @@ class ServerRoutesSmokeTest(unittest.TestCase):
                 self.assertEqual(links[0]["label"], "Onsite")
                 self.assertIn("createdAtUtc", links[0])
                 self.assertIn("techUrl", links[0])
-                self.assertTrue(str(links[0]["techUrl"]).startswith("/testing/"))
+                self.assertEqual(str(links[0]["techUrl"] or ""), "")
+
+                # Listing links must be read-only and must not revoke existing tokens.
+                initial_token_still_works = client.post(
+                    f"/api/v1/testing/{initial_tech_token}/results",
+                    json={
+                        "target": {"targetKey": "event:126:ListReadOnly", "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "ListReadOnly"},
+                        "outcome": "PASS",
+                        "failNote": None,
+                    },
+                )
+                self.assertEqual(initial_token_still_works.status_code, 200)
 
                 token = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links/{link['techLinkId']}/rotate").json()
                 tech_url = token["techUrl"]
