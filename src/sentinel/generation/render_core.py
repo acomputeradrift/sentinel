@@ -156,6 +156,21 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     return out
 
 
+def _category_key_from_label(label: str) -> str:
+    value = str(label or "").strip().lower()
+    if value == "screen label":
+        return "screenLabels"
+    if value == "screen button":
+        return "screenButtons"
+    if value == "hard button":
+        return "hardButtons"
+    if value == "ui item":
+        return "uiItems"
+    if value == "empty tag":
+        return "emptyTag"
+    return "screenButtons"
+
+
 def _is_ui_only_button(btn: dict[str, Any]) -> bool:
     identity = btn.get("buttonIdentity", {})
     t = btn.get("testTargets", {})
@@ -486,8 +501,10 @@ def _render_button_control(
     fs = int(btn["buttonUI"].get("fontSize") or app_ui.get("buttonPresentation", {}).get("fallbackFontSize", 10))
     identity = btn.get("buttonIdentity", {})
     targets = btn.get("testTargets", {})
+    category_key = _category_key_from_label(label)
     meta = {
         "category": label,
+        "categoryKey": category_key,
         "identity": _btn_text(identity),
         "buttonType": identity.get("buttonType") or "",
         "targets": _targets(btn, variable_label),
@@ -516,8 +533,9 @@ def _render_button_control(
             )
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
-        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
+        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-button-category='{escape(category_key, quote=True)}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
         f"<button class='test-btn' data-meta='{meta_attr}'>{escape(_btn_text(identity))}</button>"
+        f"<div class='btn-pass-total' aria-hidden='true'></div>"
         f"{link_html}</div>"
     )
 
@@ -754,9 +772,10 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup-indicator.is-vertical{{flex-direction:column;}}
  .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
-.test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
-.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:{'0' if link_hover_enabled else '1'};pointer-events:{'none' if link_hover_enabled else 'auto'};transition:opacity .15s ease;}}
-.btn-wrap:hover .page-link-hit{{opacity:1;pointer-events:auto;}}
+.btn-wrap{{--btn-fill-color:#2c6fb7;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
+.test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:var(--btn-fill-color);box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
+.btn-pass-total{{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:none;visibility:hidden;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.22);color:#fff;font-size:11px;line-height:1.1;font-weight:700;white-space:nowrap;pointer-events:none;}}
+.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;}}
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;position:relative;z-index:21;}}
@@ -852,6 +871,93 @@ let currentDeviceTop=0;
  let passAllContext=null;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
+ const CATEGORY_FILL={{screenLabels:"#58585a",screenButtons:"#2c6fb7",hardButtons:"#2c6fb7",uiItems:"#a7a9ac",emptyTag:"#ef4444"}};
+ const STATE_TRIM={{pass:"#39b54a",partial:"#fcb040",fail:"#ef4444",untested:"transparent"}};
+ function _buttonCategoryKeyFromMeta(meta, wrap) {{
+  const m=(meta&&typeof meta==="object")?meta:{{}};
+  const key=String(m.categoryKey||wrap?.dataset?.buttonCategory||"").trim();
+  if (key && CATEGORY_FILL[key]) return key;
+  const label=String(m.category||"").trim().toLowerCase();
+  if (label==="screen label") return "screenLabels";
+  if (label==="screen button") return "screenButtons";
+  if (label==="hard button") return "hardButtons";
+  if (label==="ui item") return "uiItems";
+  if (label==="empty tag") return "emptyTag";
+  return "screenButtons";
+ }}
+ function _buttonTargetPrefix(wrap) {{
+  if (!wrap || !wrap.dataset) return "";
+  const deviceId=wrap.dataset.diagDeviceId;
+  const pageIndexRaw=wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null;
+  const pageIndex=pageIndexRaw == null ? null : Number(pageIndexRaw);
+  const pageState=(pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
+  const pageId=pageState && pageState.pageId != null ? pageState.pageId : null;
+  const vpButtonId=wrap.dataset.diagViewportButtonId;
+  const buttonId=wrap.dataset.diagButtonId;
+  if (vpButtonId && deviceId != null && pageId != null && buttonId != null) return `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}`;
+  if (vpButtonId && deviceId != null && pageId != null) return `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}`;
+  if (deviceId != null && pageId != null && buttonId != null) return `btn:${{deviceId}}:${{pageId}}:${{buttonId}}`;
+  return "";
+ }}
+ function _buttonTargets(meta) {{
+  const m=(meta&&typeof meta==="object")?meta:{{}};
+  const targets=Array.isArray(m.targets)?m.targets:[];
+  return targets.map((t)=>String(t||"").trim()).filter(Boolean);
+ }}
+ function _stateFromCounts(categoryKey, passCount, totalCount, testedCount) {{
+  if (categoryKey==="emptyTag") return "fail";
+  if (!Number(totalCount)||Number(totalCount)<=0) return "untested";
+  if (!Number(testedCount)||Number(testedCount)<=0) return "untested";
+  if (Number(passCount)>=Number(totalCount)) return "pass";
+  if (Number(passCount)<=0) return "fail";
+  return "partial";
+ }}
+ function refreshButtonVisualStates() {{
+  document.querySelectorAll(".device-page .btn-wrap").forEach((wrap)=>{{
+   const btn=wrap.querySelector(".test-btn");
+   if (!btn) return;
+   let meta={{}};
+   try {{ meta=JSON.parse(btn.dataset.meta||"{{}}"); }} catch (_e) {{ meta={{}}; }}
+   const categoryKey=_buttonCategoryKeyFromMeta(meta, wrap);
+   wrap.style.setProperty("--btn-fill-color", CATEGORY_FILL[categoryKey] || CATEGORY_FILL.screenButtons);
+   const targets=_buttonTargets(meta);
+   const prefix=_buttonTargetPrefix(wrap);
+   let passCount=0;
+   let testedCount=0;
+   for (const label of targets) {{
+    const key = prefix ? `${{prefix}}:${{label}}` : "";
+    if (!key) continue;
+    const rec=statusByTargetKey.get(key);
+    if (!rec) continue;
+    const outcome=String(rec.outcome||"").toUpperCase();
+    if (outcome!=="PASS" && outcome!=="FAIL") continue;
+    testedCount += 1;
+    if (outcome==="PASS") passCount += 1;
+   }}
+   const stateKey=_stateFromCounts(categoryKey, passCount, targets.length, testedCount);
+   const trimColor=STATE_TRIM[stateKey] || "transparent";
+   const trimWidth=(stateKey==="untested") ? "0px" : "4px";
+   wrap.style.setProperty("--btn-state-trim-color", trimColor);
+   wrap.style.setProperty("--btn-state-trim-width", trimWidth);
+   const countEl=wrap.querySelector(".btn-pass-total");
+   if (countEl) {{
+    const countText = targets.length > 0 ? `${{passCount}}/${{targets.length}}` : "";
+    countEl.textContent = countText;
+    if (!countText) {{
+     countEl.style.display = "none";
+     countEl.style.visibility = "hidden";
+    }} else {{
+     countEl.style.display = "block";
+     countEl.style.visibility = "hidden";
+     const wrapRect=wrap.getBoundingClientRect();
+     const countRect=countEl.getBoundingClientRect();
+     const fits = countRect.width <= wrapRect.width && countRect.height <= wrapRect.height;
+     countEl.style.visibility = fits ? "visible" : "hidden";
+     if (!fits) countEl.style.display = "none";
+    }}
+   }}
+  }});
+ }}
  const _perfNow=()=>((typeof performance!=="undefined"&&performance.now)?performance.now():Date.now());
  const techPerf={{layoutCalls:0,layoutTotalMs:0,wsCalls:0,wsTotalMs:0,lastConsoleAt:0}};
  function _emitTechPerf(reason, lastMs) {{
@@ -967,6 +1073,7 @@ let currentDeviceTop=0;
       }}
      }}
      _logTechWs("snapshot:applied", {{ total: results.length, applied }});
+     refreshButtonVisualStates();
      return;
     }}
     if (t !== "test_result.recorded" && t !== "test_result") return;
@@ -981,6 +1088,7 @@ let currentDeviceTop=0;
     }} else {{
       setRowStatus(rowUi, outcome, at);
     }}
+    refreshButtonVisualStates();
     if (pendingTargetKey && pendingTargetKey === targetKey) {{
      _logTechWs("ack-match", targetKey);
      pendingTargetKey = null;
@@ -2163,9 +2271,10 @@ function applyRtiLayout() {{
        icon.style.width=`${{iconSize}}px`;
        icon.style.height=`${{iconSize}}px`;
        icon.style.fontSize=`${{iconSize}}px`;
-     }}
    }}
+  }}
  }});
+ refreshButtonVisualStates();
  syncHeader();
  if (LAYER_PANEL.enabled===false) {{
    const panel=document.getElementById('layerPanel');
