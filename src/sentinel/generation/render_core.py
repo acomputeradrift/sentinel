@@ -793,13 +793,13 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .row:last-child{{margin-bottom:0;}}
 .row-head{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}}
 .n{{font-weight:600;margin:0;font-size:14px;line-height:1.1;}}
- .actions{{display:flex;gap:10px;margin-bottom:8px;}}
+ .row-meta{{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;}}
+ .actions{{display:flex;gap:10px;margin:0;}}
  .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
- .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.01em;color:#274258;border:1px solid #a9bccd;background:#f7fbff;padding:4px 8px;border-radius:999px;}}
- .row-status:empty{{display:none;}}
- .row-status.is-pass{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;}}
- .row-status.is-fail{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;}}
+ .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
+ .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
@@ -960,11 +960,9 @@ let currentDeviceTop=0;
       const outcome = String(rec?.outcome || "").toUpperCase();
       const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
       statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-      const statusEl = rowStatusByTargetKey.get(targetKey);
-      if (statusEl) {{
-       setRowStatus(statusEl, outcome, at);
-       statusEl.classList.toggle("is-pass", outcome === "PASS");
-       statusEl.classList.toggle("is-fail", outcome === "FAIL");
+      const rowUi = rowStatusByTargetKey.get(targetKey);
+      if (rowUi) {{
+       setRowStatus(rowUi, outcome, at);
        applied += 1;
       }}
      }}
@@ -977,13 +975,11 @@ let currentDeviceTop=0;
     const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
     const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-    const statusEl = rowStatusByTargetKey.get(targetKey);
-    if (!statusEl) {{
+    const rowUi = rowStatusByTargetKey.get(targetKey);
+    if (!rowUi) {{
      _logTechWs("row-miss", targetKey);
     }} else {{
-     setRowStatus(statusEl, outcome, at);
-     statusEl.classList.toggle("is-pass", outcome === "PASS");
-     statusEl.classList.toggle("is-fail", outcome === "FAIL");
+      setRowStatus(rowUi, outcome, at);
     }}
     if (pendingTargetKey && pendingTargetKey === targetKey) {{
      _logTechWs("ack-match", targetKey);
@@ -1043,26 +1039,37 @@ let currentDeviceTop=0;
    _logTechWs("send", payload?.type || "");
   techWs.send(JSON.stringify(payload));
  }}
- function setRowStatus(statusEl, outcome, recordedAtUtc) {{
-  if (!statusEl) return;
-  const o = String(outcome || "").trim().toUpperCase();
-  const at = String(recordedAtUtc || "").trim();
-  const parts = [];
-  if (o) parts.push(o);
-  if (at) parts.push(`Last Test: ${{at}}`);
-  statusEl.textContent = parts.join("   ");
+ function formatLastTestUtc(ts) {{
+  const raw = String(ts || "").trim();
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const mm = pad2(d.getUTCMonth() + 1);
+  const dd = pad2(d.getUTCDate());
+  const hh = pad2(d.getUTCHours());
+  const mi = pad2(d.getUTCMinutes());
+  const ss = pad2(d.getUTCSeconds());
+  return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
- function applyCachedStatus(statusEl, targetKey) {{
-  if (!statusEl) return;
+ function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+  if (!rowUi) return;
+  const o = String(outcome || "").trim().toUpperCase();
+  const at = formatLastTestUtc(recordedAtUtc);
+  if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
+  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.lastTestEl) rowUi.lastTestEl.textContent = at ? `Last Test: ${{at}}` : "";
+ }}
+ function applyCachedStatus(rowUi, targetKey) {{
+  if (!rowUi) return;
   const key = String(targetKey || "").trim();
   if (!key) return;
   const rec = statusByTargetKey.get(key);
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(statusEl, outcome, at);
-  statusEl.classList.toggle("is-pass", outcome === "PASS");
-  statusEl.classList.toggle("is-fail", outcome === "FAIL");
+  setRowStatus(rowUi, outcome, at);
  }}
  function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -1143,16 +1150,21 @@ let currentDeviceTop=0;
    return;
   }}
   const ctx = passAllContext || {{ ctxBtn: null, meta: {{}} }};
-  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.statusEl || null);
+  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.rowUi || null);
   if (!passAllQueue.length) passAllContext = null;
  }}
  function queuePassAll(ctxBtn, meta) {{
   clearPassAllQueue();
   rows.querySelectorAll('.row').forEach(row=>{{
    const label = String(row.querySelector('.n')?.textContent || '').trim();
-   const statusEl = row.querySelector('.row-status');
+   const buttons = row.querySelectorAll('.actions button');
+   const rowUi = {{
+    passBtn: buttons.length >= 1 ? buttons[0] : null,
+    failBtn: buttons.length >= 2 ? buttons[1] : null,
+    lastTestEl: row.querySelector('.row-last-test'),
+   }};
    if (!label) return;
-   passAllQueue.push({{ label, statusEl }});
+   passAllQueue.push({{ label, rowUi }});
   }});
   if (!passAllQueue.length) return;
   passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
@@ -1161,13 +1173,22 @@ let currentDeviceTop=0;
 
  function setPosting(on) {{
   isPosting=!!on;
-  rows.querySelectorAll('.actions button').forEach(b=>{{ b.disabled=isPosting; }});
+  rows.querySelectorAll('.row').forEach(row=>{{
+   const buttons = row.querySelectorAll('.actions button');
+   if (buttons.length < 2) return;
+   const passBtn = buttons[0];
+   const failBtn = buttons[1];
+   const noteEl = row.querySelector('textarea');
+   passBtn.disabled = isPosting;
+   const note = noteEl ? String(noteEl.value || '').trim() : '';
+   failBtn.disabled = isPosting || !note;
+  }});
   if (passAllBtn) passAllBtn.disabled=isPosting;
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
 
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -1199,8 +1220,8 @@ let currentDeviceTop=0;
   setPosting(true);
   setPostStatus('Saving…','saving');
   pendingTargetKey = target.targetKey;
-  if (statusEl) rowStatusByTargetKey.set(target.targetKey, statusEl);
-  if (statusEl) setRowStatus(statusEl, payload.outcome, "");
+  if (rowUi) rowStatusByTargetKey.set(target.targetKey, rowUi);
+  if (rowUi) setRowStatus(rowUi, payload.outcome, "");
   _sendTechWs(payload);
  }}
 
@@ -1219,25 +1240,25 @@ let currentDeviceTop=0;
   rowStatusByTargetKey.clear();
   rows.querySelectorAll('.row').forEach(row=>{{
    const label=row.querySelector('.n')?.textContent||'';
-   const statusEl=row.querySelector('.row-status');
    const buttons=row.querySelectorAll('.actions button');
    if (buttons.length<2) return;
    const passBtn=buttons[0];
    const failBtn=buttons[1];
    const noteEl=row.querySelector('textarea');
+   const rowUi={{ passBtn, failBtn, lastTestEl: row.querySelector('.row-last-test') }};
    const syncFailEnabled=()=>{{
     const note=noteEl ? String(noteEl.value||'').trim() : '';
-    failBtn.disabled = !note;
-   }};
+    if (!isPosting) failBtn.disabled = !note;
+    }};
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
    const target = buildTargetPayload(ctxBtn, meta, label);
-   if (target?.targetKey && statusEl) {{
-    rowStatusByTargetKey.set(target.targetKey, statusEl);
-    applyCachedStatus(statusEl, target.targetKey);
+   if (target?.targetKey) {{
+    rowStatusByTargetKey.set(target.targetKey, rowUi);
+    applyCachedStatus(rowUi, target.targetKey);
    }}
-   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'PASS', null, statusEl);}});
-   failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
+   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'PASS', null, rowUi);}});
+   failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
  function bindTestButtonClicks(root) {{
@@ -1249,7 +1270,7 @@ let currentDeviceTop=0;
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div><div class='row-status' aria-live='polite'></div></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
      clearPassAllQueue();
      setPostStatus('','');
      if (passAllBtn) {{
@@ -2523,13 +2544,13 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .row:last-child{{margin-bottom:0;}}
 .row-head{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}}
 .n{{font-weight:600;margin:0;font-size:14px;line-height:1.1;}}
- .actions{{display:flex;gap:10px;margin-bottom:8px;}}
+ .row-meta{{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;}}
+ .actions{{display:flex;gap:10px;margin:0;}}
  .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
- .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.01em;color:#274258;border:1px solid #a9bccd;background:#f7fbff;padding:4px 8px;border-radius:999px;}}
- .row-status:empty{{display:none;}}
- .row-status.is-pass{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;}}
- .row-status.is-fail{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;}}
+ .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
+ .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
@@ -2641,11 +2662,9 @@ const APP_UI={app_json};
      const outcome = String(rec?.outcome || "").toUpperCase();
      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-     const statusEl = rowStatusByTargetKey.get(targetKey);
-     if (statusEl) {{
-      setRowStatus(statusEl, outcome, at);
-      statusEl.classList.toggle("is-pass", outcome === "PASS");
-      statusEl.classList.toggle("is-fail", outcome === "FAIL");
+     const rowUi = rowStatusByTargetKey.get(targetKey);
+     if (rowUi) {{
+      setRowStatus(rowUi, outcome, at);
       applied += 1;
      }}
     }}
@@ -2658,11 +2677,9 @@ const APP_UI={app_json};
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
-   const statusEl = rowStatusByTargetKey.get(targetKey);
-   if (statusEl) {{
-    setRowStatus(statusEl, outcome, at);
-    statusEl.classList.toggle("is-pass", outcome === "PASS");
-    statusEl.classList.toggle("is-fail", outcome === "FAIL");
+   const rowUi = rowStatusByTargetKey.get(targetKey);
+   if (rowUi) {{
+    setRowStatus(rowUi, outcome, at);
    }}
    if (pendingTargetKey && pendingTargetKey === targetKey) {{
      _logTechWs("ack-match", targetKey);
@@ -2717,26 +2734,37 @@ const APP_UI={app_json};
   _logTechWs("send", payload?.type || "");
   techWs.send(JSON.stringify(payload));
  }}
- function setRowStatus(statusEl, outcome, recordedAtUtc) {{
-  if (!statusEl) return;
-  const o = String(outcome || "").trim().toUpperCase();
-  const at = String(recordedAtUtc || "").trim();
-  const parts = [];
-  if (o) parts.push(o);
-  if (at) parts.push(`Last Test: ${{at}}`);
-  statusEl.textContent = parts.join("   ");
+ function formatLastTestUtc(ts) {{
+  const raw = String(ts || "").trim();
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const mm = pad2(d.getUTCMonth() + 1);
+  const dd = pad2(d.getUTCDate());
+  const hh = pad2(d.getUTCHours());
+  const mi = pad2(d.getUTCMinutes());
+  const ss = pad2(d.getUTCSeconds());
+  return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
- function applyCachedStatus(statusEl, targetKey) {{
-  if (!statusEl) return;
+ function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+  if (!rowUi) return;
+  const o = String(outcome || "").trim().toUpperCase();
+  const at = formatLastTestUtc(recordedAtUtc);
+  if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
+  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.lastTestEl) rowUi.lastTestEl.textContent = at ? `Last Test: ${{at}}` : "";
+ }}
+ function applyCachedStatus(rowUi, targetKey) {{
+  if (!rowUi) return;
   const key = String(targetKey || "").trim();
   if (!key) return;
   const rec = statusByTargetKey.get(key);
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(statusEl, outcome, at);
-  statusEl.classList.toggle("is-pass", outcome === "PASS");
-  statusEl.classList.toggle("is-fail", outcome === "FAIL");
+  setRowStatus(rowUi, outcome, at);
  }}
  function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -2817,16 +2845,21 @@ const APP_UI={app_json};
    return;
   }}
   const ctx = passAllContext || {{ ctxBtn: null, meta: {{}} }};
-  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.statusEl || null);
+  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.rowUi || null);
   if (!passAllQueue.length) passAllContext = null;
  }}
  function queuePassAll(ctxBtn, meta) {{
   clearPassAllQueue();
   rows.querySelectorAll('.row').forEach(function(row){{
    const label = String((row.querySelector('.n')||{{}}).textContent || '').trim();
-   const statusEl = row.querySelector('.row-status');
+   const buttons = row.querySelectorAll('.actions button');
+   const rowUi = {{
+    passBtn: buttons.length >= 1 ? buttons[0] : null,
+    failBtn: buttons.length >= 2 ? buttons[1] : null,
+    lastTestEl: row.querySelector('.row-last-test'),
+   }};
    if (!label) return;
-   passAllQueue.push({{ label, statusEl }});
+   passAllQueue.push({{ label, rowUi }});
   }});
   if (!passAllQueue.length) return;
   passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
@@ -2834,7 +2867,16 @@ const APP_UI={app_json};
  }}
  function setPosting(on) {{
   isPosting=!!on;
-  rows.querySelectorAll('.actions button').forEach(function(b){{ b.disabled=isPosting; }});
+  rows.querySelectorAll('.row').forEach(function(row){{
+   const buttons = row.querySelectorAll('.actions button');
+   if (buttons.length < 2) return;
+   const passBtn = buttons[0];
+   const failBtn = buttons[1];
+   const noteEl = row.querySelector('textarea');
+   passBtn.disabled = isPosting;
+   const note = noteEl ? String(noteEl.value || '').trim() : '';
+   failBtn.disabled = isPosting || !note;
+  }});
   if (passAllBtn) passAllBtn.disabled=isPosting;
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
@@ -2848,7 +2890,7 @@ const APP_UI={app_json};
   else section.setAttribute("hidden", "hidden");
   btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
  }}
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, statusEl) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -2880,33 +2922,33 @@ const APP_UI={app_json};
   setPosting(true);
  setPostStatus('Saving…','saving');
  pendingTargetKey = target.targetKey;
- if (statusEl) rowStatusByTargetKey.set(target.targetKey, statusEl);
- if (statusEl) setRowStatus(statusEl, payload.outcome, "");
+ if (rowUi) rowStatusByTargetKey.set(target.targetKey, rowUi);
+ if (rowUi) setRowStatus(rowUi, payload.outcome, "");
  _sendTechWs(payload);
  }}
  function bindResultRows(meta) {{
   rowStatusByTargetKey.clear();
   rows.querySelectorAll('.row').forEach(function(row){{
    const label=(row.querySelector('.n')||{{}}).textContent||'';
-   const statusEl=row.querySelector('.row-status');
    const buttons=row.querySelectorAll('.actions button');
    if (buttons.length<2) return;
    const passBtn=buttons[0];
    const failBtn=buttons[1];
    const noteEl=row.querySelector('textarea');
+   const rowUi={{ passBtn: passBtn, failBtn: failBtn, lastTestEl: row.querySelector('.row-last-test') }};
    function syncFailEnabled() {{
     const note=noteEl ? String(noteEl.value||'').trim() : '';
-    failBtn.disabled = !note;
-   }}
+    if (!isPosting) failBtn.disabled = !note;
+    }}
    if (noteEl) noteEl.addEventListener('input', syncFailEnabled);
    syncFailEnabled();
    const target = buildTargetPayload(null, meta, label);
-   if (target?.targetKey && statusEl) {{
-    rowStatusByTargetKey.set(target.targetKey, statusEl);
-    applyCachedStatus(statusEl, target.targetKey);
+   if (target?.targetKey) {{
+    rowStatusByTargetKey.set(target.targetKey, rowUi);
+    applyCachedStatus(rowUi, target.targetKey);
    }}
-   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'PASS', null, statusEl);}});
-   failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', statusEl);}});
+   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'PASS', null, rowUi);}});
+   failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
@@ -2917,7 +2959,7 @@ const APP_UI={app_json};
    const titleTemplate=popupCfg.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=Array.isArray(m.targets) ? m.targets : [];
-    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div><div class='row-status' aria-live='polite'></div></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
     clearPassAllQueue();
     setPostStatus('','');
     if (passAllBtn) {{
