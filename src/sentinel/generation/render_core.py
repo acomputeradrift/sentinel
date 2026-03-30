@@ -189,8 +189,8 @@ def _page_layer_state(page: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(out, key=lambda layer: (-int(layer.get("layerOrder", 0) or 0), str(layer.get("name") or "")))
 
 
-def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str, int]]:
-    items: list[tuple[dict[str, Any], str, int, int, str, int]] = []
+def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, str, int, int, str, int]]:
+    items: list[tuple[dict[str, Any], str, str, int, int, str, int]] = []
     layers = _page_layers(page)
     if layers:
         for layer_index, layer in enumerate(layers):
@@ -201,23 +201,25 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
                 ("screenLabels", "Screen Label"),
                 ("screenButtons", "Screen Button"),
                 ("hardButtons", "Hard Button"),
+                ("emptyTag", "Empty Tag"),
                 ("uiItems", "UI Item"),
             ):
                 for btn in cats.get(cat, []):
-                    if cat != "uiItems" and _is_ui_only_button(btn):
+                    if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
                         continue
-                    items.append((btn, label, 0, 0, layer_key, layer_order))
+                    items.append((btn, cat, label, 0, 0, layer_key, layer_order))
         return items
     for cat, label in (
         ("screenLabels", "Screen Label"),
         ("screenButtons", "Screen Button"),
         ("hardButtons", "Hard Button"),
+        ("emptyTag", "Empty Tag"),
         ("uiItems", "UI Item"),
     ):
         for btn in page.get("buttonCategories", {}).get(cat, []):
-            if cat != "uiItems" and _is_ui_only_button(btn):
+            if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
                 continue
-            items.append((btn, label, 0, 0, _layer_key(0), 0))
+            items.append((btn, cat, label, 0, 0, _layer_key(0), 0))
     return items
 
 
@@ -366,14 +368,16 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
                 ("screenLabels", "Screen Label"),
                 ("screenButtons", "Screen Button"),
                 ("hardButtons", "Hard Button"),
+                ("emptyTag", "Empty Tag"),
                 ("uiItems", "UI Item"),
             ):
                 for btn in cats.get(cat, []):
-                    if cat != "uiItems" and _is_ui_only_button(btn):
+                    if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
                         continue
                     out.append(
                         {
                             "btn": btn,
+                            "category_key": cat,
                             "label": label,
                             "off_top": off_top,
                             "off_left": off_left,
@@ -432,6 +436,7 @@ def _page_target_indexes(project_data: dict[str, Any], device_index: int) -> dic
 def _render_button_control(
     btn: dict[str, Any],
     label: str,
+    category_key: str,
     left: int,
     top: int,
     variable_label: str,
@@ -461,13 +466,15 @@ def _render_button_control(
     fs = int(btn["buttonUI"].get("fontSize") or app_ui.get("buttonPresentation", {}).get("fallbackFontSize", 10))
     identity = btn.get("buttonIdentity", {})
     targets = btn.get("testTargets", {})
+    target_labels = _targets(btn, variable_label)
     meta = {
         "category": label,
         "identity": _btn_text(identity),
         "buttonType": identity.get("buttonType") or "",
-        "targets": _targets(btn, variable_label),
+        "targets": target_labels,
     }
     meta_attr = json.dumps(meta).replace("'", "&apos;")
+    target_total = len(target_labels)
     visibility_attr = "1" if bool(oriented_ui.get("visible", True)) and "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
@@ -490,9 +497,11 @@ def _render_button_control(
                 f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
+    category_class_key = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(category_key or "").strip()) or "screenButtons"
     return (
-        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
-        f"<button class='test-btn' data-meta='{meta_attr}'>{escape(_btn_text(identity))}</button>"
+        f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-category-key='{escape(str(category_key), quote=True)}' data-target-total='{target_total}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
+        f"<button class='test-btn btn-category-{category_class_key} state-untested' data-meta='{meta_attr}'>{escape(_btn_text(identity))}</button>"
+        f"<div class='btn-pass-total' data-pass-total>0/{target_total}</div>"
         f"{link_html}</div>"
     )
 
@@ -525,7 +534,7 @@ def _page_payload(
     page_target_indexes = _page_target_indexes(project_data, device_index)
 
     page_button_rows: list[str] = []
-    for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
+    for btn, category_key, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
         oriented_ui = _orientation_ui(btn["buttonUI"], orientation)
         if not bool(oriented_ui.get("visible", True)):
             continue
@@ -542,6 +551,7 @@ def _page_payload(
             _render_button_control(
                 btn,
                 label,
+                category_key,
                 int(c.get("left") or 0) + off_left,
                 int(c.get("top") or 0) + off_top,
                 variable_label,
@@ -580,6 +590,7 @@ def _page_payload(
             _render_button_control(
                 btn,
                 vb["label"],
+                str(vb.get("category_key") or ""),
                 int(c.get("left") or 0) + int(vb["off_left"]),
                 int(c.get("top") or 0) + int(vb["off_top"]),
                 variable_label,
@@ -657,7 +668,6 @@ def _render_document(
     home_href: str | None = None,
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
-    link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
     layout_cfg = app_ui.get("layout", {})
     control_cfg = layout_cfg.get("appUIControls", {})
     rti_device_cfg = layout_cfg.get("rtiDeviceCanvas", {})
@@ -729,9 +739,18 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup-indicator.is-vertical{{flex-direction:column;}}
  .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
-.test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
-.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:{'0' if link_hover_enabled else '1'};pointer-events:{'none' if link_hover_enabled else 'auto'};transition:opacity .15s ease;}}
-.btn-wrap:hover .page-link-hit{{opacity:1;pointer-events:auto;}}
+.test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:var(--btn-fill,#2c6fb7);box-shadow:inset 0 0 0 1px rgba(20,50,75,.35), inset 0 0 0 var(--btn-trim-width,0px) var(--btn-trim-color,transparent);color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
+.test-btn.btn-category-screenLabels{{--btn-fill:#58585a;}}
+.test-btn.btn-category-screenButtons{{--btn-fill:#2c6fb7;}}
+.test-btn.btn-category-hardButtons{{--btn-fill:#2c6fb7;}}
+.test-btn.btn-category-uiItems{{--btn-fill:#a7a9ac;}}
+.test-btn.btn-category-emptyTag{{--btn-fill:#ef4444;}}
+.test-btn.state-untested{{--btn-trim-width:0px;--btn-trim-color:transparent;}}
+.test-btn.state-pass{{--btn-trim-width:3px;--btn-trim-color:#39b54a;}}
+.test-btn.state-partial{{--btn-trim-width:3px;--btn-trim-color:#fcb040;}}
+.test-btn.state-fail{{--btn-trim-width:3px;--btn-trim-color:#ef4444;}}
+.btn-pass-total{{position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:3;font-size:11px;font-weight:700;line-height:1;color:rgba(255,255,255,0.95);text-shadow:0 1px 1px rgba(0,0,0,.3);pointer-events:none;}}
+.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;}}
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;position:relative;z-index:21;}}
@@ -928,6 +947,7 @@ let currentDeviceTop=0;
        applied += 1;
       }}
      }}
+     refreshAllButtonVisualStates(document);
      _logTechWs("snapshot:applied", {{ total: results.length, applied }});
      return;
     }}
@@ -953,6 +973,7 @@ let currentDeviceTop=0;
     }} else if (pendingTargetKey) {{
      _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
     }}
+    refreshAllButtonVisualStates(document);
    }} finally {{
     _recordWsPerf(_perfNow()-_wsT0, t || "(unknown)");
    }}
@@ -1011,7 +1032,7 @@ let currentDeviceTop=0;
   if (at) parts.push(at);
   statusEl.textContent = parts.join(" ");
  }}
- function applyCachedStatus(statusEl, targetKey) {{
+function applyCachedStatus(statusEl, targetKey) {{
   if (!statusEl) return;
   const key = String(targetKey || "").trim();
   if (!key) return;
@@ -1022,6 +1043,69 @@ let currentDeviceTop=0;
   setRowStatus(statusEl, outcome, at);
   statusEl.classList.toggle("is-pass", outcome === "PASS");
   statusEl.classList.toggle("is-fail", outcome === "FAIL");
+ }}
+ const buttonTargetKeyCache = new WeakMap();
+ function _buttonTargetKeys(btn) {{
+  if (!btn) return [];
+  const cached = buttonTargetKeyCache.get(btn);
+  if (cached) return cached;
+  let keys = [];
+  try {{
+   const meta = JSON.parse(btn.dataset.meta || "{{}}");
+   const targetLabels = Array.isArray(meta?.targets) ? meta.targets : [];
+   keys = targetLabels
+    .map(label => buildTargetPayload(btn, meta, label))
+    .map(target => String(target?.targetKey || ""))
+    .filter(Boolean);
+  }} catch (_e) {{
+   keys = [];
+  }}
+  buttonTargetKeyCache.set(btn, keys);
+  return keys;
+ }}
+ function _classifyButtonState(passCount, failCount, testedCount, totalCount, forceFail) {{
+  if (forceFail) return "fail";
+  if (totalCount <= 0 || testedCount <= 0) return "untested";
+  if (passCount === totalCount) return "pass";
+  if (failCount === totalCount) return "fail";
+  if (passCount > 0 || failCount > 0) return "partial";
+  return "untested";
+ }}
+ function _applyButtonVisualState(btn) {{
+  if (!btn) return;
+  const wrap = btn.closest ? btn.closest(".btn-wrap") : null;
+  if (!wrap) return;
+  const keys = _buttonTargetKeys(btn);
+  const declaredTotal = Number(wrap.dataset?.targetTotal || 0);
+  const totalCount = Number.isFinite(declaredTotal) && declaredTotal >= 0 ? declaredTotal : keys.length;
+  let passCount = 0;
+  let failCount = 0;
+  let testedCount = 0;
+  for (const key of keys) {{
+   const rec = statusByTargetKey.get(String(key || ""));
+   if (!rec) continue;
+   const outcome = String(rec.outcome || "").toUpperCase();
+   if (outcome === "PASS") {{
+    passCount += 1;
+    testedCount += 1;
+   }} else if (outcome === "FAIL") {{
+    failCount += 1;
+    testedCount += 1;
+   }}
+  }}
+  const categoryKey = String(wrap.dataset?.categoryKey || "");
+  const forceFail = categoryKey === "emptyTag";
+  const state = _classifyButtonState(passCount, failCount, testedCount, totalCount, forceFail);
+  btn.classList.remove("state-untested", "state-pass", "state-partial", "state-fail");
+  btn.classList.add(`state-${{state}}`);
+  const countEl = wrap.querySelector(".btn-pass-total");
+  if (countEl) {{
+   countEl.textContent = `${{passCount}}/${{totalCount}}`;
+  }}
+ }}
+ function refreshAllButtonVisualStates(scope) {{
+  const root = scope || document;
+  root.querySelectorAll(".btn-wrap .test-btn").forEach(btn => _applyButtonVisualState(btn));
  }}
  function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -1184,6 +1268,7 @@ let currentDeviceTop=0;
    }});
   }}
 bindTestButtonClicks(document);
+refreshAllButtonVisualStates(document);
  _connectTechWs();
 document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
 ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
