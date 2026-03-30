@@ -805,7 +805,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
  .post-status.is-success{{background:#eaf7ef;border-color:#3a9c5d;color:#1e6b3c;}}
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
- #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
+ #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
@@ -985,7 +985,7 @@ let currentDeviceTop=0;
      _logTechWs("ack-match", targetKey);
      pendingTargetKey = null;
      setPosting(false);
-     setPostStatus("Saved", "success");
+      setPostStatus("", "");
      drainPassAllQueue();
     }} else if (pendingTargetKey) {{
      _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
@@ -2556,7 +2556,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
  .post-status.is-success{{background:#eaf7ef;border-color:#3a9c5d;color:#1e6b3c;}}
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
- #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;}}
+ #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
 <body>
@@ -2685,7 +2685,7 @@ const APP_UI={app_json};
      _logTechWs("ack-match", targetKey);
      pendingTargetKey = null;
      setPosting(false);
-     setPostStatus("Saved", "success");
+     setPostStatus("", "");
      drainPassAllQueue();
     }} else if (pendingTargetKey) {{
      _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
