@@ -133,7 +133,7 @@ class ViewportOrientationRenderingRegressionTest(unittest.TestCase):
         self.assertIn("class='vp-box' style='z-index:9200;'", html)
         self.assertIn("data-p-visible='1'", html)
         self.assertIn("data-l-visible='0'", html)
-        self.assertIn(".vp-box{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.10);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}", html)
+        self.assertIn(".vp-box{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}", html)
 
         # Regression: viewport boxes must participate in orientation-based visibility.
         self.assertIn("const visKey=`${short}Visible`", html)
@@ -351,9 +351,8 @@ class ViewportOrientationRenderingRegressionTest(unittest.TestCase):
         self.assertIn("data-vp='0'", html)
         self.assertIn("data-vp='1'", html)
 
-        # Regression: viewport nav logic must not hard-code viewport index 0.
-        self.assertIn("function activeViewportIndex()", html)
-        self.assertIn("const vpIndex=activeViewportIndex();", html)
+        # Regression: viewport nav logic must target the active viewport index at runtime.
+        self.assertIn("const vpIndex=Number(viewportMode.vpIndex||0);", html)
         self.assertNotIn("currentViewportIndexes[0]--", html)
         self.assertNotIn("currentViewportIndexes[0]++", html)
 
@@ -555,9 +554,9 @@ class ViewportOrientationRenderingRegressionTest(unittest.TestCase):
         self.assertIn("getElementById('vpPopupClose')", html)
         self.assertIn("addEventListener('click',()=>exitViewportMode()", html)
 
-        # Escape key exits viewport view mode.
-        self.assertIn("addEventListener('keydown'", html)
-        self.assertIn("Escape", html)
+        # Regression: popup close is intentionally X-only (no Escape handler).
+        self.assertNotIn("addEventListener('keydown'", html)
+        self.assertIn("Only the X closes the popup. Backdrop click and Escape are ignored on purpose.", html)
 
         # Overlay is visual, while pointer-events blocks interaction with the underlying rti canvas.
         self.assertIn("rgba(255,255,255,0.05)", html)
@@ -571,9 +570,9 @@ class ViewportOrientationRenderingRegressionTest(unittest.TestCase):
         self.assertIn(".vp-popup-stage .btn-wrap.vp-btn", html)
         self.assertIn("pointer-events:auto", html)
 
-        # Clicking outside the popup panel closes it.
+        # Backdrop click does not close it (X-only close behavior).
         self.assertIn("getElementById('vpPopup')", html)
-        self.assertIn("e.target===vpPopup", html)
+        self.assertNotIn("e.target===vpPopup", html)
 
         # Controls differ based on viewport navigation mode.
         self.assertIn("id='vpPopupUp'", html)
