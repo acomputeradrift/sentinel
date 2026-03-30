@@ -44,6 +44,11 @@ Use a shared runtime shell (code-owned) plus project payload files (project-owne
 1. Shared shell contains generic UI/runtime behavior only.
 2. Project payload contains all project/device/page content and metadata.
 3. `layers` are project specific and must remain in generated project payload JSON.
+4. Per-button stacking metadata must remain in project payload JSON:
+   - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.buttonUI.stack.layerOrder`
+   - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.buttonUI.stack.buttonOrder`
+   - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.buttonUI.stack.frameNumber`
+5. Diagnostics button records must retain matching source stack metadata (`layerId`, `sharedLayerId`, `layerOrder`, `buttonOrder`, `frameNumber`) so rendering and troubleshooting can trace true RTI draw order.
 
 ## Backward-Compatible Migration Plan (No-Risk First)
 

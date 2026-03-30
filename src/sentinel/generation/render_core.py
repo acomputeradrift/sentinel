@@ -189,35 +189,46 @@ def _page_layer_state(page: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(out, key=lambda layer: (-int(layer.get("layerOrder", 0) or 0), str(layer.get("name") or "")))
 
 
+def _button_stack_sort_key(btn: dict[str, Any], category_rank: int) -> tuple[int, int, int]:
+    stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+    button_order = int(stack.get("buttonOrder", 0) or 0)
+    frame_number = int(stack.get("frameNumber", 0) or 0)
+    return (button_order, frame_number, category_rank)
+
+
 def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str, int]]:
     items: list[tuple[dict[str, Any], str, int, int, str, int]] = []
+    category_defs: list[tuple[str, str]] = [
+        ("screenLabels", "Screen Label"),
+        ("screenButtons", "Screen Button"),
+        ("hardButtons", "Hard Button"),
+        ("uiItems", "UI Item"),
+    ]
     layers = _page_layers(page)
     if layers:
         for layer_index, layer in enumerate(layers):
             layer_key = _layer_key(layer_index)
             layer_order = int(layer.get("layerOrder", 0) or 0)
             cats = layer.get("buttonCategories", {})
-            for cat, label in (
-                ("screenLabels", "Screen Label"),
-                ("screenButtons", "Screen Button"),
-                ("hardButtons", "Hard Button"),
-                ("uiItems", "UI Item"),
-            ):
+            layer_items: list[tuple[dict[str, Any], str, int]] = []
+            for rank, (cat, label) in enumerate(category_defs):
                 for btn in cats.get(cat, []):
                     if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
-                    items.append((btn, label, 0, 0, layer_key, layer_order))
+                    layer_items.append((btn, label, rank))
+            layer_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
+            for btn, label, _rank in layer_items:
+                items.append((btn, label, 0, 0, layer_key, layer_order))
         return items
-    for cat, label in (
-        ("screenLabels", "Screen Label"),
-        ("screenButtons", "Screen Button"),
-        ("hardButtons", "Hard Button"),
-        ("uiItems", "UI Item"),
-    ):
+    root_items: list[tuple[dict[str, Any], str, int]] = []
+    for rank, (cat, label) in enumerate(category_defs):
         for btn in page.get("buttonCategories", {}).get(cat, []):
             if cat != "uiItems" and _is_ui_only_button(btn):
                 continue
-            items.append((btn, label, 0, 0, _layer_key(0), 0))
+            root_items.append((btn, label, rank))
+    root_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
+    for btn, label, _rank in root_items:
+        items.append((btn, label, 0, 0, _layer_key(0), 0))
     return items
 
 
@@ -362,15 +373,21 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
             frame = entry_frame["frame"]
             frame_id = int(frame.get("frameId", 0))
             cats = frame.get("buttonCategories", {})
-            for cat, label in (
-                ("screenLabels", "Screen Label"),
-                ("screenButtons", "Screen Button"),
-                ("hardButtons", "Hard Button"),
-                ("uiItems", "UI Item"),
+            frame_items: list[tuple[dict[str, Any], str, int]] = []
+            for rank, (cat, label) in enumerate(
+                (
+                    ("screenLabels", "Screen Label"),
+                    ("screenButtons", "Screen Button"),
+                    ("hardButtons", "Hard Button"),
+                    ("uiItems", "UI Item"),
+                )
             ):
                 for btn in cats.get(cat, []):
                     if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
+                    frame_items.append((btn, label, rank))
+            frame_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
+            for btn, label, _rank in frame_items:
                     out.append(
                         {
                             "btn": btn,

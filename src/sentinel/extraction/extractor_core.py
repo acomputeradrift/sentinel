@@ -584,7 +584,13 @@ def _orientation_visibility(mask: int) -> dict[str, bool]:
     return {"portrait": False, "landscape": False}
 
 
-def _button_ui(button_row: sqlite3.Row) -> dict[str, Any]:
+def _button_ui(
+    button_row: sqlite3.Row,
+    *,
+    layer_order: int = 0,
+    button_order: int = 0,
+    frame_number: int = 0,
+) -> dict[str, Any]:
     vis = _orientation_visibility(int(button_row["VisibleOrientations"] or 0))
     return {
         "fontSize": int(button_row["TextSize"] or 0),
@@ -607,6 +613,11 @@ def _button_ui(button_row: sqlite3.Row) -> dict[str, Any]:
                     button_row["ButtonWidthAlt"],
                 ),
             },
+        },
+        "stack": {
+            "layerOrder": int(layer_order or 0),
+            "buttonOrder": int(button_order or 0),
+            "frameNumber": int(frame_number or 0),
         },
     }
 
@@ -754,6 +765,11 @@ def _resolve_button(
     page_room_id: int,
     current_rti_address: int,
     global_room_fallback_id: int | None,
+    layer_id: int,
+    shared_layer_id: int,
+    layer_order: int,
+    button_order: int,
+    frame_number: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -931,7 +947,12 @@ def _resolve_button(
             if resolved_page_link is not None:
                 break
 
-    button_ui = _button_ui(button_row)
+    button_ui = _button_ui(
+        button_row,
+        layer_order=layer_order,
+        button_order=button_order,
+        frame_number=frame_number,
+    )
 
     user_button = {
         "buttonIdentity": {
@@ -963,6 +984,13 @@ def _resolve_button(
     diag_button = {
         "buttonId": button_id,
         "buttonTagName": tag_name,
+        "source": {
+            "layerId": int(layer_id),
+            "sharedLayerId": int(shared_layer_id),
+            "layerOrder": int(layer_order or 0),
+            "buttonOrder": int(button_order or 0),
+            "frameNumber": int(frame_number or 0),
+        },
         "identifiers": {"buttonTagId": tag_id if tag_id > 0 else None, "text": text},
         "testTargets": {
             "macro": {
@@ -1582,6 +1610,11 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         page_room_id,
                         page_rti_address,
                         lowest_nonzero_device_room_id,
+                        layer_id=int(layer["LayerId"]),
+                        shared_layer_id=int(layer["SharedLayerId"]),
+                        layer_order=int(layer["LayerOrder"] or 0),
+                        button_order=int(b["ButtonOrder"] or 0),
+                        frame_number=int(b["FrameNumber"] or 0),
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -1794,6 +1827,11 @@ def _resolve_viewport_frames(
                 page_room_id,
                 current_rti_address,
                 global_room_fallback_id,
+                layer_id=int(layer["LayerId"]),
+                shared_layer_id=int(layer["SharedLayerId"]),
+                layer_order=int(layer["LayerOrder"] or 0),
+                button_order=int(b["ButtonOrder"] or 0),
+                frame_number=int(b["FrameNumber"] or 0),
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(

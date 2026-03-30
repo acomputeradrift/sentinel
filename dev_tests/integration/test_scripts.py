@@ -403,6 +403,8 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertFalse(slider["testTargets"]["variables"]["State"])
             self.assertFalse(slider["testTargets"]["variables"]["Command"])
             self.assertFalse(slider["testTargets"]["pageLink"])
+            self.assertEqual(slider["buttonUI"]["stack"], {"layerOrder": 0, "buttonOrder": 0, "frameNumber": 0})
+            self.assertEqual(toggle["buttonUI"]["stack"], {"layerOrder": 0, "buttonOrder": 1, "frameNumber": 0})
             self.assertTrue(toggle["testTargets"]["pageLink"])
             self.assertEqual(toggle["resolvedPageLink"], {"targetPageId": 101, "targetPageName": "Home", "resolutionPath": "directPageLink"})
             self.assertEqual(old_slider["buttonIdentity"]["buttonType"], "Slider")
@@ -434,6 +436,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(browse_diag["testTargets"]["variableDetails"]["List"]["objectRef"], "browse8@LIST001")
             self.assertFalse(browse_diag["testTargets"]["variableDetails"]["Command"]["enabled"])
             self.assertIsNone(browse_diag["testTargets"]["variableDetails"]["Command"]["driverFunction"])
+            self.assertEqual(
+                browse_diag["source"],
+                {"layerId": 200, "sharedLayerId": 300, "layerOrder": 0, "buttonOrder": 5, "frameNumber": 0},
+            )
 
     def test_extract_single_size_device_uses_fallback_dimensions(self):
         with tempfile.TemporaryDirectory() as td:
@@ -534,19 +540,13 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("let scale=Math.min(widthScale,heightScale);", html)
             self.assertIn("id='rtiCanvas'", html)
             self.assertIn("id='rtiDeviceCanvas'", html)
-            self.assertIn("leftControls.style.width", html)
-            self.assertIn("rightControls.style.width", html)
-            self.assertIn("const navEdgeOffset=Number(VIEWPORT_NAV.placement?.edgeOffset||36);", html)
-            self.assertIn("let viewportLeft=controls.left+currentDeviceLeft-rtiCanvas.scrollLeft;", html)
-            self.assertIn("let viewportTop=controls.top+currentDeviceTop-rtiCanvas.scrollTop;", html)
-            self.assertIn("const firstViewport=pageEl ? pageEl.querySelector('.vp-box') : null;", html)
-            self.assertIn("viewportLeft=controls.left+currentDeviceLeft+rtiCanvas.clientLeft+((Number(firstViewport.dataset.left||0)*totalScale)-rtiCanvas.scrollLeft);", html)
-            self.assertIn("viewportTop=controls.top+currentDeviceTop+rtiCanvas.clientTop+((Number(firstViewport.dataset.top||0)*totalScale)-rtiCanvas.scrollTop);", html)
-            self.assertIn("viewportRight=viewportLeft+(Number(firstViewport.dataset.width||0)*totalScale);", html)
-            self.assertIn("viewportBottom=viewportTop+(Number(firstViewport.dataset.height||0)*totalScale);", html)
-            self.assertIn("const leftArrowLeft=Math.max(viewportLeft-navEdgeOffset-44,0);", html)
-            self.assertIn("const rightArrowLeft=Math.max(viewportRight+navEdgeOffset,0);", html)
-            self.assertIn("const arrowTop=Math.max(viewportTop+(((viewportBottom-viewportTop)-44)/2),0);", html)
+            self.assertIn("orientationControls.style.width", html)
+            self.assertIn("layerControls.style.width", html)
+            self.assertIn("const controls={", html)
+            self.assertIn("const rtiCanvasWidth=Math.max(appWidth-controls.left-controls.right,1);", html)
+            self.assertIn("const rtiCanvasHeight=Math.max(appHeight-controls.top-controls.bottom,1);", html)
+            self.assertIn("rtiCanvas.style.left=`${controls.left}px`;", html)
+            self.assertIn("rtiCanvas.style.top=`${controls.top}px`;", html)
             self.assertIn(".app-ui-controls{position:absolute;box-sizing:border-box;z-index:20;}", html)
             self.assertIn(".vp-nav{width:44px;height:44px", html)
             self.assertIn("id='zoomControls'", html)

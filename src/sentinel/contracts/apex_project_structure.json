@@ -92,6 +92,11 @@
                       "left": 0,
                       "height": 0,
                       "width": 0
+                    },
+                    "stack": {
+                      "layerOrder": 0,
+                      "buttonOrder": 0,
+                      "frameNumber": 0
                     }
                   },
                   "testTargets": {
@@ -129,6 +134,11 @@
                       "left": 0,
                       "height": 0,
                       "width": 0
+                    },
+                    "stack": {
+                      "layerOrder": 0,
+                      "buttonOrder": 0,
+                      "frameNumber": 0
                     }
                   },
                   "testTargets": {
@@ -203,6 +213,13 @@
               {
                 "buttonId": 0,
                 "buttonTagName": "POWER - TV ON",
+                "source": {
+                  "layerId": 0,
+                  "sharedLayerId": 0,
+                  "layerOrder": 0,
+                  "buttonOrder": 0,
+                  "frameNumber": 0
+                },
                 "identifiers": {
                   "buttonTagId": 0,
                   "text": "Power"
@@ -304,6 +321,13 @@
                       {
                         "buttonId": 0,
                         "buttonTagName": "POWER - TV ON",
+                        "source": {
+                          "layerId": 0,
+                          "sharedLayerId": 0,
+                          "layerOrder": 0,
+                          "buttonOrder": 0,
+                          "frameNumber": 0
+                        },
                         "identifiers": {
                           "buttonTagId": 0,
                           "text": "Power"
