@@ -779,17 +779,29 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
 .ov.open{{display:flex;}}
 .pop{{width:min(560px,calc(100vw - 24px));max-width:100%;box-sizing:border-box;background:#fff;border:1px solid #cbd7e2;border-radius:18px;padding:20px 24px;margin-top:0;}}
-.pop h3{{margin:0 0 16px;font-size:16px;line-height:1.1;font-weight:700;}}
-.row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;overflow:hidden;}}
-.n{{font-weight:600;margin-bottom:10px;font-size:14px;line-height:1.1;}}
- .actions{{display:flex;gap:10px;margin-bottom:10px;}}
+.pop-head{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}}
+.pop h3{{margin:0;font-size:16px;line-height:1.1;font-weight:700;}}
+#passAll{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+#passAll:disabled{{opacity:.55;cursor:not-allowed;}}
+.rows-scroll{{max-height:min(64vh,640px);overflow:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;}}
+.rows-scroll.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
+.rows-scroll::-webkit-scrollbar{{width:10px;height:10px;}}
+.rows-scroll::-webkit-scrollbar-thumb{{background:transparent;}}
+.rows-scroll::-webkit-scrollbar-track{{background:transparent;}}
+.rows-scroll.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
+.row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:10px;overflow:hidden;}}
+.row:last-child{{margin-bottom:0;}}
+.row-head{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}}
+.n{{font-weight:600;margin:0;font-size:14px;line-height:1.1;}}
+ .actions{{display:flex;gap:10px;margin-bottom:8px;}}
  .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
- .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:#274258;}}
- .row-status.is-pass{{color:#1e6b3c;background:#eaf7ef;border:1px solid #3a9c5d;padding:4px 8px;border-radius:999px;}}
- .row-status.is-fail{{color:#8f1f1f;background:#fdeeee;border:1px solid #d05555;padding:4px 8px;border-radius:999px;}}
+ .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.01em;color:#274258;border:1px solid #a9bccd;background:#f7fbff;padding:4px 8px;border-radius:999px;}}
+ .row-status:empty{{display:none;}}
+ .row-status.is-pass{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;}}
+ .row-status.is-fail{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
- .post-status{{margin:2px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
+ .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
  .post-status.is-success{{background:#eaf7ef;border-color:#3a9c5d;color:#1e6b3c;}}
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
@@ -804,7 +816,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
  <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
  <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
-<div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
+ <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
@@ -828,7 +840,7 @@ let currentDeviceTop=0;
  let currentViewportIndexes=VP_FRAMES.map(()=>0);
  let currentOrientation=ORIENTATION_STATE.current;
  const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
- const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus');
+ const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus'),passAllBtn=document.getElementById('passAll');
  let isPosting=false;
  let techWs=null;
  let techWsToken=null;
@@ -836,6 +848,8 @@ let currentDeviceTop=0;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
  let techLastAppliedSeq=0;
+ let passAllQueue=[];
+ let passAllContext=null;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
  const _perfNow=()=>((typeof performance!=="undefined"&&performance.now)?performance.now():Date.now());
@@ -919,6 +933,7 @@ let currentDeviceTop=0;
      const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
      setPosting(false);
      setPostStatus(`Error: ${{msg}}`, "error");
+     drainPassAllQueue();
      return;
     }}
     if (t === "replay.batch") {{
@@ -975,6 +990,7 @@ let currentDeviceTop=0;
      pendingTargetKey = null;
      setPosting(false);
      setPostStatus("Saved", "success");
+     drainPassAllQueue();
     }} else if (pendingTargetKey) {{
      _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
     }}
@@ -1033,8 +1049,8 @@ let currentDeviceTop=0;
   const at = String(recordedAtUtc || "").trim();
   const parts = [];
   if (o) parts.push(o);
-  if (at) parts.push(at);
-  statusEl.textContent = parts.join(" ");
+  if (at) parts.push(`Last Test: ${{at}}`);
+  statusEl.textContent = parts.join("   ");
  }}
  function applyCachedStatus(statusEl, targetKey) {{
   if (!statusEl) return;
@@ -1111,10 +1127,42 @@ let currentDeviceTop=0;
   postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
   if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
  }}
+ function clearPassAllQueue() {{
+  passAllQueue = [];
+  passAllContext = null;
+ }}
+ function drainPassAllQueue() {{
+  if (isPosting) return;
+  if (!passAllQueue.length) {{
+   passAllContext = null;
+   return;
+  }}
+  const next = passAllQueue.shift();
+  if (!next || !next.label) {{
+   drainPassAllQueue();
+   return;
+  }}
+  const ctx = passAllContext || {{ ctxBtn: null, meta: {{}} }};
+  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.statusEl || null);
+  if (!passAllQueue.length) passAllContext = null;
+ }}
+ function queuePassAll(ctxBtn, meta) {{
+  clearPassAllQueue();
+  rows.querySelectorAll('.row').forEach(row=>{{
+   const label = String(row.querySelector('.n')?.textContent || '').trim();
+   const statusEl = row.querySelector('.row-status');
+   if (!label) return;
+   passAllQueue.push({{ label, statusEl }});
+  }});
+  if (!passAllQueue.length) return;
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
+  drainPassAllQueue();
+ }}
 
  function setPosting(on) {{
   isPosting=!!on;
   rows.querySelectorAll('.actions button').forEach(b=>{{ b.disabled=isPosting; }});
+  if (passAllBtn) passAllBtn.disabled=isPosting;
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
@@ -1201,8 +1249,13 @@ let currentDeviceTop=0;
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='n'>${{esc(t)}}</div><div class='row-status' aria-live='polite'></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div><div class='row-status' aria-live='polite'></div></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     clearPassAllQueue();
      setPostStatus('','');
+     if (passAllBtn) {{
+      passAllBtn.disabled = !(Array.isArray(m.targets) && m.targets.length);
+      passAllBtn.onclick = () => queuePassAll(b, m);
+     }}
      ov.classList.add('open');
      bindResultRows(b, m);
     }});
@@ -1210,8 +1263,8 @@ let currentDeviceTop=0;
   }}
 bindTestButtonClicks(document);
  _connectTechWs();
-document.getElementById('close').addEventListener('click',()=>ov.classList.remove('open'));
-ov.addEventListener('click',e=>{{if(e.target===ov)ov.classList.remove('open')}});
+document.getElementById('close').addEventListener('click',()=>{{ clearPassAllQueue(); ov.classList.remove('open'); }});
+ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
  function activePageEl() {{
   return document.querySelector(`.device-page[data-page-index="${{activePageIndex}}"]`);
  }}
@@ -2456,17 +2509,29 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px 12px;z-index:10000;}}
 .ov.open{{display:flex;}}
 .pop{{width:min(560px,calc(100vw - 24px));max-width:100%;box-sizing:border-box;background:#fff;border:1px solid #cbd7e2;border-radius:18px;padding:20px 24px;margin-top:0;}}
-.pop h3{{margin:0 0 16px;font-size:16px;line-height:1.1;font-weight:700;}}
-.row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:12px;overflow:hidden;}}
-.n{{font-weight:600;margin-bottom:10px;font-size:14px;line-height:1.1;}}
- .actions{{display:flex;gap:10px;margin-bottom:10px;}}
+.pop-head{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}}
+.pop h3{{margin:0;font-size:16px;line-height:1.1;font-weight:700;}}
+#passAll{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+#passAll:disabled{{opacity:.55;cursor:not-allowed;}}
+.rows-scroll{{max-height:min(64vh,640px);overflow:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;}}
+.rows-scroll.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
+.rows-scroll::-webkit-scrollbar{{width:10px;height:10px;}}
+.rows-scroll::-webkit-scrollbar-thumb{{background:transparent;}}
+.rows-scroll::-webkit-scrollbar-track{{background:transparent;}}
+.rows-scroll.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
+.row{{box-sizing:border-box;width:100%;border:1px solid #d4dee8;border-radius:14px;padding:12px 14px;margin-bottom:10px;overflow:hidden;}}
+.row:last-child{{margin-bottom:0;}}
+.row-head{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}}
+.n{{font-weight:600;margin:0;font-size:14px;line-height:1.1;}}
+ .actions{{display:flex;gap:10px;margin-bottom:8px;}}
  .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
- .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:#274258;}}
- .row-status.is-pass{{color:#1e6b3c;background:#eaf7ef;border:1px solid #3a9c5d;padding:4px 8px;border-radius:999px;}}
- .row-status.is-fail{{color:#8f1f1f;background:#fdeeee;border:1px solid #d05555;padding:4px 8px;border-radius:999px;}}
+ .row-status{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.01em;color:#274258;border:1px solid #a9bccd;background:#f7fbff;padding:4px 8px;border-radius:999px;}}
+ .row-status:empty{{display:none;}}
+ .row-status.is-pass{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;}}
+ .row-status.is-fail{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
- .post-status{{margin:2px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
+ .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
  .post-status.is-saving{{background:#fff7e8;border-color:#f0a126;color:#6f4b12;}}
  .post-status.is-success{{background:#eaf7ef;border-color:#3a9c5d;color:#1e6b3c;}}
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
@@ -2493,16 +2558,18 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <div class='home-list'>{device_content}</div>
 </section>
 </main>
-<div class='ov' id='ov'><div class='pop'><h3 id='pt'></h3><div id='rows'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
+<div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 const APP_UI={app_json};
- const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus');
+ const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus'),passAllBtn=document.getElementById('passAll');
  let isPosting=false;
  let techWs=null;
  let techWsToken=null;
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
+ let passAllQueue=[];
+ let passAllContext=null;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
  function _logTechWs(action, data) {{
@@ -2542,13 +2609,14 @@ const APP_UI={app_json};
    const t = String(payload?.type || "").trim();
    _logTechWs("recv", t || "(unknown)");
    if (t === "error") {{
-    const code = payload?.code;
-    const message = payload?.message;
-    const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-    setPosting(false);
-    setPostStatus(`Error: ${{msg}}`, "error");
-    return;
-   }}
+     const code = payload?.code;
+     const message = payload?.message;
+     const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
+     setPosting(false);
+     setPostStatus(`Error: ${{msg}}`, "error");
+     drainPassAllQueue();
+     return;
+    }}
    if (t === "replay.batch") {{
     const events = Array.isArray(payload?.events) ? payload.events : [];
     for (const ev of events) _applyTechPayload(ev);
@@ -2597,13 +2665,14 @@ const APP_UI={app_json};
     statusEl.classList.toggle("is-fail", outcome === "FAIL");
    }}
    if (pendingTargetKey && pendingTargetKey === targetKey) {{
-    _logTechWs("ack-match", targetKey);
-    pendingTargetKey = null;
-    setPosting(false);
-    setPostStatus("Saved", "success");
-   }} else if (pendingTargetKey) {{
-    _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
-   }}
+     _logTechWs("ack-match", targetKey);
+     pendingTargetKey = null;
+     setPosting(false);
+     setPostStatus("Saved", "success");
+     drainPassAllQueue();
+    }} else if (pendingTargetKey) {{
+     _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
+    }}
  }}
  function _handleTechWsMessage(evt) {{
   try {{
@@ -2654,8 +2723,8 @@ const APP_UI={app_json};
   const at = String(recordedAtUtc || "").trim();
   const parts = [];
   if (o) parts.push(o);
-  if (at) parts.push(at);
-  statusEl.textContent = parts.join(" ");
+  if (at) parts.push(`Last Test: ${{at}}`);
+  statusEl.textContent = parts.join("   ");
  }}
  function applyCachedStatus(statusEl, targetKey) {{
   if (!statusEl) return;
@@ -2732,9 +2801,41 @@ const APP_UI={app_json};
   postStatus.className='post-status' + (kind ? (' is-' + kind) : '');
   if (t) postStatus.removeAttribute('hidden'); else postStatus.setAttribute('hidden','hidden');
  }}
+ function clearPassAllQueue() {{
+  passAllQueue = [];
+  passAllContext = null;
+ }}
+ function drainPassAllQueue() {{
+  if (isPosting) return;
+  if (!passAllQueue.length) {{
+   passAllContext = null;
+   return;
+  }}
+  const next = passAllQueue.shift();
+  if (!next || !next.label) {{
+   drainPassAllQueue();
+   return;
+  }}
+  const ctx = passAllContext || {{ ctxBtn: null, meta: {{}} }};
+  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.statusEl || null);
+  if (!passAllQueue.length) passAllContext = null;
+ }}
+ function queuePassAll(ctxBtn, meta) {{
+  clearPassAllQueue();
+  rows.querySelectorAll('.row').forEach(function(row){{
+   const label = String((row.querySelector('.n')||{{}}).textContent || '').trim();
+   const statusEl = row.querySelector('.row-status');
+   if (!label) return;
+   passAllQueue.push({{ label, statusEl }});
+  }});
+  if (!passAllQueue.length) return;
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
+  drainPassAllQueue();
+ }}
  function setPosting(on) {{
   isPosting=!!on;
   rows.querySelectorAll('.actions button').forEach(function(b){{ b.disabled=isPosting; }});
+  if (passAllBtn) passAllBtn.disabled=isPosting;
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
@@ -2816,15 +2917,20 @@ const APP_UI={app_json};
    const titleTemplate=popupCfg.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=Array.isArray(m.targets) ? m.targets : [];
-    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='n'>" + esc(t) + "</div><div class='row-status' aria-live='polite'></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div><div class='row-status' aria-live='polite'></div></div><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    clearPassAllQueue();
     setPostStatus('','');
+    if (passAllBtn) {{
+     passAllBtn.disabled = !targets.length;
+     passAllBtn.onclick = function(){{ queuePassAll(null, m); }};
+    }}
     ov.classList.add('open');
    bindResultRows(m);
   }});
  }});
 _connectTechWs();
-document.getElementById('close').addEventListener('click', function(){{ov.classList.remove('open');}});
-ov.addEventListener('click', function(e){{if(e.target===ov)ov.classList.remove('open');}});
+document.getElementById('close').addEventListener('click', function(){{ clearPassAllQueue(); ov.classList.remove('open'); }});
+ov.addEventListener('click', function(e){{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
 </script></body></html>"""
 def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> str:
     device = project_data["devices"][device_index]
