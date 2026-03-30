@@ -136,6 +136,7 @@ def _room_name_from_button_tag(tag_name: str) -> str | None:
 def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     t = btn.get("testTargets", {})
     vars_t = t.get("variables", {})
+    graphics_t = t.get("graphics", {})
     out: list[str] = []
     if t.get("text"):
         out.append("Text")
@@ -146,6 +147,10 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(variable_label_template.replace("{variableType}", name))
+    if graphics_t.get("bitmap"):
+        out.append("Bitmap")
+    if graphics_t.get("icon"):
+        out.append("Icon")
     if _page_link_enabled(t):
         out.append("PageLink")
     return out
@@ -155,7 +160,9 @@ def _is_ui_only_button(btn: dict[str, Any]) -> bool:
     identity = btn.get("buttonIdentity", {})
     t = btn.get("testTargets", {})
     vars_t = t.get("variables", {})
+    graphics_t = t.get("graphics", {})
     has_any_var = any(bool(vars_t.get(k)) for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"))
+    has_any_graphics = bool(graphics_t.get("bitmap")) or bool(graphics_t.get("icon"))
     return (
         not str(identity.get("buttonTagName") or "").strip()
         and not str(identity.get("text") or "").strip()
@@ -164,6 +171,7 @@ def _is_ui_only_button(btn: dict[str, Any]) -> bool:
         and not bool(t.get("macroSteps"))
         and not _page_link_enabled(t)
         and not has_any_var
+        and not has_any_graphics
     )
 
 

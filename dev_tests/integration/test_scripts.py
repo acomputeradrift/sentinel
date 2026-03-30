@@ -777,6 +777,68 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("data-l-left='210'", html)
             self.assertIn("data-l-top='100'", html)
 
+    def test_generate_includes_graphics_targets_in_button_meta(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            project_data = {
+                "devices": [
+                    {
+                        "userFacing": {
+                            "displayName": "IST-5 (Global)",
+                            "deviceUI": {
+                                "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                                "landscape": {"supported": False, "resolution": {"width": 854, "height": 480}},
+                            },
+                            "pages": [
+                                {
+                                    "pageName": "Home",
+                                    "buttonCategories": {
+                                        "screenLabels": [],
+                                        "screenButtons": [
+                                            {
+                                                "buttonIdentity": {"buttonTagName": "Graphics Probe", "text": "Graphics Probe", "buttonType": None},
+                                                "buttonUI": orientation_ui(10, 20, 20, 40, 120),
+                                                "testTargets": {
+                                                    "text": False,
+                                                    "macros": False,
+                                                    "macroSteps": False,
+                                                    "variables": {
+                                                        "Text": False,
+                                                        "Reversed": False,
+                                                        "Inactive": False,
+                                                        "Visible": False,
+                                                        "Value": False,
+                                                        "State": False,
+                                                        "Command": False,
+                                                        "Image": False,
+                                                        "List": False,
+                                                    },
+                                                    "graphics": {"bitmap": True, "icon": True},
+                                                    "pageLink": {"enabled": False, "targetPageId": None},
+                                                },
+                                            }
+                                        ],
+                                        "hardButtons": [],
+                                    },
+                                    "viewports": [],
+                                }
+                            ],
+                        },
+                        "diagnostics": {"deviceId": 1, "pages": [{"pageId": 100, "pageName": "Home"}]},
+                    }
+                ]
+            }
+            project_path = td_path / "sample_project_data.json"
+            ui_path = td_path / "app_ui_structure.json"
+            project_path.write_text(json.dumps(project_data), encoding="utf-8")
+            ui_path.write_text(json.dumps(sample_app_ui()), encoding="utf-8")
+
+            run = subprocess.run([sys.executable, str(GENERATE), "--project-data", str(project_path), "--app-ui", str(ui_path), "--out-dir", str(td_path)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, msg=run.stderr + run.stdout)
+
+            html = (td_path / "sample_project_data__device-0-ist-5-global.html").read_text(encoding="utf-8")
+            self.assertIn('"targets": ["Bitmap", "Icon"]', html)
+
     def test_generate_uses_single_size_device_ui_for_source_size(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
