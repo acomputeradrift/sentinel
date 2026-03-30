@@ -779,6 +779,12 @@ def _resolve_button(
     button_type = _STYLE_TO_TYPE.get(style)
     tag_name = tag_name_by_id.get(tag_id)
 
+    up_bitmap_id = int(button_row["UpBitmapId"]) if "UpBitmapId" in button_row.keys() and button_row["UpBitmapId"] is not None else -1
+    down_bitmap_id = int(button_row["DownBitmapId"]) if "DownBitmapId" in button_row.keys() and button_row["DownBitmapId"] is not None else -1
+    icon_bitmap_id = int(button_row["IconBitmapId"]) if "IconBitmapId" in button_row.keys() and button_row["IconBitmapId"] is not None else -1
+    bitmap_enabled = bool(up_bitmap_id != -1 or down_bitmap_id != -1)
+    icon_enabled = bool(icon_bitmap_id != -1)
+
     variables_rows = variables_by_tag.get(tag_id, []) if tag_id > 0 else []
     object_tokens = [str(v["ObjectData"] or "") for v in variables_rows]
     button_text_tokens = [str(v["ButtonText"] or "") for v in variables_rows]
@@ -975,6 +981,10 @@ def _resolve_button(
                 "Command": command_enabled,
                 "Image": image_enabled,
                 "List": list_enabled,
+            },
+            "graphics": {
+                "bitmap": bitmap_enabled,
+                "icon": icon_enabled,
             },
             "pageLink": resolved_page_link is not None,
         },

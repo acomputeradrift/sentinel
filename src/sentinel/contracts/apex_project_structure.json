@@ -113,6 +113,10 @@
                       "Image": false,
                       "List": false
                     },
+                    "graphics": {
+                      "bitmap": false,
+                      "icon": false
+                    },
                     "pageLink": {
                       "enabled": false,
                       "targetPageId": null
@@ -154,6 +158,10 @@
                       "Command": false,
                       "Image": false,
                       "List": false
+                    },
+                    "graphics": {
+                      "bitmap": false,
+                      "icon": false
                     },
                     "pageLink": {
                       "enabled": false,

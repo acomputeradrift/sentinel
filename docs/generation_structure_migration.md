@@ -52,6 +52,8 @@ Use a shared runtime shell (code-owned) plus project payload files (project-owne
 6. User-facing button test targets must preserve graphics asset checks separately from variable-derived image state:
    - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.testTargets.graphics.bitmap`
    - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.testTargets.graphics.icon`
+   - `graphics.bitmap` is `true` when `UpBitmapId != -1` or `DownBitmapId != -1`
+   - `graphics.icon` is `true` when `IconBitmapId != -1`
 
 ## Backward-Compatible Migration Plan (No-Risk First)
 
