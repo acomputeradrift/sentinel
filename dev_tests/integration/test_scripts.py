@@ -236,6 +236,7 @@ def create_test_apex(
     cur.execute("insert into RTIDeviceButtonData values (250,300,4,152,0,310,30,46,120,'',10,14,190,320,46,120,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (251,300,5,153,0,360,30,120,220,'',10,8,240,320,120,220,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (252,300,6,154,0,40,30,46,120,'',10,0,40,320,46,120,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (253,300,7,-1,0,420,30,40,100,'',10,0,300,320,40,100,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (270,300,7,160,0,430,30,80,220,'Viewport Host',10,0,430,320,80,220,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (271,400,0,161,0,10,10,40,100,'Viewport Child',10,0,10,10,40,100,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (260,302,0,155,0,53,88,112,160,'1',12,0,160,200,112,160,1,0)")
@@ -328,6 +329,8 @@ def create_test_apex(
     cur.execute("update RTIDeviceButtonData set IconBitmapId=9002 where ButtonId=250")
     # browse: raw columns present, and explicit ButtonBitmaps mapping present.
     cur.execute("update RTIDeviceButtonData set DownBitmapId=9003 where ButtonId=251")
+    # ui_item_graphic: bitmap+icon present and should remain graphics targets.
+    cur.execute("update RTIDeviceButtonData set UpBitmapId=9004, IconBitmapId=9005 where ButtonId=253")
     cur.execute("insert into ButtonBitmaps values (1,248,0,9001,-1,-1)")
     cur.execute("insert into ButtonBitmaps values (2,250,0,-1,-1,9002)")
     cur.execute("insert into ButtonBitmaps values (3,251,0,-1,9003,-1)")
@@ -371,6 +374,7 @@ class ScriptContractsTest(unittest.TestCase):
             image14 = buttons["Shop [Preview]"]
             browse = buttons["Browse"]
             activity_home = buttons["Activity: Home"]
+            ui_items = layer["buttonCategories"]["uiItems"]
             rk3_page = data["devices"][1]["userFacing"]["pages"][0]
             rk3_layer = rk3_page["layers"][0]
             rk3_buttons = {btn["buttonIdentity"]["buttonTagName"]: btn for btn in rk3_layer["buttonCategories"]["screenButtons"]}
@@ -434,6 +438,8 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertTrue(toggle["buttonUI"]["orientations"]["landscape"]["visible"])
             self.assertEqual(toggle["buttonUI"]["orientations"]["portrait"]["coordinates"]["left"], 334)
             self.assertEqual(toggle["buttonUI"]["orientations"]["landscape"]["coordinates"]["left"], 620)
+            self.assertFalse(toggle["testTargets"]["graphics"]["bitmap"])
+            self.assertFalse(toggle["testTargets"]["graphics"]["icon"])
             self.assertTrue(slider["testTargets"]["variables"]["Value"])
             self.assertFalse(slider["testTargets"]["variables"]["State"])
             self.assertFalse(slider["testTargets"]["variables"]["Command"])
@@ -457,7 +463,7 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(old_slider["buttonIdentity"]["buttonType"], "Slider")
             self.assertTrue(old_slider["testTargets"]["variables"]["Value"])
             self.assertFalse(old_slider["testTargets"]["variables"]["Command"])
-            self.assertTrue(old_slider["testTargets"]["graphics"]["bitmap"])
+            self.assertFalse(old_slider["testTargets"]["graphics"]["bitmap"])
             self.assertFalse(old_slider["testTargets"]["graphics"]["icon"])
             self.assertEqual(image6["buttonIdentity"]["buttonType"], "Image")
             self.assertTrue(image6["testTargets"]["variables"]["Image"])
@@ -474,6 +480,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertTrue(browse["testTargets"]["variables"]["List"])
             self.assertTrue(browse["testTargets"]["graphics"]["bitmap"])
             self.assertFalse(browse["testTargets"]["graphics"]["icon"])
+            graphic_ui_item = next((x for x in ui_items if ((x.get("apexScopeSource") or {}).get("button") or {}).get("buttonId") == 253), None)
+            self.assertIsNotNone(graphic_ui_item)
+            self.assertTrue(graphic_ui_item["testTargets"]["graphics"]["bitmap"])
+            self.assertTrue(graphic_ui_item["testTargets"]["graphics"]["icon"])
             self.assertTrue(activity_home["testTargets"]["pageLink"])
             self.assertEqual(activity_home["resolvedPageLink"], {"targetPageId": 100, "targetPageName": "Lights", "resolutionPath": "directPageLink"})
             self.assertTrue(activity_apple["testTargets"]["pageLink"])

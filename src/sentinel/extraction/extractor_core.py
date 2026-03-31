@@ -839,8 +839,11 @@ def _resolve_button(
     icon_bitmap_id = int(button_row["IconBitmapId"]) if "IconBitmapId" in button_row.keys() and button_row["IconBitmapId"] is not None else -1
     raw_bitmap_enabled = bool(up_bitmap_id != -1 or down_bitmap_id != -1)
     raw_icon_enabled = bool(icon_bitmap_id != -1)
-    if use_explicit_button_bitmaps:
-        bitmap_enabled, icon_enabled = button_graphics_targets_by_button_id.get(button_id, (False, False))
+    # Temporary gating rule: slider/toggle controls do not emit graphics test targets.
+    # For all other controls, rely on raw RTIDeviceButtonData bitmap/icon ids.
+    if button_type in {"Slider", "Toggle"}:
+        bitmap_enabled = False
+        icon_enabled = False
     else:
         bitmap_enabled = raw_bitmap_enabled
         icon_enabled = raw_icon_enabled
