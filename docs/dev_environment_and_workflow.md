@@ -72,8 +72,13 @@ Goal: deploy code without accidentally deleting server files.
 4) Restart the app:
    - `sudo systemctl restart sentinel`
 5) Validate:
+   - Wait ~3-5 seconds after restart (service warm-up window).
    - `curl http://127.0.0.1/health`
    - `sudo journalctl -u sentinel -n 50 --no-pager`
+
+Validation note:
+- A brief `502 Bad Gateway` can occur immediately after restart while Uvicorn is still coming up behind Nginx.
+- Treat this as expected during the first seconds; retry health check after a short delay before treating it as a failure.
 
 Known gotchas:
 - Avoid `rsync --delete` against `/opt/sentinel/app` (it can remove required modules and break imports).

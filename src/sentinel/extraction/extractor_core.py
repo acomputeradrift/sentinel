@@ -809,6 +809,8 @@ def _resolve_button(
     room_home_target_pages_by_room: dict[int, list[tuple[int, int]]],
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     macro_flag_summaries_by_macro_id: dict[int, list[str]],
+    button_graphics_targets_by_button_id: dict[int, tuple[bool, bool]],
+    use_explicit_button_bitmaps: bool,
     page_id: int,
     page_source_device_id: int | None,
     page_room_id: int,
@@ -835,8 +837,13 @@ def _resolve_button(
     up_bitmap_id = int(button_row["UpBitmapId"]) if "UpBitmapId" in button_row.keys() and button_row["UpBitmapId"] is not None else -1
     down_bitmap_id = int(button_row["DownBitmapId"]) if "DownBitmapId" in button_row.keys() and button_row["DownBitmapId"] is not None else -1
     icon_bitmap_id = int(button_row["IconBitmapId"]) if "IconBitmapId" in button_row.keys() and button_row["IconBitmapId"] is not None else -1
-    bitmap_enabled = bool(up_bitmap_id != -1 or down_bitmap_id != -1)
-    icon_enabled = bool(icon_bitmap_id != -1)
+    raw_bitmap_enabled = bool(up_bitmap_id != -1 or down_bitmap_id != -1)
+    raw_icon_enabled = bool(icon_bitmap_id != -1)
+    if use_explicit_button_bitmaps:
+        bitmap_enabled, icon_enabled = button_graphics_targets_by_button_id.get(button_id, (False, False))
+    else:
+        bitmap_enabled = raw_bitmap_enabled
+        icon_enabled = raw_icon_enabled
 
     variables_rows = variables_by_tag.get(tag_id, []) if tag_id > 0 else []
     object_tokens = [str(v["ObjectData"] or "") for v in variables_rows]
@@ -1250,6 +1257,21 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
 
     cur.execute("select ButtonId from ButtonTextTags")
     button_text_tag_ids = {int(r[0]) for r in cur.fetchall()}
+
+    # Graphics targets should come from explicit ButtonBitmaps mapping when present.
+    cur.execute("select name from sqlite_master where type='table' and name='ButtonBitmaps'")
+    use_explicit_button_bitmaps = cur.fetchone() is not None
+    button_graphics_targets_by_button_id: dict[int, tuple[bool, bool]] = {}
+    if use_explicit_button_bitmaps:
+        cur.execute("select ButtonId, UpBitmapId, DownBitmapId, IconBitmapId from ButtonBitmaps")
+        for row in cur.fetchall():
+            button_id = int(row["ButtonId"] or 0)
+            if button_id <= 0:
+                continue
+            existing = button_graphics_targets_by_button_id.get(button_id, (False, False))
+            bitmap_enabled = existing[0] or int(row["UpBitmapId"] or -1) != -1 or int(row["DownBitmapId"] or -1) != -1
+            icon_enabled = existing[1] or int(row["IconBitmapId"] or -1) != -1
+            button_graphics_targets_by_button_id[button_id] = (bitmap_enabled, icon_enabled)
 
     cur.execute("select * from Macros where ButtonTagId is not null")
     macros_by_tag: dict[int, list[sqlite3.Row]] = defaultdict(list)
@@ -1715,6 +1737,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         room_home_target_pages_by_room,
                         variable_command_rows_by_variable_id,
                         macro_flag_summaries_by_macro_id,
+                        button_graphics_targets_by_button_id,
+                        use_explicit_button_bitmaps,
                         page_id,
                         (int(prow["SourceDeviceId"]) if prow["SourceDeviceId"] is not None else None),
                         page_room_id,
@@ -1758,6 +1782,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             room_home_target_pages_by_room,
                             variable_command_rows_by_variable_id,
                             macro_flag_summaries_by_macro_id,
+                            button_graphics_targets_by_button_id,
+                            use_explicit_button_bitmaps,
                             page_id,
                             (int(prow["SourceDeviceId"]) if prow["SourceDeviceId"] is not None else None),
                             page_room_id,
@@ -1877,6 +1903,8 @@ def _resolve_viewport_frames(
     room_home_target_pages_by_room: dict[int, list[tuple[int, int]]],
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     macro_flag_summaries_by_macro_id: dict[int, list[str]],
+    button_graphics_targets_by_button_id: dict[int, tuple[bool, bool]],
+    use_explicit_button_bitmaps: bool,
     page_id: int,
     page_source_device_id: int | None,
     page_room_id: int,
@@ -1946,6 +1974,8 @@ def _resolve_viewport_frames(
                 room_home_target_pages_by_room,
                 variable_command_rows_by_variable_id,
                 macro_flag_summaries_by_macro_id,
+                button_graphics_targets_by_button_id,
+                use_explicit_button_bitmaps,
                 page_id,
                 page_source_device_id,
                 page_room_id,

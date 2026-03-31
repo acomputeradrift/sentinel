@@ -124,6 +124,7 @@ def create_test_apex(
         create table Layers (LayerId integer primary key, PageId integer, SourceId integer, SharedLayerId integer, LayerOrder integer, IsVisible integer, VisibilityVariable text, IsLocked integer, ViewPortButtonId integer, RoomId integer);
         create table SharedLayers (SharedLayerId integer primary key, Name text);
         create table RTIDeviceButtonData (ButtonId integer primary key, SharedLayerId integer, ButtonOrder integer, ButtonTagId integer, FrameNumber integer, ButtonTop integer, ButtonLeft integer, ButtonHeight integer, ButtonWidth integer, Text text, TextSize integer, ButtonStyle integer, ButtonTopAlt integer, ButtonLeftAlt integer, ButtonHeightAlt integer, ButtonWidthAlt integer, VisibleOrientations integer, ViewPortVerticalScroll integer);
+        create table ButtonBitmaps (ButtonBitmapId integer primary key, ButtonId integer, BitmapOrder integer, UpBitmapId integer, DownBitmapId integer, IconBitmapId integer);
         create table ButtonTagNames (ButtonTagId integer primary key, ButtonTagName text);
         create table Variables (VariableId integer primary key, RoomId integer, DeviceId integer, ButtonTagId integer, ButtonText text, ObjectData text, ReversedData text, InactiveData text, VisibleData text);
         create table ButtonTextTags (ButtonTextTagId integer primary key, ButtonId integer, ButtonTagId integer);
@@ -321,12 +322,17 @@ def create_test_apex(
     cur.execute("alter table RTIDeviceButtonData add column DownBitmapId integer")
     cur.execute("alter table RTIDeviceButtonData add column IconBitmapId integer")
     cur.execute("update RTIDeviceButtonData set UpBitmapId=-1, DownBitmapId=-1, IconBitmapId=-1")
-    # old_slider: bitmap present (up)
+    # old_slider: raw columns present, and explicit ButtonBitmaps mapping present.
     cur.execute("update RTIDeviceButtonData set UpBitmapId=9001 where ButtonId=248")
-    # image14: icon present
+    # image14: raw columns present, and explicit ButtonBitmaps mapping present.
     cur.execute("update RTIDeviceButtonData set IconBitmapId=9002 where ButtonId=250")
-    # browse: bitmap present (down only)
+    # browse: raw columns present, and explicit ButtonBitmaps mapping present.
     cur.execute("update RTIDeviceButtonData set DownBitmapId=9003 where ButtonId=251")
+    cur.execute("insert into ButtonBitmaps values (1,248,0,9001,-1,-1)")
+    cur.execute("insert into ButtonBitmaps values (2,250,0,-1,-1,9002)")
+    cur.execute("insert into ButtonBitmaps values (3,251,0,-1,9003,-1)")
+    # slider_default_skin: raw columns set but no ButtonBitmaps mapping => should NOT emit graphics targets.
+    cur.execute("update RTIDeviceButtonData set UpBitmapId=9010, DownBitmapId=9011, IconBitmapId=9012 where ButtonId=246")
 
     con.commit()
     con.close()
@@ -436,11 +442,14 @@ class ScriptContractsTest(unittest.TestCase):
                 slider["apexScopeSource"],
                 {
                     "page": {"pageId": 100, "roomId": 0, "sourceDeviceId": 1, "rtiAddress": 1},
-                    "layer": {"layerId": 200, "sharedLayerId": 300, "roomId": 0, "sourceId": 1},
+                    "viewportLayer": {"layerId": 200, "sharedLayerId": 300, "roomId": 0, "sourceId": 1},
+                    "pageLayer": {"roomId": None, "sourceId": None},
                     "button": {"buttonId": 246, "buttonTagId": 114},
                     "bindings": {"macroIds": [], "variableIds": [1], "macroStepIds": [], "pageLinkId": None},
                 },
             )
+            self.assertFalse(slider["testTargets"]["graphics"]["bitmap"])
+            self.assertFalse(slider["testTargets"]["graphics"]["icon"])
             self.assertEqual(slider["buttonUI"]["stack"], {"layerOrder": 0, "buttonOrder": 0, "frameNumber": 0})
             self.assertEqual(toggle["buttonUI"]["stack"], {"layerOrder": 0, "buttonOrder": 1, "frameNumber": 0})
             self.assertTrue(toggle["testTargets"]["pageLink"])
@@ -481,7 +490,8 @@ class ScriptContractsTest(unittest.TestCase):
                 vp_child["apexScopeSource"],
                 {
                     "page": {"pageId": 100, "roomId": 0, "sourceDeviceId": 1, "rtiAddress": 1},
-                    "layer": {"layerId": 210, "sharedLayerId": 400, "roomId": 0, "sourceId": 1},
+                    "viewportLayer": {"layerId": 210, "sharedLayerId": 400, "roomId": 0, "sourceId": 1},
+                    "pageLayer": {"roomId": 0, "sourceId": 1},
                     "button": {"buttonId": 271, "buttonTagId": 161},
                     "bindings": {"macroIds": [], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
                 },
