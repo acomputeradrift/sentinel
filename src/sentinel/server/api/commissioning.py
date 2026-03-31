@@ -133,6 +133,11 @@ def _fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict
                 "scope": refs.get("scope") if isinstance(refs, dict) else None,
                 "targetName": rec.target.get("targetName"),
                 "resolvedData": refs.get("resolvedData") if isinstance(refs, dict) else None,
+                "scopeType": refs.get("scopeType") if isinstance(refs, dict) else None,
+                "effectiveRoomId": refs.get("effectiveRoomId") if isinstance(refs, dict) else None,
+                "effectiveSourceId": refs.get("effectiveSourceId") if isinstance(refs, dict) else None,
+                "effectiveRoomName": refs.get("effectiveRoomName") if isinstance(refs, dict) else None,
+                "effectiveSourceName": refs.get("effectiveSourceName") if isinstance(refs, dict) else None,
             }
         )
     return out

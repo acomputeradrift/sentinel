@@ -237,6 +237,8 @@ function formatEffectiveScope(taskLike) {
   let scopeType = String(task.scopeType || "").trim().toUpperCase();
   let roomId = task.effectiveRoomId;
   let sourceId = task.effectiveSourceId;
+  const roomName = String(task.effectiveRoomName || "").trim();
+  const sourceName = String(task.effectiveSourceName || "").trim();
   if (!scopeType || roomId == null || sourceId == null) {
     const parsed = _scopePartsFromTt2TargetKey(targetKey);
     if (parsed) {
@@ -247,7 +249,8 @@ function formatEffectiveScope(taskLike) {
   }
 
   if (scopeType !== "GLOBAL" && scopeType !== "ROOM") return String(task.scope || "");
-  const roomLabel = scopeType === "GLOBAL" ? "Global" : `Room ${roomId}`;
+  const roomLabel = scopeType === "GLOBAL" ? "Global" : (roomName || `Room ${roomId}`);
+  if (sourceName) return `${roomLabel} -> ${sourceName}`;
   if (sourceId == null || Number.isNaN(Number(sourceId))) return roomLabel;
   return `${roomLabel} -> ${Number(sourceId)}`;
 }
@@ -532,6 +535,8 @@ function renderTaskList(projectId, fails) {
       scopeType: rec?.scopeType,
       effectiveRoomId: rec?.effectiveRoomId,
       effectiveSourceId: rec?.effectiveSourceId,
+      effectiveRoomName: rec?.effectiveRoomName,
+      effectiveSourceName: rec?.effectiveSourceName,
     });
 
     const tdResolved = document.createElement("td");
@@ -560,6 +565,8 @@ function renderTaskList(projectId, fails) {
       scopeType: rec?.scopeType,
       effectiveRoomId: rec?.effectiveRoomId,
       effectiveSourceId: rec?.effectiveSourceId,
+      effectiveRoomName: rec?.effectiveRoomName,
+      effectiveSourceName: rec?.effectiveSourceName,
       lastFailNote: String(rec?.lastFailNote || ""),
     });
     diagRt.rowByKey.set(targetKey, { tr, sel });

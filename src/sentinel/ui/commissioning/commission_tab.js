@@ -405,6 +405,11 @@ function _upsertFailRecord(fails, payload) {
     scope: String(refs?.scope || prev?.scope || ""),
     targetName: String(payload?.targetName || prev?.targetName || ""),
     resolvedData: refs?.resolvedData == null ? prev?.resolvedData : refs.resolvedData,
+    scopeType: String(refs?.scopeType || prev?.scopeType || ""),
+    effectiveRoomId: refs?.effectiveRoomId == null ? prev?.effectiveRoomId : refs.effectiveRoomId,
+    effectiveSourceId: refs?.effectiveSourceId == null ? prev?.effectiveSourceId : refs.effectiveSourceId,
+    effectiveRoomName: String(refs?.effectiveRoomName || prev?.effectiveRoomName || ""),
+    effectiveSourceName: String(refs?.effectiveSourceName || prev?.effectiveSourceName || ""),
   };
   if (idx >= 0) existing[idx] = next;
   else existing.unshift(next);

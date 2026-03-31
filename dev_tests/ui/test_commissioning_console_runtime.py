@@ -465,6 +465,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   scopeType: "ROOM",
                   effectiveRoomId: 23,
                   effectiveSourceId: 74,
+                  effectiveRoomName: "Living Room",
+                  effectiveSourceName: "Main AVR",
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-21T00:00:00Z",
@@ -481,6 +483,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   scopeType: "GLOBAL",
                   effectiveRoomId: 0,
                   effectiveSourceId: 74,
+                  effectiveRoomName: "Global",
+                  effectiveSourceName: "Main AVR",
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-20T23:00:00Z",
@@ -530,7 +534,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 scope: "BUTTON",
                 scopeType: "GLOBAL",
                 effectiveRoomId: 0,
-                effectiveSourceId: 88
+                effectiveSourceId: 88,
+                effectiveRoomName: "Global",
+                effectiveSourceName: "Lighting Processor"
               },
               progress: {
                 projectId: "proj-1",
@@ -796,8 +802,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(3)
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text(re.compile(r"fail button", re.I))
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Button does not respond")
-        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Room 23 -> 74")
-        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> 88")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Living Room -> Main AVR")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> Lighting Processor")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("fail button")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("First-time fail (3")
