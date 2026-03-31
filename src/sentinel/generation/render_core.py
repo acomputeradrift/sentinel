@@ -1225,16 +1225,25 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (apexScopeSource) {{
    refs.apexScopeSource = apexScopeSource;
    const pageScope = (apexScopeSource.page && typeof apexScopeSource.page === "object") ? apexScopeSource.page : {{}};
-   const layerScope = (apexScopeSource.layer && typeof apexScopeSource.layer === "object") ? apexScopeSource.layer : {{}};
+   const viewportLayerScope = (apexScopeSource.viewportLayer && typeof apexScopeSource.viewportLayer === "object")
+    ? apexScopeSource.viewportLayer
+    : ((apexScopeSource.layer && typeof apexScopeSource.layer === "object") ? apexScopeSource.layer : {{}});
+   const pageLayerScope = (apexScopeSource.pageLayer && typeof apexScopeSource.pageLayer === "object") ? apexScopeSource.pageLayer : {{}};
    const buttonScope = (apexScopeSource.button && typeof apexScopeSource.button === "object") ? apexScopeSource.button : {{}};
    const bindings = (apexScopeSource.bindings && typeof apexScopeSource.bindings === "object") ? apexScopeSource.bindings : {{}};
    const rtiAddress = pageScope.rtiAddress;
    const pageRoomId = pageScope.roomId;
    const pageSourceDeviceId = pageScope.sourceDeviceId;
-   const layerRoomId = layerScope.roomId;
-   const layerSourceId = layerScope.sourceId;
-   const effectiveRoomId = layerRoomId != null ? Number(layerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null);
-   const effectiveSourceId = layerSourceId != null ? Number(layerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null);
+   const viewportLayerRoomId = viewportLayerScope.roomId;
+   const viewportLayerSourceId = viewportLayerScope.sourceId;
+   const pageLayerRoomId = pageLayerScope.roomId;
+   const pageLayerSourceId = pageLayerScope.sourceId;
+   const effectiveRoomId = viewportLayerRoomId != null
+    ? Number(viewportLayerRoomId)
+    : (pageLayerRoomId != null ? Number(pageLayerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null));
+   const effectiveSourceId = viewportLayerSourceId != null
+    ? Number(viewportLayerSourceId)
+    : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
    const buttonTagId = buttonScope.buttonTagId;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
@@ -1270,8 +1279,8 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
      }};
     }}
    }} else {{
-    const sharedLayerId = layerScope.sharedLayerId;
-    const layerId = layerScope.layerId;
+    const sharedLayerId = viewportLayerScope.sharedLayerId;
+    const layerId = viewportLayerScope.layerId;
     const sharedFlag = sharedLayerId != null ? "SHARED" : "LOCAL";
     const scopeLayerId = sharedLayerId != null ? Number(sharedLayerId) : (layerId != null ? Number(layerId) : null);
     refs.sharedFlag = sharedFlag;
@@ -2997,16 +3006,25 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (apexScopeSource) {{
    refs.apexScopeSource = apexScopeSource;
    const pageScope = (apexScopeSource.page && typeof apexScopeSource.page === "object") ? apexScopeSource.page : {{}};
-   const layerScope = (apexScopeSource.layer && typeof apexScopeSource.layer === "object") ? apexScopeSource.layer : {{}};
+   const viewportLayerScope = (apexScopeSource.viewportLayer && typeof apexScopeSource.viewportLayer === "object")
+    ? apexScopeSource.viewportLayer
+    : ((apexScopeSource.layer && typeof apexScopeSource.layer === "object") ? apexScopeSource.layer : {{}});
+   const pageLayerScope = (apexScopeSource.pageLayer && typeof apexScopeSource.pageLayer === "object") ? apexScopeSource.pageLayer : {{}};
    const buttonScope = (apexScopeSource.button && typeof apexScopeSource.button === "object") ? apexScopeSource.button : {{}};
    const bindings = (apexScopeSource.bindings && typeof apexScopeSource.bindings === "object") ? apexScopeSource.bindings : {{}};
    const rtiAddress = pageScope.rtiAddress;
    const pageRoomId = pageScope.roomId;
    const pageSourceDeviceId = pageScope.sourceDeviceId;
-   const layerRoomId = layerScope.roomId;
-   const layerSourceId = layerScope.sourceId;
-   const effectiveRoomId = layerRoomId != null ? Number(layerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null);
-   const effectiveSourceId = layerSourceId != null ? Number(layerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null);
+   const viewportLayerRoomId = viewportLayerScope.roomId;
+   const viewportLayerSourceId = viewportLayerScope.sourceId;
+   const pageLayerRoomId = pageLayerScope.roomId;
+   const pageLayerSourceId = pageLayerScope.sourceId;
+   const effectiveRoomId = viewportLayerRoomId != null
+    ? Number(viewportLayerRoomId)
+    : (pageLayerRoomId != null ? Number(pageLayerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null));
+   const effectiveSourceId = viewportLayerSourceId != null
+    ? Number(viewportLayerSourceId)
+    : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
    const buttonTagId = buttonScope.buttonTagId;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
@@ -3042,8 +3060,8 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
      }};
     }}
    }} else {{
-    const sharedLayerId = layerScope.sharedLayerId;
-    const layerId = layerScope.layerId;
+    const sharedLayerId = viewportLayerScope.sharedLayerId;
+    const layerId = viewportLayerScope.layerId;
     const sharedFlag = sharedLayerId != null ? "SHARED" : "LOCAL";
     const scopeLayerId = sharedLayerId != null ? Number(sharedLayerId) : (layerId != null ? Number(layerId) : null);
     refs.sharedFlag = sharedFlag;

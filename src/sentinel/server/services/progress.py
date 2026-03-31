@@ -103,21 +103,31 @@ def _scoped_target_key_from_button(*, button: dict[str, Any], label: str) -> str
     if not isinstance(scope_source, dict):
         return None
     page = scope_source.get("page")
-    layer = scope_source.get("layer")
+    viewport_layer = scope_source.get("viewportLayer")
+    if not isinstance(viewport_layer, dict):
+        # Back-compat for older extracted fixtures.
+        viewport_layer = scope_source.get("layer")
+    page_layer = scope_source.get("pageLayer")
     btn = scope_source.get("button")
     bindings = scope_source.get("bindings")
-    if not isinstance(page, dict) or not isinstance(layer, dict) or not isinstance(btn, dict):
+    if not isinstance(page, dict) or not isinstance(viewport_layer, dict) or not isinstance(btn, dict):
         return None
+    if not isinstance(page_layer, dict):
+        page_layer = {}
     if not isinstance(bindings, dict):
         bindings = {}
 
     rti_address = page.get("rtiAddress")
     page_room_id = page.get("roomId")
     page_source_id = page.get("sourceDeviceId")
-    layer_room_id = layer.get("roomId")
-    layer_source_id = layer.get("sourceId")
-    effective_room_id = layer_room_id if layer_room_id is not None else page_room_id
-    effective_source_id = layer_source_id if layer_source_id is not None else page_source_id
+    viewport_layer_room_id = viewport_layer.get("roomId")
+    viewport_layer_source_id = viewport_layer.get("sourceId")
+    page_layer_room_id = page_layer.get("roomId")
+    page_layer_source_id = page_layer.get("sourceId")
+    effective_room_id = viewport_layer_room_id if viewport_layer_room_id is not None else (page_layer_room_id if page_layer_room_id is not None else page_room_id)
+    effective_source_id = (
+        viewport_layer_source_id if viewport_layer_source_id is not None else (page_layer_source_id if page_layer_source_id is not None else page_source_id)
+    )
     button_tag_id = btn.get("buttonTagId")
     button_id = btn.get("buttonId")
     target_name = str(label or "").strip()
@@ -132,8 +142,8 @@ def _scoped_target_key_from_button(*, button: dict[str, Any], label: str) -> str
             f"{int(button_tag_id)}:{program_ref}:{target_name}"
         )
 
-    shared_layer_id = layer.get("sharedLayerId")
-    layer_id = layer.get("layerId")
+    shared_layer_id = viewport_layer.get("sharedLayerId")
+    layer_id = viewport_layer.get("layerId")
     scope_layer_id = shared_layer_id if shared_layer_id is not None else layer_id
     if rti_address is None or scope_layer_id is None or button_id is None:
         return None

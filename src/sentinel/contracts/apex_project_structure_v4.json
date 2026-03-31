@@ -192,9 +192,13 @@
                           "sourceDeviceId": 0,
                           "rtiAddress": 0
                         },
-                        "layer": {
+                        "viewportLayer": {
                           "layerId": 0,
                           "sharedLayerId": 0,
+                          "roomId": null,
+                          "sourceId": null
+                        },
+                        "pageLayer": {
                           "roomId": null,
                           "sourceId": null
                         },
@@ -320,9 +324,13 @@
                                       "sourceDeviceId": 0,
                                       "rtiAddress": 0
                                     },
-                                    "layer": {
+                                    "viewportLayer": {
                                       "layerId": 0,
                                       "sharedLayerId": 0,
+                                      "roomId": null,
+                                      "sourceId": null
+                                    },
+                                    "pageLayer": {
                                       "roomId": null,
                                       "sourceId": null
                                     },

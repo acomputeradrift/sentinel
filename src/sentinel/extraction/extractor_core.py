@@ -818,6 +818,8 @@ def _resolve_button(
     shared_layer_id: int,
     layer_room_id: int | None,
     layer_source_id: int | None,
+    page_layer_room_id: int | None,
+    page_layer_source_id: int | None,
     layer_order: int,
     button_order: int,
     frame_number: int,
@@ -1064,11 +1066,15 @@ def _resolve_button(
                 "sourceDeviceId": (int(page_source_device_id) if page_source_device_id is not None else None),
                 "rtiAddress": int(current_rti_address),
             },
-            "layer": {
+            "viewportLayer": {
                 "layerId": int(layer_id),
                 "sharedLayerId": int(shared_layer_id),
                 "roomId": (int(layer_room_id) if layer_room_id is not None else None),
                 "sourceId": (int(layer_source_id) if layer_source_id is not None else None),
+            },
+            "pageLayer": {
+                "roomId": (int(page_layer_room_id) if page_layer_room_id is not None else None),
+                "sourceId": (int(page_layer_source_id) if page_layer_source_id is not None else None),
             },
             "button": {
                 "buttonId": int(button_id),
@@ -1718,6 +1724,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         shared_layer_id=int(layer["SharedLayerId"]),
                         layer_room_id=(int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                         layer_source_id=(int(layer["SourceId"]) if layer["SourceId"] is not None else None),
+                        page_layer_room_id=None,
+                        page_layer_source_id=None,
                         layer_order=int(layer["LayerOrder"] or 0),
                         button_order=int(b["ButtonOrder"] or 0),
                         frame_number=int(b["FrameNumber"] or 0),
@@ -1755,6 +1763,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             page_room_id,
                             page_rti_address,
                             lowest_nonzero_device_room_id,
+                            (int(layer["RoomId"]) if layer["RoomId"] is not None else None),
+                            (int(layer["SourceId"]) if layer["SourceId"] is not None else None),
                         )
                         completed_work_units += int(frames.get("frame_button_count") or 0)
                         _emit_work()
@@ -1872,6 +1882,8 @@ def _resolve_viewport_frames(
     page_room_id: int,
     current_rti_address: int,
     global_room_fallback_id: int | None,
+    parent_layer_room_id: int | None,
+    parent_layer_source_id: int | None,
 ) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
     child_layers = cur.fetchall()
@@ -1943,6 +1955,8 @@ def _resolve_viewport_frames(
                 shared_layer_id=int(layer["SharedLayerId"]),
                 layer_room_id=(int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                 layer_source_id=(int(layer["SourceId"]) if layer["SourceId"] is not None else None),
+                page_layer_room_id=parent_layer_room_id,
+                page_layer_source_id=parent_layer_source_id,
                 layer_order=int(layer["LayerOrder"] or 0),
                 button_order=int(b["ButtonOrder"] or 0),
                 frame_number=int(b["FrameNumber"] or 0),

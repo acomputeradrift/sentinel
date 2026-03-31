@@ -118,9 +118,9 @@ Use only `.apex` fields:
    - `defaultRoomId = PagesView.RoomId`
    - `defaultSourceDeviceId = PagesView.SourceDeviceId`
 
-2. Resolve effective layer scope:
-   - `effectiveRoomId = Layers.RoomId if not NULL else defaultRoomId`
-   - `effectiveSourceId = Layers.SourceId if not NULL else defaultSourceDeviceId`
+2. Resolve effective scope using extracted contract fields:
+   - `effectiveRoomId = apexScopeSource.viewportLayer.roomId if not NULL else apexScopeSource.pageLayer.roomId if not NULL else defaultRoomId`
+   - `effectiveSourceId = apexScopeSource.viewportLayer.sourceId if not NULL else apexScopeSource.pageLayer.sourceId if not NULL else defaultSourceDeviceId`
 
 3. Resolve behavior in that effective scope:
    - Find `Macros/Variables` using `ButtonTagId` plus effective scope fields.
@@ -131,8 +131,8 @@ Use only `.apex` fields:
 This section defines intended runtime scope resolution behavior for documentation and design.
 
 1. Tagged controls (`ButtonTagId` present) must resolve effective scope in this order:
-   - viewport child-layer scope (`Layers.RoomId`, `Layers.SourceId`) when explicitly set
-   - else parent layer scope (`Layers.RoomId`, `Layers.SourceId`)
+   - viewport child-layer scope (`apexScopeSource.viewportLayer.roomId`, `apexScopeSource.viewportLayer.sourceId`) when explicitly set
+   - else parent page-layer scope (`apexScopeSource.pageLayer.roomId`, `apexScopeSource.pageLayer.sourceId`)
    - else page defaults (`PagesView.RoomId`, `PagesView.SourceDeviceId`)
 
 2. Viewport `Default Room` / `Default Source` means:
@@ -172,10 +172,14 @@ Untagged `uiItems`:
 ### Field Rules
 
 1. `effectiveRoomId`
-   - `Layers.RoomId` when not `NULL`, else `PagesView.RoomId`
+   - `apexScopeSource.viewportLayer.roomId` when not `NULL`
+   - else `apexScopeSource.pageLayer.roomId` when not `NULL`
+   - else `PagesView.RoomId`
 
 2. `effectiveSourceId`
-   - `Layers.SourceId` when not `NULL`, else `PagesView.SourceDeviceId`
+   - `apexScopeSource.viewportLayer.sourceId` when not `NULL`
+   - else `apexScopeSource.pageLayer.sourceId` when not `NULL`
+   - else `PagesView.SourceDeviceId`
 
 3. `scopeType`
    - `GLOBAL` when resolved behavior row uses `RoomId=0`
