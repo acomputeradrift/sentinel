@@ -1,4 +1,4 @@
-﻿
+
 # Device Testing Web Application
 ## Architecture Specification
 
@@ -55,12 +55,12 @@ Responsibilities:
 Testing is organized using the following structure.
 
 Project
-   â”œâ”€â”€ Events
-   â””â”€â”€ Devices
-          â”œâ”€â”€ Page
-          â”‚      â””â”€â”€ Control / Button
-          â”‚             â””â”€â”€ Test Targets
-          â””â”€â”€ Page
+   ├── Events
+   └── Devices
+          ├── Page
+          │      └── Control / Button
+          │             └── Test Targets
+          └── Page
 
 ## Project
 
@@ -129,7 +129,7 @@ Extraction produces:
 
 Extraction is defined by:
 
-`apex_project_structure_v3.json`
+`apex_project_structure_v4.json`
 
 This file defines how project elements are mapped into the JSON model.
 
@@ -313,45 +313,45 @@ After regeneration, the testing interface refreshes to reflect the updated proje
 # 14. Data Flow
 
 Project File
-     â”‚
-     â–¼
+     │
+     ▼
 Upload (Diagnostics Window)
-     â”‚
-     â–¼
-Extraction (apex_project_structure_v3.json)
-     â”‚
-     â–¼
+     │
+     ▼
+Extraction (apex_project_structure_v4.json)
+     │
+     ▼
 Project JSON Model
-     â”‚
-     â–¼
+     │
+     ▼
 Testing Interface
-     â”‚
-     â–¼
+     │
+     ▼
 Technician Testing
-     â”‚
-     â”œâ”€â”€ Pass â†’ Stored
-     â”‚
-     â””â”€â”€ Fail â†’ Visible in Diagnostics Window
-                        â”‚
-                        â–¼
+     │
+     ├── Pass → Stored
+     │
+     └── Fail → Visible in Diagnostics Window
+                        │
+                        ▼
               Programmer Investigation
-                        â”‚
-                        â–¼
+                        │
+                        ▼
                 Project File Update
-                        â”‚
-                        â–¼
+                        │
+                        ▼
                 Re-Upload (Diagnostics Window)
-                        â”‚
-                        â–¼
+                        │
+                        ▼
                    Re-Extraction
-                        â”‚
-                        â–¼
+                        │
+                        ▼
                    Regeneration
-                        â”‚
-                        â–¼
+                        │
+                        ▼
               Testing Interface Refresh
-                        â”‚
-                        â–¼
+                        │
+                        ▼
                 Testing Continues
 
 ---

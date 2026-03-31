@@ -1,7 +1,7 @@
-﻿# Scope Definition
+# Scope Definition
 
 ## In Scope
-1. Generating a project-specific JSON file from a project's `.apex` file using the `apex_project_structure_v3.json` template, and generating the user testing interface from that project-specific JSON using the `app_ui_structure.json` template.
+1. Generating a project-specific JSON file from a project's `.apex` file using the `apex_project_structure_v4.json` template, and generating the user testing interface from that project-specific JSON using the `app_ui_structure.json` template.
 2. Supporting two user-facing testing areas within that interface: event testing and device testing.
 3. Generating a diagnostics interface for `.apex` upload, project-data regeneration, test-environment regeneration, live monitoring of results, and troubleshooting support.
 4. Preserving testing continuity across updated `.apex` uploads so commissioning can continue after project fixes.

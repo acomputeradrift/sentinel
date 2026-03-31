@@ -1,4 +1,4 @@
-﻿# Operational Runbook
+# Operational Runbook
 
 ## Supported Environments
 1. A browser-based user interface used during live RTI commissioning.
@@ -8,7 +8,7 @@
 
 ## Normal Operation
 1. A commissioning session is created and the current project `.apex` file is uploaded through the diagnostics interface.
-2. Sentinel extracts a project-specific JSON file from the uploaded `.apex` file using the `apex_project_structure_v3.json` template.
+2. Sentinel extracts a project-specific JSON file from the uploaded `.apex` file using the `apex_project_structure_v4.json` template.
 3. Sentinel generates or regenerates the event testing and device testing interfaces from the project-specific JSON file using the `app_ui_structure.json` template.
 4. The user interface is used to execute tests across event testing and device testing areas.
 5. Test results are recorded live as pass or fail, with timestamps captured for every result and fail notes required for failed targets.
@@ -38,7 +38,7 @@
    - the API under `/api/v1/...`
    - the technician entrypoint HTML under `/testing/{techToken}`
    - generated testing artifacts per project (served as static files)
-2. Your public website can still â€œhostâ€ the panels by reverse-proxying to the Sentinel server (or by using a dedicated subdomain such as `sentinel.<domain>`).
+2. Your public website can still “host” the panels by reverse-proxying to the Sentinel server (or by using a dedicated subdomain such as `sentinel.<domain>`).
 
 ---
 

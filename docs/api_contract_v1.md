@@ -1,4 +1,4 @@
-﻿# Sentinel API v1 Contract (Project + Technician Link + Results)
+# Sentinel API v1 Contract (Project + Technician Link + Results)
 
 Status: Approved contract draft (2026-03-19)
 
@@ -134,7 +134,7 @@ Represents one tester (you, onsite tech, remote support) and the current token l
   "endedAtUtc": "2026-03-19T12:01:20Z|null",
   "status": "QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELED",
   "contractRef": {
-    "path": "src/sentinel/contracts/apex_project_structure_v3.json",
+    "path": "src/sentinel/contracts/apex_project_structure_v4.json",
     "version": "string"
   },
   "outputRef": "model://projects/{projectId}/extractions/{extractionRunId}",
