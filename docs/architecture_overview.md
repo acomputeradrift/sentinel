@@ -1,7 +1,7 @@
-# Architecture Overview
+﻿# Architecture Overview
 
 ## System Summary
-1. Sentinel follows a staged pipeline: uploaded `.apex` file -> project-specific JSON shaped by `apex_project_structure.json` -> generated event testing and device testing interfaces shaped by `app_ui_structure.json`.
+1. Sentinel follows a staged pipeline: uploaded `.apex` file -> project-specific JSON shaped by `apex_project_structure_v3.json` -> generated event testing and device testing interfaces shaped by `app_ui_structure.json`.
 2. The system is split between project-derived data and Sentinel-owned interface behavior so extracted RTI structure and Sentinel overlay/navigation rules remain clearly separated.
 3. The user interface and diagnostics interface are two distinct surfaces over shared session data, generated project data, and append-only test history.
 4. Event logging is a first-day architectural requirement across extraction, generation, session actions, and failure handling so every critical step is traceable.
@@ -10,7 +10,7 @@
 
 ## Trust Boundaries
 1. Uploaded `.apex` files are the source for project-derived data, but they must still be treated as external input and validated through the approved extraction contract.
-2. `apex_project_structure.json` is the controlling contract for generated project-specific JSON and must not be bypassed by ad hoc extraction behavior.
+2. `apex_project_structure_v3.json` is the controlling contract for generated project-specific JSON and must not be bypassed by ad hoc extraction behavior.
 3. `app_ui_structure.json` is the controlling contract for Sentinel-owned UI behavior, overlay elements, and navigation behavior and must remain separate from `.apex`-derived data.
 4. Test history, pass/fail records, timestamps, and fail notes are session data and must remain traceable to the targets and generations they belong to.
 5. Event logs are operational evidence and must capture critical actions and failures without becoming a substitute for source project data or test-result data.
@@ -41,3 +41,4 @@
    - compatibility rule: additive-only changes for v1
 
 ---
+

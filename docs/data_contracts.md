@@ -1,14 +1,14 @@
-# Data Contracts
+﻿# Data Contracts
 
 ## Allowed Inputs
 1. An RTI project `.apex` file used as the source for extraction.
-2. A template `apex_project_structure.json` that defines the required generated project-data format for any extracted RTI project.
+2. A template `apex_project_structure_v3.json` that defines the required generated project-data format for any extracted RTI project.
 3. A template `app_ui_structure.json` that defines how generated project data is turned into the event testing and device testing interfaces.
 4. User testing actions, including pass, fail, timestamps, and required fail notes for failed results.
 5. Updated `.apex` files for regeneration within the same commissioning session.
 
 ## Allowed Outputs
-1. A project-specific JSON file generated from the uploaded `.apex` file and shaped according to the `apex_project_structure.json` template.
+1. A project-specific JSON file generated from the uploaded `.apex` file and shaped according to the `apex_project_structure_v3.json` template.
 2. Event testing and device testing interfaces generated from the project-specific JSON file together with the `app_ui_structure.json` template.
 3. Generated project data that includes source metadata, events, and devices derived from the uploaded `.apex` file.
 4. User-facing device data that includes display names, device UI information, pages, button categories, viewports, and test targets.
@@ -17,7 +17,7 @@
 
 ## Forbidden Data Behavior
 1. Writing inferred or guessed data into generated project JSON when that data is not directly supported by the source `.apex` file.
-2. Producing project-specific JSON that breaks the structure defined by the `apex_project_structure.json` template.
+2. Producing project-specific JSON that breaks the structure defined by the `apex_project_structure_v3.json` template.
 3. Producing generated interfaces that do not follow the rendering and behavior rules defined by `app_ui_structure.json`.
 4. Accepting or storing a failed test result without the notes required to make that failure useful for troubleshooting.
 5. Generating outputs that lose traceability back to the uploaded `.apex` file and the generation session that produced them.
@@ -32,3 +32,4 @@
 6. Page-level progress is optional/future; current implementation requires device-level and event-section rollups at minimum.
 
 ---
+

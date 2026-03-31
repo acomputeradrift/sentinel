@@ -1,4 +1,4 @@
-import json
+﻿import json
 import sqlite3
 import subprocess
 import sys
@@ -331,7 +331,7 @@ class ScriptContractsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             apex = td_path / "sample.apex"
-            schema = td_path / "apex_project_structure.json"
+            schema = td_path / "apex_project_structure_v3.json"
             schema.write_text("{}", encoding="utf-8")
             create_test_apex(apex)
 
@@ -465,7 +465,7 @@ class ScriptContractsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             apex = td_path / "sample.apex"
-            schema = td_path / "apex_project_structure.json"
+            schema = td_path / "apex_project_structure_v3.json"
             schema.write_text("{}", encoding="utf-8")
             create_test_apex(
                 apex,
@@ -1055,3 +1055,4 @@ class ScriptContractsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
