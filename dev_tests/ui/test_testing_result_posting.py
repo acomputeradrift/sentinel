@@ -816,6 +816,89 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_button_pass_posts_scope_based_tt2_key_when_apex_scope_source_present(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "BTN-1", "text": "Button 1", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 10,
+                                                        "orientations": {"portrait": {"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}}},
+                                                    },
+                                                    "testTargets": {"text": False, "macros": True, "macroSteps": False, "variables": {}, "pageLink": False},
+                                                    "resolvedPageLink": {"targetPageId": None},
+                                                    "apexScopeSource": {
+                                                        "page": {"pageId": 513, "roomId": 23, "sourceDeviceId": 74, "rtiAddress": 2},
+                                                        "layer": {"layerId": 300, "sharedLayerId": 700, "roomId": 23, "sourceId": 74},
+                                                        "button": {"buttonId": 48551, "buttonTagId": 20},
+                                                        "bindings": {"macroIds": [3122], "variableIds": [], "macroStepIds": [5921], "pageLinkId": None},
+                                                    },
+                                                }
+                                            ],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}],
+                                "buttons": [{"buttonId": 48551, "buttonTagName": "BTN-1", "identifiers": {"text": "Button 1"}, "testTargets": {}}],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
+
+        token = "techTokenScopeTt2"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click(".btn-wrap .test-btn")
+            page.click("#rows .row .actions button")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["outcome"], "PASS")
+            self.assertEqual(sent["target"]["targetKey"], "tt2:2:ROOM:23:74:20:macro:3122:Macro")
+        finally:
+            server.stop()
+
     def test_pass_all_posts_pass_for_each_target_and_rows_show_last_test(self):
         from sentinel.generation.render_core import render_single_device_html, load_json
 

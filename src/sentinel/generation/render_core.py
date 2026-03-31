@@ -509,6 +509,8 @@ def _render_button_control(
         "buttonType": identity.get("buttonType") or "",
         "targets": _targets(btn, variable_label),
     }
+    if isinstance(btn.get("apexScopeSource"), dict):
+        meta["apexScopeSource"] = btn.get("apexScopeSource")
     meta_attr = json.dumps(meta).replace("'", "&apos;")
     visibility_attr = "1" if bool(oriented_ui.get("visible", True)) and "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
@@ -888,7 +890,7 @@ let currentDeviceTop=0;
  function _buttonTargetPrefix(wrap) {{
   if (!wrap || !wrap.dataset) return "";
   const deviceId=wrap.dataset.diagDeviceId;
-  const pageIndexRaw = wrap.dataset.pageIndex ?? (wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null);
+  const pageIndexRaw = (wrap.dataset.pageIndex != null) ? wrap.dataset.pageIndex : (wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null);
   const pageIndex=pageIndexRaw == null ? null : Number(pageIndexRaw);
   const pageState=(pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
   const pageId=pageState && pageState.pageId != null ? pageState.pageId : null;
@@ -921,11 +923,11 @@ let currentDeviceTop=0;
    const categoryKey=_buttonCategoryKeyFromMeta(meta, wrap);
    wrap.style.setProperty("--btn-fill-color", CATEGORY_FILL[categoryKey] || CATEGORY_FILL.screenButtons);
    const targets=_buttonTargets(meta);
-   const prefix=_buttonTargetPrefix(wrap);
    let passCount=0;
    let testedCount=0;
    for (const label of targets) {{
-    const key = prefix ? `${{prefix}}:${{label}}` : "";
+    const target = buildTargetPayload(btn, meta, label);
+    const key = String(target?.targetKey || "").trim();
     if (!key) continue;
     const rec=statusByTargetKey.get(key);
     if (!rec) continue;
@@ -1180,7 +1182,7 @@ let currentDeviceTop=0;
   const at = String(rec.recordedAtUtc || "");
   setRowStatus(rowUi, outcome, at);
  }}
- function buildTargetPayload(ctxBtn, meta, targetLabel) {{
+function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
   const label = String(targetLabel || "").trim();
   const kind = String(m.kind || "").trim().toUpperCase();
@@ -1199,7 +1201,7 @@ let currentDeviceTop=0;
   const btn = ctxBtn || null;
   const wrap = btn && btn.closest ? btn.closest(".btn-wrap") : null;
   const deviceId = wrap && wrap.dataset ? wrap.dataset.diagDeviceId : null;
-  const pageIndexRaw = wrap && wrap.dataset ? (wrap.dataset.pageIndex ?? null) : null;
+  const pageIndexRaw = (wrap && wrap.dataset && wrap.dataset.pageIndex != null) ? wrap.dataset.pageIndex : null;
   const pageIndexRawResolved = pageIndexRaw != null ? pageIndexRaw : (wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null);
   const pageIndex = pageIndexRawResolved == null ? null : Number(pageIndexRawResolved);
   const pageState = (pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
@@ -1219,6 +1221,72 @@ let currentDeviceTop=0;
   if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
   if (buttonName) refs.buttonName = buttonName;
   refs.scope = scope;
+  const apexScopeSource = (m.apexScopeSource && typeof m.apexScopeSource === "object") ? m.apexScopeSource : null;
+  if (apexScopeSource) {{
+   refs.apexScopeSource = apexScopeSource;
+   const pageScope = (apexScopeSource.page && typeof apexScopeSource.page === "object") ? apexScopeSource.page : {{}};
+   const layerScope = (apexScopeSource.layer && typeof apexScopeSource.layer === "object") ? apexScopeSource.layer : {{}};
+   const buttonScope = (apexScopeSource.button && typeof apexScopeSource.button === "object") ? apexScopeSource.button : {{}};
+   const bindings = (apexScopeSource.bindings && typeof apexScopeSource.bindings === "object") ? apexScopeSource.bindings : {{}};
+   const rtiAddress = pageScope.rtiAddress;
+   const pageRoomId = pageScope.roomId;
+   const pageSourceDeviceId = pageScope.sourceDeviceId;
+   const layerRoomId = layerScope.roomId;
+   const layerSourceId = layerScope.sourceId;
+   const effectiveRoomId = layerRoomId != null ? Number(layerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null);
+   const effectiveSourceId = layerSourceId != null ? Number(layerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null);
+   const buttonTagId = buttonScope.buttonTagId;
+   const scopedButtonId = buttonScope.buttonId;
+   const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
+   const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
+   const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
+   const lowerLabel = String(targetName || "").trim().toLowerCase();
+   if (buttonTagId != null) {{
+    let programRef = "none";
+    const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
+    const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
+    const firstMacroStepId = macroStepIds.length ? Number(macroStepIds[0]) : null;
+    if (lowerLabel === "macro" || lowerLabel === "macros") {{
+     if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
+    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
+     if (firstMacroId != null && firstMacroStepId != null && Number.isFinite(firstMacroId) && Number.isFinite(firstMacroStepId)) {{
+      programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
+     }}
+    }} else if (lowerLabel.startsWith("variable - ") || lowerLabel.startsWith("var.")) {{
+     if (firstVarId != null && Number.isFinite(firstVarId)) programRef = `var:${{firstVarId}}`;
+    }}
+    const scopeType = Number(effectiveRoomId || 0) === 0 ? "GLOBAL" : "ROOM";
+    refs.scopeType = scopeType;
+    refs.effectiveRoomId = effectiveRoomId;
+    refs.effectiveSourceId = effectiveSourceId;
+    refs.programRef = programRef;
+    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{targetName}}`;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
+   }} else {{
+    const sharedLayerId = layerScope.sharedLayerId;
+    const layerId = layerScope.layerId;
+    const sharedFlag = sharedLayerId != null ? "SHARED" : "LOCAL";
+    const scopeLayerId = sharedLayerId != null ? Number(sharedLayerId) : (layerId != null ? Number(layerId) : null);
+    refs.sharedFlag = sharedFlag;
+    refs.scopeLayerId = scopeLayerId;
+    if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{targetName}}`;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
+   }}
+  }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
    targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{targetName}}`;
@@ -1236,7 +1304,7 @@ let currentDeviceTop=0;
    refs
   }};
  }}
- function esc(s){{return String(s??'').replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
+ function esc(s){{return String(s == null ? '' : s).replace(/[&<>\"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[m]));}}
   function setPostStatus(text, kind) {{
    if (!postStatus) return;
    const t=String(text||'').trim();
@@ -2886,7 +2954,7 @@ const APP_UI={app_json};
   const at = String(rec.recordedAtUtc || "");
   setRowStatus(rowUi, outcome, at);
  }}
- function buildTargetPayload(ctxBtn, meta, targetLabel) {{
+function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
   const label = String(targetLabel || "").trim();
   const kind = String(m.kind || "").trim().toUpperCase();
@@ -2905,7 +2973,7 @@ const APP_UI={app_json};
   const btn = ctxBtn || null;
   const wrap = btn && btn.closest ? btn.closest(".btn-wrap") : null;
   const deviceId = wrap && wrap.dataset ? wrap.dataset.diagDeviceId : null;
-  const pageIndexRaw = wrap && wrap.dataset ? (wrap.dataset.pageIndex ?? null) : null;
+  const pageIndexRaw = (wrap && wrap.dataset && wrap.dataset.pageIndex != null) ? wrap.dataset.pageIndex : null;
   const pageIndexRawResolved = pageIndexRaw != null ? pageIndexRaw : (wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null);
   const pageIndex = pageIndexRawResolved == null ? null : Number(pageIndexRawResolved);
   const pageState = (pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
@@ -2925,6 +2993,72 @@ const APP_UI={app_json};
   if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
   if (buttonName) refs.buttonName = buttonName;
   refs.scope = scope;
+  const apexScopeSource = (m.apexScopeSource && typeof m.apexScopeSource === "object") ? m.apexScopeSource : null;
+  if (apexScopeSource) {{
+   refs.apexScopeSource = apexScopeSource;
+   const pageScope = (apexScopeSource.page && typeof apexScopeSource.page === "object") ? apexScopeSource.page : {{}};
+   const layerScope = (apexScopeSource.layer && typeof apexScopeSource.layer === "object") ? apexScopeSource.layer : {{}};
+   const buttonScope = (apexScopeSource.button && typeof apexScopeSource.button === "object") ? apexScopeSource.button : {{}};
+   const bindings = (apexScopeSource.bindings && typeof apexScopeSource.bindings === "object") ? apexScopeSource.bindings : {{}};
+   const rtiAddress = pageScope.rtiAddress;
+   const pageRoomId = pageScope.roomId;
+   const pageSourceDeviceId = pageScope.sourceDeviceId;
+   const layerRoomId = layerScope.roomId;
+   const layerSourceId = layerScope.sourceId;
+   const effectiveRoomId = layerRoomId != null ? Number(layerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null);
+   const effectiveSourceId = layerSourceId != null ? Number(layerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null);
+   const buttonTagId = buttonScope.buttonTagId;
+   const scopedButtonId = buttonScope.buttonId;
+   const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
+   const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
+   const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
+   const lowerLabel = String(targetName || "").trim().toLowerCase();
+   if (buttonTagId != null) {{
+    let programRef = "none";
+    const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
+    const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
+    const firstMacroStepId = macroStepIds.length ? Number(macroStepIds[0]) : null;
+    if (lowerLabel === "macro" || lowerLabel === "macros") {{
+     if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
+    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
+     if (firstMacroId != null && firstMacroStepId != null && Number.isFinite(firstMacroId) && Number.isFinite(firstMacroStepId)) {{
+      programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
+     }}
+    }} else if (lowerLabel.startsWith("variable - ") || lowerLabel.startsWith("var.")) {{
+     if (firstVarId != null && Number.isFinite(firstVarId)) programRef = `var:${{firstVarId}}`;
+    }}
+    const scopeType = Number(effectiveRoomId || 0) === 0 ? "GLOBAL" : "ROOM";
+    refs.scopeType = scopeType;
+    refs.effectiveRoomId = effectiveRoomId;
+    refs.effectiveSourceId = effectiveSourceId;
+    refs.programRef = programRef;
+    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{targetName}}`;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
+   }} else {{
+    const sharedLayerId = layerScope.sharedLayerId;
+    const layerId = layerScope.layerId;
+    const sharedFlag = sharedLayerId != null ? "SHARED" : "LOCAL";
+    const scopeLayerId = sharedLayerId != null ? Number(sharedLayerId) : (layerId != null ? Number(layerId) : null);
+    refs.sharedFlag = sharedFlag;
+    refs.scopeLayerId = scopeLayerId;
+    if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{targetName}}`;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
+   }}
+  }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
    targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{targetName}}`;

@@ -1,4 +1,4 @@
-﻿import json
+import json
 import sqlite3
 import subprocess
 import sys
@@ -201,11 +201,13 @@ def create_test_apex(
     cur.execute("insert into RTIDevicePageData values (397,116,12,6,1)")
     cur.execute("insert into RTIDevicePageData values (395,116,14,6,2)")
     cur.execute("insert into Layers values (200,100,1,300,0,1,'',0,null,0)")
+    cur.execute("insert into Layers values (210,100,1,400,1,1,'',0,270,0)")
     cur.execute("insert into Layers values (201,101,1,301,0,1,'',0,null,0)")
     cur.execute("insert into Layers values (202,381,2,302,0,1,'',0,null,23)")
     cur.execute("insert into SharedLayers values (300,'Page Layer')")
     cur.execute("insert into SharedLayers values (301,'Home Layer')")
     cur.execute("insert into SharedLayers values (302,'RK3 Layer')")
+    cur.execute("insert into SharedLayers values (400,'Viewport Layer')")
 
     cur.execute("insert into ButtonTagNames values (114,'LIGHTS - Load 2 Level')")
     cur.execute("insert into ButtonTagNames values (129,'LIGHTS - Load 2 TOGGLE')")
@@ -223,6 +225,8 @@ def create_test_apex(
     cur.execute("insert into ButtonTagNames values (155,'Activity: Apple TV 1 (Bed 2)')")
     cur.execute("insert into ButtonTagNames values (156,'Activity: Sat 1 (Bed 2)')")
     cur.execute("insert into ButtonTagNames values (157,'Activity: Samsung TV (Bed 2)')")
+    cur.execute("insert into ButtonTagNames values (160,'Viewport Host')")
+    cur.execute("insert into ButtonTagNames values (161,'Viewport Child')")
 
     cur.execute("insert into RTIDeviceButtonData values (246,300,0,114,0,140,30,46,284,'',10,9,20,320,46,284,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (247,300,1,129,0,140,334,46,76,'',10,7,20,620,46,76,2,0)")
@@ -231,6 +235,8 @@ def create_test_apex(
     cur.execute("insert into RTIDeviceButtonData values (250,300,4,152,0,310,30,46,120,'',10,14,190,320,46,120,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (251,300,5,153,0,360,30,120,220,'',10,8,240,320,120,220,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (252,300,6,154,0,40,30,46,120,'',10,0,40,320,46,120,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (270,300,7,160,0,430,30,80,220,'Viewport Host',10,0,430,320,80,220,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (271,400,0,161,0,10,10,40,100,'Viewport Child',10,0,10,10,40,100,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (260,302,0,155,0,53,88,112,160,'1',12,0,160,200,112,160,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (261,302,1,156,0,213,88,112,160,'2',12,0,320,200,112,160,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (262,302,2,157,0,373,88,112,160,'',12,0,480,200,112,160,1,0)")
@@ -331,8 +337,7 @@ class ScriptContractsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             apex = td_path / "sample.apex"
-            schema = td_path / "apex_project_structure_v3.json"
-            schema.write_text("{}", encoding="utf-8")
+            schema = ROOT / "src" / "sentinel" / "contracts" / "apex_project_structure_v4.json"
             create_test_apex(apex)
 
             run = subprocess.run(
@@ -371,7 +376,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(system_event["userFacing"]["macroName"], "SENSE - Gate Open")
             self.assertEqual(system_event["userFacing"]["macroNames"], ["SENSE - Gate Open"])
             self.assertEqual(system_event["userFacing"]["commandNames"], [])
-            self.assertEqual(system_event["userFacing"]["testTargets"], {"Trigger": True, "Macro": True})
+            self.assertEqual(
+                system_event["userFacing"]["testTargets"],
+                {"Trigger": True, "Macro": True, "Macros": False, "MacroStep": False, "MacroSteps": False},
+            )
             self.assertEqual(voltage_event["userFacing"]["description"], "Voltage Sense Test")
             self.assertEqual(voltage_event["userFacing"]["resolvedTrigger"], "When Driveway goes High")
             self.assertEqual(voltage_event["userFacing"]["macroName"], "SENSE - Driveway High")
@@ -385,7 +393,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(driver_event["userFacing"]["firstActionName"], "LIGHTS - Load 2 TOGGLE")
             self.assertEqual(driver_event["userFacing"]["resolvedActions"], {"macros": ["LIGHTS - Load 2 TOGGLE"], "macroSteps": []})
             self.assertEqual(driver_event["userFacing"]["macroStepCount"], 0)
-            self.assertEqual(driver_event["userFacing"]["testTargets"], {"Trigger": True, "Macro": True})
+            self.assertEqual(
+                driver_event["userFacing"]["testTargets"],
+                {"Trigger": True, "Macro": True, "Macros": False, "MacroStep": False, "MacroSteps": False},
+            )
             self.assertNotIn("macroName", driver_event["userFacing"])
             self.assertNotIn("macroNames", driver_event["userFacing"])
             self.assertEqual(driver_multi["userFacing"]["driverCategory"], "Routine")
@@ -400,9 +411,15 @@ class ScriptContractsTest(unittest.TestCase):
                 {"macros": [], "macroSteps": [{"name": "Ex. Group: DISPLAY: None", "type": "command"}]},
             )
             self.assertEqual(driver_command["userFacing"]["macroStepCount"], 1)
-            self.assertEqual(driver_command["userFacing"]["testTargets"], {"Trigger": True, "MacroStep": True})
+            self.assertEqual(
+                driver_command["userFacing"]["testTargets"],
+                {"Trigger": True, "Macro": False, "Macros": False, "MacroStep": True, "MacroSteps": False},
+            )
             self.assertEqual(driver_multi["userFacing"]["macroStepCount"], 0)
-            self.assertEqual(driver_multi["userFacing"]["testTargets"], {"Trigger": True, "Macros": True})
+            self.assertEqual(
+                driver_multi["userFacing"]["testTargets"],
+                {"Trigger": True, "Macro": False, "Macros": True, "MacroStep": False, "MacroSteps": False},
+            )
             self.assertTrue(slider["buttonUI"]["orientations"]["portrait"]["visible"])
             self.assertFalse(slider["buttonUI"]["orientations"]["landscape"]["visible"])
             self.assertEqual(slider["buttonUI"]["orientations"]["portrait"]["coordinates"]["left"], 30)
@@ -415,6 +432,15 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertFalse(slider["testTargets"]["variables"]["State"])
             self.assertFalse(slider["testTargets"]["variables"]["Command"])
             self.assertFalse(slider["testTargets"]["pageLink"])
+            self.assertEqual(
+                slider["apexScopeSource"],
+                {
+                    "page": {"pageId": 100, "roomId": 0, "sourceDeviceId": 1, "rtiAddress": 1},
+                    "layer": {"layerId": 200, "sharedLayerId": 300, "roomId": 0, "sourceId": 1},
+                    "button": {"buttonId": 246, "buttonTagId": 114},
+                    "bindings": {"macroIds": [], "variableIds": [1], "macroStepIds": [], "pageLinkId": None},
+                },
+            )
             self.assertEqual(slider["buttonUI"]["stack"], {"layerOrder": 0, "buttonOrder": 0, "frameNumber": 0})
             self.assertEqual(toggle["buttonUI"]["stack"], {"layerOrder": 0, "buttonOrder": 1, "frameNumber": 0})
             self.assertTrue(toggle["testTargets"]["pageLink"])
@@ -448,6 +474,18 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertEqual(activity_sat["resolvedPageLink"], {"targetPageId": 396, "targetPageName": "Sat TV 1", "resolutionPath": "macroStep"})
             self.assertTrue(activity_samsung["testTargets"]["pageLink"])
             self.assertEqual(activity_samsung["resolvedPageLink"], {"targetPageId": 395, "targetPageName": "TV Controls", "resolutionPath": "macroStep"})
+            viewports = layer["viewports"]
+            self.assertTrue(viewports)
+            vp_child = viewports[0]["layers"][0]["frames"][0]["buttonCategories"]["screenLabels"][0]
+            self.assertEqual(
+                vp_child["apexScopeSource"],
+                {
+                    "page": {"pageId": 100, "roomId": 0, "sourceDeviceId": 1, "rtiAddress": 1},
+                    "layer": {"layerId": 210, "sharedLayerId": 400, "roomId": 0, "sourceId": 1},
+                    "button": {"buttonId": 271, "buttonTagId": 161},
+                    "bindings": {"macroIds": [], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
+                },
+            )
             diag_buttons = {btn["buttonTagName"]: btn for btn in data["devices"][0]["diagnostics"]["pages"][0]["buttons"] if btn["buttonTagName"]}
             browse_diag = diag_buttons["Browse"]
             self.assertEqual(browse_diag["buttonTagName"], "Browse")
@@ -465,8 +503,7 @@ class ScriptContractsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             apex = td_path / "sample.apex"
-            schema = td_path / "apex_project_structure_v3.json"
-            schema.write_text("{}", encoding="utf-8")
+            schema = ROOT / "src" / "sentinel" / "contracts" / "apex_project_structure_v4.json"
             create_test_apex(
                 apex,
                 supported_orientations=3,

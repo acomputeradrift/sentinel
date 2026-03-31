@@ -529,7 +529,13 @@ def _resolve_system_macro_name(
 
 
 def _event_test_targets(macro_names: list[str], macro_steps: list[dict[str, str]]) -> dict[str, bool]:
-    targets = {"Trigger": True}
+    targets = {
+        "Trigger": True,
+        "Macro": False,
+        "Macros": False,
+        "MacroStep": False,
+        "MacroSteps": False,
+    }
     if macro_names:
         targets["Macro" if len(macro_names) == 1 else "Macros"] = True
     if macro_steps:
@@ -803,11 +809,15 @@ def _resolve_button(
     room_home_target_pages_by_room: dict[int, list[tuple[int, int]]],
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     macro_flag_summaries_by_macro_id: dict[int, list[str]],
+    page_id: int,
+    page_source_device_id: int | None,
     page_room_id: int,
     current_rti_address: int,
     global_room_fallback_id: int | None,
     layer_id: int,
     shared_layer_id: int,
+    layer_room_id: int | None,
+    layer_source_id: int | None,
     layer_order: int,
     button_order: int,
     frame_number: int,
@@ -994,6 +1004,23 @@ def _resolve_button(
             if resolved_page_link is not None:
                 break
 
+    macro_step_ids: list[int] = []
+    if candidate_macro_ids:
+        placeholders = ",".join("?" for _ in candidate_macro_ids)
+        cur.execute(
+            f"""
+            select MacroStepId
+            from MacroStepsView
+            where MacroId in ({placeholders})
+            order by MacroId, StepIndex, MacroStepId
+            """,
+            tuple(candidate_macro_ids),
+        )
+        for row in cur.fetchall():
+            step_id = int(row["MacroStepId"] or 0)
+            if step_id > 0 and step_id not in macro_step_ids:
+                macro_step_ids.append(step_id)
+
     button_ui = _button_ui(
         button_row,
         layer_order=layer_order,
@@ -1030,6 +1057,30 @@ def _resolve_button(
             "pageLink": resolved_page_link is not None,
         },
         "resolvedPageLink": resolved_page_link,
+        "apexScopeSource": {
+            "page": {
+                "pageId": int(page_id),
+                "roomId": int(page_room_id),
+                "sourceDeviceId": (int(page_source_device_id) if page_source_device_id is not None else None),
+                "rtiAddress": int(current_rti_address),
+            },
+            "layer": {
+                "layerId": int(layer_id),
+                "sharedLayerId": int(shared_layer_id),
+                "roomId": (int(layer_room_id) if layer_room_id is not None else None),
+                "sourceId": (int(layer_source_id) if layer_source_id is not None else None),
+            },
+            "button": {
+                "buttonId": int(button_id),
+                "buttonTagId": (int(tag_id) if tag_id > 0 else None),
+            },
+            "bindings": {
+                "macroIds": [int(mid) for mid in candidate_macro_ids],
+                "variableIds": [int(vid) for vid in variable_ids],
+                "macroStepIds": [int(sid) for sid in macro_step_ids],
+                "pageLinkId": page_link_id,
+            },
+        },
     }
 
     diag_button = {
@@ -1658,11 +1709,15 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         room_home_target_pages_by_room,
                         variable_command_rows_by_variable_id,
                         macro_flag_summaries_by_macro_id,
+                        page_id,
+                        (int(prow["SourceDeviceId"]) if prow["SourceDeviceId"] is not None else None),
                         page_room_id,
                         page_rti_address,
                         lowest_nonzero_device_room_id,
                         layer_id=int(layer["LayerId"]),
                         shared_layer_id=int(layer["SharedLayerId"]),
+                        layer_room_id=(int(layer["RoomId"]) if layer["RoomId"] is not None else None),
+                        layer_source_id=(int(layer["SourceId"]) if layer["SourceId"] is not None else None),
                         layer_order=int(layer["LayerOrder"] or 0),
                         button_order=int(b["ButtonOrder"] or 0),
                         frame_number=int(b["FrameNumber"] or 0),
@@ -1695,6 +1750,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             room_home_target_pages_by_room,
                             variable_command_rows_by_variable_id,
                             macro_flag_summaries_by_macro_id,
+                            page_id,
+                            (int(prow["SourceDeviceId"]) if prow["SourceDeviceId"] is not None else None),
                             page_room_id,
                             page_rti_address,
                             lowest_nonzero_device_room_id,
@@ -1810,6 +1867,8 @@ def _resolve_viewport_frames(
     room_home_target_pages_by_room: dict[int, list[tuple[int, int]]],
     variable_command_rows_by_variable_id: dict[int, list[sqlite3.Row]],
     macro_flag_summaries_by_macro_id: dict[int, list[str]],
+    page_id: int,
+    page_source_device_id: int | None,
     page_room_id: int,
     current_rti_address: int,
     global_room_fallback_id: int | None,
@@ -1875,11 +1934,15 @@ def _resolve_viewport_frames(
                 room_home_target_pages_by_room,
                 variable_command_rows_by_variable_id,
                 macro_flag_summaries_by_macro_id,
+                page_id,
+                page_source_device_id,
                 page_room_id,
                 current_rti_address,
                 global_room_fallback_id,
                 layer_id=int(layer["LayerId"]),
                 shared_layer_id=int(layer["SharedLayerId"]),
+                layer_room_id=(int(layer["RoomId"]) if layer["RoomId"] is not None else None),
+                layer_source_id=(int(layer["SourceId"]) if layer["SourceId"] is not None else None),
                 layer_order=int(layer["LayerOrder"] or 0),
                 button_order=int(b["ButtonOrder"] or 0),
                 frame_number=int(b["FrameNumber"] or 0),

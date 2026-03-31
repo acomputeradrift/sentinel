@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -21,7 +21,7 @@ SCRIPT_VERSION = "0.1.0"
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Extract project data from apex into <filename>_project_data.json")
     p.add_argument("--apex", required=True, help="Path to .apex file")
-    p.add_argument("--project-structure", required=True, help="Path to apex_project_structure_v3.json")
+    p.add_argument("--project-structure", required=True, help="Path to apex_project_structure_v4.json")
     p.add_argument("--out-dir", default=".", help="Output directory")
     return p.parse_args()
 
@@ -50,7 +50,7 @@ def main() -> int:
             log.fail(f"Apex file not found: {apex}")
             return 1
         if not project_structure.exists():
-            log.fail(f"apex_project_structure_v3.json not found: {project_structure}")
+            log.fail(f"apex_project_structure_v4.json not found: {project_structure}")
             return 1
 
         out_dir.mkdir(parents=True, exist_ok=True)

@@ -80,6 +80,67 @@ def _normalize_target_name(label: str) -> str:
     return s
 
 
+def _scope_program_ref(*, label: str, bindings: dict[str, Any]) -> str:
+    lower = str(label or "").strip().lower()
+    macro_ids = bindings.get("macroIds")
+    variable_ids = bindings.get("variableIds")
+    macro_step_ids = bindings.get("macroStepIds")
+    macro_id = int(macro_ids[0]) if isinstance(macro_ids, list) and macro_ids else None
+    variable_id = int(variable_ids[0]) if isinstance(variable_ids, list) and variable_ids else None
+    macro_step_id = int(macro_step_ids[0]) if isinstance(macro_step_ids, list) and macro_step_ids else None
+    if lower in {"macro", "macros"} and macro_id is not None:
+        return f"macro:{macro_id}"
+    if lower in {"macrostep", "macrosteps"} and macro_id is not None and macro_step_id is not None:
+        return f"mstep:{macro_id}:{macro_step_id}"
+    if lower.startswith("variable - ") or lower.startswith("var."):
+        if variable_id is not None:
+            return f"var:{variable_id}"
+    return "none"
+
+
+def _scoped_target_key_from_button(*, button: dict[str, Any], label: str) -> str | None:
+    scope_source = button.get("apexScopeSource")
+    if not isinstance(scope_source, dict):
+        return None
+    page = scope_source.get("page")
+    layer = scope_source.get("layer")
+    btn = scope_source.get("button")
+    bindings = scope_source.get("bindings")
+    if not isinstance(page, dict) or not isinstance(layer, dict) or not isinstance(btn, dict):
+        return None
+    if not isinstance(bindings, dict):
+        bindings = {}
+
+    rti_address = page.get("rtiAddress")
+    page_room_id = page.get("roomId")
+    page_source_id = page.get("sourceDeviceId")
+    layer_room_id = layer.get("roomId")
+    layer_source_id = layer.get("sourceId")
+    effective_room_id = layer_room_id if layer_room_id is not None else page_room_id
+    effective_source_id = layer_source_id if layer_source_id is not None else page_source_id
+    button_tag_id = btn.get("buttonTagId")
+    button_id = btn.get("buttonId")
+    target_name = str(label or "").strip()
+
+    if button_tag_id is not None:
+        if rti_address is None or effective_room_id is None or effective_source_id is None:
+            return None
+        scope_type = "GLOBAL" if int(effective_room_id) == 0 else "ROOM"
+        program_ref = _scope_program_ref(label=target_name, bindings=bindings)
+        return (
+            f"tt2:{int(rti_address)}:{scope_type}:{int(effective_room_id)}:{int(effective_source_id)}:"
+            f"{int(button_tag_id)}:{program_ref}:{target_name}"
+        )
+
+    shared_layer_id = layer.get("sharedLayerId")
+    layer_id = layer.get("layerId")
+    scope_layer_id = shared_layer_id if shared_layer_id is not None else layer_id
+    if rti_address is None or scope_layer_id is None or button_id is None:
+        return None
+    shared_flag = "SHARED" if shared_layer_id is not None else "LOCAL"
+    return f"tt_ui:{int(rti_address)}:{shared_flag}:{int(scope_layer_id)}:{int(button_id)}:{target_name}"
+
+
 def _event_target_labels(item: dict[str, Any]) -> list[str]:
     user = item.get("userFacing") if isinstance(item, dict) else {}
     test_targets = user.get("testTargets") if isinstance(user, dict) else {}
@@ -271,6 +332,10 @@ def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]
                 if button_id is None:
                     continue
                 for label in labels:
+                    scoped_key = _scoped_target_key_from_button(button=uf_btn, label=label)
+                    if scoped_key:
+                        expected.add(scoped_key)
+                        continue
                     name = _normalize_target_name(label)
                     expected.add(f"btn:{int(device_id)}:{int(page_id)}:{int(button_id)}:{name}")
 
@@ -334,6 +399,10 @@ def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]
                                 if child_button_id is None:
                                     continue
                                 for label in labels:
+                                    scoped_key = _scoped_target_key_from_button(button=uf_btn, label=label)
+                                    if scoped_key:
+                                        expected.add(scoped_key)
+                                        continue
                                     name = _normalize_target_name(label)
                                     expected.add(
                                         f"vpbtn:{int(device_id)}:{int(page_id)}:{int(viewport_button_id)}:{int(frame_id)}:{int(child_button_id)}:{name}"
