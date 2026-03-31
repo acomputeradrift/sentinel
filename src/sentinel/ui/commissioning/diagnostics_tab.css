@@ -96,13 +96,19 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 980px;
+  table-layout: fixed;
 }
 
 .diag-table th,
 .diag-table td {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   vertical-align: top;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .diag-table th {
@@ -116,16 +122,6 @@
 .diag-tag {
   width: 100%;
   min-width: 130px;
-}
-
-.diag-table th:nth-child(2),
-.diag-table td:nth-child(2) {
-  white-space: nowrap;
-  width: 1%;
-}
-
-.diag-table td.diag-ts {
-  white-space: nowrap;
 }
 
 .diag-muted {

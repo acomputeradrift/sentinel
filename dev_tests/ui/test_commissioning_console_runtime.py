@@ -456,12 +456,15 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
               },
               fails: [
                 {
-                  targetKey: "btn:81:513:48551:Macro",
+                  targetKey: "tt2:2:ROOM:23:74:20:macro:3122:Macro",
                   targetName: "Macro",
                   deviceName: "Device A",
                   pageName: "Home",
                   buttonName: "Button 1",
                   scope: "BUTTON",
+                  scopeType: "ROOM",
+                  effectiveRoomId: 23,
+                  effectiveSourceId: 74,
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-21T00:00:00Z",
@@ -469,17 +472,20 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   resolvedData: { reason: "Macro did not run" }
                 },
                 {
-                  targetKey: "event:126:Trigger",
-                  targetName: "Trigger",
+                  targetKey: "btn:81:513:48551:PageLink",
+                  targetName: "PageLink",
                   deviceName: "Device B",
                   pageName: "Scene",
                   buttonName: "",
-                  scope: "EVENT_SECTION",
+                  scope: "BUTTON",
+                  scopeType: "GLOBAL",
+                  effectiveRoomId: 0,
+                  effectiveSourceId: 74,
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-20T23:00:00Z",
-                  lastFailNote: "Trigger not firing",
-                  resolvedData: { reason: "Trigger not firing" }
+                  lastFailNote: "Page link broken",
+                  resolvedData: { reason: "Page link broken" }
                 },
               ],
               activities: [],
@@ -512,12 +518,20 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
               type: "test_result.recorded",
               projectId: "proj-1",
               recordedAtUtc: "2026-03-21T00:00:03Z",
-              targetKey: "btn:77:1:2:Fail Button",
+              targetKey: "tt2:2:GLOBAL:0:88:20:macro:4000:Fail Button",
               outcome: "FAIL",
               targetName: "Fail Button",
               kind: "BUTTON",
               failNote: "Button does not respond",
-              refs: { deviceName: "Device B", pageName: "Scene", buttonName: "Button 9", scope: "BUTTON" },
+              refs: {
+                deviceName: "Device B",
+                pageName: "Scene",
+                buttonName: "Button 9",
+                scope: "BUTTON",
+                scopeType: "GLOBAL",
+                effectiveRoomId: 0,
+                effectiveSourceId: 88
+              },
               progress: {
                 projectId: "proj-1",
                 asOfGenerationRunId: "gen-1",
@@ -771,10 +785,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Device")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Page Name")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Button Name")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Scope")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Resolved Data")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Button Identity")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Scope")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Tech Notes")).to_be_visible()
         diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
         diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
@@ -782,6 +796,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(3)
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text(re.compile(r"fail button", re.I))
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Button does not respond")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Room 23 -> 74")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> 88")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("fail button")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("First-time fail (3")
 

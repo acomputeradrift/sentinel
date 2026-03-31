@@ -209,6 +209,49 @@ function normalizeTargetLabel(targetName) {
   return lower;
 }
 
+function _isTruePageLinkTarget(targetName, targetKey) {
+  const name = normalizeTargetLabel(targetName);
+  if (name === "pagelink" || name === "pageLink") return true;
+  const raw = String(targetKey || "").trim();
+  return raw.endsWith(":PageLink");
+}
+
+function _scopePartsFromTt2TargetKey(targetKey) {
+  const raw = String(targetKey || "").trim();
+  if (!raw.startsWith("tt2:")) return null;
+  const parts = raw.split(":");
+  if (parts.length < 5) return null;
+  return {
+    scopeType: String(parts[2] || "").toUpperCase(),
+    effectiveRoomId: Number(parts[3]),
+    effectiveSourceId: Number(parts[4]),
+  };
+}
+
+function formatEffectiveScope(taskLike) {
+  const task = taskLike && typeof taskLike === "object" ? taskLike : {};
+  const targetName = String(task.targetName || "");
+  const targetKey = String(task.targetKey || "");
+  if (_isTruePageLinkTarget(targetName, targetKey)) return "Global";
+
+  let scopeType = String(task.scopeType || "").trim().toUpperCase();
+  let roomId = task.effectiveRoomId;
+  let sourceId = task.effectiveSourceId;
+  if (!scopeType || roomId == null || sourceId == null) {
+    const parsed = _scopePartsFromTt2TargetKey(targetKey);
+    if (parsed) {
+      if (!scopeType) scopeType = parsed.scopeType;
+      if (roomId == null) roomId = parsed.effectiveRoomId;
+      if (sourceId == null) sourceId = parsed.effectiveSourceId;
+    }
+  }
+
+  if (scopeType !== "GLOBAL" && scopeType !== "ROOM") return String(task.scope || "");
+  const roomLabel = scopeType === "GLOBAL" ? "Global" : `Room ${roomId}`;
+  if (sourceId == null || Number.isNaN(Number(sourceId))) return roomLabel;
+  return `${roomLabel} -> ${Number(sourceId)}`;
+}
+
 function formatUtcTimestamp(ts) {
   const raw = String(ts || "").trim();
   if (!raw) return "";
@@ -437,8 +480,7 @@ function renderTaskList(projectId, fails) {
     const ident = parseIdentity(targetKey);
     const tag = tagDisplayFromEnum(rec?.tag || "NOT_STARTED");
     const at = formatUtcTimestamp(rec?.lastTestedAtUtc);
-    const resolved = rec?.resolvedData;
-    const note = String((resolved == null ? "" : resolved) || rec?.lastFailNote || "");
+    const note = String(rec?.lastFailNote || "");
 
     const tr = document.createElement("tr");
 
@@ -480,11 +522,17 @@ function renderTaskList(projectId, fails) {
     const tdButton = document.createElement("td");
     tdButton.textContent = String(rec?.buttonName || (ident.button ? `b${ident.button}` : ""));
 
-    const tdScope = document.createElement("td");
-    tdScope.textContent = String(rec?.scope || "");
-
     const tdTarget = document.createElement("td");
     tdTarget.textContent = normalizeTargetLabel(rec?.targetName || ident.testTarget || "");
+
+    const tdScope = document.createElement("td");
+    tdScope.textContent = formatEffectiveScope({
+      targetKey,
+      targetName: String(rec?.targetName || ident.testTarget || ""),
+      scopeType: rec?.scopeType,
+      effectiveRoomId: rec?.effectiveRoomId,
+      effectiveSourceId: rec?.effectiveSourceId,
+    });
 
     const tdResolved = document.createElement("td");
     tdResolved.className = "diag-muted";
@@ -495,8 +543,8 @@ function renderTaskList(projectId, fails) {
     tr.appendChild(tdDevice);
     tr.appendChild(tdPage);
     tr.appendChild(tdButton);
-    tr.appendChild(tdScope);
     tr.appendChild(tdTarget);
+    tr.appendChild(tdScope);
     tr.appendChild(tdResolved);
     tbody.appendChild(tr);
 
@@ -507,9 +555,11 @@ function renderTaskList(projectId, fails) {
       deviceName: String(rec?.deviceName || ""),
       pageName: String(rec?.pageName || ""),
       buttonName: String(rec?.buttonName || ""),
-      scope: String(rec?.scope || ""),
       targetName: String(rec?.targetName || ""),
-      resolvedData: rec?.resolvedData,
+      scope: String(rec?.scope || ""),
+      scopeType: rec?.scopeType,
+      effectiveRoomId: rec?.effectiveRoomId,
+      effectiveSourceId: rec?.effectiveSourceId,
       lastFailNote: String(rec?.lastFailNote || ""),
     });
     diagRt.rowByKey.set(targetKey, { tr, sel });
@@ -698,10 +748,9 @@ function _makeTaskRow(projectId, task) {
   tdDevice.textContent = String(task?.deviceName || (ident.device ? `d${ident.device}` : ""));
   tdPage.textContent = String(task?.pageName || (ident.page ? `p${ident.page}` : ""));
   tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
-  tdScope.textContent = String(task?.scope || "");
+  tdScope.textContent = formatEffectiveScope(task);
   tdTarget.textContent = normalizeTargetLabel(task?.targetName || ident.testTarget || "");
-  const resolved = task?.resolvedData;
-  const note = String((resolved == null ? "" : resolved) || task?.lastFailNote || "");
+  const note = String(task?.lastFailNote || "");
   tdResolved.textContent = note || "";
 
   tr.appendChild(tdTag);
@@ -722,10 +771,9 @@ function _updateTaskRowDom(row, task) {
   row.tdDevice.textContent = String(task?.deviceName || "");
   row.tdPage.textContent = String(task?.pageName || "");
   row.tdButton.textContent = String(task?.buttonName || "");
-  row.tdScope.textContent = String(task?.scope || "");
+  row.tdScope.textContent = formatEffectiveScope(task);
   row.tdTarget.textContent = normalizeTargetLabel(task?.targetName || "");
-  const resolved = task?.resolvedData;
-  const note = String((resolved == null ? "" : resolved) || task?.lastFailNote || "");
+  const note = String(task?.lastFailNote || "");
   row.tdResolved.textContent = note || "";
   row.sel.value = tagDisplayFromEnum(task?.tag || "NOT_STARTED");
 }
