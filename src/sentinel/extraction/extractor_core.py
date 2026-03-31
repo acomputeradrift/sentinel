@@ -839,9 +839,9 @@ def _resolve_button(
     icon_bitmap_id = int(button_row["IconBitmapId"]) if "IconBitmapId" in button_row.keys() and button_row["IconBitmapId"] is not None else -1
     raw_bitmap_enabled = bool(up_bitmap_id != -1 or down_bitmap_id != -1)
     raw_icon_enabled = bool(icon_bitmap_id != -1)
-    # Temporary gating rule: slider/toggle controls do not emit graphics test targets.
+    # Temporary gating rule: slider/toggle/level-indicator controls do not emit graphics test targets.
     # For all other controls, rely on raw RTIDeviceButtonData bitmap/icon ids.
-    if button_type in {"Slider", "Toggle"}:
+    if button_type in {"Slider", "Toggle", "LevelIndicatorBar"}:
         bitmap_enabled = False
         icon_enabled = False
     else:

@@ -226,6 +226,7 @@ def create_test_apex(
     cur.execute("insert into ButtonTagNames values (155,'Activity: Apple TV 1 (Bed 2)')")
     cur.execute("insert into ButtonTagNames values (156,'Activity: Sat 1 (Bed 2)')")
     cur.execute("insert into ButtonTagNames values (157,'Activity: Samsung TV (Bed 2)')")
+    cur.execute("insert into ButtonTagNames values (158,'Indicator Probe')")
     cur.execute("insert into ButtonTagNames values (160,'Viewport Host')")
     cur.execute("insert into ButtonTagNames values (161,'Viewport Child')")
 
@@ -237,6 +238,7 @@ def create_test_apex(
     cur.execute("insert into RTIDeviceButtonData values (251,300,5,153,0,360,30,120,220,'',10,8,240,320,120,220,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (252,300,6,154,0,40,30,46,120,'',10,0,40,320,46,120,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (253,300,7,-1,0,420,30,40,100,'',10,0,300,320,40,100,1,0)")
+    cur.execute("insert into RTIDeviceButtonData values (255,300,8,158,0,470,30,40,120,'',10,11,350,320,40,120,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (270,300,7,160,0,430,30,80,220,'Viewport Host',10,0,430,320,80,220,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (271,400,0,161,0,10,10,40,100,'Viewport Child',10,0,10,10,40,100,1,0)")
     cur.execute("insert into RTIDeviceButtonData values (260,302,0,155,0,53,88,112,160,'1',12,0,160,200,112,160,1,0)")
@@ -249,6 +251,7 @@ def create_test_apex(
     cur.execute("insert into Variables values (4,0,-1,151,null,'image6@IMG001',null,null,null)")
     cur.execute("insert into Variables values (5,0,-1,152,null,'image14@IMG014',null,null,null)")
     cur.execute("insert into Variables values (6,0,-1,153,null,'browse8@LIST001',null,null,null)")
+    cur.execute("insert into Variables values (7,0,-1,158,null,'indicator11@DDL001',null,null,null)")
 
     cur.execute("insert into Macros values (362,362,0,-1,129,0)")
     cur.execute("insert into Macros values (400,400,0,-1,130,0)")
@@ -331,6 +334,8 @@ def create_test_apex(
     cur.execute("update RTIDeviceButtonData set DownBitmapId=9003 where ButtonId=251")
     # ui_item_graphic: bitmap+icon present and should remain graphics targets.
     cur.execute("update RTIDeviceButtonData set UpBitmapId=9004, IconBitmapId=9005 where ButtonId=253")
+    # level_indicator: raw graphics present but must be gated off.
+    cur.execute("update RTIDeviceButtonData set UpBitmapId=9006, IconBitmapId=9007 where ButtonId=255")
     cur.execute("insert into ButtonBitmaps values (1,248,0,9001,-1,-1)")
     cur.execute("insert into ButtonBitmaps values (2,250,0,-1,-1,9002)")
     cur.execute("insert into ButtonBitmaps values (3,251,0,-1,9003,-1)")
@@ -373,6 +378,7 @@ class ScriptContractsTest(unittest.TestCase):
             image6 = buttons["Condition Graphic"]
             image14 = buttons["Shop [Preview]"]
             browse = buttons["Browse"]
+            indicator = buttons["Indicator Probe"]
             activity_home = buttons["Activity: Home"]
             ui_items = layer["buttonCategories"]["uiItems"]
             rk3_page = data["devices"][1]["userFacing"]["pages"][0]
@@ -480,6 +486,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertTrue(browse["testTargets"]["variables"]["List"])
             self.assertTrue(browse["testTargets"]["graphics"]["bitmap"])
             self.assertFalse(browse["testTargets"]["graphics"]["icon"])
+            self.assertEqual(indicator["buttonIdentity"]["buttonType"], "LevelIndicatorBar")
+            self.assertTrue(indicator["testTargets"]["variables"]["Value"])
+            self.assertFalse(indicator["testTargets"]["graphics"]["bitmap"])
+            self.assertFalse(indicator["testTargets"]["graphics"]["icon"])
             graphic_ui_item = next((x for x in ui_items if ((x.get("apexScopeSource") or {}).get("button") or {}).get("buttonId") == 253), None)
             self.assertIsNotNone(graphic_ui_item)
             self.assertTrue(graphic_ui_item["testTargets"]["graphics"]["bitmap"])
