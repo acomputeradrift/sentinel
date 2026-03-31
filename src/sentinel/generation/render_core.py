@@ -888,7 +888,7 @@ let currentDeviceTop=0;
  function _buttonTargetPrefix(wrap) {{
   if (!wrap || !wrap.dataset) return "";
   const deviceId=wrap.dataset.diagDeviceId;
-  const pageIndexRaw=wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null;
+  const pageIndexRaw = wrap.dataset.pageIndex ?? (wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null);
   const pageIndex=pageIndexRaw == null ? null : Number(pageIndexRaw);
   const pageState=(pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
   const pageId=pageState && pageState.pageId != null ? pageState.pageId : null;
@@ -913,7 +913,7 @@ let currentDeviceTop=0;
   return "partial";
  }}
  function refreshButtonVisualStates() {{
-  document.querySelectorAll(".device-page .btn-wrap").forEach((wrap)=>{{
+  document.querySelectorAll(".device-page .btn-wrap, .vp-popup-vcontent .btn-wrap.vp-btn").forEach((wrap)=>{{
    const btn=wrap.querySelector(".test-btn");
    if (!btn) return;
    let meta={{}};
@@ -1199,8 +1199,9 @@ let currentDeviceTop=0;
   const btn = ctxBtn || null;
   const wrap = btn && btn.closest ? btn.closest(".btn-wrap") : null;
   const deviceId = wrap && wrap.dataset ? wrap.dataset.diagDeviceId : null;
-  const pageIndexRaw = wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null;
-  const pageIndex = pageIndexRaw == null ? null : Number(pageIndexRaw);
+  const pageIndexRaw = wrap && wrap.dataset ? (wrap.dataset.pageIndex ?? null) : null;
+  const pageIndexRawResolved = pageIndexRaw != null ? pageIndexRaw : (wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null);
+  const pageIndex = pageIndexRawResolved == null ? null : Number(pageIndexRawResolved);
   const pageState = (pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
   const pageId = pageState && pageState.pageId != null ? pageState.pageId : null;
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
@@ -1850,6 +1851,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
 	    clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
 	    clone.dataset.srcWidth=String(Number(node.dataset.width||0));
 	    clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+     clone.dataset.pageIndex=String(activePageIndex);
     let show=true;
     if (activeFrame!=null) show = show && (Number(clone.dataset.frame)===Number(activeFrame));
     const vpVisible=(short==='l' ? (clone.dataset.vpLv||'1') : (clone.dataset.vpPv||'1'))==='1';
@@ -2903,8 +2905,9 @@ const APP_UI={app_json};
   const btn = ctxBtn || null;
   const wrap = btn && btn.closest ? btn.closest(".btn-wrap") : null;
   const deviceId = wrap && wrap.dataset ? wrap.dataset.diagDeviceId : null;
-  const pageIndexRaw = wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null;
-  const pageIndex = pageIndexRaw == null ? null : Number(pageIndexRaw);
+  const pageIndexRaw = wrap && wrap.dataset ? (wrap.dataset.pageIndex ?? null) : null;
+  const pageIndexRawResolved = pageIndexRaw != null ? pageIndexRaw : (wrap && wrap.closest ? (wrap.closest(".device-page") || {{}}).dataset?.pageIndex : null);
+  const pageIndex = pageIndexRawResolved == null ? null : Number(pageIndexRawResolved);
   const pageState = (pageIndex != null && Array.isArray(PAGE_STATE)) ? PAGE_STATE[pageIndex] : null;
   const pageId = pageState && pageState.pageId != null ? pageState.pageId : null;
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;

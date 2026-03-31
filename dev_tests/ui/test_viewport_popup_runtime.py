@@ -2156,6 +2156,34 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
         finally:
             page.close()
 
+    def test_viewport_popup_clone_buttons_preserve_page_index_context(self):
+        from playwright.sync_api import expect
+
+        html_path = self._write_fixture_html()
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            page.locator(".vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+
+            ctx = page.evaluate(
+                """
+() => {
+  const wrap = document.querySelector(".vp-popup-stage .btn-wrap.vp-btn");
+  if (!wrap) return null;
+  return {
+    pageIndex: wrap.dataset.pageIndex || null,
+    hasDevicePageAncestor: !!wrap.closest(".device-page"),
+  };
+}
+"""
+            )
+            self.assertIsNotNone(ctx)
+            self.assertEqual(ctx["pageIndex"], "0", ctx)
+            self.assertFalse(bool(ctx["hasDevicePageAncestor"]), ctx)
+        finally:
+            page.close()
+
     def test_page_link_click_closes_viewer_and_navigates(self):
         from playwright.sync_api import expect
 

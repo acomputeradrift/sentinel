@@ -1475,3 +1475,139 @@ class TestingResultPostingTest(unittest.TestCase):
             self.assertEqual(visual["ui1"]["btnText"].strip(), "Ui Item")
         finally:
             server.stop()
+
+    def test_viewport_popup_post_uses_canonical_target_key_with_page_context(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {"screenLabels": [], "hardButtons": [], "screenButtons": []},
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 990},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {
+                                                            "visible": True,
+                                                            "coordinates": {"top": 80, "left": 20, "height": 300, "width": 420},
+                                                        }
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {
+                                                                                "buttonTagName": "ALL-OFF",
+                                                                                "text": "All Off",
+                                                                                "buttonType": None,
+                                                                            },
+                                                                            "buttonUI": {
+                                                                                "fontSize": 10,
+                                                                                "orientations": {
+                                                                                    "portrait": {
+                                                                                        "visible": True,
+                                                                                        "coordinates": {
+                                                                                            "top": 12,
+                                                                                            "left": 12,
+                                                                                            "height": 50,
+                                                                                            "width": 240,
+                                                                                        },
+                                                                                    }
+                                                                                },
+                                                                            },
+                                                                            "testTargets": {
+                                                                                "text": True,
+                                                                                "macros": False,
+                                                                                "macroSteps": True,
+                                                                                "variables": {},
+                                                                                "graphics": {"bitmap": True, "icon": True},
+                                                                            },
+                                                                        }
+                                                                    ],
+                                                                },
+                                                            }
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [],
+                                "buttons": [],
+                                "viewports": [
+                                    {
+                                        "viewportButtonId": 990,
+                                        "frames": [
+                                            {
+                                                "frameId": 0,
+                                                "buttons": [
+                                                    {
+                                                        "buttonId": 48551,
+                                                        "buttonTagName": "ALL-OFF",
+                                                        "identifiers": {"text": "All Off"},
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        token = "techTokenViewportCanonical"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.click()
+            page.locator(".vp-popup-stage .btn-wrap.vp-btn .test-btn").first.click()
+            page.locator("#rows .row .actions button").first.click()
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["outcome"], "PASS")
+            self.assertEqual(sent["target"]["targetKey"], "vpbtn:81:513:990:48551:Text")
+        finally:
+            server.stop()
