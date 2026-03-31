@@ -27,6 +27,11 @@ def _write_test_apex(path: Path) -> None:
 
 
 class CommissioningPipelineTest(unittest.TestCase):
+    def test_pipeline_uses_v3_project_structure_contract(self):
+        pipeline_file = ROOT / "src" / "sentinel" / "server" / "services" / "pipeline.py"
+        text = pipeline_file.read_text(encoding="utf-8")
+        self.assertIn("apex_project_structure_v3.json", text)
+
     def test_upload_and_regenerate_contract_includes_phase_event_type(self):
         api_file = ROOT / "src" / "sentinel" / "server" / "api" / "commissioning.py"
         text = api_file.read_text(encoding="utf-8")

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sentinel.extraction.extractor_core import ExtractContext, extract_project_data
+from sentinel.extraction.extractor_core import ExtractContext, extract_project_data, validate_contract_shape
 from sentinel.logging.event_logger import EventLogger
 
 
@@ -58,6 +58,8 @@ def main() -> int:
         data = extract_project_data(ExtractContext(apex_path=apex, project_structure_path=project_structure), progress_hook=_emit_progress)
         data.setdefault("source", {})
         data["source"]["scriptVersion"] = SCRIPT_VERSION
+        contract = json.loads(project_structure.read_text(encoding="utf-8"))
+        validate_contract_shape(contract=contract, payload=data)
 
         out_path = out_dir / f"{apex.stem}_project_data.json"
         log.info(f"Writing output json: {out_path}")

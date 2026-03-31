@@ -111,7 +111,7 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
     root = _repo_root()
     extract = root / "src" / "sentinel" / "extraction" / "extract_project_data.py"
     generate = root / "src" / "sentinel" / "generation" / "generate_html.py"
-    project_structure = root / "src" / "sentinel" / "contracts" / "apex_project_structure_v2.json"
+    project_structure = root / "src" / "sentinel" / "contracts" / "apex_project_structure_v3.json"
     app_ui = root / "src" / "sentinel" / "contracts" / "app_ui_structure.json"
 
     out_dir = _project_out_dir(projectId=projectId)

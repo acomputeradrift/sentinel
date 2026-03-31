@@ -22,6 +22,47 @@ class ExtractContext:
     project_structure_path: Path
 
 
+def validate_contract_shape(*, contract: Any, payload: Any) -> None:
+    errors: list[str] = []
+
+    def _walk(template: Any, value: Any, path: str) -> None:
+        if isinstance(template, dict):
+            if value is None:
+                return
+            if not isinstance(value, dict):
+                errors.append(f"{path}: expected object, got {type(value).__name__}")
+                return
+            for key, child_template in template.items():
+                child_path = f"{path}.{key}" if path else str(key)
+                if key not in value:
+                    errors.append(f"{child_path}: missing required key")
+                    continue
+                _walk(child_template, value.get(key), child_path)
+            for key in value.keys():
+                if key not in template:
+                    child_path = f"{path}.{key}" if path else str(key)
+                    errors.append(f"{child_path}: unexpected key")
+            return
+
+        if isinstance(template, list):
+            if value is None:
+                return
+            if not isinstance(value, list):
+                errors.append(f"{path}: expected array, got {type(value).__name__}")
+                return
+            if not template:
+                return
+            item_template = template[0]
+            for idx, item in enumerate(value):
+                _walk(item_template, item, f"{path}[{idx}]")
+            return
+
+    _walk(contract, payload, "")
+    if errors:
+        joined = "\n".join(f"- {msg}" for msg in errors)
+        raise ValueError(f"Project data does not match contract shape:\n{joined}")
+
+
 def _map_staged_progress(stage: str, percent: int) -> int:
     s = str(stage or "").strip().lower()
     p = int(percent or 0)
