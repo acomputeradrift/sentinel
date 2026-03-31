@@ -1,118 +1,100 @@
 {
+  "source": {
+    "file": "path/to/project.apex",
+    "extractedAtUtc": "2026-03-31T00:00:00Z",
+    "scriptVersion": "0.1.0"
+  },
   "events": {
-    "system": {
-      "sectionTitle": "System Events",
-      "items": [
-        {
-          "userFacing": {
-            "eventType": "Sense | Scheduled | Startup",
-            "description": "",
-            "resolvedTrigger": "",
-            "macroName": "",
-            "testTargets": {
-              "Trigger": true,
-              "Macro": true
-            }
-          },
-          "diagnostics": {
-            "eventType": "Sense | Scheduled | Startup",
-            "description": "",
-            "resolvedTrigger": "",
-            "resolvedScope": "Global | Global -> Source | Room | Room -> Source",
-            "macroName": "",
-            "macroFound": true,
-            "resolutionStatus": "resolved | partially_resolved | unresolved"
+    "system": [
+      {
+        "userFacing": {
+          "eventType": "Sense | Scheduled | Startup",
+          "description": "",
+          "resolvedTrigger": "",
+          "macroName": "",
+          "macroNames": [""],
+          "commandName": "",
+          "commandNames": [""],
+          "testTargets": {
+            "Trigger": true,
+            "Macro": true,
+            "Macros": false,
+            "MacroStep": false,
+            "MacroSteps": false
           }
-        }
-      ]
-    },
-    "driver": {
-      "sectionTitle": "Driver Events",
-      "items": [
-        {
-          "userFacing": {
-            "eventType": "Driver",
-            "driverName": "",
-            "driverCategory": "",
-            "resolvedTrigger": "",
-            "firstActionName": "",
-            "resolvedActions": {
-              "macros": [
-                ""
-              ],
-              "macroSteps": [
-                {
-                  "name": "",
-                  "type": "command | undefined"
-                }
-              ]
+        },
+        "diagnostics": {
+          "eventId": 0,
+          "enabled": true,
+          "macro": {
+            "systemMacroId": 0,
+            "macroId": 0,
+            "scope": {
+              "roomId": 0,
+              "roomName": "Global",
+              "deviceId": -1,
+              "deviceName": null
             },
-            "macroStepCount": 0,
-            "testTargets": {
-              "Trigger": true,
-              "Macro": false,
-              "Macros": false,
-              "MacroStep": false,
-              "MacroSteps": false
-            }
+            "buttonTagName": null
           },
-          "diagnostics": {
-            "eventId": 0,
-            "enabled": true,
-            "driverId": 0,
-            "driverName": "",
-            "driverExtraString": "",
-            "resolvedActions": {
-              "macros": [
-                {
-                  "name": "",
-                  "macroId": 0,
-                  "systemMacroId": 0,
-                  "roomId": 0,
-                  "roomName": "Global",
-                  "deviceId": 0,
-                  "deviceName": "",
-                  "buttonTagId": 0,
-                  "buttonTagName": "",
-                  "steps": [
-                    {
-                      "stepId": 0,
-                      "stepIndex": 0,
-                      "stepType": 0,
-                      "commandTagId": 0,
-                      "commandTagName": "",
-                      "function": "",
-                      "parameter1": "",
-                      "parameter2": "",
-                      "parameter3": "",
-                      "parameter4": ""
-                    }
-                  ]
-                }
-              ],
-              "commands": [
-                {
-                  "name": "",
-                  "sourceMacroId": 0,
-                  "sourceSystemMacroId": 0,
-                  "sourceRoomId": 0,
-                  "sourceRoomName": "Global",
-                  "sourceDeviceId": 0,
-                  "sourceDeviceName": "",
-                  "sourceStepId": 0,
-                  "sourceStepType": 0,
-                  "sourceFunction": "",
-                  "parameter1": "",
-                  "parameter2": "",
-                  "parameter3": "",
-                  "parameter4": ""
-                }
-              ]
-            }
-          }
+          "description": "",
+          "resolvedTrigger": "",
+          "macroName": "",
+          "macroNames": [""],
+          "commandName": "",
+          "commandNames": [""]
         }
-      ]
-    }
+      }
+    ],
+    "driver": [
+      {
+        "userFacing": {
+          "eventType": "Driver",
+          "driverName": "",
+          "driverCategory": "",
+          "resolvedTrigger": "",
+          "firstActionName": "",
+          "resolvedActions": {
+            "macros": [""],
+            "macroSteps": [
+              {
+                "name": "",
+                "type": "command | flag | undefined"
+              }
+            ]
+          },
+          "macroStepCount": 0,
+          "testTargets": {
+            "Trigger": true,
+            "Macro": true,
+            "Macros": false,
+            "MacroStep": false,
+            "MacroSteps": false
+          }
+        },
+        "diagnostics": {
+          "eventId": 0,
+          "enabled": true,
+          "macro": {
+            "systemMacroId": 0,
+            "macroId": 0,
+            "scope": {
+              "roomId": 0,
+              "roomName": "Global",
+              "deviceId": -1,
+              "deviceName": null
+            },
+            "buttonTagName": null
+          },
+          "driverId": 0,
+          "driverName": "",
+          "driverExtraString": "",
+          "macroNames": [""],
+          "commandName": "",
+          "commandNames": [""]
+        }
+      }
+    ]
   },
   "devices": [
     {
@@ -147,7 +129,7 @@
                       "buttonIdentity": {
                         "buttonTagName": null,
                         "text": "Now Playing",
-                        "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
+                        "buttonType": "Slider | Toggle | LevelIndicatorBar | Image | null"
                       },
                       "buttonUI": {
                         "fontSize": 12,
@@ -170,6 +152,11 @@
                               "width": 0
                             }
                           }
+                        },
+                        "stack": {
+                          "layerOrder": 0,
+                          "buttonOrder": 0,
+                          "frameNumber": 0
                         }
                       },
                       "testTargets": {
@@ -187,65 +174,20 @@
                           "Image": false,
                           "List": false
                         },
+                        "graphics": {
+                          "bitmap": false,
+                          "icon": false
+                        },
                         "pageLink": false
                       },
-                      "resolvedPageLink": null
-                    }
-                  ],
-                  "screenButtons": [
-                    {
-                      "buttonIdentity": {
-                        "buttonTagName": "POWER - TV ON",
-                        "text": "Power",
-                        "buttonType": "Slider | Toggle | LevelIndicatorBar | null"
-                      },
-                      "buttonUI": {
-                        "fontSize": 7,
-                        "orientations": {
-                          "portrait": {
-                            "visible": true,
-                            "coordinates": {
-                              "top": 0,
-                              "left": 0,
-                              "height": 0,
-                              "width": 0
-                            }
-                          },
-                          "landscape": {
-                            "visible": true,
-                            "coordinates": {
-                              "top": 0,
-                              "left": 0,
-                              "height": 0,
-                              "width": 0
-                            }
-                          }
-                        }
-                      },
-                      "testTargets": {
-                        "text": true,
-                        "macros": true,
-                        "macroSteps": true,
-                        "variables": {
-                          "Text": false,
-                          "Reversed": true,
-                          "Inactive": true,
-                          "Visible": false,
-                          "Value": false,
-                          "State": false,
-                          "Command": false,
-                          "Image": false,
-                          "List": false
-                        },
-                        "pageLink": true
-                      },
                       "resolvedPageLink": {
-                        "targetPageId": 518,
-                        "targetPageName": "Lights/Home (Master)",
-                        "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent"
+                        "targetPageId": 0,
+                        "targetPageName": null,
+                        "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent"
                       }
                     }
                   ],
+                  "screenButtons": [],
                   "hardButtons": [],
                   "emptyTag": [],
                   "uiItems": []
@@ -280,7 +222,7 @@
                     },
                     "layers": [
                       {
-                        "layerName": "Viewport Page 1",
+                        "layerName": "Viewport Layer",
                         "layerOrder": 0,
                         "frames": [
                           {
@@ -298,18 +240,6 @@
                     ]
                   }
                 ]
-              },
-              {
-                "layerName": "Hard Keys",
-                "layerOrder": 1,
-                "buttonCategories": {
-                  "screenLabels": [],
-                  "screenButtons": [],
-                  "hardButtons": [],
-                  "emptyTag": [],
-                  "uiItems": []
-                },
-                "viewports": []
               }
             ]
           }
@@ -354,7 +284,6 @@
                   "text": "Power"
                 },
                 "testTargets": {
-                  "label": null,
                   "macro": {
                     "scope": "Global",
                     "scopeType": "Global | Room | Source | Controller",
@@ -363,16 +292,6 @@
                     "resolvedCommand": null,
                     "isEmpty": false
                   },
-                  "variables": [
-                    {
-                      "variableId": 0,
-                      "scope": "Global | Room | Source | Controller",
-                      "scopeType": "Global | Room | Source | Controller",
-                      "type": "ObjectData | ReversedData | InactiveData | VisibleData",
-                      "rawToken": "",
-                      "resolvedName": null
-                    }
-                  ],
                   "variableDetails": {
                     "Text": {
                       "enabled": false,
@@ -398,12 +317,12 @@
                     },
                     "State": {
                       "enabled": false,
-                      "source": "ObjectData | pairedObjectData",
+                      "source": "ObjectData",
                       "objectRef": null
                     },
                     "Command": {
                       "enabled": false,
-                      "source": "driverFunction+controlType | macroFunction",
+                      "source": "MacroDeviceCommand.VariableId",
                       "controlType": null,
                       "driverFunction": null,
                       "pairedMacroFunction": null
@@ -462,7 +381,6 @@
                           "text": "Power"
                         },
                         "testTargets": {
-                          "label": null,
                           "macro": {
                             "scope": "Global",
                             "scopeType": "Global | Room | Source | Controller",
@@ -471,7 +389,6 @@
                             "resolvedCommand": null,
                             "isEmpty": false
                           },
-                          "variables": [],
                           "variableDetails": {
                             "Text": {
                               "enabled": false,
@@ -497,12 +414,12 @@
                             },
                             "State": {
                               "enabled": false,
-                              "source": "ObjectData | pairedObjectData",
+                              "source": "ObjectData",
                               "objectRef": null
                             },
                             "Command": {
                               "enabled": false,
-                              "source": "driverFunction+controlType | macroFunction",
+                              "source": "MacroDeviceCommand.VariableId",
                               "controlType": null,
                               "driverFunction": null,
                               "pairedMacroFunction": null
