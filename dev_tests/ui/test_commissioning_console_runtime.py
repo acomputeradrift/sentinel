@@ -460,6 +460,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   targetName: "Macro",
                   deviceName: "Device A",
                   pageName: "Home",
+                  layerName: "Layer Alpha",
+                  viewport: "No",
                   buttonName: "Button 1",
                   scope: "BUTTON",
                   scopeType: "ROOM",
@@ -467,6 +469,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   effectiveSourceId: 74,
                   effectiveRoomName: "Living Room",
                   effectiveSourceName: "Main AVR",
+                  effectiveScopeNames: "Living Room -> Main AVR",
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-21T00:00:00Z",
@@ -478,6 +481,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   targetName: "PageLink",
                   deviceName: "Device B",
                   pageName: "Scene",
+                  layerName: "Layer Beta",
+                  viewport: "Frame 2",
                   buttonName: "",
                   scope: "BUTTON",
                   scopeType: "GLOBAL",
@@ -485,11 +490,32 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   effectiveSourceId: 74,
                   effectiveRoomName: "Global",
                   effectiveSourceName: "Main AVR",
+                  effectiveScopeNames: "Global -> Main AVR",
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-20T23:00:00Z",
                   lastFailNote: "Page link broken",
                   resolvedData: { reason: "Page link broken" }
+                },
+                {
+                  targetKey: "btn:81:700:48552:Icon",
+                  targetName: "Wrong Icon",
+                  deviceName: "IST-5 (Global)",
+                  pageName: "Sound",
+                  layerName: "SOURCE - Set To CABLE MUSIC",
+                  viewport: "icon",
+                  buttonName: "Room 4 -> 1",
+                  scope: "BUTTON",
+                  scopeType: "",
+                  effectiveRoomId: null,
+                  effectiveSourceId: null,
+                  effectiveRoomName: "",
+                  effectiveSourceName: "",
+                  tag: "NOT_STARTED",
+                  currentOutcome: "FAIL",
+                  lastTestedAtUtc: "2026-03-20T22:00:00Z",
+                  lastFailNote: "",
+                  resolvedData: { reason: "Wrong Icon" }
                 },
               ],
               activities: [],
@@ -530,6 +556,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
               refs: {
                 deviceName: "Device B",
                 pageName: "Scene",
+                layerName: "Layer Gamma",
+                viewport: "No",
                 buttonName: "Button 9",
                 scope: "BUTTON",
                 scopeType: "GLOBAL",
@@ -537,6 +565,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 effectiveSourceId: 88,
                 effectiveRoomName: "Global",
                 effectiveSourceName: "Lighting Processor"
+                ,effectiveScopeNames: "Global -> Lighting Processor"
               },
               progress: {
                 projectId: "proj-1",
@@ -787,21 +816,29 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'], [data-testid='diagnostics-pie-failure-types'], [data-testid='diagnostics-pie-task-completion']")).to_have_count(3)
         expect(page.get_by_test_id("diagnostics-summary-block")).to_have_count(0)
         expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Tag")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Status")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Device")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Page Name")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Layer")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Viewport")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Button Identity")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Scope")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Tech Notes")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Effective Scope")).to_be_visible()
         diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
         diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
         self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?Z$")
-        expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(3)
+        expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(4)
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text(re.compile(r"fail button", re.I))
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Button does not respond")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Layer Gamma")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Frame 2")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("No")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("SOURCE - Set To CABLE MUSIC")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("icon")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("wrong icon")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Living Room -> Main AVR")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> Lighting Processor")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")

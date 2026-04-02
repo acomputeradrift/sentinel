@@ -528,6 +528,45 @@ class ScriptContractsTest(unittest.TestCase):
                 browse_diag["source"],
                 {"layerId": 200, "sharedLayerId": 300, "layerOrder": 0, "buttonOrder": 5, "frameNumber": 0},
             )
+            self.assertEqual(
+                browse_diag["viewportContext"],
+                {"hostViewportButtonId": None, "frameIndexRti": None},
+            )
+            self.assertEqual(
+                browse_diag["resolvedContext"],
+                {
+                    "pageNameResolved": "Lights",
+                    "layerNameResolved": "Page Layer",
+                    "effectiveRoomId": 0,
+                    "effectiveSourceId": 1,
+                    "effectiveRoomName": "Global",
+                    "effectiveSourceName": "IST-5 (Global)",
+                },
+            )
+            vp_child_diag = next(
+                (
+                    b
+                    for b in data["devices"][0]["diagnostics"]["pages"][0]["viewports"][0]["frames"][0]["buttons"]
+                    if b.get("buttonId") == 271
+                ),
+                None,
+            )
+            self.assertIsNotNone(vp_child_diag)
+            self.assertEqual(
+                vp_child_diag["viewportContext"],
+                {"hostViewportButtonId": 270, "frameIndexRti": 0},
+            )
+            self.assertEqual(
+                vp_child_diag["resolvedContext"],
+                {
+                    "pageNameResolved": "Lights",
+                    "layerNameResolved": "Viewport Layer",
+                    "effectiveRoomId": 0,
+                    "effectiveSourceId": 1,
+                    "effectiveRoomName": "Global",
+                    "effectiveSourceName": "IST-5 (Global)",
+                },
+            )
 
     def test_extract_single_size_device_uses_fallback_dimensions(self):
         with tempfile.TemporaryDirectory() as td:
