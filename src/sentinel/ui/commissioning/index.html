@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sentinel Console</title>
-    <link rel="stylesheet" href="./commissioning.css" />
+    <link rel="stylesheet" href="./sentinel_console.css" />
     <!-- commission-tab:css -->
     <link rel="stylesheet" href="./commission_tab.css" />
     <!-- diagnostics-tab:css -->
@@ -13,21 +13,22 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="topbar-inner">
+        <div class="topbar-inner" style="max-width: none; margin: 0; padding-left: 18px; padding-right: 18px;">
           <h1>Sentinel Console</h1>
-          <p class="sub">Local MVP UI skeleton (contract-driven).</p>
         </div>
       </header>
 
       <div class="layout">
         <nav class="sidenav" aria-label="Console tabs">
-          <button id="tab-manage" class="tab active" type="button" aria-selected="true" data-tab="manage">Manage</button>
-          <button id="tab-commission" class="tab" type="button" aria-selected="false" data-tab="commission">Commission</button>
-          <button id="tab-diagnostics" class="tab" type="button" aria-selected="false" data-tab="diagnostics">Diagnostics</button>
+          <button id="tab-commission" class="tab" type="button" aria-selected="false" data-tab="commission">Commissioning</button>
+          <button id="tab-diagnostics" class="tab active" type="button" aria-selected="true" data-tab="diagnostics">Diagnostics</button>
+          <button id="tab-manage" class="tab" type="button" aria-selected="false" data-tab="manage">Projects</button>
+          <button id="tab-reports" class="tab" type="button" aria-selected="false" data-tab="reports">Reports</button>
+          <button id="tab-clear-tests" class="tab" type="button" aria-selected="false" data-tab="clear-tests">Clear Tests</button>
         </nav>
 
         <main class="content">
-          <section id="panel-manage" class="panel">
+          <section id="panel-manage" class="panel" hidden>
             <section class="card" id="manageClientCard">
               <h2>Client</h2>
               <div class="row">
@@ -115,96 +116,197 @@
             </section>
           </section>
 
-          <section id="panel-commission" class="panel" hidden>
-            <div class="panel-context">
-              <div class="panel-context-title">Commission</div>
-              <div class="panel-context-sub">
-                <span id="panelContextClient"></span><span class="sep">•</span><span id="panelContextProject"></span>
+          <section id="panel-commission" class="panel" style="max-width: none;" hidden>
+            <div class="panel-context tab-context-placeholder">
+              <div class="panel-context-title">Client -&gt; Project -&gt; Filename</div>
+              <div class="panel-context-sub" style="display: none;">
+                <span id="panelContextClient"></span><span class="sep">-&gt;</span><span id="panelContextProject"></span>
               </div>
             </div>
             <div class="commission-shell">
-              <div class="commission-kpis">
-                <div class="kpi" data-testid="commission-kpi-complete" id="commissionKpiComplete">
-                  <div class="kpi-title">Complete</div>
-                  <div class="kpi-body">
-                    <div class="kpi-ring" id="commissionKpiCompleteRing"></div>
-                    <div>
-                      <div class="kpi-value" id="commissionKpiCompleteValue">0%</div>
-                      <div class="kpi-sub" id="commissionKpiCompleteSub">0/0 tested</div>
+              <section class="card">
+                <div class="commission-pies shared-pies-grid" data-testid="commission-pies" id="commissionPies">
+                  <section class="piecard" data-testid="commission-pie-project" id="commissionPie-project">
+                    <div class="piecard-title">Project Completion<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie" id="commissionPie-project-chart" aria-label="Failure Rate"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value" id="commissionPie-project-value">0%</div>
+                        <div class="piecard-sub" id="commissionPie-project-sub">0/0 tested</div>
+                      </div>
+                      <div class="commission-legend-spacer" aria-hidden="true"></div>
                     </div>
-                  </div>
-                </div>
-                <div class="kpi" data-testid="commission-kpi-tested" id="commissionKpiTested">
-                  <div class="kpi-title">Tested</div>
-                  <div class="kpi-body">
-                    <div class="kpi-ring" id="commissionKpiTestedRing"></div>
-                    <div>
-                      <div class="kpi-value" id="commissionKpiTestedValue">0</div>
-                      <div class="kpi-sub" id="commissionKpiTestedSub">tested targets</div>
-                    </div>
-                  </div>
-                </div>
-                <div class="kpi" data-testid="commission-kpi-untested" id="commissionKpiUntested">
-                  <div class="kpi-title">Untested</div>
-                  <div class="kpi-body">
-                    <div class="kpi-ring" id="commissionKpiUntestedRing"></div>
-                    <div>
-                      <div class="kpi-value" id="commissionKpiUntestedValue">0</div>
-                      <div class="kpi-sub" id="commissionKpiUntestedSub">untested targets</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                  </section>
 
-              <div class="commission-activity" data-testid="commission-activity" id="commissionActivity">
+                  <section class="piecard" data-testid="commission-pie-system-events" id="commissionPie-system-events">
+                    <div class="piecard-title">System Event Completion<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie" id="commissionPie-system-events-chart" aria-label="Failure Types"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value" id="commissionPie-system-events-value">0%</div>
+                        <div class="piecard-sub" id="commissionPie-system-events-sub">0/0 tested</div>
+                      </div>
+                      <div class="commission-legend-spacer" aria-hidden="true"></div>
+                    </div>
+                  </section>
+
+                  <section class="piecard" data-testid="commission-pie-driver-events" id="commissionPie-driver-events">
+                    <div class="piecard-title">Driver Event Completion<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie" id="commissionPie-driver-events-chart" aria-label="Task Completion"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value" id="commissionPie-driver-events-value">0%</div>
+                        <div class="piecard-sub" id="commissionPie-driver-events-sub">0/0 tested</div>
+                      </div>
+                      <div class="commission-legend-spacer" aria-hidden="true"></div>
+                    </div>
+                  </section>
+
+                  <section class="piecard">
+                    <div class="piecard-title">Device 1<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie" aria-label="Device 1 placeholder"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value">0%</div>
+                        <div class="piecard-sub">0/0 tested</div>
+                      </div>
+                      <div class="commission-legend-spacer" aria-hidden="true"></div>
+                    </div>
+                  </section>
+
+                  <section class="piecard">
+                    <div class="piecard-title">Device 2<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie" aria-label="Device 2 placeholder"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value">0%</div>
+                        <div class="piecard-sub">0/0 tested</div>
+                      </div>
+                      <div class="commission-legend-spacer" aria-hidden="true"></div>
+                    </div>
+                  </section>
+
+                  <section class="piecard">
+                    <div class="piecard-title">Device 3<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie" aria-label="Device 3 placeholder"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value">0%</div>
+                        <div class="piecard-sub">0/0 tested</div>
+                      </div>
+                      <div class="commission-legend-spacer" aria-hidden="true"></div>
+                    </div>
+                  </section>
+                </div>
+              </section>
+
+              <div class="commission-activity diag-table-wrap shared-results-group" data-testid="commission-activity" id="commissionActivity">
                 <div class="activity-head">
                   <h2 style="margin: 0">Live Status</h2>
                   <div class="sub">Chronological (newest first)</div>
                 </div>
-                <table class="activity-table">
+                <table class="activity-table diag-table shared-status-table">
                   <thead>
                     <tr>
-                      <th style="width: 190px">Timestamp (UTC)</th>
-                      <th style="width: 160px">Device</th>
-                      <th style="width: 200px">Page Name</th>
-                      <th style="width: 200px">Button Name</th>
-                      <th style="width: 220px">Test Target</th>
-                      <th style="width: 90px">Status</th>
+                      <th>Timestamp (UTC)</th>
+                      <th>Device</th>
+                      <th>Page Name</th>
+                      <th>Button Name</th>
+                      <th>Test Target</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
-                  <tbody id="commissionActivityBody"></tbody>
+                  <tbody id="commissionActivityBody">
+                    <tr>
+                      <td>2026-04-02 00:00:00Z</td>
+                      <td>Device Placeholder</td>
+                      <td>Page Placeholder</td>
+                      <td>Button Placeholder</td>
+                      <td>Target Placeholder</td>
+                      <td>status</td>
+                    </tr>
+                    <tr>
+                      <td>2026-04-02 00:00:01Z</td>
+                      <td>Device Placeholder 2</td>
+                      <td>Page Placeholder 2</td>
+                      <td>Button Placeholder 2</td>
+                      <td>Target Placeholder 2</td>
+                      <td>status</td>
+                    </tr>
+                  </tbody>
                 </table>
               </div>
             </div>
           </section>
 
-          <section id="panel-diagnostics" class="panel" hidden>
-            <div class="panel-context">
-              <div class="panel-context-title">Diagnostics</div>
-              <div class="panel-context-sub">
-                <span id="panelContextClient2"></span><span class="sep">•</span><span id="panelContextProject2"></span>
+          <section id="panel-diagnostics" class="panel" style="max-width: none;">
+            <div class="panel-context tab-context-placeholder">
+              <div class="panel-context-title">Client -&gt; Project -&gt; Filename</div>
+              <div class="panel-context-sub" style="display: none;">
+                <span id="panelContextClient2"></span><span class="sep">-&gt;</span><span id="panelContextProject2"></span>
               </div>
             </div>
-            <section class="card" id="diagnosticsCard">
-              <div class="row" style="align-items: center">
-                <h2 style="margin: 0">Diagnostics</h2>
-                <div class="grow"></div>
-              </div>
-
-              <div class="diag-grid">
-                <div class="diag-box">
-                  <h3>Summary</h3>
-                  <pre class="mono" data-testid="diagnostics-summary" id="diagnosticsSummary"></pre>
+            <div class="commission-shell diagnostics-shell">
+              <section class="card" id="diagnosticsCard">
+                <div class="commission-pies shared-pies-grid diag-pies-host" data-testid="diagnostics-summary" id="diagnosticsSummary" data-static-pies="true">
+                  <section class="piecard diag-pie-card">
+                    <div class="piecard-title diag-pie-title">Failure Rate<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie diag-pie-placeholder" aria-label="Failure Rate placeholder"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value">0%</div>
+                        <div class="piecard-sub">0/0 tested</div>
+                      </div>
+                      <div class="diag-pie-legend" aria-hidden="true">
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="piecard diag-pie-card">
+                    <div class="piecard-title diag-pie-title">Failure Types<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie diag-pie-placeholder" aria-label="Failure Types placeholder"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value">0%</div>
+                        <div class="piecard-sub">0/0 tested</div>
+                      </div>
+                      <div class="diag-pie-legend diag-pie-legend-compact" aria-hidden="true">
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">text</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">macros</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">macroSteps</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">variables</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">graphics</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">pageLink</span></div>
+                      </div>
+                    </div>
+                  </section>
+                  <section class="piecard diag-pie-card">
+                    <div class="piecard-title diag-pie-title">Task Completion<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-body">
+                      <div class="pie diag-pie-placeholder" aria-label="Task Completion placeholder"></div>
+                      <div class="piecard-metrics">
+                        <div class="piecard-value">0%</div>
+                        <div class="piecard-sub">0/0 tested</div>
+                      </div>
+                      <div class="diag-pie-legend" aria-hidden="true">
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
+                      </div>
+                    </div>
+                  </section>
                 </div>
-                <div class="diag-box">
-                  <h3>Failure types (current fails)</h3>
-                  <pre class="mono" data-testid="diagnostics-fail-type-breakdown" id="diagnosticsFailTypeBreakdown"></pre>
-                </div>
-              </div>
+                <pre data-testid="diagnostics-fail-type-breakdown" id="diagnosticsFailTypeBreakdown" hidden></pre>
+              </section>
 
-              <h3>Task List</h3>
-              <div class="diag-table-wrap">
-                <table class="diag-table" data-testid="diagnostics-task-table" id="diagnosticsTaskTable">
+              <div class="shared-results-group">
+                <div class="activity-head">
+                  <h2 style="margin: 0">Task List</h2>
+                  <div class="sub">&nbsp;</div>
+                </div>
+                <table class="diag-table shared-status-table" data-testid="diagnostics-task-table" id="diagnosticsTaskTable">
                   <thead>
                     <tr>
                       <th>Status</th>
@@ -215,25 +317,61 @@
                       <th>Viewport</th>
                       <th>Button Identity</th>
                       <th>Test Target</th>
-                      <th>Tech Notes</th>
                       <th>Effective Scope</th>
+                      <th>Tech Notes</th>
                     </tr>
                   </thead>
-                  <tbody id="diagnosticsTaskBody"></tbody>
+                  <tbody id="diagnosticsTaskBody">
+                    <tr>
+                      <td>
+                        <select class="status-template-select" aria-label="Status template">
+                          <option selected>Not Started</option>
+                          <option>In Progress</option>
+                          <option>Complete</option>
+                        </select>
+                      </td>
+                      <td>2026-04-02 00:00:00Z</td>
+                      <td>Device Placeholder</td>
+                      <td>Page Placeholder</td>
+                      <td>Layer Placeholder</td>
+                      <td>Frame 1</td>
+                      <td>Button Placeholder</td>
+                      <td>Target Placeholder</td>
+                      <td>Global -&gt; Home</td>
+                      <td><button type="button" class="tech-notes-btn">Show</button></td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <select class="status-template-select" aria-label="Status template">
+                          <option>Not Started</option>
+                          <option selected>In Progress</option>
+                          <option>Complete</option>
+                        </select>
+                      </td>
+                      <td>2026-04-02 00:00:01Z</td>
+                      <td>Device Placeholder 2</td>
+                      <td>Page Placeholder 2</td>
+                      <td>Layer Placeholder 2</td>
+                      <td>Frame 2</td>
+                      <td>Button Placeholder 2</td>
+                      <td>Target Placeholder 2</td>
+                      <td>Room -&gt; Source</td>
+                      <td><button type="button" class="tech-notes-btn">Show</button></td>
+                    </tr>
+                  </tbody>
                 </table>
               </div>
               <div class="status" id="diagnosticsStatus"></div>
-            </section>
+            </div>
           </section>
         </main>
       </div>
     </div>
 
-    <script src="./commissioning.js"></script>
+    <!-- <script src="./commissioning.js"></script> -->
     <!-- commission-tab:js -->
-    <script src="./commission_tab.js"></script>
+    <!-- <script src="./commission_tab.js"></script> -->
     <!-- diagnostics-tab:js -->
-    <script src="./diagnostics_tab.js"></script>
+    <!-- <script src="./diagnostics_tab.js"></script> -->
   </body>
 </html>
-

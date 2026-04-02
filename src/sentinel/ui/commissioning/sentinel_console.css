@@ -371,3 +371,210 @@ button.danger {
   background: #b91c1c;
 }
 
+/* Shared Commissioning + Diagnostics parity styles */
+.tab-context-placeholder {
+  margin: 0 0 12px 0;
+  width: calc((100% - 24px) / 2);
+  max-width: calc((100% - 24px) / 2);
+}
+
+.shared-pies-grid {
+  --pie-gap: 96px;
+  --pie-inner-pad: calc(var(--pie-gap) - 14px);
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: var(--pie-gap) !important;
+  padding: 0 var(--pie-inner-pad);
+  box-sizing: border-box;
+}
+
+.shared-pies-grid > .piecard,
+.shared-pies-grid > .diag-pie-card {
+  width: 100% !important;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  justify-self: stretch;
+}
+
+.shared-pies-grid .piecard-body {
+  align-items: flex-start !important;
+}
+
+.diag-pies-host {
+  white-space: normal;
+}
+
+.diag-pie-placeholder {
+  --pct: 0;
+}
+
+.diag-pie-legend {
+  font-size: 12px;
+  color: #335267;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diag-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diag-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  flex: 0 0 auto;
+}
+
+.diag-legend-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diag-pie-legend-compact {
+  gap: 2px;
+  font-size: 11px;
+}
+
+.diag-pie-legend-compact .diag-legend-row {
+  gap: 6px;
+}
+
+.diag-pie-legend-compact .diag-legend-swatch {
+  width: 8px;
+  height: 8px;
+}
+
+.shared-pies-grid .diag-pie-legend {
+  min-width: 180px;
+  min-height: 78px;
+}
+
+.commission-legend-spacer {
+  min-width: 180px;
+  min-height: 78px;
+  flex: 0 0 180px;
+}
+
+.shared-status-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.shared-status-table th,
+.shared-status-table td {
+  padding: 5px 5px !important;
+  font-family: Segoe UI, Tahoma, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+  text-align: center !important;
+  border-right: 1px solid #d6e0ea !important;
+}
+
+.shared-status-table th {
+  background: #177bb5 !important;
+  color: #ffffff !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  border-top: 0 !important;
+  border-right-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+.shared-status-table thead th:first-child {
+  border-top-left-radius: 10px;
+}
+
+.shared-status-table thead th:last-child {
+  border-top-right-radius: 10px;
+  border-right: none !important;
+}
+
+.shared-status-table td {
+  border-top: 1px solid #e1ebf3 !important;
+}
+
+.shared-status-table tbody td:last-child {
+  border-right: none !important;
+}
+
+.shared-status-table tbody tr:nth-child(odd) td {
+  background: #ffffff;
+}
+
+.shared-status-table tbody tr:nth-child(even) td {
+  background: #f5f8fb;
+}
+
+.shared-results-group {
+  border: 1px solid #c6d2dd !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  padding: 14px !important;
+  box-shadow: 0 10px 24px rgba(24, 50, 71, 0.06) !important;
+  overflow: auto !important;
+}
+
+.status-template-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 2px 8px;
+  border: 1px solid #b6c7d6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #173246;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.tech-notes-btn {
+  height: 24px;
+  line-height: 22px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid #b6c7d6;
+  background: #ffffff;
+  color: #173246;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* Unified Diagnostics-style donut for both tabs */
+.piecard .pie {
+  width: 96px !important;
+  height: 96px !important;
+  position: relative;
+}
+
+.piecard .pie::before {
+  width: 62px !important;
+  height: 62px !important;
+}
+
+.piecard .pie::after {
+  content: "0%";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: #173246;
+}
+
+.piecard .piecard-value,
+.piecard .piecard-sub {
+  display: none;
+}
+
