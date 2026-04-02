@@ -412,6 +412,7 @@ function _upsertFailRecord(fails, payload) {
     effectiveSourceId: refs?.effectiveSourceId == null ? prev?.effectiveSourceId : refs.effectiveSourceId,
     effectiveRoomName: String(refs?.effectiveRoomName || prev?.effectiveRoomName || ""),
     effectiveSourceName: String(refs?.effectiveSourceName || prev?.effectiveSourceName || ""),
+    effectiveScopeNames: String(refs?.effectiveScopeNames || prev?.effectiveScopeNames || ""),
   };
   if (idx >= 0) existing[idx] = next;
   else existing.unshift(next);

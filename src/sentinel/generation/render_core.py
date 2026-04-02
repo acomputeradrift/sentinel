@@ -573,6 +573,34 @@ def _page_payload(
         for layer in _page_layer_state(page)
         if isinstance(layer, dict)
     }
+    diag_button_by_id: dict[int, dict[str, Any]] = {}
+    for row in diag_buttons:
+        if not isinstance(row, dict):
+            continue
+        bid = row.get("buttonId")
+        if bid is None:
+            continue
+        diag_button_by_id[int(bid)] = row
+    diag_vp_child_button_by_id: dict[int, dict[str, Any]] = {}
+    for vp in diag_viewports:
+        if not isinstance(vp, dict):
+            continue
+        frames = vp.get("frames", [])
+        if not isinstance(frames, list):
+            continue
+        for frame in frames:
+            if not isinstance(frame, dict):
+                continue
+            buttons = frame.get("buttons", [])
+            if not isinstance(buttons, list):
+                continue
+            for row in buttons:
+                if not isinstance(row, dict):
+                    continue
+                bid = row.get("buttonId")
+                if bid is None:
+                    continue
+                diag_vp_child_button_by_id[int(bid)] = row
 
     page_button_rows: list[str] = []
     for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
@@ -588,6 +616,17 @@ def _page_payload(
             diag_attrs += f" data-diag-page-id='{int(diag_page_id)}'"
         if diag_button_id is not None:
             diag_attrs += f" data-diag-button-id='{int(diag_button_id)}'"
+            resolved_context = diag_button_by_id.get(int(diag_button_id), {}).get("resolvedContext")
+            if isinstance(resolved_context, dict):
+                room_name = str(resolved_context.get("effectiveRoomName") or "").strip()
+                source_name = str(resolved_context.get("effectiveSourceName") or "").strip()
+                scope_names = f"{room_name} -> {source_name}" if room_name and source_name else room_name
+                if room_name:
+                    diag_attrs += f" data-effective-room-name='{escape(room_name, quote=True)}'"
+                if source_name:
+                    diag_attrs += f" data-effective-source-name='{escape(source_name, quote=True)}'"
+                if scope_names:
+                    diag_attrs += f" data-effective-scope-names='{escape(scope_names, quote=True)}'"
         page_button_rows.append(
             _render_button_control(
                 btn,
@@ -629,6 +668,17 @@ def _page_payload(
             diag_attrs += f" data-diag-viewport-button-id='{int(vp_button_id)}'"
         if vp_child_button_id is not None:
             diag_attrs += f" data-diag-button-id='{int(vp_child_button_id)}'"
+            resolved_context = diag_vp_child_button_by_id.get(int(vp_child_button_id), {}).get("resolvedContext")
+            if isinstance(resolved_context, dict):
+                room_name = str(resolved_context.get("effectiveRoomName") or "").strip()
+                source_name = str(resolved_context.get("effectiveSourceName") or "").strip()
+                scope_names = f"{room_name} -> {source_name}" if room_name and source_name else room_name
+                if room_name:
+                    diag_attrs += f" data-effective-room-name='{escape(room_name, quote=True)}'"
+                if source_name:
+                    diag_attrs += f" data-effective-source-name='{escape(source_name, quote=True)}'"
+                if scope_names:
+                    diag_attrs += f" data-effective-scope-names='{escape(scope_names, quote=True)}'"
         viewport_button_rows.append(
             _render_button_control(
                 btn,
@@ -1235,6 +1285,12 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const frameIndexRti = frameRaw == null ? null : Number(frameRaw);
   if (vpLayerName) refs.layerName = vpLayerName;
   else if (ownerLayerName) refs.layerName = ownerLayerName;
+  const effectiveRoomName = wrap && wrap.dataset ? String(wrap.dataset.effectiveRoomName || "").trim() : "";
+  const effectiveSourceName = wrap && wrap.dataset ? String(wrap.dataset.effectiveSourceName || "").trim() : "";
+  const effectiveScopeNames = wrap && wrap.dataset ? String(wrap.dataset.effectiveScopeNames || "").trim() : "";
+  if (effectiveRoomName) refs.effectiveRoomName = effectiveRoomName;
+  if (effectiveSourceName) refs.effectiveSourceName = effectiveSourceName;
+  if (effectiveScopeNames) refs.effectiveScopeNames = effectiveScopeNames;
   if (vpButtonId != null && frameIndexRti != null && Number.isFinite(frameIndexRti)) {{
    refs.frameIndexRti = Number(frameIndexRti);
    refs.viewport = `Frame ${{Number(frameIndexRti) + 1}}`;
@@ -3028,6 +3084,12 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const frameIndexRti = frameRaw == null ? null : Number(frameRaw);
   if (vpLayerName) refs.layerName = vpLayerName;
   else if (ownerLayerName) refs.layerName = ownerLayerName;
+  const effectiveRoomName = wrap && wrap.dataset ? String(wrap.dataset.effectiveRoomName || "").trim() : "";
+  const effectiveSourceName = wrap && wrap.dataset ? String(wrap.dataset.effectiveSourceName || "").trim() : "";
+  const effectiveScopeNames = wrap && wrap.dataset ? String(wrap.dataset.effectiveScopeNames || "").trim() : "";
+  if (effectiveRoomName) refs.effectiveRoomName = effectiveRoomName;
+  if (effectiveSourceName) refs.effectiveSourceName = effectiveSourceName;
+  if (effectiveScopeNames) refs.effectiveScopeNames = effectiveScopeNames;
   if (vpButtonId != null && frameIndexRti != null && Number.isFinite(frameIndexRti)) {{
    refs.frameIndexRti = Number(frameIndexRti);
    refs.viewport = `Frame ${{Number(frameIndexRti) + 1}}`;

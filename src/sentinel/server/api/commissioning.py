@@ -140,6 +140,7 @@ def _fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict
                 "effectiveSourceId": refs.get("effectiveSourceId") if isinstance(refs, dict) else None,
                 "effectiveRoomName": refs.get("effectiveRoomName") if isinstance(refs, dict) else None,
                 "effectiveSourceName": refs.get("effectiveSourceName") if isinstance(refs, dict) else None,
+                "effectiveScopeNames": refs.get("effectiveScopeNames") if isinstance(refs, dict) else None,
             }
         )
     return out
