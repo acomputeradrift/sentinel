@@ -799,6 +799,8 @@ def _resolve_button(
     page_links_by_tag: dict[int, sqlite3.Row],
     first_page_target_by_device_id: dict[int, tuple[int, str | None]],
     page_name_by_page_id: dict[int, str],
+    room_name_by_id: dict[int, str],
+    source_name_by_device_id: dict[int, str],
     macro_step_exact_page_by_macro: dict[int, int],
     macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
     room_event_targets_by_room: dict[int, list[tuple[int, int]]],
@@ -818,6 +820,7 @@ def _resolve_button(
     global_room_fallback_id: int | None,
     layer_id: int,
     shared_layer_id: int,
+    layer_name_resolved: str,
     layer_room_id: int | None,
     layer_source_id: int | None,
     page_layer_room_id: int | None,
@@ -825,6 +828,7 @@ def _resolve_button(
     layer_order: int,
     button_order: int,
     frame_number: int,
+    host_viewport_button_id: int | None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -1039,6 +1043,19 @@ def _resolve_button(
         button_order=button_order,
         frame_number=frame_number,
     )
+    page_name_resolved = str(page_name_by_page_id.get(int(page_id)) or "").strip()
+    effective_room_id = (
+        int(layer_room_id) if layer_room_id is not None else (int(page_layer_room_id) if page_layer_room_id is not None else int(page_room_id))
+    )
+    effective_source_id = (
+        int(layer_source_id)
+        if layer_source_id is not None
+        else (int(page_layer_source_id) if page_layer_source_id is not None else (int(page_source_device_id) if page_source_device_id is not None else None))
+    )
+    effective_room_name = str(room_name_by_id.get(effective_room_id) or ("Global" if int(effective_room_id) == 0 else f"Room {effective_room_id}"))
+    effective_source_name = ""
+    if effective_source_id is not None:
+        effective_source_name = str(source_name_by_device_id.get(int(effective_source_id)) or str(int(effective_source_id)))
 
     user_button = {
         "buttonIdentity": {
@@ -1137,6 +1154,18 @@ def _resolve_button(
                 "List": {"enabled": list_enabled, "source": "ObjectData" if list_enabled else None, "objectRef": next(iter(list_object_tokens), None)},
             },
             "pageLink": {"pageLinkId": page_link_id, "targetPageId": target_page_id, "targetPageName": None},
+        },
+        "viewportContext": {
+            "hostViewportButtonId": (int(host_viewport_button_id) if host_viewport_button_id is not None else None),
+            "frameIndexRti": (int(frame_number) if host_viewport_button_id is not None else None),
+        },
+        "resolvedContext": {
+            "pageNameResolved": page_name_resolved,
+            "layerNameResolved": str(layer_name_resolved or ""),
+            "effectiveRoomId": int(effective_room_id),
+            "effectiveSourceId": (int(effective_source_id) if effective_source_id is not None else None),
+            "effectiveRoomName": effective_room_name,
+            "effectiveSourceName": effective_source_name,
         },
     }
 
@@ -1721,16 +1750,18 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         cur,
                         b,
                         device_id,
-                        tag_name_by_id,
-                        variables_by_tag,
-                        button_text_tag_ids,
-                        macros_by_tag,
-                        macro_non_empty_by_id,
-                        page_links_by_device_and_tag,
-                        page_links_by_tag,
-                        first_page_target_by_device_id,
-                        page_name_by_page_id,
-                        macro_step_exact_page_by_macro,
+                    tag_name_by_id,
+                    variables_by_tag,
+                    button_text_tag_ids,
+                    macros_by_tag,
+                    macro_non_empty_by_id,
+                    page_links_by_device_and_tag,
+                    page_links_by_tag,
+                    first_page_target_by_device_id,
+                    page_name_by_page_id,
+                    room_name_by_id,
+                    driver_name_by_device_id,
+                    macro_step_exact_page_by_macro,
                         macro_step_targets_by_macro,
                         room_event_targets_by_room,
                         select_rooms_by_macro,
@@ -1749,6 +1780,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         lowest_nonzero_device_room_id,
                         layer_id=int(layer["LayerId"]),
                         shared_layer_id=int(layer["SharedLayerId"]),
+                        layer_name_resolved=shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
                         layer_room_id=(int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                         layer_source_id=(int(layer["SourceId"]) if layer["SourceId"] is not None else None),
                         page_layer_room_id=None,
@@ -1756,6 +1788,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         layer_order=int(layer["LayerOrder"] or 0),
                         button_order=int(b["ButtonOrder"] or 0),
                         frame_number=int(b["FrameNumber"] or 0),
+                        host_viewport_button_id=None,
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -1775,6 +1808,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             page_links_by_tag,
                             first_page_target_by_device_id,
                             page_name_by_page_id,
+                            room_name_by_id,
+                            driver_name_by_device_id,
                             macro_step_exact_page_by_macro,
                             macro_step_targets_by_macro,
                             room_event_targets_by_room,
@@ -1896,6 +1931,8 @@ def _resolve_viewport_frames(
     page_links_by_tag: dict[int, sqlite3.Row],
     first_page_target_by_device_id: dict[int, tuple[int, str | None]],
     page_name_by_page_id: dict[int, str],
+    room_name_by_id: dict[int, str],
+    source_name_by_device_id: dict[int, str],
     macro_step_exact_page_by_macro: dict[int, int],
     macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
     room_event_targets_by_room: dict[int, list[tuple[int, int]]],
@@ -1958,16 +1995,18 @@ def _resolve_viewport_frames(
                 cur,
                 b,
                 current_device_id,
-                tag_name_by_id,
-                variables_by_tag,
-                button_text_tag_ids,
-                macros_by_tag,
-                macro_non_empty_by_id,
-                page_links_by_device_and_tag,
-                page_links_by_tag,
-                first_page_target_by_device_id,
-                page_name_by_page_id,
-                macro_step_exact_page_by_macro,
+                    tag_name_by_id,
+                    variables_by_tag,
+                    button_text_tag_ids,
+                    macros_by_tag,
+                    macro_non_empty_by_id,
+                    page_links_by_device_and_tag,
+                    page_links_by_tag,
+                    first_page_target_by_device_id,
+                    page_name_by_page_id,
+                    room_name_by_id,
+                    source_name_by_device_id,
+                    macro_step_exact_page_by_macro,
                 macro_step_targets_by_macro,
                 room_event_targets_by_room,
                 select_rooms_by_macro,
@@ -1986,6 +2025,7 @@ def _resolve_viewport_frames(
                 global_room_fallback_id,
                 layer_id=int(layer["LayerId"]),
                 shared_layer_id=int(layer["SharedLayerId"]),
+                layer_name_resolved=shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
                 layer_room_id=(int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                 layer_source_id=(int(layer["SourceId"]) if layer["SourceId"] is not None else None),
                 page_layer_room_id=parent_layer_room_id,
@@ -1993,6 +2033,7 @@ def _resolve_viewport_frames(
                 layer_order=int(layer["LayerOrder"] or 0),
                 button_order=int(b["ButtonOrder"] or 0),
                 frame_number=int(b["FrameNumber"] or 0),
+                host_viewport_button_id=int(viewport_button_id),
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(

@@ -461,6 +461,18 @@
                     "targetPageId": null,
                     "targetPageName": null
                   }
+                },
+                "viewportContext": {
+                  "hostViewportButtonId": null,
+                  "frameIndexRti": null
+                },
+                "resolvedContext": {
+                  "pageNameResolved": "",
+                  "layerNameResolved": "",
+                  "effectiveRoomId": 0,
+                  "effectiveSourceId": 0,
+                  "effectiveRoomName": "Global",
+                  "effectiveSourceName": "Home"
                 }
               }
             ],
@@ -558,6 +570,18 @@
                             "targetPageId": null,
                             "targetPageName": null
                           }
+                        },
+                        "viewportContext": {
+                          "hostViewportButtonId": 0,
+                          "frameIndexRti": 0
+                        },
+                        "resolvedContext": {
+                          "pageNameResolved": "",
+                          "layerNameResolved": "",
+                          "effectiveRoomId": 0,
+                          "effectiveSourceId": 0,
+                          "effectiveRoomName": "Global",
+                          "effectiveSourceName": "Home"
                         }
                       }
                     ]

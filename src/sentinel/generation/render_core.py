@@ -568,6 +568,11 @@ def _page_payload(
     variable_label = app_ui.get("testingPopup", {}).get("variableLabelTemplate", "Variable - {variableType}")
     page_targets = _page_target_map(project_data, project_stem, device_index)
     page_target_indexes = _page_target_indexes(project_data, device_index)
+    layer_name_by_key = {
+        str(layer.get("key") or ""): str(layer.get("name") or "")
+        for layer in _page_layer_state(page)
+        if isinstance(layer, dict)
+    }
 
     page_button_rows: list[str] = []
     for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
@@ -594,7 +599,10 @@ def _page_payload(
                 page_targets,
                 page_target_indexes,
                 extra_style=f"z-index:{100 + layer_order};",
-                extra_attrs=f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'{diag_attrs}",
+                extra_attrs=(
+                    f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
+                    f"data-owner-layer-name='{escape(str(layer_name_by_key.get(str(layer_key), '') or ''))}'{diag_attrs}"
+                ),
                 orientation=orientation,
             )
         )
@@ -640,7 +648,8 @@ def _page_payload(
                     f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
                     f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
                     f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}' "
-                    f"data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}'{diag_attrs}"
+                    f"data-owner-layer-key='{vb['owner_layer_key']}' data-owner-layer-order='{vb['owner_layer_order']}' "
+                    f"data-owner-layer-name='{escape(str(layer_name_by_key.get(str(vb.get('owner_layer_key')), '') or ''))}'{diag_attrs}"
                 ),
                 orientation=orientation,
                 portrait_offset_left=int(vb["portrait_off_left"]),
@@ -1220,6 +1229,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (pageState && pageState.deviceName) refs.deviceName = String(pageState.deviceName || "");
   if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
   if (buttonName) refs.buttonName = buttonName;
+  const ownerLayerName = wrap && wrap.dataset ? String(wrap.dataset.ownerLayerName || "").trim() : "";
+  const vpLayerName = wrap && wrap.dataset ? String(wrap.dataset.vpLayerName || "").trim() : "";
+  const frameRaw = wrap && wrap.dataset ? wrap.dataset.frame : null;
+  const frameIndexRti = frameRaw == null ? null : Number(frameRaw);
+  if (vpLayerName) refs.layerName = vpLayerName;
+  else if (ownerLayerName) refs.layerName = ownerLayerName;
+  if (vpButtonId != null && frameIndexRti != null && Number.isFinite(frameIndexRti)) {{
+   refs.frameIndexRti = Number(frameIndexRti);
+   refs.viewport = `Frame ${{Number(frameIndexRti) + 1}}`;
+  }} else {{
+   refs.viewport = "No";
+  }}
   refs.scope = scope;
   const apexScopeSource = (m.apexScopeSource && typeof m.apexScopeSource === "object") ? m.apexScopeSource : null;
   if (apexScopeSource) {{
@@ -3001,6 +3022,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (pageState && pageState.deviceName) refs.deviceName = String(pageState.deviceName || "");
   if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
   if (buttonName) refs.buttonName = buttonName;
+  const ownerLayerName = wrap && wrap.dataset ? String(wrap.dataset.ownerLayerName || "").trim() : "";
+  const vpLayerName = wrap && wrap.dataset ? String(wrap.dataset.vpLayerName || "").trim() : "";
+  const frameRaw = wrap && wrap.dataset ? wrap.dataset.frame : null;
+  const frameIndexRti = frameRaw == null ? null : Number(frameRaw);
+  if (vpLayerName) refs.layerName = vpLayerName;
+  else if (ownerLayerName) refs.layerName = ownerLayerName;
+  if (vpButtonId != null && frameIndexRti != null && Number.isFinite(frameIndexRti)) {{
+   refs.frameIndexRti = Number(frameIndexRti);
+   refs.viewport = `Frame ${{Number(frameIndexRti) + 1}}`;
+  }} else {{
+   refs.viewport = "No";
+  }}
   refs.scope = scope;
   const apexScopeSource = (m.apexScopeSource && typeof m.apexScopeSource === "object") ? m.apexScopeSource : null;
   if (apexScopeSource) {{

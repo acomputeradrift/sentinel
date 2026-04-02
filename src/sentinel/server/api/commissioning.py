@@ -129,6 +129,8 @@ def _fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict
                 "tag": tags.get(target_key, "NOT_STARTED"),
                 "deviceName": refs.get("deviceName") if isinstance(refs, dict) else None,
                 "pageName": refs.get("pageName") if isinstance(refs, dict) else None,
+                "layerName": refs.get("layerName") if isinstance(refs, dict) else None,
+                "viewport": refs.get("viewport") if isinstance(refs, dict) else None,
                 "buttonName": refs.get("buttonName") if isinstance(refs, dict) else None,
                 "scope": refs.get("scope") if isinstance(refs, dict) else None,
                 "targetName": rec.target.get("targetName"),

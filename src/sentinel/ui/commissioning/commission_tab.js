@@ -401,6 +401,8 @@ function _upsertFailRecord(fails, payload) {
     tag: String(prev?.tag || "NOT_STARTED"),
     deviceName: String(refs?.deviceName || prev?.deviceName || ""),
     pageName: String(refs?.pageName || prev?.pageName || ""),
+    layerName: String(refs?.layerName || prev?.layerName || ""),
+    viewport: String(refs?.viewport || prev?.viewport || ""),
     buttonName: String(refs?.buttonName || prev?.buttonName || ""),
     scope: String(refs?.scope || prev?.scope || ""),
     targetName: String(payload?.targetName || prev?.targetName || ""),

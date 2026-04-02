@@ -255,6 +255,21 @@ function formatEffectiveScope(taskLike) {
   return `${roomLabel} -> ${Number(sourceId)}`;
 }
 
+function formatViewport(taskLike) {
+  const task = taskLike && typeof taskLike === "object" ? taskLike : {};
+  const explicit = String(task.viewport || "").trim();
+  if (explicit) return explicit;
+  const frameIndexRti = task.frameIndexRti;
+  if (frameIndexRti != null && Number.isFinite(Number(frameIndexRti))) return `Frame ${Number(frameIndexRti) + 1}`;
+  const raw = String(task.targetKey || "").trim();
+  const parts = raw ? raw.split(":") : [];
+  if ((parts[0] || "") === "vpbtn" && parts.length >= 7) {
+    const frame = Number(parts[4]);
+    if (Number.isFinite(frame)) return `Frame ${frame + 1}`;
+  }
+  return "No";
+}
+
 function formatUtcTimestamp(ts) {
   const raw = String(ts || "").trim();
   if (!raw) return "";
@@ -522,6 +537,16 @@ function renderTaskList(projectId, fails) {
     const tdPage = document.createElement("td");
     tdPage.textContent = String(rec?.pageName || (ident.page ? `p${ident.page}` : ""));
 
+    const tdLayer = document.createElement("td");
+    tdLayer.textContent = String(rec?.layerName || "");
+
+    const tdViewport = document.createElement("td");
+    tdViewport.textContent = formatViewport({
+      targetKey,
+      viewport: rec?.viewport,
+      frameIndexRti: rec?.frameIndexRti,
+    });
+
     const tdButton = document.createElement("td");
     tdButton.textContent = String(rec?.buttonName || (ident.button ? `b${ident.button}` : ""));
 
@@ -547,10 +572,12 @@ function renderTaskList(projectId, fails) {
     tr.appendChild(tdAt);
     tr.appendChild(tdDevice);
     tr.appendChild(tdPage);
+    tr.appendChild(tdLayer);
+    tr.appendChild(tdViewport);
     tr.appendChild(tdButton);
     tr.appendChild(tdTarget);
-    tr.appendChild(tdScope);
     tr.appendChild(tdResolved);
+    tr.appendChild(tdScope);
     tbody.appendChild(tr);
 
     diagRt.tasksByKey.set(targetKey, {
@@ -559,6 +586,9 @@ function renderTaskList(projectId, fails) {
       lastTestedAtUtc: String(rec?.lastTestedAtUtc || ""),
       deviceName: String(rec?.deviceName || ""),
       pageName: String(rec?.pageName || ""),
+      layerName: String(rec?.layerName || ""),
+      viewport: String(rec?.viewport || ""),
+      frameIndexRti: rec?.frameIndexRti,
       buttonName: String(rec?.buttonName || ""),
       targetName: String(rec?.targetName || ""),
       scope: String(rec?.scope || ""),
@@ -746,6 +776,8 @@ function _makeTaskRow(projectId, task) {
 
   const tdDevice = document.createElement("td");
   const tdPage = document.createElement("td");
+  const tdLayer = document.createElement("td");
+  const tdViewport = document.createElement("td");
   const tdButton = document.createElement("td");
   const tdScope = document.createElement("td");
   const tdTarget = document.createElement("td");
@@ -754,6 +786,8 @@ function _makeTaskRow(projectId, task) {
 
   tdDevice.textContent = String(task?.deviceName || (ident.device ? `d${ident.device}` : ""));
   tdPage.textContent = String(task?.pageName || (ident.page ? `p${ident.page}` : ""));
+  tdLayer.textContent = String(task?.layerName || "");
+  tdViewport.textContent = formatViewport(task);
   tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
   tdScope.textContent = formatEffectiveScope(task);
   tdTarget.textContent = normalizeTargetLabel(task?.targetName || ident.testTarget || "");
@@ -764,12 +798,14 @@ function _makeTaskRow(projectId, task) {
   tr.appendChild(tdAt);
   tr.appendChild(tdDevice);
   tr.appendChild(tdPage);
+  tr.appendChild(tdLayer);
+  tr.appendChild(tdViewport);
   tr.appendChild(tdButton);
-  tr.appendChild(tdScope);
   tr.appendChild(tdTarget);
   tr.appendChild(tdResolved);
+  tr.appendChild(tdScope);
 
-  return { tr, sel, tdAt, tdDevice, tdPage, tdButton, tdScope, tdTarget, tdResolved };
+  return { tr, sel, tdAt, tdDevice, tdPage, tdLayer, tdViewport, tdButton, tdScope, tdTarget, tdResolved };
 }
 
 function _updateTaskRowDom(row, task) {
@@ -777,6 +813,8 @@ function _updateTaskRowDom(row, task) {
   row.tdAt.textContent = formatUtcTimestamp(task?.lastTestedAtUtc) || "";
   row.tdDevice.textContent = String(task?.deviceName || "");
   row.tdPage.textContent = String(task?.pageName || "");
+  row.tdLayer.textContent = String(task?.layerName || "");
+  row.tdViewport.textContent = formatViewport(task);
   row.tdButton.textContent = String(task?.buttonName || "");
   row.tdScope.textContent = formatEffectiveScope(task);
   row.tdTarget.textContent = normalizeTargetLabel(task?.targetName || "");
