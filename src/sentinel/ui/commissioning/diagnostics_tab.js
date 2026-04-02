@@ -209,6 +209,13 @@ function normalizeTargetLabel(targetName) {
   return lower;
 }
 
+function _isLikelyTargetLabel(label) {
+  const n = normalizeTargetLabel(label);
+  if (!n) return false;
+  if (n.startsWith("variable - ")) return true;
+  return n === "macro" || n === "macro step" || n === "pagelink" || n === "text" || n === "command" || n === "icon" || n === "bitmap";
+}
+
 function _isTruePageLinkTarget(targetName, targetKey) {
   const name = normalizeTargetLabel(targetName);
   if (name === "pagelink" || name === "pageLink") return true;
@@ -268,6 +275,47 @@ function formatViewport(taskLike) {
     if (Number.isFinite(frame)) return `Frame ${frame + 1}`;
   }
   return "No";
+}
+
+function normalizeDiagnosticsTask(rawTask) {
+  const rec = rawTask && typeof rawTask === "object" ? rawTask : {};
+  const targetKey = String(rec.targetKey || "");
+  const keyTarget = normalizeTargetLabel(_targetNameFromTargetKey(targetKey));
+  const rawTarget = normalizeTargetLabel(rec.targetName || "");
+  const rawViewport = String(rec.viewport || "").trim();
+  const viewportLooksValid = !rawViewport || /^no$/i.test(rawViewport) || /^frame\s+\d+$/i.test(rawViewport);
+  const viewportAsTarget = normalizeTargetLabel(rawViewport);
+
+  let targetName = keyTarget || rawTarget;
+  if (!targetName && _isLikelyTargetLabel(viewportAsTarget)) targetName = viewportAsTarget;
+
+  let lastFailNote = String(rec.lastFailNote || "");
+  if (!lastFailNote) {
+    const rawTargetText = String(rec.targetName || "").trim();
+    const targetWasRepurposed = rawTargetText && targetName && normalizeTargetLabel(rawTargetText) !== targetName;
+    if (targetWasRepurposed || (rawTargetText && !_isLikelyTargetLabel(rawTargetText))) {
+      lastFailNote = rawTargetText;
+    }
+  }
+
+  let buttonName = String(rec.buttonName || "");
+  let effectiveScopeText = String(rec.effectiveScopeNames || "").trim();
+  if (!effectiveScopeText) effectiveScopeText = formatEffectiveScope(rec);
+  if (!effectiveScopeText && buttonName.includes("->")) {
+    effectiveScopeText = buttonName;
+    buttonName = "";
+  }
+
+  const viewport = viewportLooksValid ? rawViewport : "";
+  return {
+    ...rec,
+    targetKey,
+    targetName,
+    viewport,
+    buttonName,
+    lastFailNote,
+    __effectiveScopeText: effectiveScopeText,
+  };
 }
 
 function formatUtcTimestamp(ts) {
@@ -494,11 +542,12 @@ function renderTaskList(projectId, fails) {
   rows.sort((a, b) => String(b?.lastTestedAtUtc || "").localeCompare(String(a?.lastTestedAtUtc || "")));
 
   for (const rec of rows) {
-    const targetKey = String(rec?.targetKey || "");
+    const task = normalizeDiagnosticsTask(rec);
+    const targetKey = String(task?.targetKey || "");
     const ident = parseIdentity(targetKey);
-    const tag = tagDisplayFromEnum(rec?.tag || "NOT_STARTED");
-    const at = formatUtcTimestamp(rec?.lastTestedAtUtc);
-    const note = String(rec?.lastFailNote || "");
+    const tag = tagDisplayFromEnum(task?.tag || "NOT_STARTED");
+    const at = formatUtcTimestamp(task?.lastTestedAtUtc);
+    const note = String(task?.lastFailNote || "");
 
     const tr = document.createElement("tr");
 
@@ -532,37 +581,37 @@ function renderTaskList(projectId, fails) {
     tdAt.textContent = at || "";
 
     const tdDevice = document.createElement("td");
-    tdDevice.textContent = String(rec?.deviceName || (ident.device ? `d${ident.device}` : ""));
+    tdDevice.textContent = String(task?.deviceName || (ident.device ? `d${ident.device}` : ""));
 
     const tdPage = document.createElement("td");
-    tdPage.textContent = String(rec?.pageName || (ident.page ? `p${ident.page}` : ""));
+    tdPage.textContent = String(task?.pageName || (ident.page ? `p${ident.page}` : ""));
 
     const tdLayer = document.createElement("td");
-    tdLayer.textContent = String(rec?.layerName || "");
+    tdLayer.textContent = String(task?.layerName || "");
 
     const tdViewport = document.createElement("td");
     tdViewport.textContent = formatViewport({
       targetKey,
-      viewport: rec?.viewport,
-      frameIndexRti: rec?.frameIndexRti,
+      viewport: task?.viewport,
+      frameIndexRti: task?.frameIndexRti,
     });
 
     const tdButton = document.createElement("td");
-    tdButton.textContent = String(rec?.buttonName || (ident.button ? `b${ident.button}` : ""));
+    tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
 
     const tdTarget = document.createElement("td");
-    tdTarget.textContent = normalizeTargetLabel(rec?.targetName || ident.testTarget || "");
+    tdTarget.textContent = normalizeTargetLabel(task?.targetName || ident.testTarget || "");
 
     const tdScope = document.createElement("td");
-    tdScope.textContent = formatEffectiveScope({
+    tdScope.textContent = String(task?.__effectiveScopeText || formatEffectiveScope({
       targetKey,
-      targetName: String(rec?.targetName || ident.testTarget || ""),
-      scopeType: rec?.scopeType,
-      effectiveRoomId: rec?.effectiveRoomId,
-      effectiveSourceId: rec?.effectiveSourceId,
-      effectiveRoomName: rec?.effectiveRoomName,
-      effectiveSourceName: rec?.effectiveSourceName,
-    });
+      targetName: String(task?.targetName || ident.testTarget || ""),
+      scopeType: task?.scopeType,
+      effectiveRoomId: task?.effectiveRoomId,
+      effectiveSourceId: task?.effectiveSourceId,
+      effectiveRoomName: task?.effectiveRoomName,
+      effectiveSourceName: task?.effectiveSourceName,
+    }));
 
     const tdResolved = document.createElement("td");
     tdResolved.className = "diag-muted";
@@ -583,21 +632,22 @@ function renderTaskList(projectId, fails) {
     diagRt.tasksByKey.set(targetKey, {
       targetKey,
       tag: tagEnumFromDisplay(tag),
-      lastTestedAtUtc: String(rec?.lastTestedAtUtc || ""),
-      deviceName: String(rec?.deviceName || ""),
-      pageName: String(rec?.pageName || ""),
-      layerName: String(rec?.layerName || ""),
-      viewport: String(rec?.viewport || ""),
-      frameIndexRti: rec?.frameIndexRti,
-      buttonName: String(rec?.buttonName || ""),
-      targetName: String(rec?.targetName || ""),
-      scope: String(rec?.scope || ""),
-      scopeType: rec?.scopeType,
-      effectiveRoomId: rec?.effectiveRoomId,
-      effectiveSourceId: rec?.effectiveSourceId,
-      effectiveRoomName: rec?.effectiveRoomName,
-      effectiveSourceName: rec?.effectiveSourceName,
-      lastFailNote: String(rec?.lastFailNote || ""),
+      lastTestedAtUtc: String(task?.lastTestedAtUtc || ""),
+      deviceName: String(task?.deviceName || ""),
+      pageName: String(task?.pageName || ""),
+      layerName: String(task?.layerName || ""),
+      viewport: String(task?.viewport || ""),
+      frameIndexRti: task?.frameIndexRti,
+      buttonName: String(task?.buttonName || ""),
+      targetName: String(task?.targetName || ""),
+      scope: String(task?.scope || ""),
+      scopeType: task?.scopeType,
+      effectiveRoomId: task?.effectiveRoomId,
+      effectiveSourceId: task?.effectiveSourceId,
+      effectiveRoomName: task?.effectiveRoomName,
+      effectiveSourceName: task?.effectiveSourceName,
+      lastFailNote: String(task?.lastFailNote || ""),
+      __effectiveScopeText: String(task?.__effectiveScopeText || ""),
     });
     diagRt.rowByKey.set(targetKey, { tr, sel });
   }
@@ -789,7 +839,7 @@ function _makeTaskRow(projectId, task) {
   tdLayer.textContent = String(task?.layerName || "");
   tdViewport.textContent = formatViewport(task);
   tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
-  tdScope.textContent = formatEffectiveScope(task);
+  tdScope.textContent = String(task?.__effectiveScopeText || formatEffectiveScope(task));
   tdTarget.textContent = normalizeTargetLabel(task?.targetName || ident.testTarget || "");
   const note = String(task?.lastFailNote || "");
   tdResolved.textContent = note || "";
@@ -816,7 +866,7 @@ function _updateTaskRowDom(row, task) {
   row.tdLayer.textContent = String(task?.layerName || "");
   row.tdViewport.textContent = formatViewport(task);
   row.tdButton.textContent = String(task?.buttonName || "");
-  row.tdScope.textContent = formatEffectiveScope(task);
+  row.tdScope.textContent = String(task?.__effectiveScopeText || formatEffectiveScope(task));
   row.tdTarget.textContent = normalizeTargetLabel(task?.targetName || "");
   const note = String(task?.lastFailNote || "");
   row.tdResolved.textContent = note || "";
