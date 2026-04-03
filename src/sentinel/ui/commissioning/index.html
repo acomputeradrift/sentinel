@@ -201,19 +201,19 @@
               </section>
 
               <div class="commission-activity diag-table-wrap shared-results-group" data-testid="commission-activity" id="commissionActivity">
-                <div class="activity-head">
-                  <h2 style="margin: 0">Live Status</h2>
-                  <div class="sub">Chronological (newest first)</div>
-                </div>
-                <table class="activity-table diag-table shared-status-table">
+              <div class="activity-head">
+                <h2 style="margin: 0">Live Status</h2>
+                <div class="sub" aria-hidden="true"></div>
+              </div>
+                <table class="activity-table diag-table shared-status-table" data-default-sort-key="timestamp" data-default-sort-direction="desc">
                   <thead>
                     <tr>
-                      <th>Timestamp (UTC)</th>
-                      <th>Device</th>
-                      <th>Page Name</th>
-                      <th>Button Name</th>
-                      <th>Test Target</th>
-                      <th>Status</th>
+                      <th data-sortable="true" data-sort-key="timestamp" aria-sort="descending">Timestamp</th>
+                      <th data-sortable="true" data-sort-key="device" aria-sort="none">Device</th>
+                      <th data-sortable="true" data-sort-key="pageName" aria-sort="none">Page Name</th>
+                      <th data-sortable="true" data-sort-key="buttonName" aria-sort="none">Button Identity</th>
+                      <th data-sortable="true" data-sort-key="testTarget" aria-sort="none">Test Target</th>
+                      <th data-sortable="true" data-sort-key="passFail" aria-sort="none">Pass/Fail</th>
                     </tr>
                   </thead>
                   <tbody id="commissionActivityBody">
@@ -257,15 +257,11 @@
                         <div class="piecard-value">0%</div>
                         <div class="piecard-sub">0/0 tested</div>
                       </div>
-                      <div class="diag-pie-legend" aria-hidden="true">
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
-                      </div>
+                      <div class="diag-pie-legend" aria-hidden="true"></div>
                     </div>
                   </section>
                   <section class="piecard diag-pie-card">
-                    <div class="piecard-title diag-pie-title">Failure Types<span class="piecard-count">12/20</span></div>
+                    <div class="piecard-title diag-pie-title">Failure Types<span class="piecard-count"></span></div>
                     <div class="piecard-body">
                       <div class="pie diag-pie-placeholder" aria-label="Failure Types placeholder"></div>
                       <div class="piecard-metrics">
@@ -291,9 +287,9 @@
                         <div class="piecard-sub">0/0 tested</div>
                       </div>
                       <div class="diag-pie-legend" aria-hidden="true">
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">placeholder line</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">Not Started</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">In Progress</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">Complete</span></div>
                       </div>
                     </div>
                   </section>
@@ -306,19 +302,19 @@
                   <h2 style="margin: 0">Task List</h2>
                   <div class="sub">&nbsp;</div>
                 </div>
-                <table class="diag-table shared-status-table" data-testid="diagnostics-task-table" id="diagnosticsTaskTable">
+                <table class="diag-table shared-status-table" data-testid="diagnostics-task-table" id="diagnosticsTaskTable" data-default-sort-key="timestamp" data-default-sort-direction="desc">
                   <thead>
                     <tr>
-                      <th>Status</th>
-                      <th>Timestamp</th>
-                      <th>Device</th>
-                      <th>Page Name</th>
-                      <th>Layer</th>
-                      <th>Viewport</th>
-                      <th>Button Identity</th>
-                      <th>Test Target</th>
-                      <th>Effective Scope</th>
-                      <th>Tech Notes</th>
+                      <th data-sortable="true" data-sort-key="status" aria-sort="none">Status</th>
+                      <th data-sortable="true" data-sort-key="timestamp" aria-sort="descending">Timestamp</th>
+                      <th data-sortable="true" data-sort-key="device" aria-sort="none">Device</th>
+                      <th data-sortable="true" data-sort-key="pageName" aria-sort="none">Page Name</th>
+                      <th data-sortable="true" data-sort-key="layer" aria-sort="none">Layer</th>
+                      <th data-sortable="true" data-sort-key="viewport" aria-sort="none">Viewport</th>
+                      <th data-sortable="true" data-sort-key="buttonIdentity" aria-sort="none">Button Identity</th>
+                      <th data-sortable="true" data-sort-key="testTarget" aria-sort="none">Test Target</th>
+                      <th data-sortable="true" data-sort-key="effectiveScope" aria-sort="none">Effective Scope</th>
+                      <th data-sortable="true" data-sort-key="techNotes" aria-sort="none">Tech Notes</th>
                     </tr>
                   </thead>
                   <tbody id="diagnosticsTaskBody">
