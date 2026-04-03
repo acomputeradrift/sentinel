@@ -145,33 +145,32 @@ function ensureCommissionPies() {
   const legacy = shell.querySelector(".commission-kpis");
   if (legacy) legacy.remove();
 
-  let pies = document.getElementById("commissionPies");
-  if (pies) return pies;
+  const pies = document.getElementById("commissionPies");
+  if (!pies) return null;
 
-  pies = document.createElement("div");
-  pies.className = "commission-pies";
-  pies.id = "commissionPies";
-  pies.dataset.testid = "commission-pies";
-
-  shell.prepend(pies);
-
+  for (const card of Array.from(pies.querySelectorAll(":scope > .piecard"))) {
+    const id = String(card.id || "");
+    if (id) continue;
+    card.remove();
+  }
   return pies;
 }
 
 function _pieCardInnerHtml({ title, valueId, subId, pieId }) {
   return `
-    <div class="piecard-title">${title}</div>
+    <div class="piecard-title">${title}<span class="piecard-count"></span></div>
     <div class="piecard-body">
       <div class="pie" id="${pieId}" aria-label="${title}"></div>
       <div class="piecard-metrics">
         <div class="piecard-value" id="${valueId}">0%</div>
-        <div class="piecard-sub" id="${subId}">0/0 passed</div>
+        <div class="piecard-sub" id="${subId}">0/0 tested</div>
       </div>
+      <div class="commission-legend-spacer" aria-hidden="true"></div>
     </div>
   `.trim();
 }
 
-function ensurePieCard({ key, title, testId, color }) {
+function ensurePieCard({ key, title, testId, color, allowCreate }) {
   const pies = ensureCommissionPies();
   if (!pies) return null;
 
@@ -184,6 +183,8 @@ function ensurePieCard({ key, title, testId, color }) {
     if (color) card.style.setProperty("--pie-fill", color);
     return card;
   }
+
+  if (allowCreate === false) return null;
 
   card = document.createElement("section");
   card.className = "piecard";
@@ -217,7 +218,9 @@ function setPieCardProgress(card, { passed, total }) {
   if (value) value.textContent = `${Math.round(pct01 * 100)}%`;
 
   const sub = card.querySelector(".piecard-sub");
-  if (sub) sub.textContent = `${p}/${t} passed`;
+  if (sub) sub.textContent = `${p}/${t} tested`;
+  const count = card.querySelector(".piecard-count");
+  if (count) count.textContent = `${p}/${t}`;
 }
 
 function setPieCardNone(card) {
@@ -233,7 +236,11 @@ function setPieCardNone(card) {
     applyStyleVars(pie, pctStyle(0));
   }
   const value = card.querySelector(".piecard-value");
-  if (value) value.textContent = "None";
+  if (value) value.textContent = "0%";
+  const sub = card.querySelector(".piecard-sub");
+  if (sub) sub.textContent = "0/0 tested";
+  const count = card.querySelector(".piecard-count");
+  if (count) count.textContent = "0/0";
 }
 
 function updatePies(progress) {
@@ -242,14 +249,21 @@ function updatePies(progress) {
   const driver = progress?.eventSections?.driver?.counts || {};
   const devices = Array.isArray(progress?.devices) ? progress.devices : [];
 
-  const projectCard = ensurePieCard({ key: "project", title: "Project Completion", testId: "commission-pie-project", color: "#7c3aed" });
+  const projectCard = ensurePieCard({
+    key: "project",
+    title: "Project Completion",
+    testId: "commission-pie-project",
+    color: "#fcb040",
+    allowCreate: false,
+  });
   setPieCardProgress(projectCard, { passed: counts.pass || 0, total: counts.totalTargets || 0 });
 
   const systemCard = ensurePieCard({
     key: "system-events",
     title: "System Events Completion",
     testId: "commission-pie-system-events",
-    color: "#177bb5",
+    color: "#58585a",
+    allowCreate: false,
   });
   if (Number(system.totalTargets || 0) <= 0) setPieCardNone(systemCard);
   else setPieCardProgress(systemCard, { passed: system.pass || 0, total: system.totalTargets || 0 });
@@ -258,7 +272,8 @@ function updatePies(progress) {
     key: "driver-events",
     title: "Driver Events Completion",
     testId: "commission-pie-driver-events",
-    color: "#16a34a",
+    color: "#a7a9ac",
+    allowCreate: false,
   });
   if (Number(driver.totalTargets || 0) <= 0) setPieCardNone(driverCard);
   else setPieCardProgress(driverCard, { passed: driver.pass || 0, total: driver.totalTargets || 0 });
@@ -276,7 +291,8 @@ function updatePies(progress) {
       key,
       title: displayName,
       testId: `commission-pie-device-${deviceId}`,
-      color: "#f59e0b",
+      color: "#fcb040",
+      allowCreate: true,
     });
     seen.add(`commissionPie-${key}`);
     setPieCardProgress(card, { passed: d?.counts?.pass || 0, total: totalTargets });

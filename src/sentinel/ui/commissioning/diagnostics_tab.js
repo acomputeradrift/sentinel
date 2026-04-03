@@ -36,23 +36,14 @@ function _selectedText(selectId) {
 }
 
 function updateDiagnosticsTitle() {
-  const card = document.getElementById("diagnosticsCard");
-  if (!card) return;
-  const h2 = card.querySelector("h2");
-  if (!h2) return;
   const clientName = _selectedText("clientSelect");
   const projectName = _selectedText("projectSelect");
-  const suffix = clientName || projectName ? ` — ${clientName || "(client)"} / ${projectName || "(project)"}` : "";
-  h2.textContent = "Diagnostics";
-
-  let line = document.getElementById("diagnosticsClientProjectLine");
-  if (!line) {
-    line = document.createElement("div");
-    line.id = "diagnosticsClientProjectLine";
-    line.className = "diag-client-project";
-    h2.insertAdjacentElement("afterend", line);
-  }
-  line.textContent = clientName || projectName ? `${clientName || "(client)"} / ${projectName || "(project)"}` : "";
+  const filenameEl = document.getElementById("lastGeneratedLabel");
+  const filename = String(filenameEl && filenameEl.textContent ? filenameEl.textContent : "").trim();
+  const titleEl = document.querySelector("#panel-diagnostics .panel-context .panel-context-title");
+  if (!titleEl) return;
+  const parts = [clientName, projectName, filename].map((s) => String(s || "").trim()).filter(Boolean);
+  titleEl.textContent = parts.length ? parts.join(" -> ") : "Client -> Project -> Filename";
 }
 
 function isDiagnosticsVisible() {
@@ -289,51 +280,22 @@ function formatUtcTimestamp(ts) {
 function _ensurePieDom() {
   const host = document.getElementById("diagnosticsSummary");
   if (!host) return null;
-
-  host.textContent = "";
   host.classList.add("diag-pies-host");
-
-  const wrapper = document.createElement("div");
-  wrapper.className = "diag-pies";
-  wrapper.setAttribute("data-testid", "diagnostics-pies");
-
-  const makeCard = (title, testid) => {
-    const card = document.createElement("div");
-    card.className = "diag-pie-card";
+  const cards = Array.from(host.querySelectorAll(":scope > .piecard"));
+  const mapCard = (idx, testid) => {
+    const card = cards[idx] || null;
+    if (!card) return null;
     card.setAttribute("data-testid", testid);
-
-    const t = document.createElement("div");
-    t.className = "diag-pie-title";
-    t.textContent = title;
-
-    const svgWrap = document.createElement("div");
-    svgWrap.className = "diag-pie-svgwrap";
-
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 120 120");
-    svg.setAttribute("width", "120");
-    svg.setAttribute("height", "120");
-    svg.classList.add("diag-pie");
-
-    const legend = document.createElement("div");
-    legend.className = "diag-pie-legend";
-
-    svgWrap.appendChild(svg);
-    card.appendChild(t);
-    card.appendChild(svgWrap);
-    card.appendChild(legend);
-
-    return { card, svg, legend };
+    const pie = card.querySelector(".pie");
+    const legend = card.querySelector(".diag-pie-legend");
+    if (!pie || !legend) return null;
+    return { card, pie, legend };
   };
 
-  const failureRate = makeCard("Failure Rate", "diagnostics-pie-failure-rate");
-  const failureTypes = makeCard("Failure Types", "diagnostics-pie-failure-types");
-  const taskCompletion = makeCard("Task Completion", "diagnostics-pie-task-completion");
-
-  wrapper.appendChild(failureRate.card);
-  wrapper.appendChild(failureTypes.card);
-  wrapper.appendChild(taskCompletion.card);
-  host.appendChild(wrapper);
+  const failureRate = mapCard(0, "diagnostics-pie-failure-rate");
+  const failureTypes = mapCard(1, "diagnostics-pie-failure-types");
+  const taskCompletion = mapCard(2, "diagnostics-pie-task-completion");
+  if (!failureRate || !failureTypes || !taskCompletion) return null;
 
   const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
   if (legacy) legacy.textContent = "";
@@ -356,30 +318,20 @@ function _piePath(cx, cy, r, startAngle, endAngle) {
   return `M ${cx} ${cy} L ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y} Z`;
 }
 
-function renderPie(svg, legendEl, slices, centerLabel) {
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
+function renderPie(pieEl, legendEl, slices, centerLabel) {
   legendEl.innerHTML = "";
 
   const total = slices.reduce((a, s) => a + (Number(s.value) || 0), 0);
   const safeTotal = total || 1;
-
-  const bg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-  bg.setAttribute("cx", "60");
-  bg.setAttribute("cy", "60");
-  bg.setAttribute("r", "52");
-  bg.setAttribute("fill", "#e7eef5");
-  svg.appendChild(bg);
-
-  let angle = 0;
+  let consumed = 0;
+  const slicesCss = [];
   for (const s of slices) {
     const v = Number(s.value) || 0;
     if (v > 0) {
-      const span = (v / safeTotal) * 360;
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", _piePath(60, 60, 52, angle, angle + span));
-      path.setAttribute("fill", String(s.color || "#177bb5"));
-      svg.appendChild(path);
-      angle += span;
+      const start = Math.round((consumed / safeTotal) * 1000) / 10;
+      consumed += v;
+      const end = Math.round((consumed / safeTotal) * 1000) / 10;
+      slicesCss.push(`${String(s.color || "var(--brand-dark-gray)")} ${start}% ${end}%`);
     }
 
     const row = document.createElement("div");
@@ -396,24 +348,27 @@ function renderPie(svg, legendEl, slices, centerLabel) {
     legendEl.appendChild(row);
   }
 
-  const hole = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-  hole.setAttribute("cx", "60");
-  hole.setAttribute("cy", "60");
-  hole.setAttribute("r", "30");
-  hole.setAttribute("fill", "#ffffff");
-  svg.appendChild(hole);
+  if (!slicesCss.length) slicesCss.push("var(--pie-track) 0% 100%");
+  pieEl.style.background = `conic-gradient(${slicesCss.join(", ")})`;
 
-  if (centerLabel) {
-    const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    t.setAttribute("x", "60");
-    t.setAttribute("y", "64");
-    t.setAttribute("text-anchor", "middle");
-    t.setAttribute("font-size", "12");
-    t.setAttribute("font-weight", "700");
-    t.setAttribute("fill", "#173246");
-    t.textContent = centerLabel;
-    svg.appendChild(t);
+  let center = pieEl.querySelector(".diag-center-label");
+  if (!center) {
+    center = document.createElement("span");
+    center.className = "diag-center-label";
+    center.style.position = "absolute";
+    center.style.inset = "0";
+    center.style.display = "grid";
+    center.style.placeItems = "center";
+    center.style.fontFamily = "Segoe UI, Tahoma, sans-serif";
+    center.style.fontSize = "18px";
+    center.style.fontWeight = "700";
+    center.style.color = "#58585a";
+    center.style.pointerEvents = "none";
+    center.style.zIndex = "2";
+    pieEl.style.position = "relative";
+    pieEl.appendChild(center);
   }
+  center.textContent = centerLabel || "";
 }
 
 async function updateFailTag(projectId, targetKey, tag) {
@@ -654,7 +609,7 @@ function renderTaskList(projectId, fails) {
 
     const tdTag = document.createElement("td");
     const sel = document.createElement("select");
-    sel.className = "diag-tag";
+    sel.className = "status-template-select";
     for (const optVal of tagOptions()) {
       const opt = document.createElement("option");
       opt.value = optVal;
@@ -765,8 +720,6 @@ function renderTaskList(projectId, fails) {
 }
 
 function clearDiagnosticsView() {
-  const host = document.getElementById("diagnosticsSummary");
-  if (host) host.textContent = "";
   const legacy = document.getElementById("diagnosticsFailTypeBreakdown");
   if (legacy) legacy.textContent = "";
   diag$("diagnosticsTaskBody").innerHTML = "";
@@ -853,11 +806,11 @@ function updateFailureRatePie() {
   const okTargets = Math.max(0, totalTargets - firstTimeFailTargets);
   const failPct = totalTargets ? Math.round((firstTimeFailTargets / totalTargets) * 1000) / 10 : 0;
   renderPie(
-    pie.failureRate.svg,
+    pie.failureRate.pie,
     pie.failureRate.legend,
     [
-      { label: "Fail", value: firstTimeFailTargets, color: "#ef4444" },
-      { label: "Pass", value: okTargets, color: "#177bb5" },
+      { label: "Fail", value: firstTimeFailTargets, color: "var(--brand-orange)" },
+      { label: "Pass", value: okTargets, color: "var(--brand-dark-gray)" },
     ],
     totalTargets ? `${failPct}%` : ""
   );
@@ -890,14 +843,14 @@ function updateFailureTypesPie() {
     counts[key] += 1;
   }
   const slices = [
-    { label: "text", value: counts.text, color: "#7cc4ea" },
-    { label: "macros", value: counts.macros, color: "#177bb5" },
-    { label: "macroSteps", value: counts.macroSteps, color: "#0f5d8a" },
-    { label: "variables", value: counts.variables, color: "#8b5cf6" },
-    { label: "graphics", value: counts.graphics, color: "#f59e0b" },
-    { label: "pageLink", value: counts.pageLink, color: "#10b981" },
+    { label: "text", value: counts.text, color: "var(--brand-orange)" },
+    { label: "macros", value: counts.macros, color: "var(--brand-dark-gray)" },
+    { label: "macroSteps", value: counts.macroSteps, color: "var(--brand-light-gray)" },
+    { label: "variables", value: counts.variables, color: "var(--brand-green)" },
+    { label: "graphics", value: counts.graphics, color: "var(--brand-black)" },
+    { label: "pageLink", value: counts.pageLink, color: "#177bb5" },
   ];
-  renderPie(pie.failureTypes.svg, pie.failureTypes.legend, slices, "");
+  renderPie(pie.failureTypes.pie, pie.failureTypes.legend, slices, "");
 }
 
 function updateTaskCompletionPie() {
@@ -910,12 +863,12 @@ function updateTaskCompletionPie() {
   const total = tasks.length;
   const donePct = total ? Math.round((done / total) * 1000) / 10 : 0;
   renderPie(
-    pie.taskCompletion.svg,
+    pie.taskCompletion.pie,
     pie.taskCompletion.legend,
     [
-      { label: "Not Started", value: notStarted, color: "#f59e0b" },
-      { label: "In Progress", value: inProgress, color: "#177bb5" },
-      { label: "Complete", value: done, color: "#10b981" },
+      { label: "Not Started", value: notStarted, color: "var(--brand-orange)" },
+      { label: "In Progress", value: inProgress, color: "var(--brand-dark-gray)" },
+      { label: "Complete", value: done, color: "var(--brand-light-gray)" },
     ],
     total ? `${donePct}%` : ""
   );
@@ -929,7 +882,7 @@ function _makeTaskRow(projectId, task) {
 
   const tdTag = document.createElement("td");
   const sel = document.createElement("select");
-  sel.className = "diag-tag";
+  sel.className = "status-template-select";
   for (const optVal of tagOptions()) {
     const opt = document.createElement("option");
     opt.value = optVal;

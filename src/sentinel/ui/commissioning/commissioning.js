@@ -765,7 +765,7 @@ async function run() {
   try {
     window.dispatchEvent(new Event("sentinel:commissioning-hydrated"));
   } catch (_e) {}
-  setActiveTab("manage");
+  setActiveTab("commission");
 }
 
 run();

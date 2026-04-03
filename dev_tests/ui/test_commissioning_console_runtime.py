@@ -677,8 +677,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
         expect(page.get_by_role("heading", name="Sentinel Console")).to_be_visible()
-        expect(page.locator("#panel-manage")).to_be_visible()
-        expect(page.locator("#manageClientCard")).to_be_visible()
+        expect(page.locator("#panel-commission")).to_be_visible()
+        expect(page.locator("#panel-manage")).to_be_hidden()
+        expect(page.locator("#manageClientCard")).to_be_hidden()
         expect(page.locator("#manageProjectCard")).to_be_hidden()
         expect(page.locator("#manageProjectDetails")).to_be_hidden()
 
@@ -688,6 +689,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#panel-manage [data-testid='fails-list']")).to_have_count(0)
         expect(page.locator("#newClientName")).to_have_attribute("placeholder", "Enter here...")
         expect(page.locator("#newProjectName")).to_have_attribute("placeholder", "Enter here...")
+
+        page.get_by_role("button", name="Projects").click()
+        expect(page.locator("#panel-manage")).to_be_visible()
 
         page.get_by_label("New client name").fill("Client A")
         page.get_by_role("button", name="Create client").click()
@@ -768,7 +772,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionKpiTested")).to_have_count(0)
         expect(page.locator("#commissionKpiUntested")).to_have_count(0)
         expect(page.locator("[data-testid='commission-pie-project'], [data-testid='commission-pie-system-events'], [data-testid='commission-pie-driver-events']")).to_have_count(3)
-        expect(page.get_by_test_id("commission-pie-project")).to_contain_text(re.compile(r"\d+/12 passed"))
+        expect(page.locator("#commissionPies")).not_to_contain_text("Device 1")
+        expect(page.locator("#commissionPies")).not_to_contain_text("Device 2")
+        expect(page.locator("#commissionPies")).not_to_contain_text("Device 3")
+        expect(page.get_by_test_id("commission-pie-project")).to_contain_text(re.compile(r"\d+/12 tested"))
         expect(page.locator("[data-testid^='commission-pie-device-']")).to_have_count(1)
         expect(page.get_by_test_id("commission-pie-device-dev-1")).to_be_visible()
         expect(page.locator("[data-testid='commission-pie-device-dev-2']")).to_have_count(0)
@@ -855,10 +862,23 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             4,
         )
 
+        static_diag_structure = page.evaluate(
+            """() => Array.from(document.querySelectorAll("#diagnosticsSummary > *"))
+              .map((el) => ({ tag: el.tagName, cls: el.className }))"""
+        )
+
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
+        expect(page.locator("#panel-diagnostics .panel-context-title")).to_contain_text("Client A -> Project 1 -> TEST - System Manager v11.3.apex")
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'], [data-testid='diagnostics-pie-failure-types'], [data-testid='diagnostics-pie-task-completion']")).to_have_count(3)
         expect(page.get_by_test_id("diagnostics-summary-block")).to_have_count(0)
+        self.assertEqual(
+            page.evaluate(
+                """() => Array.from(document.querySelectorAll("#diagnosticsSummary > *"))
+                  .map((el) => ({ tag: el.tagName, cls: el.className }))"""
+            ),
+            static_diag_structure,
+        )
         expect(page.get_by_role("columnheader", name="Status")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Device")).to_be_visible()
@@ -905,6 +925,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show")).to_be_visible()
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_class(re.compile(r"status-template-select"))
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("macros")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLink")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("text")
@@ -999,6 +1020,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 page.on("console", lambda msg: console_logs.append(str(msg.text or "")))
 
                 page.goto(f"{base_url}/commissioning/index.html")
+                page.get_by_role("button", name="Projects").click()
                 page.get_by_label("New client name").fill("Live Client")
                 page.get_by_role("button", name="Create client").click()
                 page.get_by_label("New project name").fill("Live Project")
@@ -1098,6 +1120,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 base_url = str(app_server.base_url or "").rstrip("/")
                 page = self._browser.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
+                page.get_by_role("button", name="Projects").click()
 
                 page.get_by_label("New client name").fill("Live Client")
                 page.get_by_role("button", name="Create client").click()
@@ -1155,6 +1178,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 base_url = str(app_server.base_url or "").rstrip("/")
                 page = self._browser.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
+                page.get_by_role("button", name="Projects").click()
 
                 page.get_by_label("New client name").fill("Live Client")
                 page.get_by_role("button", name="Create client").click()
