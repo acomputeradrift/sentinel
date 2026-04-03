@@ -619,6 +619,20 @@ button.danger {
   display: none;
 }
 
+/* Preview toggle: hide diagnostics pie-container visuals, keep spacing/layout */
+#diagnosticsCard {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Match commissioning pie-container visuals to diagnostics (spacing preserved) */
+#panel-commission .commission-shell > section.card:first-child {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .diag-pie-legend .diag-legend-row:nth-child(1) .diag-legend-swatch {
   background: var(--brand-orange);
 }
@@ -642,5 +656,11 @@ button.danger {
 .diag-pie-legend .diag-legend-row:nth-child(6) .diag-legend-swatch {
   background: #177bb5;
   border-color: #177bb5;
+}
+
+/* Match Task Completion legend swatch size to Failure Types compact swatches */
+.diag-pie-card:last-child .diag-pie-legend .diag-legend-swatch {
+  width: 8px;
+  height: 8px;
 }
 

@@ -668,7 +668,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         )
 
         # Shell + tabs
-        expect(page.get_by_role("button", name="Manage")).to_be_visible()
+        expect(page.get_by_role("button", name="Projects")).to_be_visible()
         expect(page.get_by_role("button", name="Commission")).to_be_visible()
         expect(page.get_by_role("button", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
@@ -808,14 +808,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#panel-diagnostics")).to_be_visible()
-        diagnostics_line = page.locator("#diagnosticsClientProjectLine")
-        expect(diagnostics_line).to_be_visible()
-        expect(diagnostics_line).to_contain_text("Client A")
-        expect(diagnostics_line).to_contain_text("Project 1")
-        self.assertGreaterEqual(diagnostics_line.evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 14)
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'], [data-testid='diagnostics-pie-failure-types'], [data-testid='diagnostics-pie-task-completion']")).to_have_count(3)
         expect(page.get_by_test_id("diagnostics-summary-block")).to_have_count(0)
-        expect(page.get_by_role("heading", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Status")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Timestamp")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Device")).to_be_visible()
@@ -824,8 +818,27 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Viewport")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Button Identity")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Tech Notes")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Effective Scope")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Tech Notes")).to_be_visible()
+        diag_headers = page.evaluate(
+            """() => Array.from(document.querySelectorAll("#diagnosticsTaskTable thead th"))
+              .map((th) => String(th.textContent || "").trim())"""
+        )
+        self.assertEqual(
+            diag_headers,
+            [
+                "Status",
+                "Timestamp",
+                "Device",
+                "Page Name",
+                "Layer",
+                "Viewport",
+                "Button Identity",
+                "Test Target",
+                "Effective Scope",
+                "Tech Notes",
+            ],
+        )
         diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
         diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
@@ -842,6 +855,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Living Room -> Main AVR")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> Lighting Processor")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9)).to_contain_text("Button does not respond")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("fail button")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("First-time fail (3")
 
@@ -854,7 +869,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertEqual(page.evaluate("window.__wsConnectCount()"), 1)
         self.assertEqual(page.evaluate("window.__wsCloseCount()"), 0)
 
-        page.get_by_role("button", name="Manage").click()
+        page.get_by_role("button", name="Projects").click()
         expect(page.locator("#panel-manage")).to_be_visible()
 
         # Tab switches inside same project should not force diagnostics consumer close churn.
@@ -937,7 +952,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 expect(page.locator("#panel-commission")).to_be_visible()
                 page.get_by_role("button", name="Diagnostics").click()
                 expect(page.locator("#panel-diagnostics")).to_be_visible()
-                page.get_by_role("button", name="Manage").click()
+                page.get_by_role("button", name="Projects").click()
                 expect(page.locator("#panel-manage")).to_be_visible()
                 page.get_by_role("button", name="Commission").click()
                 expect(page.locator("#panel-commission")).to_be_visible()

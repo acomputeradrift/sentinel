@@ -576,8 +576,8 @@ function renderTaskList(projectId, fails) {
     tr.appendChild(tdViewport);
     tr.appendChild(tdButton);
     tr.appendChild(tdTarget);
-    tr.appendChild(tdResolved);
     tr.appendChild(tdScope);
+    tr.appendChild(tdResolved);
     tbody.appendChild(tr);
 
     diagRt.tasksByKey.set(targetKey, {
@@ -780,8 +780,8 @@ function _makeTaskRow(projectId, task) {
   const tdLayer = document.createElement("td");
   const tdViewport = document.createElement("td");
   const tdButton = document.createElement("td");
-  const tdScope = document.createElement("td");
   const tdTarget = document.createElement("td");
+  const tdScope = document.createElement("td");
   const tdResolved = document.createElement("td");
   tdResolved.className = "diag-muted";
 
@@ -803,8 +803,8 @@ function _makeTaskRow(projectId, task) {
   tr.appendChild(tdViewport);
   tr.appendChild(tdButton);
   tr.appendChild(tdTarget);
-  tr.appendChild(tdResolved);
   tr.appendChild(tdScope);
+  tr.appendChild(tdResolved);
 
   return { tr, sel, tdAt, tdDevice, tdPage, tdLayer, tdViewport, tdButton, tdScope, tdTarget, tdResolved };
 }

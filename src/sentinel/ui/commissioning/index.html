@@ -21,7 +21,7 @@
       <div class="layout">
         <nav class="sidenav" aria-label="Console tabs">
           <button id="tab-commission" class="tab" type="button" aria-selected="false" data-tab="commission">Commissioning</button>
-          <button id="tab-diagnostics" class="tab active" type="button" aria-selected="true" data-tab="diagnostics">Diagnostics</button>
+          <button id="tab-diagnostics" class="tab" type="button" aria-selected="false" data-tab="diagnostics">Diagnostics</button>
           <button id="tab-manage" class="tab" type="button" aria-selected="false" data-tab="manage">Projects</button>
           <button id="tab-reports" class="tab" type="button" aria-selected="false" data-tab="reports">Reports</button>
           <button id="tab-clear-tests" class="tab" type="button" aria-selected="false" data-tab="clear-tests">Clear Tests</button>
@@ -211,6 +211,8 @@
                       <th data-sortable="true" data-sort-key="timestamp" aria-sort="descending">Timestamp</th>
                       <th data-sortable="true" data-sort-key="device" aria-sort="none">Device</th>
                       <th data-sortable="true" data-sort-key="pageName" aria-sort="none">Page Name</th>
+                      <th data-sortable="true" data-sort-key="layer" aria-sort="none">Layer</th>
+                      <th data-sortable="true" data-sort-key="viewport" aria-sort="none">Viewport</th>
                       <th data-sortable="true" data-sort-key="buttonName" aria-sort="none">Button Identity</th>
                       <th data-sortable="true" data-sort-key="testTarget" aria-sort="none">Test Target</th>
                       <th data-sortable="true" data-sort-key="passFail" aria-sort="none">Pass/Fail</th>
@@ -221,6 +223,8 @@
                       <td>2026-04-02 00:00:00Z</td>
                       <td>Device Placeholder</td>
                       <td>Page Placeholder</td>
+                      <td>Layer Placeholder</td>
+                      <td>Frame 1</td>
                       <td>Button Placeholder</td>
                       <td>Target Placeholder</td>
                       <td>status</td>
@@ -229,6 +233,8 @@
                       <td>2026-04-02 00:00:01Z</td>
                       <td>Device Placeholder 2</td>
                       <td>Page Placeholder 2</td>
+                      <td>Layer Placeholder 2</td>
+                      <td>Frame 2</td>
                       <td>Button Placeholder 2</td>
                       <td>Target Placeholder 2</td>
                       <td>status</td>
@@ -239,7 +245,7 @@
             </div>
           </section>
 
-          <section id="panel-diagnostics" class="panel" style="max-width: none;">
+          <section id="panel-diagnostics" class="panel" style="max-width: none;" hidden>
             <div class="panel-context tab-context-placeholder">
               <div class="panel-context-title">Client -&gt; Project -&gt; Filename</div>
               <div class="panel-context-sub" style="display: none;">
@@ -364,10 +370,10 @@
       </div>
     </div>
 
-    <!-- <script src="./commissioning.js"></script> -->
+    <script src="./commissioning.js"></script>
     <!-- commission-tab:js -->
-    <!-- <script src="./commission_tab.js"></script> -->
+    <script src="./commission_tab.js"></script>
     <!-- diagnostics-tab:js -->
-    <!-- <script src="./diagnostics_tab.js"></script> -->
+    <script src="./diagnostics_tab.js"></script>
   </body>
 </html>
