@@ -119,6 +119,8 @@ const diagRt = {
   rollups: null,
   progress: null,
   pies: null,
+  sort: { key: "timestamp", direction: "desc" },
+  popup: null,
 };
 let diagStoreUnsubscribe = null;
 
@@ -276,13 +278,12 @@ function formatUtcTimestamp(ts) {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
   const pad2 = (n) => String(n).padStart(2, "0");
-  const yyyy = d.getUTCFullYear();
-  const mm = pad2(d.getUTCMonth() + 1);
-  const dd = pad2(d.getUTCDate());
-  const hh = pad2(d.getUTCHours());
-  const mi = pad2(d.getUTCMinutes());
-  const ss = pad2(d.getUTCSeconds());
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}Z`;
+  const yyyy = d.getFullYear();
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
+  const hh = pad2(d.getHours());
+  const mi = pad2(d.getMinutes());
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
 function _ensurePieDom() {
@@ -372,13 +373,14 @@ function renderPie(svg, legendEl, slices, centerLabel) {
   let angle = 0;
   for (const s of slices) {
     const v = Number(s.value) || 0;
-    if (v <= 0) continue;
-    const span = (v / safeTotal) * 360;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", _piePath(60, 60, 52, angle, angle + span));
-    path.setAttribute("fill", String(s.color || "#177bb5"));
-    svg.appendChild(path);
-    angle += span;
+    if (v > 0) {
+      const span = (v / safeTotal) * 360;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", _piePath(60, 60, 52, angle, angle + span));
+      path.setAttribute("fill", String(s.color || "#177bb5"));
+      svg.appendChild(path);
+      angle += span;
+    }
 
     const row = document.createElement("div");
     row.className = "diag-legend-row";
@@ -423,20 +425,20 @@ async function updateFailTag(projectId, targetKey, tag) {
 }
 
 function tagOptions() {
-  return ["Not Started", "In Progress", "Done"];
+  return ["Not Started", "In Progress", "Complete"];
 }
 
 function tagEnumFromDisplay(label) {
   const s = String(label || "").trim().toLowerCase();
   if (s === "in progress") return "IN_PROGRESS";
-  if (s === "done") return "DONE";
+  if (s === "complete") return "DONE";
   return "NOT_STARTED";
 }
 
 function tagDisplayFromEnum(tagEnum) {
   const s = String(tagEnum || "").trim().toUpperCase();
   if (s === "IN_PROGRESS") return "In Progress";
-  if (s === "DONE") return "Done";
+  if (s === "DONE") return "Complete";
   return "Not Started";
 }
 
@@ -485,13 +487,161 @@ function failureTypesFrom(rollups, fails) {
   return Array.from(counts.entries());
 }
 
+function _diagTimestampMs(ts) {
+  const d = new Date(String(ts || "").trim());
+  const ms = d.getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function _diagTextSortValue(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function _diagStatusRank(tagEnum) {
+  const s = String(tagEnum || "").trim().toUpperCase();
+  if (s === "IN_PROGRESS") return 1;
+  if (s === "DONE") return 2;
+  return 0;
+}
+
+function _diagCompareText(a, b, direction) {
+  const av = _diagTextSortValue(a);
+  const bv = _diagTextSortValue(b);
+  if (!av && bv) return 1;
+  if (av && !bv) return -1;
+  if (!av && !bv) return 0;
+  const cmp = av.localeCompare(bv);
+  return direction === "desc" ? -cmp : cmp;
+}
+
+function _diagSortTasks(rows) {
+  const items = Array.isArray(rows) ? rows.slice() : [];
+  const sortKey = String(diagRt?.sort?.key || "timestamp");
+  const direction = String(diagRt?.sort?.direction || "desc");
+
+  items.sort((a, b) => {
+    let cmp = 0;
+    if (sortKey === "timestamp") {
+      cmp = _diagTimestampMs(a?.lastTestedAtUtc) - _diagTimestampMs(b?.lastTestedAtUtc);
+      cmp = direction === "desc" ? -cmp : cmp;
+    } else if (sortKey === "status") {
+      cmp = _diagStatusRank(a?.tag) - _diagStatusRank(b?.tag);
+      cmp = direction === "desc" ? -cmp : cmp;
+    } else if (sortKey === "device") {
+      cmp = _diagCompareText(a?.deviceName, b?.deviceName, direction);
+    } else if (sortKey === "pageName") {
+      cmp = _diagCompareText(a?.pageName, b?.pageName, direction);
+    } else if (sortKey === "layer") {
+      cmp = _diagCompareText(a?.layerName, b?.layerName, direction);
+    } else if (sortKey === "viewport") {
+      cmp = _diagCompareText(formatViewport(a), formatViewport(b), direction);
+    } else if (sortKey === "buttonIdentity") {
+      cmp = _diagCompareText(a?.buttonName, b?.buttonName, direction);
+    } else if (sortKey === "testTarget") {
+      cmp = _diagCompareText(normalizeTargetLabel(a?.targetName || _targetNameFromTargetKey(a?.targetKey || "")), normalizeTargetLabel(b?.targetName || _targetNameFromTargetKey(b?.targetKey || "")), direction);
+    } else if (sortKey === "effectiveScope") {
+      cmp = _diagCompareText(a?.effectiveScopeNames || formatEffectiveScope(a), b?.effectiveScopeNames || formatEffectiveScope(b), direction);
+    } else if (sortKey === "techNotes") {
+      cmp = _diagCompareText(a?.lastFailNote, b?.lastFailNote, direction);
+    }
+    if (cmp !== 0) return cmp;
+    return _diagTimestampMs(b?.lastTestedAtUtc) - _diagTimestampMs(a?.lastTestedAtUtc);
+  });
+  return items;
+}
+
+function _updateDiagnosticsSortIndicators() {
+  const table = document.getElementById("diagnosticsTaskTable");
+  if (!table) return;
+  const key = String(diagRt?.sort?.key || "timestamp");
+  const dir = String(diagRt?.sort?.direction || "desc");
+  for (const th of Array.from(table.querySelectorAll("thead th[data-sortable='true']"))) {
+    const thKey = String(th.getAttribute("data-sort-key") || "");
+    th.setAttribute("aria-sort", thKey === key ? (dir === "desc" ? "descending" : "ascending") : "none");
+  }
+}
+
+function _popupMessageFor(task) {
+  const techName = String(task?.techName || "").trim();
+  const note = String(task?.lastFailNote || "").trim();
+  if (!techName) return "Invalid tech link: missing label.";
+  const noteText = note || "No note provided.";
+  return `${techName} says: "${noteText}."`;
+}
+
+function _ensureTechNotesPopup() {
+  if (diagRt.popup) return diagRt.popup;
+  const host = document.createElement("div");
+  host.id = "techNotesPopupHost";
+  host.hidden = true;
+  host.style.position = "fixed";
+  host.style.inset = "0";
+  host.style.background = "rgba(15, 27, 36, 0.55)";
+  host.style.zIndex = "1000";
+  host.style.display = "none";
+  host.style.alignItems = "center";
+  host.style.justifyContent = "center";
+
+  const dialog = document.createElement("div");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-label", "Tech Notes");
+  dialog.style.background = "#ffffff";
+  dialog.style.border = "1px solid #ccd8e2";
+  dialog.style.borderRadius = "12px";
+  dialog.style.padding = "14px 16px";
+  dialog.style.width = "min(560px, 92vw)";
+  dialog.style.boxSizing = "border-box";
+  dialog.style.boxShadow = "0 18px 45px rgba(0,0,0,0.25)";
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "Close";
+  close.style.cssFloat = "right";
+
+  const body = document.createElement("div");
+  body.setAttribute("data-testid", "tech-notes-content");
+  body.style.marginTop = "22px";
+  body.style.whiteSpace = "pre-wrap";
+  body.style.color = "#173246";
+
+  const closePopup = () => {
+    host.hidden = true;
+    host.style.display = "none";
+    body.textContent = "";
+  };
+  close.addEventListener("click", closePopup);
+  host.addEventListener("click", (ev) => {
+    if (ev.target === host) closePopup();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape") return;
+    if (host.hidden) return;
+    closePopup();
+  });
+
+  dialog.appendChild(close);
+  dialog.appendChild(body);
+  host.appendChild(dialog);
+  document.body.appendChild(host);
+  diagRt.popup = { host, body, closePopup };
+  return diagRt.popup;
+}
+
+function _openTechNotesPopup(task) {
+  const popup = _ensureTechNotesPopup();
+  if (!popup) return;
+  popup.body.textContent = _popupMessageFor(task);
+  popup.host.hidden = false;
+  popup.host.style.display = "flex";
+}
+
 function renderTaskList(projectId, fails) {
   const tbody = diag$("diagnosticsTaskBody");
   tbody.innerHTML = "";
   diagRt.tasksByKey.clear();
   diagRt.rowByKey.clear();
-  const rows = Array.isArray(fails) ? fails : [];
-  rows.sort((a, b) => String(b?.lastTestedAtUtc || "").localeCompare(String(a?.lastTestedAtUtc || "")));
+  const rows = _diagSortTasks(Array.isArray(fails) ? fails : []);
 
   for (const rec of rows) {
     const targetKey = String(rec?.targetKey || "");
@@ -519,6 +669,10 @@ function renderTaskList(projectId, fails) {
         setDiagStatus("");
         const task = diagRt.tasksByKey.get(targetKey);
         if (task) task.tag = next;
+        const store = getSharedProjectStore();
+        if (store && typeof store.dispatch === "function") {
+          store.dispatch({ type: "fail_tag_updated", projectId, targetKey, tag: next });
+        }
         updateTaskCompletionPie();
       } catch (e) {
         sel.value = tagOptions().includes(tag) ? tag : "Not Started";
@@ -566,7 +720,12 @@ function renderTaskList(projectId, fails) {
 
     const tdResolved = document.createElement("td");
     tdResolved.className = "diag-muted";
-    tdResolved.textContent = note || "";
+    const noteBtn = document.createElement("button");
+    noteBtn.type = "button";
+    noteBtn.className = "tech-notes-btn";
+    noteBtn.textContent = "Show";
+    noteBtn.addEventListener("click", () => _openTechNotesPopup(rec));
+    tdResolved.appendChild(noteBtn);
 
     tr.appendChild(tdTag);
     tr.appendChild(tdAt);
@@ -598,6 +757,7 @@ function renderTaskList(projectId, fails) {
       effectiveRoomName: rec?.effectiveRoomName,
       effectiveSourceName: rec?.effectiveSourceName,
       effectiveScopeNames: String(rec?.effectiveScopeNames || ""),
+      techName: String(rec?.techName || ""),
       lastFailNote: String(rec?.lastFailNote || ""),
     });
     diagRt.rowByKey.set(targetKey, { tr, sel });
@@ -615,6 +775,7 @@ function clearDiagnosticsView() {
   diagRt.progress = null;
   diagRt.rollups = null;
   diagRt.pies = null;
+  _updateDiagnosticsSortIndicators();
 }
 
 function applyDiagnosticsSnapshot(snapshot) {
@@ -726,16 +887,18 @@ function updateTaskCompletionPie() {
   const pie = _ensureDiagPiesCached();
   if (!pie) return;
   const tasks = Array.from(diagRt.tasksByKey.values());
+  const notStarted = tasks.filter((t) => String(t?.tag || "").toUpperCase() === "NOT_STARTED").length;
+  const inProgress = tasks.filter((t) => String(t?.tag || "").toUpperCase() === "IN_PROGRESS").length;
   const done = tasks.filter((t) => tagDoneFromEnum(t?.tag)).length;
   const total = tasks.length;
-  const todo = Math.max(0, total - done);
   const donePct = total ? Math.round((done / total) * 1000) / 10 : 0;
   renderPie(
     pie.taskCompletion.svg,
     pie.taskCompletion.legend,
     [
-      { label: "Done", value: done, color: "#10b981" },
-      { label: "Not done", value: todo, color: "#f59e0b" },
+      { label: "Not Started", value: notStarted, color: "#f59e0b" },
+      { label: "In Progress", value: inProgress, color: "#177bb5" },
+      { label: "Complete", value: done, color: "#10b981" },
     ],
     total ? `${donePct}%` : ""
   );
@@ -763,6 +926,10 @@ function _makeTaskRow(projectId, task) {
       await updateFailTag(projectId, targetKey, next);
       const t = diagRt.tasksByKey.get(targetKey);
       if (t) t.tag = next;
+      const store = getSharedProjectStore();
+      if (store && typeof store.dispatch === "function") {
+        store.dispatch({ type: "fail_tag_updated", projectId, targetKey, tag: next });
+      }
       updateTaskCompletionPie();
       setDiagStatus("");
     } catch (e) {
@@ -792,8 +959,12 @@ function _makeTaskRow(projectId, task) {
   tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
   tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
   tdTarget.textContent = normalizeTargetLabel(task?.targetName || ident.testTarget || "");
-  const note = String(task?.lastFailNote || "");
-  tdResolved.textContent = note || "";
+  const noteBtn = document.createElement("button");
+  noteBtn.type = "button";
+  noteBtn.className = "tech-notes-btn";
+  noteBtn.textContent = "Show";
+  noteBtn.addEventListener("click", () => _openTechNotesPopup(task));
+  tdResolved.appendChild(noteBtn);
 
   tr.appendChild(tdTag);
   tr.appendChild(tdAt);
@@ -819,8 +990,13 @@ function _updateTaskRowDom(row, task) {
   row.tdButton.textContent = String(task?.buttonName || "");
   row.tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
   row.tdTarget.textContent = normalizeTargetLabel(task?.targetName || "");
-  const note = String(task?.lastFailNote || "");
-  row.tdResolved.textContent = note || "";
+  row.tdResolved.innerHTML = "";
+  const noteBtn = document.createElement("button");
+  noteBtn.type = "button";
+  noteBtn.className = "tech-notes-btn";
+  noteBtn.textContent = "Show";
+  noteBtn.addEventListener("click", () => _openTechNotesPopup(task));
+  row.tdResolved.appendChild(noteBtn);
   row.sel.value = tagDisplayFromEnum(task?.tag || "NOT_STARTED");
 }
 
@@ -838,6 +1014,24 @@ function noopDiagnosticsSocketConsumer() {}
 
 function initDiagnosticsTab() {
   ensureDiagnosticsStoreSubscription();
+  _ensureTechNotesPopup();
+  _updateDiagnosticsSortIndicators();
+  const taskTable = document.getElementById("diagnosticsTaskTable");
+  if (taskTable) {
+    for (const th of Array.from(taskTable.querySelectorAll("thead th[data-sortable='true']"))) {
+      th.addEventListener("click", () => {
+        const key = String(th.getAttribute("data-sort-key") || "").trim();
+        if (!key) return;
+        if (diagRt.sort.key === key) diagRt.sort.direction = diagRt.sort.direction === "asc" ? "desc" : "asc";
+        else {
+          diagRt.sort.key = key;
+          diagRt.sort.direction = key === "timestamp" ? "desc" : "asc";
+        }
+        _updateDiagnosticsSortIndicators();
+        applyDiagnosticsFromStore(currentDiagProjectId());
+      });
+    }
+  }
   const refreshBtn = document.getElementById("refreshDiagnosticsBtn");
   if (refreshBtn) {
     refreshBtn.style.display = "none";

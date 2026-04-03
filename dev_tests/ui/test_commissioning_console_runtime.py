@@ -470,6 +470,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   effectiveRoomName: "Living Room",
                   effectiveSourceName: "Main AVR",
                   effectiveScopeNames: "Living Room -> Main AVR",
+                  techName: "Taylor",
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-21T00:00:00Z",
@@ -491,6 +492,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   effectiveRoomName: "Global",
                   effectiveSourceName: "Main AVR",
                   effectiveScopeNames: "Global -> Main AVR",
+                  techName: "Morgan",
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-20T23:00:00Z",
@@ -511,6 +513,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   effectiveSourceId: null,
                   effectiveRoomName: "",
                   effectiveSourceName: "",
+                  techName: "Alex",
                   tag: "NOT_STARTED",
                   currentOutcome: "FAIL",
                   lastTestedAtUtc: "2026-03-20T22:00:00Z",
@@ -565,7 +568,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 effectiveSourceId: 88,
                 effectiveRoomName: "Global",
                 effectiveSourceName: "Lighting Processor"
-                ,effectiveScopeNames: "Global -> Lighting Processor"
+                ,effectiveScopeNames: "Global -> Lighting Processor",
+                techName: "Jordan"
               },
               progress: {
                 projectId: "proj-1",
@@ -769,8 +773,16 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionActivityBody")).to_contain_text("Home")
         expect(page.locator("#commissionActivityBody")).to_contain_text("Button 2")
         expect(page.locator("#commissionActivityBody")).to_contain_text("New Button")
-        expect(page.locator("#commissionActivityBody")).to_contain_text("PASS")
-        expect(page.locator("#commissionActivityBody")).to_contain_text("FAIL")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Pass")
+        expect(page.locator("#commissionActivityBody")).to_contain_text("Fail")
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(0)).to_contain_text(re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"))
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(3)).to_contain_text("Layer Gamma")
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(4)).to_contain_text("No")
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(7)).to_contain_text("Fail")
+        page.get_by_role("columnheader", name="Device").click()
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(1)).to_contain_text("Device A")
+        page.get_by_role("columnheader", name="Device").click()
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(1)).to_contain_text("Device B")
         expect(page.get_by_test_id("commission-pie-project")).to_contain_text("3/12")
         expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("2/4")
         page.evaluate(
@@ -842,10 +854,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         diag_header_bg = page.locator("#diagnosticsTaskTable th").first.evaluate("el => getComputedStyle(el).backgroundColor")
         self.assertTrue(is_blue_rgb(diag_header_bg), diag_header_bg)
         diag_timestamp_text = page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(1).inner_text()
-        self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?Z$")
+        self.assertRegex(diag_timestamp_text, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
         expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(4)
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text(re.compile(r"fail button", re.I))
-        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Button does not respond")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Layer Gamma")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Frame 2")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("No")
@@ -856,13 +867,27 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> Lighting Processor")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
-        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9)).to_contain_text("Button does not respond")
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show")).to_be_visible()
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("fail button")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("First-time fail (3")
+        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Not Started (4")
+        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("In Progress (0")
+        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Complete (0")
+
+        page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show").click()
+        expect(page.get_by_role("dialog", name="Tech Notes")).to_be_visible()
+        expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Jordan says: "Button does not respond."')
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("dialog", name="Tech Notes")).to_have_count(0)
 
         first_tag = page.locator("#diagnosticsTaskTable tbody tr").first.locator("select")
-        first_tag.select_option(label="Done")
-        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Done (1")
+        first_tag.select_option(label="Complete")
+        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Complete (1")
+
+        page.get_by_role("columnheader", name="Status").click()
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_value("Not Started")
+        page.get_by_role("columnheader", name="Status").click()
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_value("Complete")
 
         page.get_by_role("button", name="Commission").click()
         expect(page.locator("#panel-commission")).to_be_visible()

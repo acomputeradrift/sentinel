@@ -89,11 +89,8 @@ function formatTimestampUtc(ts) {
   if (!s) return "";
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
-  // Compact UTC: MM-DD HH:MM:SSZ (full timestamp kept in title attributes).
-  const iso = d.toISOString(); // always UTC
-  const mmdd = iso.slice(5, 10);
-  const time = iso.slice(11, 19);
-  return `${mmdd} ${time}Z`;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function currentProjectId() {
@@ -279,14 +276,19 @@ function normalizeEventMessage(ev) {
   const refs = data?.refs && typeof data.refs === "object" ? data.refs : {};
 
   const recordedAtUtc = String(data?.recordedAtUtc || data?.tsUtc || "");
+  const timestampMsRaw = new Date(recordedAtUtc).getTime();
+  const rawOutcome = String(data?.outcome || data?.currentOutcome || "").trim().toUpperCase();
   return {
-    tsUtc: formatTimestampUtc(recordedAtUtc),
-    tsUtcFull: recordedAtUtc,
+    timestamp: formatTimestampUtc(recordedAtUtc),
+    timestampRaw: recordedAtUtc,
+    timestampMs: Number.isNaN(timestampMsRaw) ? 0 : timestampMsRaw,
     device: String(refs?.deviceName || ""),
-    page: String(refs?.pageName || ""),
-    button: String(refs?.buttonName || ""),
+    pageName: String(refs?.pageName || ""),
+    layer: String(refs?.layerName || data?.layerName || ""),
+    viewport: String(refs?.viewport || data?.viewport || "No"),
+    buttonName: String(refs?.buttonName || ""),
     testTarget: String(data?.targetName || ""),
-    status: String(data?.outcome || data?.currentOutcome || ""),
+    passFail: rawOutcome === "PASS" ? "Pass" : rawOutcome === "FAIL" ? "Fail" : "",
     targetKey: String(data?.targetKey || ""),
   };
 }
@@ -300,6 +302,8 @@ function appendActivityRow(msg) {
   const tdTime = document.createElement("td");
   const tdDevice = document.createElement("td");
   const tdPage = document.createElement("td");
+  const tdLayer = document.createElement("td");
+  const tdViewport = document.createElement("td");
   const tdButton = document.createElement("td");
   const tdTarget = document.createElement("td");
   const tdStatus = document.createElement("td");
@@ -311,24 +315,28 @@ function appendActivityRow(msg) {
   tdTarget.className = "mono";
   tdStatus.className = "mono status-cell";
 
-  tdTime.textContent = msg.tsUtc || "";
-  tdTime.title = String(msg.tsUtcFull || msg.tsUtc || "");
+  tdTime.textContent = msg.timestamp || "";
+  tdTime.title = String(msg.timestampRaw || msg.timestamp || "");
   tdDevice.textContent = msg.device || "";
-  tdPage.textContent = msg.page || "";
-  tdButton.textContent = msg.button || "";
+  tdPage.textContent = msg.pageName || "";
+  tdLayer.textContent = msg.layer || "";
+  tdViewport.textContent = msg.viewport || "No";
+  tdButton.textContent = msg.buttonName || "";
   tdTarget.textContent = msg.testTarget || msg.targetKey || "";
-  const st = String(msg.status || "").trim().toUpperCase();
+  const st = String(msg.passFail || "").trim();
   tdStatus.textContent = st;
-  tdStatus.dataset.status = st;
+  tdStatus.dataset.status = st.toUpperCase();
 
   tr.appendChild(tdTime);
   tr.appendChild(tdDevice);
   tr.appendChild(tdPage);
+  tr.appendChild(tdLayer);
+  tr.appendChild(tdViewport);
   tr.appendChild(tdButton);
   tr.appendChild(tdTarget);
   tr.appendChild(tdStatus);
 
-  body.prepend(tr);
+  body.appendChild(tr);
 
   while (body.children.length > 50) {
     body.removeChild(body.lastElementChild);
@@ -413,6 +421,7 @@ function _upsertFailRecord(fails, payload) {
     effectiveRoomName: String(refs?.effectiveRoomName || prev?.effectiveRoomName || ""),
     effectiveSourceName: String(refs?.effectiveSourceName || prev?.effectiveSourceName || ""),
     effectiveScopeNames: String(refs?.effectiveScopeNames || prev?.effectiveScopeNames || ""),
+    techName: String(refs?.techName || prev?.techName || ""),
   };
   if (idx >= 0) existing[idx] = next;
   else existing.unshift(next);
@@ -787,6 +796,7 @@ function ensureSharedProjectWsManager() {
 const sharedProjectWsManager = ensureSharedProjectWsManager();
 const sharedProjectStore = ensureSharedProjectStore();
 let commissionStoreUnsubscribe = null;
+const commissionSort = { key: "timestamp", direction: "desc" };
 
 function ensureCommissionHeader() {
   const div = document.getElementById("commissionSelection");
@@ -801,6 +811,62 @@ function selectedOptionText(selectId) {
 
 function updateSelectedNames() {
   ensureCommissionHeader();
+}
+
+function _commissionTextSortValue(v) {
+  return String(v || "").trim().toLowerCase();
+}
+
+function _commissionCompareText(a, b, direction) {
+  const av = _commissionTextSortValue(a);
+  const bv = _commissionTextSortValue(b);
+  if (!av && bv) return 1;
+  if (av && !bv) return -1;
+  if (!av && !bv) return 0;
+  const cmp = av.localeCompare(bv);
+  return direction === "desc" ? -cmp : cmp;
+}
+
+function _commissionPassFailRank(v) {
+  const s = String(v || "").trim().toLowerCase();
+  if (s === "fail") return 0;
+  if (s === "pass") return 1;
+  return 2;
+}
+
+function _sortCommissionRows(rows) {
+  const items = Array.isArray(rows) ? rows.slice() : [];
+  items.sort((a, b) => {
+    const key = String(commissionSort.key || "timestamp");
+    const direction = String(commissionSort.direction || "desc");
+    let cmp = 0;
+    if (key === "timestamp") {
+      cmp = Number(a?.timestampMs || 0) - Number(b?.timestampMs || 0);
+      cmp = direction === "desc" ? -cmp : cmp;
+    } else if (key === "passFail") {
+      cmp = _commissionPassFailRank(a?.passFail) - _commissionPassFailRank(b?.passFail);
+      cmp = direction === "desc" ? -cmp : cmp;
+    } else if (key === "device") cmp = _commissionCompareText(a?.device, b?.device, direction);
+    else if (key === "pageName") cmp = _commissionCompareText(a?.pageName, b?.pageName, direction);
+    else if (key === "layer") cmp = _commissionCompareText(a?.layer, b?.layer, direction);
+    else if (key === "viewport") cmp = _commissionCompareText(a?.viewport, b?.viewport, direction);
+    else if (key === "buttonName") cmp = _commissionCompareText(a?.buttonName, b?.buttonName, direction);
+    else if (key === "testTarget") cmp = _commissionCompareText(a?.testTarget || a?.targetKey, b?.testTarget || b?.targetKey, direction);
+    if (cmp !== 0) return cmp;
+    return Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0);
+  });
+  return items;
+}
+
+function _updateCommissionSortIndicators() {
+  const table = document.querySelector("#commissionActivity .activity-table");
+  if (!table) return;
+  const key = String(commissionSort.key || "timestamp");
+  const direction = String(commissionSort.direction || "desc");
+  for (const th of Array.from(table.querySelectorAll("thead th[data-sortable='true']"))) {
+    const thKey = String(th.getAttribute("data-sort-key") || "");
+    th.setAttribute("aria-sort", thKey === key ? (direction === "desc" ? "descending" : "ascending") : "none");
+  }
 }
 
 function setActivityRows(rows) {
@@ -820,11 +886,10 @@ function setActivityRows(rows) {
   }
   const empty = document.getElementById("commissionActivityEmpty");
   if (empty) empty.remove();
-  const capped = items.slice(0, 50);
-  for (let idx = capped.length - 1; idx >= 0; idx--) {
-    const norm = normalizeEventMessage(capped[idx]);
-    appendActivityRow(norm);
-  }
+  const capped = items.slice(0, 50).map((item) => normalizeEventMessage(item));
+  const sorted = _sortCommissionRows(capped);
+  for (const row of sorted) appendActivityRow(row);
+  _updateCommissionSortIndicators();
   logCommissionWs("snapshot:activities-applied", capped.length);
 }
 
@@ -900,6 +965,23 @@ async function refreshCommission() {
 
 function runCommissionTab() {
   ensureCommissionStoreSubscription();
+  _updateCommissionSortIndicators();
+  const activityTable = document.querySelector("#commissionActivity .activity-table");
+  if (activityTable) {
+    for (const th of Array.from(activityTable.querySelectorAll("thead th[data-sortable='true']"))) {
+      th.addEventListener("click", () => {
+        const key = String(th.getAttribute("data-sort-key") || "").trim();
+        if (!key) return;
+        if (commissionSort.key === key) commissionSort.direction = commissionSort.direction === "asc" ? "desc" : "asc";
+        else {
+          commissionSort.key = key;
+          commissionSort.direction = key === "timestamp" ? "desc" : "asc";
+        }
+        _updateCommissionSortIndicators();
+        renderCommissionFromStore(currentProjectId());
+      });
+    }
+  }
   const tabCommission = document.getElementById("tab-commission");
   if (tabCommission) tabCommission.addEventListener("click", () => void refreshCommission());
 
