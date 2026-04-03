@@ -661,8 +661,13 @@ function setActiveProjectWsContext(projectId) {
 
 async function createTechLink() {
   const projectId = currentProjectId();
-  const label = $("techLabel").value.trim() || null;
+  const label = $("techLabel").value.trim();
   if (!projectId) return;
+  const statusEl = document.getElementById("techLinkStatus");
+  if (!label) {
+    if (statusEl) statusEl.textContent = "Tech label is required.";
+    return;
+  }
   const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links`), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -672,11 +677,10 @@ async function createTechLink() {
   $("techUrl").textContent = payloadTechUrl || "";
   const createdAtUtc = new Date().toISOString();
   state.techLinksByProject[projectId] = [
-    { techLinkId: out.techLinkId, label: label || "", createdAtUtc, techUrl: payloadTechUrl },
+    { techLinkId: out.techLinkId, label: label, createdAtUtc, techUrl: payloadTechUrl },
     ...techLinksForProject(projectId),
   ];
   renderTechLinks();
-  const statusEl = document.getElementById("techLinkStatus");
   if (statusEl) statusEl.textContent = "Created tech link.";
 }
 

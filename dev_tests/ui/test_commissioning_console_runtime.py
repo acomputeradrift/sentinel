@@ -731,6 +731,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         expect(page.get_by_role("button", name="Regenerate")).to_have_count(0)
 
+        page.get_by_label("Tech label").fill("   ")
+        page.get_by_role("button", name="Create tech link").click()
+        expect(page.locator("#techLinkStatus")).to_contain_text("Tech label is required.")
+        self.assertEqual(int(state.get("tech_link_counter") or 0), 0)
         page.get_by_label("Tech label").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
@@ -785,6 +789,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(1)).to_contain_text("Device B")
         expect(page.get_by_test_id("commission-pie-project")).to_contain_text("3/12")
         expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("2/4")
+        expect(page.get_by_test_id("commission-pie-driver-events")).to_contain_text("1/4")
         page.evaluate(
             """
 () => {
@@ -803,6 +808,38 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 """
         )
         expect(page.locator("#commissionActivityBody")).to_contain_text("Store Driven")
+        page.evaluate(
+            """
+() => {
+  if (!window.__sentinelProjectWsManager || typeof window.__sentinelProjectWsManager.dispatchIncoming !== "function") return;
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "test_result.recorded",
+    projectId: "proj-1",
+    recordedAtUtc: "2026-03-21T00:00:05Z",
+    targetKey: "btn:101:1:2:Zero Case",
+    outcome: "PASS",
+    targetName: "Zero Case",
+    kind: "BUTTON",
+    refs: { deviceName: "Device A", pageName: "Home", buttonName: "Button Z", scope: "BUTTON" },
+    progress: {
+      projectId: "proj-1",
+      asOfGenerationRunId: "gen-1",
+      counts: { totalTargets: 12, testedTargets: 6, pass: 4, fail: 2, untested: 6, percentComplete: 0.5 },
+      lastTestedAtUtc: "2026-03-21T00:00:05Z",
+      eventSections: {
+        system: { counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+        driver: { counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0.0 }, lastTestedAtUtc: null },
+      },
+      devices: [
+        { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 2, testedTargets: 2, pass: 2, fail: 0, untested: 0, percentComplete: 1.0 }, lastTestedAtUtc: "2026-03-21T00:00:05Z" }
+      ],
+    },
+  });
+}
+"""
+        )
+        expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("None")
+        expect(page.get_by_test_id("commission-pie-driver-events")).to_contain_text("None")
         self.assertEqual(
             page.evaluate(
                 """
@@ -815,7 +852,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 })()
 """
             ),
-            3,
+            4,
         )
 
         page.get_by_role("button", name="Diagnostics").click()
@@ -868,8 +905,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show")).to_be_visible()
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("fail button")
-        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("First-time fail (3")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("macros")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLink")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("text")
+        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("Fail (3")
+        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("Pass (3")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Not Started (4")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("In Progress (0")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Complete (0")

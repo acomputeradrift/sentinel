@@ -848,7 +848,7 @@ function _ensureDiagPiesCached() {
 function updateFailureRatePie() {
   const pie = _ensureDiagPiesCached();
   if (!pie) return;
-  const totalTargets = totalTargetsFrom(diagRt.progress, diagRt.rollups);
+  const totalTargets = Number(diagRt?.progress?.counts?.testedTargets || 0);
   const firstTimeFailTargets = firstTimeFailTargetsFromRollups(diagRt.rollups);
   const okTargets = Math.max(0, totalTargets - firstTimeFailTargets);
   const failPct = totalTargets ? Math.round((firstTimeFailTargets / totalTargets) * 1000) / 10 : 0;
@@ -856,30 +856,47 @@ function updateFailureRatePie() {
     pie.failureRate.svg,
     pie.failureRate.legend,
     [
-      { label: "First-time fail", value: firstTimeFailTargets, color: "#ef4444" },
-      { label: "Other", value: okTargets, color: "#177bb5" },
+      { label: "Fail", value: firstTimeFailTargets, color: "#ef4444" },
+      { label: "Pass", value: okTargets, color: "#177bb5" },
     ],
     totalTargets ? `${failPct}%` : ""
   );
 }
 
+function _failCategoryFromTask(task) {
+  const label = normalizeTargetLabel(task?.targetName || _targetNameFromTargetKey(task?.targetKey || ""));
+  if (label === "macro") return "macros";
+  if (label === "macro step") return "macroSteps";
+  if (label === "pageLink") return "pageLink";
+  if (label.startsWith("variable")) return "variables";
+  if (label.includes("icon") || label.includes("graphic")) return "graphics";
+  return "text";
+}
+
 function updateFailureTypesPie() {
   const pie = _ensureDiagPiesCached();
   if (!pie) return;
-  const counts = new Map();
+  const counts = {
+    text: 0,
+    macros: 0,
+    macroSteps: 0,
+    variables: 0,
+    graphics: 0,
+    pageLink: 0,
+  };
   for (const task of diagRt.tasksByKey.values()) {
-    const label = normalizeTargetLabel(task?.targetName || _targetNameFromTargetKey(task?.targetKey || ""));
-    if (!label) continue;
-    counts.set(label, (counts.get(label) || 0) + 1);
+    const key = _failCategoryFromTask(task);
+    if (!Object.prototype.hasOwnProperty.call(counts, key)) continue;
+    counts[key] += 1;
   }
-  const typeItems = Array.from(counts.entries())
-    .filter(([k, n]) => String(k || "") && Number(n) > 0)
-    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
-  const pal = _palette();
-  const top = typeItems.slice(0, 6);
-  const otherCount = typeItems.slice(6).reduce((acc, [, n]) => acc + Number(n || 0), 0);
-  const slices = top.map(([label, n], idx) => ({ label, value: n, color: pal[(idx + 2) % pal.length] }));
-  if (otherCount > 0) slices.push({ label: "other", value: otherCount, color: "#6b7280" });
+  const slices = [
+    { label: "text", value: counts.text, color: "#7cc4ea" },
+    { label: "macros", value: counts.macros, color: "#177bb5" },
+    { label: "macroSteps", value: counts.macroSteps, color: "#0f5d8a" },
+    { label: "variables", value: counts.variables, color: "#8b5cf6" },
+    { label: "graphics", value: counts.graphics, color: "#f59e0b" },
+    { label: "pageLink", value: counts.pageLink, color: "#10b981" },
+  ];
   renderPie(pie.failureTypes.svg, pie.failureTypes.legend, slices, "");
 }
 

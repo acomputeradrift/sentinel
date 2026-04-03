@@ -207,13 +207,33 @@ function setPieCardProgress(card, { passed, total }) {
   const pct01 = t > 0 ? p / t : 0;
 
   const pie = card.querySelector(".pie");
-  if (pie) applyStyleVars(pie, pctStyle(pct01));
+  if (pie) {
+    pie.textContent = "";
+    pie.style.display = "";
+    applyStyleVars(pie, pctStyle(pct01));
+  }
 
   const value = card.querySelector(".piecard-value");
   if (value) value.textContent = `${Math.round(pct01 * 100)}%`;
 
   const sub = card.querySelector(".piecard-sub");
   if (sub) sub.textContent = `${p}/${t} passed`;
+}
+
+function setPieCardNone(card) {
+  if (!card) return;
+  const pie = card.querySelector(".pie");
+  if (pie) {
+    pie.textContent = "None";
+    pie.style.display = "flex";
+    pie.style.alignItems = "center";
+    pie.style.justifyContent = "center";
+    pie.style.fontWeight = "700";
+    pie.style.color = "#173246";
+    applyStyleVars(pie, pctStyle(0));
+  }
+  const value = card.querySelector(".piecard-value");
+  if (value) value.textContent = "None";
 }
 
 function updatePies(progress) {
@@ -231,7 +251,8 @@ function updatePies(progress) {
     testId: "commission-pie-system-events",
     color: "#177bb5",
   });
-  setPieCardProgress(systemCard, { passed: system.pass || 0, total: system.totalTargets || 0 });
+  if (Number(system.totalTargets || 0) <= 0) setPieCardNone(systemCard);
+  else setPieCardProgress(systemCard, { passed: system.pass || 0, total: system.totalTargets || 0 });
 
   const driverCard = ensurePieCard({
     key: "driver-events",
@@ -239,7 +260,8 @@ function updatePies(progress) {
     testId: "commission-pie-driver-events",
     color: "#16a34a",
   });
-  setPieCardProgress(driverCard, { passed: driver.pass || 0, total: driver.totalTargets || 0 });
+  if (Number(driver.totalTargets || 0) <= 0) setPieCardNone(driverCard);
+  else setPieCardProgress(driverCard, { passed: driver.pass || 0, total: driver.totalTargets || 0 });
 
   const seen = new Set();
   for (const d of devices) {
