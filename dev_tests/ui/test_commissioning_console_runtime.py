@@ -850,6 +850,32 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         )
         expect(page.locator("#commissionPie-system-events .pie")).to_have_attribute("data-center", "None")
         expect(page.locator("#commissionPie-driver-events .pie")).to_have_attribute("data-center", "None")
+        expect(page.locator("#commissionPie-system-events .piecard-count")).to_have_text("")
+        expect(page.locator("#commissionPie-driver-events .piecard-count")).to_have_text("")
+        expect(page.locator("#commissionPie-system-events .piecard-value")).to_have_text("")
+        expect(page.locator("#commissionPie-driver-events .piecard-value")).to_have_text("")
+        expect(page.locator("#commissionPie-system-events .piecard-sub")).to_have_text("")
+        expect(page.locator("#commissionPie-driver-events .piecard-sub")).to_have_text("")
+        self.assertEqual(
+            page.evaluate(
+                """() => {
+  const get = (id) => {
+    const card = document.getElementById(id);
+    if (!card) return null;
+    const pie = card.querySelector(".pie");
+    const body = card.querySelector(".piecard-body");
+    const bg = pie ? getComputedStyle(pie).backgroundImage : "";
+    const justify = body ? getComputedStyle(body).justifyContent : "";
+    return { bg, justify };
+  };
+  return { system: get("commissionPie-system-events"), driver: get("commissionPie-driver-events") };
+}"""
+            ),
+            {
+                "system": {"bg": "none", "justify": "center"},
+                "driver": {"bg": "none", "justify": "center"},
+            },
+        )
         self.assertEqual(
             page.evaluate(
                 """

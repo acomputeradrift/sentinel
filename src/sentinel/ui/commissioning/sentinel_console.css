@@ -623,6 +623,25 @@ button.danger {
   display: none;
 }
 
+.piecard.piecard-none .piecard-body {
+  justify-content: center !important;
+}
+
+.piecard.piecard-none .pie {
+  width: 100% !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+.piecard.piecard-none .pie::before {
+  display: none !important;
+}
+
+.piecard.piecard-none .commission-legend-spacer,
+.piecard.piecard-none .piecard-metrics {
+  display: none !important;
+}
+
 /* Preview toggle: hide diagnostics pie-container visuals, keep spacing/layout */
 #diagnosticsCard {
   border-color: transparent !important;

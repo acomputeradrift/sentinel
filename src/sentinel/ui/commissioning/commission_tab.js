@@ -216,6 +216,7 @@ function setPieCardProgress(card, { passed, total }) {
   const pct01 = t > 0 ? p / t : 0;
 
   const pie = card.querySelector(".pie");
+  card.classList.remove("piecard-none");
   if (pie) {
     pie.textContent = "";
     pie.style.display = "grid";
@@ -235,6 +236,7 @@ function setPieCardProgress(card, { passed, total }) {
 
 function setPieCardNone(card) {
   if (!card) return;
+  card.classList.add("piecard-none");
   const pie = card.querySelector(".pie");
   if (pie) {
     pie.textContent = "";
@@ -244,11 +246,11 @@ function setPieCardNone(card) {
     applyStyleVars(pie, pctStyle(0));
   }
   const value = card.querySelector(".piecard-value");
-  if (value) value.textContent = "0%";
+  if (value) value.textContent = "";
   const sub = card.querySelector(".piecard-sub");
-  if (sub) sub.textContent = "0/0 tested";
+  if (sub) sub.textContent = "";
   const count = card.querySelector(".piecard-count");
-  if (count) count.textContent = "0/0";
+  if (count) count.textContent = "";
 }
 
 function updatePies(progress) {
