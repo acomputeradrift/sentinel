@@ -429,3 +429,29 @@ def count_first_time_fail_targets(database_url: str, *, project_id: str) -> int:
         return int(row["count"]) if row else 0
     finally:
         con.close()
+
+
+def get_tech_link_label(database_url: str, *, tech_link_id: str) -> str | None:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select label from tech_links where tech_link_id=%s",
+            (tech_link_id,),
+        )
+        if row is None:
+            return None
+        return row.get("label")
+    finally:
+        con.close()
+
+
+def clear_project_testing_data(database_url: str, *, project_id: str) -> None:
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute("delete from test_results where project_id=%s", (project_id,))
+        cur.execute("delete from fail_tags where project_id=%s", (project_id,))
+        con.commit()
+    finally:
+        con.close()

@@ -614,6 +614,10 @@ button.danger {
   color: var(--brand-dark-gray);
 }
 
+.piecard .pie[data-mode="none"]::after {
+  font-weight: 400;
+}
+
 .piecard .pie:not([data-center])::after {
   content: "0%";
 }

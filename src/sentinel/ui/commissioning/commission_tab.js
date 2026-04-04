@@ -234,7 +234,7 @@ function setPieCardProgress(card, { passed, total }) {
   if (count) count.textContent = `${p}/${t}`;
 }
 
-function setPieCardNone(card) {
+function setPieCardNone(card, noneLabel) {
   if (!card) return;
   card.classList.add("piecard-none");
   const pie = card.querySelector(".pie");
@@ -242,7 +242,7 @@ function setPieCardNone(card) {
     pie.textContent = "";
     pie.style.display = "grid";
     pie.dataset.mode = "none";
-    pie.dataset.center = "None";
+    pie.dataset.center = String(noneLabel || "None");
     applyStyleVars(pie, pctStyle(0));
   }
   const value = card.querySelector(".piecard-value");
@@ -275,7 +275,7 @@ function updatePies(progress) {
     color: "#58585a",
     allowCreate: false,
   });
-  if (Number(system.totalTargets || 0) <= 0) setPieCardNone(systemCard);
+  if (Number(system.totalTargets || 0) <= 0) setPieCardNone(systemCard, "No System Events");
   else setPieCardProgress(systemCard, { passed: system.pass || 0, total: system.totalTargets || 0 });
 
   const driverCard = ensurePieCard({
@@ -285,7 +285,7 @@ function updatePies(progress) {
     color: "#a7a9ac",
     allowCreate: false,
   });
-  if (Number(driver.totalTargets || 0) <= 0) setPieCardNone(driverCard);
+  if (Number(driver.totalTargets || 0) <= 0) setPieCardNone(driverCard, "No Driver Events");
   else setPieCardProgress(driverCard, { passed: driver.pass || 0, total: driver.totalTargets || 0 });
 
   const seen = new Set();

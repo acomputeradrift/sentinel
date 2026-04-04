@@ -684,6 +684,20 @@ async function createTechLink() {
   if (statusEl) statusEl.textContent = "Created tech link.";
 }
 
+async function clearTestsForProject() {
+  const projectId = String(currentProjectId() || "").trim();
+  if (!projectId) return;
+  const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/clear-tests`), {
+    method: "POST",
+  });
+  const store = window.__sentinelProjectStore;
+  if (out && typeof out === "object" && store && typeof store.dispatch === "function") {
+    store.dispatch(out);
+  }
+  const uploadStatus = document.getElementById("uploadStatus");
+  if (uploadStatus) uploadStatus.textContent = "Cleared tests for this project.";
+}
+
 async function run() {
   window.__sentinelCommissioningHydrating = true;
   const clientStatusEl = document.getElementById("clientStatus");
@@ -745,6 +759,7 @@ async function run() {
   $("tab-manage").addEventListener("click", () => setActiveTab("manage"));
   $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
   $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
+  $("tab-clear-tests").addEventListener("click", () => safe(clearTestsForProject, $("uploadStatus")));
 
   $("createClientBtn").addEventListener("click", () => safe(createClient, clientStatusEl));
   $("createProjectBtn").addEventListener("click", () => safe(createProject, projectStatusEl));

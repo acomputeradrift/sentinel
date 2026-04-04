@@ -110,3 +110,49 @@ class FailTagsTest(unittest.TestCase):
         body = resp.json()
         error = (body.get("detail") or {}).get("error") if isinstance(body.get("detail"), dict) else body.get("error")
         self.assertEqual((error or {}).get("code"), "SSE_REMOVED")
+
+    def test_clear_tests_endpoint_clears_results_and_tags_for_project(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client B"}).json()
+        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project B"}).json()
+        project_id = p["projectId"]
+
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"label": "Remote Tech"}).json()
+        tech_token = tech["techUrl"].split("/testing/")[1]
+
+        target_key = "btn:9:8:7:Button Z"
+        target = {"targetKey": target_key, "kind": "BUTTON", "targetName": "Button Z", "refs": {"deviceName": "Device Z"}}
+        fail = client.post(
+            f"/api/v1/testing/{tech_token}/results",
+            json={"target": target, "outcome": "FAIL", "failNote": "Broken"},
+        )
+        self.assertEqual(fail.status_code, 200)
+
+        set_tag = client.put(
+            f"/api/v1/commissioning/projects/{project_id}/fail-tags",
+            json={"targetKey": target_key, "tag": "IN_PROGRESS"},
+        )
+        self.assertEqual(set_tag.status_code, 200)
+
+        before = client.get(f"/api/v1/commissioning/projects/{project_id}/fails")
+        self.assertEqual(before.status_code, 200)
+        self.assertTrue(before.json())
+
+        cleared = client.post(f"/api/v1/commissioning/projects/{project_id}/clear-tests")
+        self.assertEqual(cleared.status_code, 200)
+        payload = cleared.json()
+        self.assertEqual(payload.get("projectId"), project_id)
+        self.assertEqual(payload.get("type"), "commissioning_snapshot")
+        self.assertEqual(payload.get("fails"), [])
+        self.assertEqual(((payload.get("progress") or {}).get("counts") or {}).get("testedTargets"), 0)
+
+        after = client.get(f"/api/v1/commissioning/projects/{project_id}/fails")
+        self.assertEqual(after.status_code, 200)
+        self.assertEqual(after.json(), [])

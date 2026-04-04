@@ -112,6 +112,7 @@ const diagRt = {
   pies: null,
   sort: { key: "timestamp", direction: "desc" },
   popup: null,
+  techLabelsByProject: {},
 };
 let diagStoreUnsubscribe = null;
 
@@ -318,7 +319,9 @@ function _piePath(cx, cy, r, startAngle, endAngle) {
   return `M ${cx} ${cy} L ${p0.x} ${p0.y} A ${r} ${r} 0 ${large} 1 ${p1.x} ${p1.y} Z`;
 }
 
-function renderPie(pieEl, legendEl, slices, centerLabel) {
+function renderPie(pieEl, legendEl, slices, centerLabel, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const showLegend = opts.showLegend !== false;
   legendEl.innerHTML = "";
 
   const total = slices.reduce((a, s) => a + (Number(s.value) || 0), 0);
@@ -334,18 +337,20 @@ function renderPie(pieEl, legendEl, slices, centerLabel) {
       slicesCss.push(`${String(s.color || "var(--brand-dark-gray)")} ${start}% ${end}%`);
     }
 
-    const row = document.createElement("div");
-    row.className = "diag-legend-row";
-    const sw = document.createElement("span");
-    sw.className = "diag-legend-swatch";
-    sw.style.background = String(s.color || "#177bb5");
-    const txt = document.createElement("span");
-    txt.className = "diag-legend-text";
-    const pctTxt = Math.round((v / safeTotal) * 1000) / 10;
-    txt.textContent = `${String(s.label)} (${v}, ${pctTxt}%)`;
-    row.appendChild(sw);
-    row.appendChild(txt);
-    legendEl.appendChild(row);
+    if (showLegend) {
+      const row = document.createElement("div");
+      row.className = "diag-legend-row";
+      const sw = document.createElement("span");
+      sw.className = "diag-legend-swatch";
+      sw.style.background = String(s.color || "#177bb5");
+      const txt = document.createElement("span");
+      txt.className = "diag-legend-text";
+      const pctTxt = Math.round((v / safeTotal) * 1000) / 10;
+      txt.textContent = `${String(s.label)} (${v}, ${pctTxt}%)`;
+      row.appendChild(sw);
+      row.appendChild(txt);
+      legendEl.appendChild(row);
+    }
   }
 
   if (!slicesCss.length) slicesCss.push("var(--pie-track) 0% 100%");
@@ -499,11 +504,33 @@ function _updateDiagnosticsSortIndicators() {
 }
 
 function _popupMessageFor(task) {
-  const techName = String(task?.techName || "").trim();
+  const pid = String(currentDiagProjectId() || "").trim();
+  const labels = Array.isArray(diagRt.techLabelsByProject[pid]) ? diagRt.techLabelsByProject[pid] : [];
+  let fallbackLabel = labels.find((label) => String(label || "").trim()) || "";
+  if (!fallbackLabel) {
+    const firstLabelCell = document.querySelector("#techLinksBody tr td");
+    fallbackLabel = firstLabelCell ? String(firstLabelCell.textContent || "").trim() : "";
+  }
+  const techName = String(task?.techName || fallbackLabel || "").trim();
   const note = String(task?.lastFailNote || "").trim();
   if (!techName) return "Invalid tech link: missing label.";
   const noteText = note || "No note provided.";
   return `${techName} says: "${noteText}."`;
+}
+
+async function refreshDiagnosticsTechLabels(projectId) {
+  const pid = String(projectId || "").trim();
+  if (!pid) {
+    diagRt.techLabelsByProject = {};
+    return;
+  }
+  try {
+    const rows = await diagJsonFetch(diagApi(`/commissioning/projects/${encodeURIComponent(pid)}/tech-links`));
+    const labels = Array.isArray(rows)
+      ? rows.map((row) => String(row?.label || "").trim()).filter(Boolean)
+      : [];
+    diagRt.techLabelsByProject[pid] = labels;
+  } catch (_e) {}
 }
 
 function _ensureTechNotesPopup() {
@@ -797,7 +824,8 @@ function updateFailureRatePie() {
       { label: "Fail", value: firstTimeFailTargets, color: "var(--brand-orange)" },
       { label: "Pass", value: okTargets, color: "var(--brand-dark-gray)" },
     ],
-    testedTargets ? `${failPct}%` : ""
+    testedTargets ? `${failPct}%` : "",
+    { showLegend: false }
   );
 }
 
@@ -830,7 +858,7 @@ function updateFailureTypesPie() {
   const testedTargets = Number(diagRt?.progress?.counts?.testedTargets || 0);
   const failCount = Array.from(diagRt.tasksByKey.values()).length;
   const count = pie.failureTypes.card.querySelector(".piecard-count");
-  if (count) count.textContent = `${failCount}/${testedTargets}`;
+  if (count) count.textContent = "";
   const slices = [
     { label: "text", value: counts.text, color: "var(--brand-orange)" },
     { label: "macros", value: counts.macros, color: "var(--brand-dark-gray)" },
@@ -1003,6 +1031,7 @@ function initDiagnosticsTab() {
     tabDiag.addEventListener("click", () => {
       if (isCommissioningHydrating()) return;
       const projectId = currentDiagProjectId();
+      void refreshDiagnosticsTechLabels(projectId);
       connectDiagnosticsWs(projectId);
       applyDiagnosticsFromStore(projectId);
       setDiagStatus("");
@@ -1018,6 +1047,7 @@ function initDiagnosticsTab() {
         return;
       }
       const projectId = currentDiagProjectId();
+      void refreshDiagnosticsTechLabels(projectId);
       connectDiagnosticsWs(projectId);
       if (isDiagnosticsVisible()) applyDiagnosticsFromStore(projectId);
       updateDiagnosticsTitle();
@@ -1025,6 +1055,7 @@ function initDiagnosticsTab() {
       if (!projectId) clearDiagnosticsView();
     });
     const initialProjectId = currentDiagProjectId();
+    void refreshDiagnosticsTechLabels(initialProjectId);
     if (initialProjectId && !isCommissioningHydrating()) connectDiagnosticsWs(initialProjectId);
     if (isDiagnosticsVisible()) applyDiagnosticsFromStore(initialProjectId);
     updateDiagnosticsTitle();

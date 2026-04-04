@@ -173,6 +173,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "progress_fetch_count": 0,
             "fails_fetch_count": 0,
             "rollups_fetch_count": 0,
+            "clear_tests_count": 0,
         }
 
         def is_blue_rgb(value: str) -> bool:
@@ -402,6 +403,34 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             state["fail_tags_by_target_key"][target_key] = tag
             fulfill_json(route, {"projectId": "proj-1", "targetKey": target_key, "tag": tag})
 
+        def handle_clear_tests(route, request):
+            self.assertEqual(request.method, "POST")
+            state["clear_tests_count"] = int(state.get("clear_tests_count") or 0) + 1
+            state["fail_tags_by_target_key"] = {}
+            fulfill_json(
+                route,
+                {
+                    "type": "commissioning_snapshot",
+                    "projectId": "proj-1",
+                    "progress": {
+                        "projectId": "proj-1",
+                        "asOfGenerationRunId": "gen-1",
+                        "counts": {"totalTargets": 12, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 12, "percentComplete": 0.0},
+                        "lastTestedAtUtc": None,
+                        "eventSections": {
+                            "system": {"counts": {"totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0}, "lastTestedAtUtc": None},
+                            "driver": {"counts": {"totalTargets": 0, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 0, "percentComplete": 0.0}, "lastTestedAtUtc": None},
+                        },
+                        "devices": [
+                            {"deviceId": "dev-1", "deviceName": "Device A", "counts": {"totalTargets": 2, "testedTargets": 0, "pass": 0, "fail": 0, "untested": 2, "percentComplete": 0.0}, "lastTestedAtUtc": None},
+                        ],
+                    },
+                    "rollups": {"projectId": "proj-1", "counts": {"totalTargets": 12, "firstTimeFailTargets": 0}, "currentFailures": {"byTargetName": {}}},
+                    "fails": [],
+                    "activities": [],
+                },
+            )
+
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
         page.route("**/api/v1/commissioning/projects/*", handle_project_detail)
@@ -412,6 +441,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
         page.route("**/api/v1/commissioning/projects/*/rollups", handle_rollups)
         page.route("**/api/v1/commissioning/projects/*/fail-tags", handle_fail_tags)
+        page.route("**/api/v1/commissioning/projects/*/clear-tests", handle_clear_tests)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
         page.add_init_script(
@@ -569,7 +599,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 effectiveRoomName: "Global",
                 effectiveSourceName: "Lighting Processor"
                 ,effectiveScopeNames: "Global -> Lighting Processor",
-                techName: "Jordan"
+                  techName: ""
               },
               progress: {
                 projectId: "proj-1",
@@ -758,6 +788,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Revoke")).to_be_visible()
         page.get_by_role("button", name="Revoke").click()
         expect(page.locator("#panel-manage")).not_to_contain_text("Onsite Tech")
+        page.get_by_label("Tech label").fill("Remote Tech")
+        page.get_by_role("button", name="Create tech link").click()
+        expect(page.locator("#panel-manage")).to_contain_text("Remote Tech")
 
         # Tab switching
         page.get_by_role("button", name="Commission").click()
@@ -848,8 +881,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 }
 """
         )
-        expect(page.locator("#commissionPie-system-events .pie")).to_have_attribute("data-center", "None")
-        expect(page.locator("#commissionPie-driver-events .pie")).to_have_attribute("data-center", "None")
+        expect(page.locator("#commissionPie-system-events .pie")).to_have_attribute("data-center", "No System Events")
+        expect(page.locator("#commissionPie-driver-events .pie")).to_have_attribute("data-center", "No Driver Events")
         expect(page.locator("#commissionPie-system-events .piecard-count")).to_have_text("")
         expect(page.locator("#commissionPie-driver-events .piecard-count")).to_have_text("")
         expect(page.locator("#commissionPie-system-events .piecard-value")).to_have_text("")
@@ -906,7 +939,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .pie")).to_have_attribute("data-center", "")
         expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .pie")).to_have_attribute("data-center", "0%")
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .piecard-count")).to_have_text("6/12")
-        expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("4/6")
+        expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("")
         expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .piecard-count")).to_have_text("0/4")
         self.assertEqual(
             page.evaluate(
@@ -925,6 +958,21 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Effective Scope")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Tech Notes")).to_be_visible()
+        self.assertEqual(
+            page.evaluate(
+                """() => {
+  const th = Array.from(document.querySelectorAll("#diagnosticsTaskTable thead th"))
+    .find((el) => String(el.textContent || "").trim() === "Tech Notes");
+  if (!th) return null;
+  return {
+    sortable: th.getAttribute("data-sortable"),
+    sortKey: th.getAttribute("data-sort-key"),
+    ariaSort: th.getAttribute("aria-sort"),
+  };
+}"""
+            ),
+            {"sortable": None, "sortKey": None, "ariaSort": None},
+        )
         diag_headers = page.evaluate(
             """() => Array.from(document.querySelectorAll("#diagnosticsTaskTable thead th"))
               .map((th) => String(th.textContent || "").trim())"""
@@ -965,15 +1013,16 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("macros")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLink")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("text")
-        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("Fail (3")
-        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).to_contain_text("Pass (3")
+        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Fail (")
+        expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Pass (")
+        expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Not Started (4")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("In Progress (0")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Complete (0")
 
         page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show").click()
         expect(page.get_by_role("dialog", name="Tech Notes")).to_be_visible()
-        expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Jordan says: "Button does not respond."')
+        expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Remote Tech says: "Button does not respond."')
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog", name="Tech Notes")).to_have_count(0)
 
@@ -993,6 +1042,12 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="Projects").click()
         expect(page.locator("#panel-manage")).to_be_visible()
+        page.get_by_role("button", name="Clear Tests").click()
+        self.assertEqual(int(state.get("clear_tests_count") or 0), 1)
+        page.get_by_role("button", name="Commission").click()
+        expect(page.locator("#commissionActivityBody tr")).to_have_count(0)
+        page.get_by_role("button", name="Diagnostics").click()
+        expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(0)
 
         # Tab switches inside same project should not force diagnostics consumer close churn.
         self.assertFalse(
@@ -1023,6 +1078,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             other_path = Path(td) / "Completely Different Project v1.0.apex"
             other_path.write_bytes(apex_path.read_bytes())
             state["expected_upload_filename"] = other_path.name
+            page.get_by_role("button", name="Projects").click()
             page.set_input_files("input[type=file][name=apex]", str(other_path))
             page.get_by_role("button", name="Load File").click()
             expect(page.get_by_test_id("upload-status")).to_contain_text("upload-2")

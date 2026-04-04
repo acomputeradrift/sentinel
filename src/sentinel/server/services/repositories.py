@@ -116,6 +116,10 @@ class Repository(Protocol):
 
     def count_first_time_fail_targets(self, *, projectId: str) -> int: ...
 
+    def get_tech_link_label(self, *, techLinkId: str) -> str | None: ...
+
+    def clear_project_testing_data(self, *, projectId: str) -> None: ...
+
 
 class InMemoryRepository:
     def __init__(self) -> None:
@@ -331,6 +335,23 @@ class InMemoryRepository:
                 if first is not None and first.outcome == "FAIL":
                     count += 1
             return count
+
+    def get_tech_link_label(self, *, techLinkId: str) -> str | None:
+        with self._lock:
+            link = self._tech_links.get(techLinkId)
+            if link is None:
+                return None
+            label = str(link.label or "").strip()
+            return label or None
+
+    def clear_project_testing_data(self, *, projectId: str) -> None:
+        with self._lock:
+            drop_result_keys = [key for key in self._results_by_project_target.keys() if key[0] == projectId]
+            for key in drop_result_keys:
+                self._results_by_project_target.pop(key, None)
+            drop_tag_keys = [key for key in self._fail_tags_by_project_target.keys() if key[0] == projectId]
+            for key in drop_tag_keys:
+                self._fail_tags_by_project_target.pop(key, None)
 
 
 class PostgresRepository:
@@ -561,4 +582,12 @@ class PostgresRepository:
 
     def count_first_time_fail_targets(self, *, projectId: str) -> int:
         return int(self._q.count_first_time_fail_targets(self._database_url, project_id=projectId))
+
+    def get_tech_link_label(self, *, techLinkId: str) -> str | None:
+        label = self._q.get_tech_link_label(self._database_url, tech_link_id=techLinkId)
+        s = str(label or "").strip()
+        return s or None
+
+    def clear_project_testing_data(self, *, projectId: str) -> None:
+        self._q.clear_project_testing_data(self._database_url, project_id=projectId)
 

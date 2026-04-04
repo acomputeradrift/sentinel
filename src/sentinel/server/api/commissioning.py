@@ -119,6 +119,14 @@ def _fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict
         if not target_key:
             continue
         refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
+        recorded_by = rec.recordedBy if isinstance(rec.recordedBy, dict) else {}
+        tech_name = ""
+        if isinstance(refs, dict):
+            tech_name = str(refs.get("techName") or "").strip()
+        if not tech_name:
+            tech_name = str(
+                repo.get_tech_link_label(techLinkId=str(recorded_by.get("techLinkId") or "").strip()) or ""
+            ).strip()
         out.append(
             {
                 "targetKey": target_key,
@@ -141,6 +149,7 @@ def _fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict
                 "effectiveRoomName": refs.get("effectiveRoomName") if isinstance(refs, dict) else None,
                 "effectiveSourceName": refs.get("effectiveSourceName") if isinstance(refs, dict) else None,
                 "effectiveScopeNames": refs.get("effectiveScopeNames") if isinstance(refs, dict) else None,
+                "techName": tech_name,
             }
         )
     return out
@@ -528,6 +537,20 @@ def project_rollups(request: Request, projectId: str) -> dict:
 @router.get("/projects/{projectId}/events")
 async def project_events(request: Request, projectId: str, once: bool = False):
     raise http_error(410, code="SSE_REMOVED", message="SSE endpoints have been removed; use WebSocket.")
+
+
+@router.post("/projects/{projectId}/clear-tests")
+def clear_project_tests(request: Request, projectId: str) -> dict:
+    proj = _repo(request).get_project(projectId=projectId)
+    if proj is None:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    _repo(request).clear_project_testing_data(projectId=projectId)
+    snapshot = _commissioning_snapshot(repo=_repo(request), projectId=projectId)
+    try:
+        _broker(request).publish(projectId=projectId, event=snapshot)
+    except Exception:
+        log.exception("[commissioning-ws] publish:clear-tests-failed projectId=%s", projectId)
+    return snapshot
 
 
 @router.websocket("/projects/{projectId}/ws")
