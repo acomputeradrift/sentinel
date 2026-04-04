@@ -776,6 +776,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionPies")).not_to_contain_text("Device 2")
         expect(page.locator("#commissionPies")).not_to_contain_text("Device 3")
         expect(page.get_by_test_id("commission-pie-project")).to_contain_text(re.compile(r"\d+/12 tested"))
+        expect(page.locator("#commissionPie-project .piecard-count")).to_have_text("3/12")
+        expect(page.locator("#commissionPie-system-events .piecard-count")).to_have_text("2/4")
+        expect(page.locator("#commissionPie-driver-events .piecard-count")).to_have_text("1/4")
         expect(page.locator("[data-testid^='commission-pie-device-']")).to_have_count(1)
         expect(page.get_by_test_id("commission-pie-device-dev-1")).to_be_visible()
         expect(page.locator("[data-testid='commission-pie-device-dev-2']")).to_have_count(0)
@@ -845,8 +848,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 }
 """
         )
-        expect(page.get_by_test_id("commission-pie-system-events")).to_contain_text("None")
-        expect(page.get_by_test_id("commission-pie-driver-events")).to_contain_text("None")
+        expect(page.locator("#commissionPie-system-events .pie")).to_have_attribute("data-center", "None")
+        expect(page.locator("#commissionPie-driver-events .pie")).to_have_attribute("data-center", "None")
         self.assertEqual(
             page.evaluate(
                 """
@@ -872,6 +875,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#panel-diagnostics .panel-context-title")).to_contain_text("Client A -> Project 1 -> TEST - System Manager v11.3.apex")
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'], [data-testid='diagnostics-pie-failure-types'], [data-testid='diagnostics-pie-task-completion']")).to_have_count(3)
         expect(page.get_by_test_id("diagnostics-summary-block")).to_have_count(0)
+        expect(page.locator("#diagnosticsSummary .diag-center-label")).to_have_count(0)
+        expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .pie")).to_have_attribute("data-center", "50%")
+        expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .pie")).to_have_attribute("data-center", "")
+        expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .pie")).to_have_attribute("data-center", "0%")
+        expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .piecard-count")).to_have_text("6/12")
+        expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("4/6")
+        expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .piecard-count")).to_have_text("0/4")
         self.assertEqual(
             page.evaluate(
                 """() => Array.from(document.querySelectorAll("#diagnosticsSummary > *"))

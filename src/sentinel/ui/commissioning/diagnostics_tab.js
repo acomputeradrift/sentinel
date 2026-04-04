@@ -350,25 +350,7 @@ function renderPie(pieEl, legendEl, slices, centerLabel) {
 
   if (!slicesCss.length) slicesCss.push("var(--pie-track) 0% 100%");
   pieEl.style.background = `conic-gradient(${slicesCss.join(", ")})`;
-
-  let center = pieEl.querySelector(".diag-center-label");
-  if (!center) {
-    center = document.createElement("span");
-    center.className = "diag-center-label";
-    center.style.position = "absolute";
-    center.style.inset = "0";
-    center.style.display = "grid";
-    center.style.placeItems = "center";
-    center.style.fontFamily = "Segoe UI, Tahoma, sans-serif";
-    center.style.fontSize = "18px";
-    center.style.fontWeight = "700";
-    center.style.color = "#58585a";
-    center.style.pointerEvents = "none";
-    center.style.zIndex = "2";
-    pieEl.style.position = "relative";
-    pieEl.appendChild(center);
-  }
-  center.textContent = centerLabel || "";
+  pieEl.dataset.center = String(centerLabel || "");
 }
 
 async function updateFailTag(projectId, targetKey, tag) {
@@ -801,10 +783,13 @@ function _ensureDiagPiesCached() {
 function updateFailureRatePie() {
   const pie = _ensureDiagPiesCached();
   if (!pie) return;
-  const totalTargets = Number(diagRt?.progress?.counts?.testedTargets || 0);
+  const testedTargets = Number(diagRt?.progress?.counts?.testedTargets || 0);
+  const totalTargets = Number(diagRt?.progress?.counts?.totalTargets || 0);
   const firstTimeFailTargets = firstTimeFailTargetsFromRollups(diagRt.rollups);
-  const okTargets = Math.max(0, totalTargets - firstTimeFailTargets);
-  const failPct = totalTargets ? Math.round((firstTimeFailTargets / totalTargets) * 1000) / 10 : 0;
+  const okTargets = Math.max(0, testedTargets - firstTimeFailTargets);
+  const failPct = testedTargets ? Math.round((firstTimeFailTargets / testedTargets) * 1000) / 10 : 0;
+  const count = pie.failureRate.card.querySelector(".piecard-count");
+  if (count) count.textContent = `${testedTargets}/${totalTargets}`;
   renderPie(
     pie.failureRate.pie,
     pie.failureRate.legend,
@@ -812,7 +797,7 @@ function updateFailureRatePie() {
       { label: "Fail", value: firstTimeFailTargets, color: "var(--brand-orange)" },
       { label: "Pass", value: okTargets, color: "var(--brand-dark-gray)" },
     ],
-    totalTargets ? `${failPct}%` : ""
+    testedTargets ? `${failPct}%` : ""
   );
 }
 
@@ -842,6 +827,10 @@ function updateFailureTypesPie() {
     if (!Object.prototype.hasOwnProperty.call(counts, key)) continue;
     counts[key] += 1;
   }
+  const testedTargets = Number(diagRt?.progress?.counts?.testedTargets || 0);
+  const failCount = Array.from(diagRt.tasksByKey.values()).length;
+  const count = pie.failureTypes.card.querySelector(".piecard-count");
+  if (count) count.textContent = `${failCount}/${testedTargets}`;
   const slices = [
     { label: "text", value: counts.text, color: "var(--brand-orange)" },
     { label: "macros", value: counts.macros, color: "var(--brand-dark-gray)" },
@@ -862,6 +851,8 @@ function updateTaskCompletionPie() {
   const done = tasks.filter((t) => tagDoneFromEnum(t?.tag)).length;
   const total = tasks.length;
   const donePct = total ? Math.round((done / total) * 1000) / 10 : 0;
+  const count = pie.taskCompletion.card.querySelector(".piecard-count");
+  if (count) count.textContent = `${done}/${total}`;
   renderPie(
     pie.taskCompletion.pie,
     pie.taskCompletion.legend,

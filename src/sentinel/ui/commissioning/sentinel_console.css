@@ -603,7 +603,7 @@ button.danger {
 }
 
 .piecard .pie::after {
-  content: "0%";
+  content: attr(data-center);
   position: absolute;
   inset: 0;
   display: grid;
@@ -612,6 +612,10 @@ button.danger {
   font-size: 18px;
   font-weight: 700;
   color: var(--brand-dark-gray);
+}
+
+.piecard .pie:not([data-center])::after {
+  content: "0%";
 }
 
 .piecard .piecard-value,

@@ -178,7 +178,15 @@ function ensurePieCard({ key, title, testId, color, allowCreate }) {
   let card = document.getElementById(cardId);
   if (card) {
     const titleEl = card.querySelector(".piecard-title");
-    if (titleEl) titleEl.textContent = title;
+    if (titleEl) {
+      const existingCount = titleEl.querySelector(".piecard-count");
+      const countText = existingCount ? String(existingCount.textContent || "") : "";
+      titleEl.textContent = title;
+      const count = document.createElement("span");
+      count.className = "piecard-count";
+      count.textContent = countText;
+      titleEl.appendChild(count);
+    }
     if (testId) card.dataset.testid = testId;
     if (color) card.style.setProperty("--pie-fill", color);
     return card;
@@ -210,7 +218,9 @@ function setPieCardProgress(card, { passed, total }) {
   const pie = card.querySelector(".pie");
   if (pie) {
     pie.textContent = "";
-    pie.style.display = "";
+    pie.style.display = "grid";
+    pie.dataset.mode = "percent";
+    pie.dataset.center = `${Math.round(pct01 * 100)}%`;
     applyStyleVars(pie, pctStyle(pct01));
   }
 
@@ -227,12 +237,10 @@ function setPieCardNone(card) {
   if (!card) return;
   const pie = card.querySelector(".pie");
   if (pie) {
-    pie.textContent = "None";
-    pie.style.display = "flex";
-    pie.style.alignItems = "center";
-    pie.style.justifyContent = "center";
-    pie.style.fontWeight = "700";
-    pie.style.color = "#173246";
+    pie.textContent = "";
+    pie.style.display = "grid";
+    pie.dataset.mode = "none";
+    pie.dataset.center = "None";
     applyStyleVars(pie, pctStyle(0));
   }
   const value = card.querySelector(".piecard-value");
