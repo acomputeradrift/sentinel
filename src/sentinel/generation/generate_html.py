@@ -63,6 +63,15 @@ def main() -> int:
             log.fail(f"app ui file not found: {app_ui_path}")
             return 1
 
+        project_data_size_bytes = project_data_path.stat().st_size
+        app_ui_size_bytes = app_ui_path.stat().st_size
+        log.info_kv(
+            "Generation inputs",
+            project_data_path=project_data_path,
+            project_data_size_bytes=project_data_size_bytes,
+            app_ui_path=app_ui_path,
+            app_ui_size_bytes=app_ui_size_bytes,
+        )
         log.info(f"Loading project data: {project_data_path}")
         project_data = load_json(project_data_path)
         log.info(f"Loading app ui config: {app_ui_path}")
@@ -79,6 +88,12 @@ def main() -> int:
             if isinstance(pages, list) and pages:
                 renderable_device_count += 1
         total_units = 2 + (renderable_device_count * 2)
+        log.info_kv(
+            "Generation render plan",
+            devices_total=len(devices),
+            renderable_devices=renderable_device_count,
+            total_units=total_units,
+        )
 
         _emit_progress(0)
         home_html = render_project_home_html(project_data, app_ui, project_stem=project_data_path.stem)

@@ -58,6 +58,15 @@ def main() -> int:
             return 1
 
         out_dir.mkdir(parents=True, exist_ok=True)
+        apex_size_bytes = apex.stat().st_size
+        contract_size_bytes = project_structure.stat().st_size
+        log.info_kv(
+            "Extraction inputs",
+            apex_path=apex,
+            apex_size_bytes=apex_size_bytes,
+            contract_path=project_structure,
+            contract_size_bytes=contract_size_bytes,
+        )
         log.info(f"Loading apex database: {apex}")
         data = extract_project_data(ExtractContext(apex_path=apex, project_structure_path=project_structure), progress_hook=_emit_progress)
         _emit_progress(99)

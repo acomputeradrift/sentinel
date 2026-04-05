@@ -6,9 +6,11 @@ import subprocess
 import shutil
 import tempfile
 import time
+import threading
 from pathlib import Path
 import sys
 from uuid import uuid4
+from collections import deque
 
 
 class PipelineNotImplementedError(RuntimeError):
@@ -16,6 +18,10 @@ class PipelineNotImplementedError(RuntimeError):
 
 
 _PROGRESS_RE = re.compile(r"^SENTINEL_PROGRESS\s+([A-Z_]+)\s+(\d{1,3}(?:\.\d+)?)\s*$")
+_SUBPROCESS_STDOUT_TAIL_LINES = 80
+_SUBPROCESS_STDERR_TAIL_LINES = 80
+_ACTIVE_REGENERATES_LOCK = threading.Lock()
+_ACTIVE_REGENERATE_PROJECT_IDS: set[str] = set()
 
 
 def _python_exe() -> str:
@@ -81,13 +87,15 @@ def _run_subprocess_with_progress(*, args: list[str], cwd: Path, env: dict[str, 
         text=True,
         bufsize=1,
     )
-    stdout_chunks: list[str] = []
+    stdout_tail: deque[str] = deque(maxlen=_SUBPROCESS_STDOUT_TAIL_LINES)
+    stdout_line_count = 0
     stderr_text = ""
     assert proc.stdout is not None
     assert proc.stderr is not None
     try:
         for line in proc.stdout:
-            stdout_chunks.append(line)
+            stdout_tail.append(line)
+            stdout_line_count += 1
             m = _PROGRESS_RE.match(str(line or "").strip())
             if not m:
                 continue
@@ -96,9 +104,22 @@ def _run_subprocess_with_progress(*, args: list[str], cwd: Path, env: dict[str, 
             _call_phase_hook(phase_hook, phase, percent)
         stderr_text = proc.stderr.read()
         rc = proc.wait()
-        stdout_text = "".join(stdout_chunks)
+        stdout_text = "".join(stdout_tail)
         if rc != 0:
-            raise subprocess.CalledProcessError(rc, args, output=stdout_text, stderr=stderr_text)
+            stderr_lines = str(stderr_text or "").splitlines()
+            stderr_tail = "\n".join(stderr_lines[-_SUBPROCESS_STDERR_TAIL_LINES:])
+            raise RuntimeError(
+                "\n".join(
+                    [
+                        f"subprocess failed rc={rc}",
+                        f"stdout_lines={stdout_line_count}",
+                        "stdout_tail:",
+                        stdout_text.strip(),
+                        "stderr_tail:",
+                        stderr_tail,
+                    ]
+                ).strip()
+            )
         return stdout_text, stderr_text
     finally:
         try:
@@ -112,6 +133,11 @@ def _run_subprocess_with_progress(*, args: list[str], cwd: Path, env: dict[str, 
 
 
 def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:
+    with _ACTIVE_REGENERATES_LOCK:
+        if projectId in _ACTIVE_REGENERATE_PROJECT_IDS:
+            raise RuntimeError(f"Regenerate already in progress for projectId={projectId}")
+        _ACTIVE_REGENERATE_PROJECT_IDS.add(projectId)
+
     root = _repo_root()
     extract = root / "src" / "sentinel" / "extraction" / "extract_project_data.py"
     generate = root / "src" / "sentinel" / "generation" / "generate_html.py"
@@ -148,8 +174,8 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
                 phase_hook=phase_hook,
             )
             extract_elapsed_s = max(0.0, time.perf_counter() - extract_t0)
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Extraction failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
+        except Exception as e:
+            raise RuntimeError(f"Extraction failed: {e}") from e
 
         # Extraction produces "*_project_data.json" into stage_dir; pass the first match into generation.
         project_data = next(iter(sorted(stage_dir.glob("*_project_data.json"))), None)
@@ -176,8 +202,8 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
                 phase_hook=phase_hook,
             )
             generate_elapsed_s = max(0.0, time.perf_counter() - generate_t0)
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Generation failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
+        except Exception as e:
+            raise RuntimeError(f"Generation failed: {e}") from e
 
         # Move new artifacts into the project directory first, then remove anything stale.
         new_names: set[str] = set()
@@ -218,3 +244,5 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
     finally:
         if stage_dir.exists():
             shutil.rmtree(stage_dir, ignore_errors=True)
+        with _ACTIVE_REGENERATES_LOCK:
+            _ACTIVE_REGENERATE_PROJECT_IDS.discard(projectId)

@@ -13,6 +13,9 @@ class EventLogger:
     def info(self, message: str) -> None:
         self._log("info", message)
 
+    def info_kv(self, message: str, **fields: object) -> None:
+        self.info(self._with_fields(message, **fields))
+
     def warn(self, message: str) -> None:
         self._log("warn", message)
 
@@ -21,3 +24,12 @@ class EventLogger:
 
     def fail(self, message: str) -> None:
         self._log("fail", message)
+
+    @staticmethod
+    def _with_fields(message: str, **fields: object) -> str:
+        if not fields:
+            return message
+        rendered: list[str] = []
+        for key, value in fields.items():
+            rendered.append(f"{str(key)}={value}")
+        return f"{message} {' '.join(rendered)}"
