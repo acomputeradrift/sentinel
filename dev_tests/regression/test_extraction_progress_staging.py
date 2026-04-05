@@ -27,6 +27,11 @@ class ExtractionProgressStagingTest(unittest.TestCase):
         self.assertEqual(_map_staged_progress("finalize", 0), 92)
         self.assertEqual(_map_staged_progress("finalize", 100), 100)
 
+    def test_staged_progress_preserves_fractional_resolution(self):
+        a = float(_map_staged_progress("work", 10.11))
+        b = float(_map_staged_progress("work", 10.19))
+        self.assertGreater(b, a)
+
     def test_extract_script_emits_finalize_heartbeats_before_complete(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -58,8 +63,8 @@ class ExtractionProgressStagingTest(unittest.TestCase):
 
             self.assertEqual(rc, 0)
             progress_lines = [line.strip() for line in buf.getvalue().splitlines() if "SENTINEL_PROGRESS EXTRACTING" in line]
-            self.assertIn("SENTINEL_PROGRESS EXTRACTING 99", progress_lines)
-            self.assertIn("SENTINEL_PROGRESS EXTRACTING 100", progress_lines)
+            self.assertIn("SENTINEL_PROGRESS EXTRACTING 99.00", progress_lines)
+            self.assertIn("SENTINEL_PROGRESS EXTRACTING 100.00", progress_lines)
 
 
 if __name__ == "__main__":

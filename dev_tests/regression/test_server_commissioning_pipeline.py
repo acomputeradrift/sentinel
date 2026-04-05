@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+import io
 from pathlib import Path
 import sys
 from unittest import mock
@@ -27,6 +28,29 @@ def _write_test_apex(path: Path) -> None:
 
 
 class CommissioningPipelineTest(unittest.TestCase):
+    def test_subprocess_progress_parser_accepts_fractional_percent(self):
+        from sentinel.server.services import pipeline
+
+        class _FakeProc:
+            def __init__(self):
+                self.stdout = io.StringIO("SENTINEL_PROGRESS EXTRACTING 20.75\n")
+                self.stderr = io.StringIO("")
+
+            def wait(self):
+                return 0
+
+        captured: list[tuple[str, float]] = []
+        with mock.patch.object(pipeline.subprocess, "Popen", return_value=_FakeProc()):
+            out, err = pipeline._run_subprocess_with_progress(
+                args=["dummy"],
+                cwd=Path("."),
+                env={},
+                phase_hook=lambda phase, percent=0: captured.append((str(phase), float(percent))),
+            )
+        self.assertEqual(out.strip(), "SENTINEL_PROGRESS EXTRACTING 20.75")
+        self.assertEqual(err, "")
+        self.assertEqual(captured, [("extracting", 20.75)])
+
     def test_pipeline_returns_extract_generate_total_timings(self):
         with tempfile.TemporaryDirectory() as td:
             os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
@@ -209,10 +233,10 @@ class CommissioningPipelineTest(unittest.TestCase):
 
             def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None):
                 if callable(phase_hook):
-                    phase_hook("extracting", 10)
-                    phase_hook("extracting", 100)
-                    phase_hook("generating", 50)
-                    phase_hook("generating", 100)
+                    phase_hook("extracting", 10.25)
+                    phase_hook("extracting", 99.75)
+                    phase_hook("generating", 50.5)
+                    phase_hook("generating", 100.0)
                 return {"projectId": projectId, "outDir": str(Path(td) / "generated" / projectId), "projectData": "x.json"}
 
             with apex_path.open("rb") as f:
@@ -237,7 +261,7 @@ class CommissioningPipelineTest(unittest.TestCase):
                 for row in published
                 if str((row.get("event") or {}).get("type") or "") == "generation_phase"
             ]
-            self.assertEqual(percents, [10, 100, 50, 100, 100])
+            self.assertEqual(percents, [10.25, 99.75, 50.5, 100.0, 100])
 
     def test_upload_and_regenerate_logs_timing_baseline_with_upload_context(self):
         TestClient = _require_fastapi()

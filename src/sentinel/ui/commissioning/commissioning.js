@@ -195,7 +195,9 @@ function setProgress(el, pct) {
     el.removeAttribute("value");
     return;
   }
-  el.value = Math.max(0, Math.min(100, pct));
+  const n = Number(pct);
+  if (!Number.isFinite(n)) return;
+  el.value = Math.max(0, Math.min(100, n));
 }
 
 function updateTechLinkEnabled() {

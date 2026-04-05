@@ -36,13 +36,17 @@ def main() -> int:
     started_perf = time.perf_counter()
 
     try:
-        def _emit_progress(percent: int) -> None:
-            pct = int(percent or 0)
+        def _emit_progress(percent: float) -> None:
+            try:
+                pct = float(percent or 0.0)
+            except Exception:
+                pct = 0.0
             if pct < 0:
-                pct = 0
+                pct = 0.0
             if pct > 100:
-                pct = 100
-            print(f"SENTINEL_PROGRESS EXTRACTING {pct}", flush=True)
+                pct = 100.0
+            # Keep precision for smoother UI updates on large projects.
+            print(f"SENTINEL_PROGRESS EXTRACTING {pct:.2f}", flush=True)
 
         log.info(f"Extractor start version={SCRIPT_VERSION}")
         log.info(f"Extraction started_at={started_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")

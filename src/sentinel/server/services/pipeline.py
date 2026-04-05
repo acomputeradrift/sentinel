@@ -15,7 +15,7 @@ class PipelineNotImplementedError(RuntimeError):
     pass
 
 
-_PROGRESS_RE = re.compile(r"^SENTINEL_PROGRESS\s+([A-Z_]+)\s+(\d{1,3})\s*$")
+_PROGRESS_RE = re.compile(r"^SENTINEL_PROGRESS\s+([A-Z_]+)\s+(\d{1,3}(?:\.\d+)?)\s*$")
 
 
 def _python_exe() -> str:
@@ -52,14 +52,17 @@ def save_upload(*, projectId: str, uploadId: str, filename: str, content: bytes)
     return path
 
 
-def _call_phase_hook(phase_hook, phase: str, percent: int) -> None:
+def _call_phase_hook(phase_hook, phase: str, percent: float) -> None:
     if not callable(phase_hook):
         return
-    pct = int(percent or 0)
+    try:
+        pct = float(percent or 0.0)
+    except Exception:
+        pct = 0.0
     if pct < 0:
-        pct = 0
+        pct = 0.0
     if pct > 100:
-        pct = 100
+        pct = 100.0
     try:
         phase_hook(str(phase or ""), pct)
         return
@@ -89,7 +92,7 @@ def _run_subprocess_with_progress(*, args: list[str], cwd: Path, env: dict[str, 
             if not m:
                 continue
             phase = str(m.group(1) or "").strip().lower()
-            percent = int(m.group(2) or 0)
+            percent = float(m.group(2) or 0.0)
             _call_phase_hook(phase_hook, phase, percent)
         stderr_text = proc.stderr.read()
         rc = proc.wait()

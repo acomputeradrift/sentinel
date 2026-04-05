@@ -63,19 +63,22 @@ def validate_contract_shape(*, contract: Any, payload: Any) -> None:
         raise ValueError(f"Project data does not match contract shape:\n{joined}")
 
 
-def _map_staged_progress(stage: str, percent: int) -> int:
+def _map_staged_progress(stage: str, percent: float) -> float:
     s = str(stage or "").strip().lower()
-    p = int(percent or 0)
+    try:
+        p = float(percent or 0.0)
+    except Exception:
+        p = 0.0
     if p < 0:
-        p = 0
+        p = 0.0
     if p > 100:
-        p = 100
+        p = 100.0
     if s == "setup":
-        return int((15 * p) / 100)
+        return (15.0 * p) / 100.0
     if s == "work":
-        return 15 + int((77 * p) / 100)
+        return 15.0 + ((77.0 * p) / 100.0)
     if s == "finalize":
-        return 92 + int((8 * p) / 100)
+        return 92.0 + ((8.0 * p) / 100.0)
     return p
 
 
@@ -1227,17 +1230,17 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     cur = con.cursor()
 
     progress_enabled = callable(progress_hook)
-    last_percent_reported = -1
+    last_percent_reported = -1.0
     total_work_units = 0
     completed_work_units = 0
     setup_steps_total = 8
     setup_steps_done = 0
 
-    def _emit_stage(stage: str, stage_percent: int, force: bool = False) -> None:
+    def _emit_stage(stage: str, stage_percent: float, force: bool = False) -> None:
         nonlocal last_percent_reported
         if not progress_enabled:
             return
-        mapped = _map_staged_progress(stage, stage_percent)
+        mapped = round(float(_map_staged_progress(stage, stage_percent)), 2)
         if force or mapped != last_percent_reported:
             last_percent_reported = mapped
             try:
@@ -1250,20 +1253,20 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
         if not progress_enabled:
             return
         setup_steps_done += 1
-        pct = int((setup_steps_done * 100) / max(setup_steps_total, 1))
+        pct = (float(setup_steps_done) * 100.0) / max(float(setup_steps_total), 1.0)
         if pct > 100:
-            pct = 100
+            pct = 100.0
         _emit_stage("setup", pct)
 
     def _emit_work(force: bool = False) -> None:
         if total_work_units <= 0:
-            pct = 100
+            pct = 100.0
         else:
-            pct = int((completed_work_units * 100) / total_work_units)
+            pct = (float(completed_work_units) * 100.0) / float(total_work_units)
         if pct < 0:
-            pct = 0
+            pct = 0.0
         if pct > 100:
-            pct = 100
+            pct = 100.0
         _emit_stage("work", pct, force=force)
 
     def _mark_viewport_frame_button_processed() -> None:
