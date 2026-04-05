@@ -27,6 +27,39 @@ def _write_test_apex(path: Path) -> None:
 
 
 class CommissioningPipelineTest(unittest.TestCase):
+    def test_pipeline_returns_extract_generate_total_timings(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.services import pipeline
+
+            project_id = "proj-time"
+            apex_path = Path(td) / "sample.apex"
+            apex_path.write_bytes(b"apex")
+
+            def _fake_run(*, args, cwd, env, phase_hook=None):
+                out_idx = args.index("--out-dir")
+                stage_dir = Path(args[out_idx + 1])
+                script = Path(args[1]).name
+                if script == "extract_project_data.py":
+                    (stage_dir / "sample_project_data.json").write_text("{}", encoding="utf-8")
+                elif script == "generate_html.py":
+                    (stage_dir / "sample_project_data__project-home.html").write_text("<html></html>", encoding="utf-8")
+                return "", ""
+
+            perf_samples = iter([100.0, 100.1, 101.35, 101.4, 104.15, 105.5])
+            with mock.patch.object(pipeline, "_run_subprocess_with_progress", side_effect=_fake_run):
+                with mock.patch.object(pipeline.time, "perf_counter", side_effect=lambda: next(perf_samples)):
+                    out = pipeline.regenerate_project(projectId=project_id, apex_path=apex_path)
+
+            timings = out.get("timings") if isinstance(out, dict) else None
+            self.assertIsInstance(timings, dict)
+            assert isinstance(timings, dict)
+            self.assertAlmostEqual(float(timings.get("extractSec") or 0.0), 1.25, places=3)
+            self.assertAlmostEqual(float(timings.get("generateSec") or 0.0), 2.75, places=3)
+            self.assertAlmostEqual(float(timings.get("totalSec") or 0.0), 5.5, places=3)
+
     def test_pipeline_uses_v3_project_structure_contract(self):
         pipeline_file = ROOT / "src" / "sentinel" / "server" / "services" / "pipeline.py"
         text = pipeline_file.read_text(encoding="utf-8")
@@ -205,6 +238,49 @@ class CommissioningPipelineTest(unittest.TestCase):
                 if str((row.get("event") or {}).get("type") or "") == "generation_phase"
             ]
             self.assertEqual(percents, [10, 100, 50, 100, 100])
+
+    def test_upload_and_regenerate_logs_timing_baseline_with_upload_context(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.app.main import create_app
+            from sentinel.server.api import commissioning as commissioning_api
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            project_id = p["projectId"]
+
+            apex_path = Path(td) / "sample.apex"
+            _write_test_apex(apex_path)
+
+            def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None):
+                if callable(phase_hook):
+                    phase_hook("extracting", 100)
+                    phase_hook("generating", 100)
+                return {
+                    "projectId": projectId,
+                    "outDir": str(Path(td) / "generated" / projectId),
+                    "projectData": "x.json",
+                    "timings": {"extractSec": 1.0, "generateSec": 2.0, "totalSec": 3.0},
+                }
+
+            with apex_path.open("rb") as f:
+                with mock.patch.object(commissioning_api.pipeline, "regenerate_project", side_effect=_fake_regenerate):
+                    with mock.patch.object(commissioning_api.log, "info") as log_info:
+                        resp = client.post(
+                            f"/api/v1/commissioning/projects/{project_id}/upload-and-regenerate",
+                            files={"apex": ("sample.apex", f, "application/octet-stream")},
+                        )
+
+            self.assertEqual(resp.status_code, 200)
+            rendered = " ".join(str(call.args[0]) for call in log_info.call_args_list if call.args)
+            self.assertIn("REGEN_BASELINE", rendered)
 
     def test_second_regenerate_replaces_old_generated_artifacts(self):
         TestClient = _require_fastapi()

@@ -5,6 +5,7 @@ import re
 import subprocess
 import shutil
 import tempfile
+import time
 from pathlib import Path
 import sys
 from uuid import uuid4
@@ -119,11 +120,15 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
     stage_root = (_generated_root() / ".staging").resolve()
     stage_root.mkdir(parents=True, exist_ok=True)
     stage_dir = Path(tempfile.mkdtemp(prefix=f"{projectId[:8]}-", dir=str(stage_root))).resolve()
+    total_t0 = time.perf_counter()
+    extract_elapsed_s = 0.0
+    generate_elapsed_s = 0.0
 
     _call_phase_hook(phase_hook, "extracting", 0)
 
     try:
         try:
+            extract_t0 = time.perf_counter()
             _run_subprocess_with_progress(
                 args=[
                     _python_exe(),
@@ -139,6 +144,7 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
                 env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
                 phase_hook=phase_hook,
             )
+            extract_elapsed_s = max(0.0, time.perf_counter() - extract_t0)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Extraction failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
 
@@ -150,6 +156,7 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
         _call_phase_hook(phase_hook, "generating", 0)
 
         try:
+            generate_t0 = time.perf_counter()
             _run_subprocess_with_progress(
                 args=[
                     _python_exe(),
@@ -165,6 +172,7 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
                 env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
                 phase_hook=phase_hook,
             )
+            generate_elapsed_s = max(0.0, time.perf_counter() - generate_t0)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Generation failed: rc={e.returncode}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}") from e
 
@@ -193,7 +201,17 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
                 child.unlink()
 
         final_project_data = out_dir / project_data.name
-        return {"projectId": projectId, "outDir": str(out_dir), "projectData": str(final_project_data)}
+        total_elapsed_s = max(0.0, time.perf_counter() - total_t0)
+        return {
+            "projectId": projectId,
+            "outDir": str(out_dir),
+            "projectData": str(final_project_data),
+            "timings": {
+                "extractSec": round(float(extract_elapsed_s), 3),
+                "generateSec": round(float(generate_elapsed_s), 3),
+                "totalSec": round(float(total_elapsed_s), 3),
+            },
+        }
     finally:
         if stage_dir.exists():
             shutil.rmtree(stage_dir, ignore_errors=True)

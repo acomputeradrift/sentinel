@@ -190,6 +190,30 @@ def _active_upload_payload(*, repo: Repository, projectId: str) -> dict | None:
     }
 
 
+def _log_regen_baseline(
+    *,
+    projectId: str,
+    uploadId: str | None,
+    originalFilename: str | None,
+    generation: dict | None,
+) -> None:
+    timings = (generation or {}).get("timings") if isinstance(generation, dict) else {}
+    if not isinstance(timings, dict):
+        timings = {}
+    extract_s = timings.get("extractSec")
+    generate_s = timings.get("generateSec")
+    total_s = timings.get("totalSec")
+    log.info(
+        "REGEN_BASELINE projectId=%s uploadId=%s file=%s extractSec=%s generateSec=%s totalSec=%s",
+        str(projectId or ""),
+        str(uploadId or ""),
+        str(originalFilename or ""),
+        extract_s if extract_s is not None else "",
+        generate_s if generate_s is not None else "",
+        total_s if total_s is not None else "",
+    )
+
+
 def _commissioning_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -> dict:
     latest = repo.get_latest_results_for_project(projectId=projectId)
     progress_payload = _safe_progress(repo=repo, projectId=projectId)
@@ -368,6 +392,12 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         )
     except Exception as e:
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
+    _log_regen_baseline(
+        projectId=projectId,
+        uploadId=upload_id,
+        originalFilename=apex.filename,
+        generation=generation if isinstance(generation, dict) else {},
+    )
     _repo(request).set_project_active_upload(projectId=projectId, uploadId=upload_id)
     active_upload = _active_upload_payload(repo=_repo(request), projectId=projectId)
     _publish_generation_phase(
@@ -417,8 +447,9 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     if not candidates:
         raise http_error(404, code="UPLOAD_NOT_FOUND", message="Upload not found.")
     apex_path = candidates[0]
+    generation: dict | None = None
     try:
-        await asyncio.to_thread(
+        generation = await asyncio.to_thread(
             pipeline.regenerate_project,
             projectId=projectId,
             apex_path=apex_path,
@@ -435,6 +466,12 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
 
     original_filename = apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name
+    _log_regen_baseline(
+        projectId=projectId,
+        uploadId=str(upload_id),
+        originalFilename=original_filename,
+        generation=generation if isinstance(generation, dict) else {},
+    )
     _repo(request).record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
     _repo(request).set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
     active_upload = _active_upload_payload(repo=_repo(request), projectId=projectId)

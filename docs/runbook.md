@@ -41,6 +41,18 @@
 2. During extraction, progress events must continue to emit during long viewport/frame-heavy traversal so the progress bar does not appear stalled.
 3. Extraction should reserve final completion for script-level finalize work and emit `EXTRACTING 100` only after validation/write completion.
 
+## Regenerate Timing Baseline Logs
+1. Each successful `upload-and-regenerate` and `regenerate` run writes one timing baseline line in server logs with this marker: `REGEN_BASELINE`.
+2. Logged fields:
+   - `projectId`
+   - `uploadId`
+   - `file`
+   - `extractSec`
+   - `generateSec`
+   - `totalSec`
+3. Quick query:
+   - `journalctl -u sentinel --since "24 hours ago" --no-pager | grep REGEN_BASELINE`
+
 ## Development workflow (parallel work; non-conflicting)
 
 1. The canonical interoperability contract is `docs/api_contract_v1.md` plus examples in `docs/contract_pack_examples_v1.json`.
