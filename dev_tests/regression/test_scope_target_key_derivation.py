@@ -11,6 +11,21 @@ from sentinel.server.services import progress
 
 
 class ScopeTargetKeyDerivationTest(unittest.TestCase):
+    def test_scoped_uiitem_key_uses_category_when_label_missing(self):
+        button = {
+            "buttonCategory": "UI Item",
+            "apexScopeSource": {
+                "page": {"pageId": 513, "roomId": 23, "sourceDeviceId": 74, "rtiAddress": 2},
+                "viewportLayer": {"layerId": 300, "sharedLayerId": 700, "roomId": 23, "sourceId": 74},
+                "pageLayer": {"roomId": None, "sourceId": None},
+                "button": {"buttonId": 48552, "buttonTagId": None},
+                "bindings": {"macroIds": [], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
+            },
+        }
+
+        scoped = progress._scoped_target_key_from_button(button=button, label="")
+        self.assertEqual(scoped, "tt_ui:2:SHARED:700:48552:UI Item")
+
     def test_derive_device_targets_uses_scope_keys_when_apex_scope_source_present(self):
         project_data = {
             "devices": [

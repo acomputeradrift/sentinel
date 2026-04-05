@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 import io
+import threading
 from pathlib import Path
 import sys
 from unittest import mock
@@ -28,6 +29,79 @@ def _write_test_apex(path: Path) -> None:
 
 
 class CommissioningPipelineTest(unittest.TestCase):
+    def test_subprocess_failure_message_is_tail_limited_for_large_output(self):
+        from sentinel.server.services import pipeline
+
+        class _FakeProc:
+            def __init__(self):
+                lines = [f"log-line-{idx}\n" for idx in range(1, 151)]
+                self.stdout = io.StringIO("".join(lines))
+                self.stderr = io.StringIO("boom-stderr")
+
+            def wait(self):
+                return 1
+
+        with mock.patch.object(pipeline.subprocess, "Popen", return_value=_FakeProc()):
+            with self.assertRaises(Exception) as raised:
+                pipeline._run_subprocess_with_progress(
+                    args=["dummy"],
+                    cwd=Path("."),
+                    env={},
+                )
+        text = str(raised.exception)
+        self.assertIn("stdout_tail", text)
+        self.assertIn("stdout_lines=", text)
+        self.assertNotIn("\nlog-line-1\n", f"\n{text}\n")
+        self.assertIn("log-line-150", text)
+
+    def test_regenerate_rejects_parallel_run_for_same_project(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.services import pipeline
+
+            project_id = "proj-lock"
+            apex_path = Path(td) / "sample.apex"
+            apex_path.write_bytes(b"apex")
+            started = threading.Event()
+            release = threading.Event()
+
+            def _fake_run(*, args, cwd, env, phase_hook=None):
+                out_idx = args.index("--out-dir")
+                stage_dir = Path(args[out_idx + 1])
+                script = Path(args[1]).name
+                if script == "extract_project_data.py":
+                    started.set()
+                    release.wait(timeout=3)
+                    (stage_dir / "sample_project_data.json").write_text("{}", encoding="utf-8")
+                elif script == "generate_html.py":
+                    (stage_dir / "sample_project_data__project-home.html").write_text("<html></html>", encoding="utf-8")
+                return "", ""
+
+            first_result: dict[str, object] = {}
+            first_error: list[Exception] = []
+
+            def _run_first():
+                try:
+                    first_result.update(pipeline.regenerate_project(projectId=project_id, apex_path=apex_path))
+                except Exception as exc:  # pragma: no cover - debugging path
+                    first_error.append(exc)
+
+            worker = threading.Thread(target=_run_first, daemon=True)
+            with mock.patch.object(pipeline, "_run_subprocess_with_progress", side_effect=_fake_run):
+                worker.start()
+                self.assertTrue(started.wait(timeout=2), "First regenerate did not start in time.")
+                with self.assertRaises(RuntimeError) as raised:
+                    pipeline.regenerate_project(projectId=project_id, apex_path=apex_path)
+                self.assertIn("already in progress", str(raised.exception))
+                release.set()
+                worker.join(timeout=3)
+
+            self.assertFalse(worker.is_alive(), "First regenerate thread should complete after release.")
+            self.assertFalse(first_error, f"First regenerate failed unexpectedly: {first_error}")
+            self.assertEqual(first_result.get("projectId"), project_id)
+
     def test_subprocess_progress_parser_accepts_fractional_percent(self):
         from sentinel.server.services import pipeline
 

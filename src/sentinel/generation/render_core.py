@@ -1268,8 +1268,10 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
   const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
   const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
-  const buttonName = String(m.identity || label || "").trim();
-  const targetName = label || buttonName;
+  const categoryName = String(m.category || "").trim();
+  const buttonName = String(m.identity || "").trim();
+  const targetName = String(label || "").trim() || buttonName || categoryName;
+  const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -1326,7 +1328,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
-   const lowerLabel = String(targetName || "").trim().toLowerCase();
+   const lowerLabel = String(keyToken || "").trim().toLowerCase();
    if (buttonTagId != null) {{
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
@@ -1347,7 +1349,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.effectiveSourceId = effectiveSourceId;
     refs.programRef = programRef;
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{targetName}}`;
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyToken}}`;
      return {{
       targetKey,
       kind: scope,
@@ -1363,7 +1365,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.sharedFlag = sharedFlag;
     refs.scopeLayerId = scopeLayerId;
     if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
-     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{targetName}}`;
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyToken}}`;
      return {{
       targetKey,
       kind: scope,
@@ -1375,13 +1377,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{targetName}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyToken}}`;
   }} else if (vpButtonId && deviceId != null && pageId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{targetName}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyToken}}`;
   }} else if (deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{targetName}}`;
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyToken}}`;
   }} else {{
-   targetKey = `btn:${{targetName || "Button"}}`;
+   targetKey = `btn:${{keyToken}}`;
   }}
   return {{
    targetKey,
@@ -3067,8 +3069,10 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
   const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
   const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
-  const buttonName = String(m.identity || label || "").trim();
-  const targetName = label || buttonName;
+  const categoryName = String(m.category || "").trim();
+  const buttonName = String(m.identity || "").trim();
+  const targetName = String(label || "").trim() || buttonName || categoryName;
+  const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -3125,7 +3129,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
-   const lowerLabel = String(targetName || "").trim().toLowerCase();
+   const lowerLabel = String(keyToken || "").trim().toLowerCase();
    if (buttonTagId != null) {{
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
@@ -3146,7 +3150,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.effectiveSourceId = effectiveSourceId;
     refs.programRef = programRef;
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{targetName}}`;
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyToken}}`;
      return {{
       targetKey,
       kind: scope,
@@ -3162,7 +3166,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.sharedFlag = sharedFlag;
     refs.scopeLayerId = scopeLayerId;
     if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
-     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{targetName}}`;
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyToken}}`;
      return {{
       targetKey,
       kind: scope,
@@ -3174,13 +3178,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{targetName}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyToken}}`;
   }} else if (vpButtonId && deviceId != null && pageId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{targetName}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyToken}}`;
   }} else if (deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{targetName}}`;
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyToken}}`;
   }} else {{
-   targetKey = `btn:${{targetName || "Button"}}`;
+   targetKey = `btn:${{keyToken}}`;
   }}
   return {{
    targetKey,

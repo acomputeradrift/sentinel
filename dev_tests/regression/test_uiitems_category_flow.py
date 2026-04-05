@@ -42,6 +42,10 @@ def _ui_item_button() -> dict:
 
 
 class UiItemsCategoryFlowTest(unittest.TestCase):
+    def test_render_runtime_uses_category_fallback_token_for_button_keys(self):
+        source = (ROOT / "src" / "sentinel" / "generation" / "render_core.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count('const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";'), 2)
+
     def test_render_iter_page_buttons_includes_ui_items(self):
         page = {
             "layers": [

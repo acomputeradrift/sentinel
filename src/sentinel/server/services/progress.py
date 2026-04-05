@@ -131,6 +131,8 @@ def _scoped_target_key_from_button(*, button: dict[str, Any], label: str) -> str
     button_tag_id = btn.get("buttonTagId")
     button_id = btn.get("buttonId")
     target_name = str(label or "").strip()
+    if not target_name:
+        target_name = str(button.get("buttonCategory") or "").strip() or "Button"
 
     if button_tag_id is not None:
         if rti_address is None or effective_room_id is None or effective_source_id is None:

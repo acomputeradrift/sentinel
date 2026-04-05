@@ -16,6 +16,7 @@ if str(SRC) not in sys.path:
 
 from sentinel.extraction.extractor_core import _map_staged_progress
 from sentinel.extraction import extract_project_data as extract_script
+from sentinel.generation import generate_html as generate_script
 
 
 class ExtractionProgressStagingTest(unittest.TestCase):
@@ -65,6 +66,80 @@ class ExtractionProgressStagingTest(unittest.TestCase):
             progress_lines = [line.strip() for line in buf.getvalue().splitlines() if "SENTINEL_PROGRESS EXTRACTING" in line]
             self.assertIn("SENTINEL_PROGRESS EXTRACTING 99.00", progress_lines)
             self.assertIn("SENTINEL_PROGRESS EXTRACTING 100.00", progress_lines)
+
+    def test_extract_script_logs_large_input_context(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            apex_path = tmp / "sample.apex"
+            contract_path = tmp / "apex_project_structure_v4.json"
+            out_dir = tmp / "out"
+            apex_path.write_bytes(b"x" * 1234)
+            contract_path.write_text("{}", encoding="utf-8")
+
+            fake_payload = {"events": {"system": [], "driver": []}, "devices": []}
+            argv = [
+                "extract_project_data.py",
+                "--apex",
+                str(apex_path),
+                "--project-structure",
+                str(contract_path),
+                "--out-dir",
+                str(out_dir),
+            ]
+
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(extract_script, "extract_project_data", return_value=fake_payload),
+                mock.patch.object(extract_script, "validate_contract_shape", return_value=None),
+            ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = extract_script.main()
+
+            self.assertEqual(rc, 0)
+            text = buf.getvalue()
+            self.assertIn("apex_size_bytes=1234", text)
+            self.assertIn("contract_size_bytes=2", text)
+
+    def test_generate_script_logs_large_input_and_output_context(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            project_path = tmp / "sample_project_data.json"
+            ui_path = tmp / "app_ui_structure.json"
+            out_dir = tmp / "out"
+            project_path.write_text("{}", encoding="utf-8")
+            ui_path.write_text("{}", encoding="utf-8")
+
+            fake_project = {"devices": [{"userFacing": {"displayName": "Device A", "pages": [{"pageName": "Home"}]}}]}
+            fake_ui = {}
+            argv = [
+                "generate_html.py",
+                "--project-data",
+                str(project_path),
+                "--app-ui",
+                str(ui_path),
+                "--out-dir",
+                str(out_dir),
+            ]
+
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(generate_script, "load_json", side_effect=[fake_project, fake_ui]),
+                mock.patch.object(generate_script, "render_project_home_html", return_value="<html></html>"),
+                mock.patch.object(generate_script, "build_project_manifest", return_value={"devices": []}),
+                mock.patch.object(generate_script, "render_single_device_html", return_value="<html></html>"),
+                mock.patch.object(generate_script, "build_device_payload", return_value={"x": 1}),
+            ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = generate_script.main()
+
+            self.assertEqual(rc, 0)
+            text = buf.getvalue()
+            self.assertIn("project_data_size_bytes=2", text)
+            self.assertIn("app_ui_size_bytes=2", text)
+            self.assertIn("renderable_devices=1", text)
+            self.assertIn("total_units=4", text)
 
 
 if __name__ == "__main__":
