@@ -24,6 +24,23 @@
 5. If one interface becomes unavailable during a session, recorded test history and diagnostics context must remain recoverable when the session reconnects.
 6. Recovery should favor fast continuation of commissioning work rather than requiring the entire testing process to restart.
 
+## Large Upload Regenerate Reliability
+1. `upload-and-regenerate` and `regenerate` are long-running HTTP requests for large `.apex` projects and must use extended upstream proxy timeouts.
+2. In nginx, apply these values on the normal API proxy location (`location /`), not only WebSocket locations:
+   - `proxy_connect_timeout 300s;`
+   - `proxy_read_timeout 3600s;`
+   - `proxy_send_timeout 3600s;`
+3. After config changes, run `nginx -t` then reload nginx.
+4. Verification after deploy:
+   - run one large-file regenerate
+   - confirm no `504` for `POST /api/v1/commissioning/projects/{projectId}/upload-and-regenerate` in `nginx/access.log`
+   - confirm no `upstream timed out ... while reading response header from upstream` for that request in `nginx/error.log`
+
+## Extraction Progress Heartbeat Contract
+1. Keep status text labels unchanged: `Uploading...`, `Extracting...`, `Generating...`.
+2. During extraction, progress events must continue to emit during long viewport/frame-heavy traversal so the progress bar does not appear stalled.
+3. Extraction should reserve final completion for script-level finalize work and emit `EXTRACTING 100` only after validation/write completion.
+
 ## Development workflow (parallel work; non-conflicting)
 
 1. The canonical interoperability contract is `docs/api_contract_v1.md` plus examples in `docs/contract_pack_examples_v1.json`.

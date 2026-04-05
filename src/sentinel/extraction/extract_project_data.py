@@ -56,6 +56,7 @@ def main() -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
         log.info(f"Loading apex database: {apex}")
         data = extract_project_data(ExtractContext(apex_path=apex, project_structure_path=project_structure), progress_hook=_emit_progress)
+        _emit_progress(99)
         data.setdefault("source", {})
         data["source"]["scriptVersion"] = SCRIPT_VERSION
         contract = json.loads(project_structure.read_text(encoding="utf-8"))
@@ -65,6 +66,7 @@ def main() -> int:
         log.info(f"Writing output json: {out_path}")
         with out_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=True)
+        _emit_progress(100)
 
         ended_at = datetime.now(timezone.utc)
         elapsed_seconds = time.perf_counter() - started_perf

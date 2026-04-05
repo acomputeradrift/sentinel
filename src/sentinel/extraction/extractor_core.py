@@ -1266,6 +1266,11 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             pct = 100
         _emit_stage("work", pct, force=force)
 
+    def _mark_viewport_frame_button_processed() -> None:
+        nonlocal completed_work_units
+        completed_work_units += 1
+        _emit_work()
+
     _emit_stage("setup", 0, force=True)
 
     tag_name_by_id = _fetch_map(cur, "select ButtonTagId, ButtonTagName from ButtonTagNames")
@@ -1829,9 +1834,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             lowest_nonzero_device_room_id,
                             (int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                             (int(layer["SourceId"]) if layer["SourceId"] is not None else None),
+                            _mark_viewport_frame_button_processed,
                         )
-                        completed_work_units += int(frames.get("frame_button_count") or 0)
-                        _emit_work()
                         layer_user["viewports"].append(
                             {
                                 "viewportIdentity": {"viewportButtonId": button_id},
@@ -1914,7 +1918,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     _emit_stage("finalize", 35, force=True)
 
     con.close()
-    _emit_stage("finalize", 100, force=True)
+    # Reserve final completion for script-level validate/write heartbeat and handoff.
+    _emit_stage("finalize", 90, force=True)
     return out
 
 
@@ -1952,6 +1957,7 @@ def _resolve_viewport_frames(
     global_room_fallback_id: int | None,
     parent_layer_room_id: int | None,
     parent_layer_source_id: int | None,
+    button_processed_hook: Any = None,
 ) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
     child_layers = cur.fetchall()
@@ -1980,6 +1986,11 @@ def _resolve_viewport_frames(
         cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
         for b in cur.fetchall():
             frame_button_count += 1
+            if callable(button_processed_hook):
+                try:
+                    button_processed_hook()
+                except Exception:
+                    pass
             frame_id = int(b["FrameNumber"] or 0)
             frame_user.setdefault(
                 frame_id,
