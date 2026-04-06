@@ -164,6 +164,23 @@ def _fetch_map(cur: sqlite3.Cursor, query: str, key_idx: int = 0, val_idx: int =
     return out
 
 
+def _shared_layer_buttons(
+    cur: sqlite3.Cursor,
+    shared_layer_id: int,
+    cache: dict[int, list[sqlite3.Row]],
+) -> list[sqlite3.Row]:
+    layer_id = int(shared_layer_id or 0)
+    if layer_id in cache:
+        return cache[layer_id]
+    cur.execute(
+        "select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId",
+        (layer_id,),
+    )
+    rows = list(cur.fetchall())
+    cache[layer_id] = rows
+    return rows
+
+
 def _row_value(row: sqlite3.Row, key: str, default: Any = None) -> Any:
     return row[key] if key in row.keys() else default
 
@@ -1459,6 +1476,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     viewport_button_ids = {int(r[0]) for r in cur.fetchall() if r[0] is not None}
     cur.execute("select SharedLayerId, Name from SharedLayers")
     shared_layer_name_by_id = {int(row["SharedLayerId"]): str(row["Name"] or "") for row in cur.fetchall()}
+    shared_layer_buttons_cache: dict[int, list[sqlite3.Row]] = {}
     cur.execute(
         """
         select d.DeviceId, p.PageId, n.PageName
@@ -1736,8 +1754,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                     "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "emptyTag": [], "uiItems": []},
                     "viewports": [],
                 }
-                cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
-                for b in cur.fetchall():
+                for b in _shared_layer_buttons(cur, int(layer["SharedLayerId"]), shared_layer_buttons_cache):
                     button_id = int(b["ButtonId"])
                     user_button, diag_button = _resolve_button(
                         cur,
@@ -1822,6 +1839,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             lowest_nonzero_device_room_id,
                             (int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                             (int(layer["SourceId"]) if layer["SourceId"] is not None else None),
+                            shared_layer_buttons_cache,
                             _mark_viewport_frame_button_processed,
                         )
                         layer_user["viewports"].append(
@@ -1945,6 +1963,7 @@ def _resolve_viewport_frames(
     global_room_fallback_id: int | None,
     parent_layer_room_id: int | None,
     parent_layer_source_id: int | None,
+    shared_layer_buttons_cache: dict[int, list[sqlite3.Row]],
     button_processed_hook: Any = None,
 ) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
@@ -1971,8 +1990,7 @@ def _resolve_viewport_frames(
                 "roomId": int(layer["RoomId"] or 0),
             }
         )
-        cur.execute("select * from RTIDeviceButtonData where SharedLayerId = ? order by ButtonOrder, ButtonId", (int(layer["SharedLayerId"]),))
-        for b in cur.fetchall():
+        for b in _shared_layer_buttons(cur, int(layer["SharedLayerId"]), shared_layer_buttons_cache):
             frame_button_count += 1
             if callable(button_processed_hook):
                 try:
