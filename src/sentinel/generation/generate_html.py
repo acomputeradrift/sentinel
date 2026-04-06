@@ -31,6 +31,7 @@ SCRIPT_VERSION = "0.1.0"
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate a project home page and single-device HTML shells from <filename>_project_data.json and app_ui_structure.json")
     p.add_argument("--project-data", required=True, help="Path to <filename>_project_data.json")
+    p.add_argument("--resolved-targets", default="", help="Optional path to <filename>_resolved_targets.json")
     p.add_argument("--app-ui", required=True, help="Path to app_ui_structure.json")
     p.add_argument("--out-dir", help="Output directory. Defaults to the project data file directory.")
     return p.parse_args()
@@ -41,6 +42,7 @@ def main() -> int:
     args = parse_args()
     project_data_path = Path(args.project_data).resolve()
     app_ui_path = Path(args.app_ui).resolve()
+    resolved_targets_path = Path(args.resolved_targets).resolve() if str(args.resolved_targets or "").strip() else None
     out_dir = Path(args.out_dir).resolve() if args.out_dir else project_data_path.parent
     started_at = datetime.now(timezone.utc)
     started_perf = time.perf_counter()
@@ -74,6 +76,19 @@ def main() -> int:
         )
         log.info(f"Loading project data: {project_data_path}")
         project_data = load_json(project_data_path)
+        if resolved_targets_path is None:
+            suffix = "_project_data.json"
+            if str(project_data_path.name).endswith(suffix):
+                base = str(project_data_path.name)[: -len(suffix)]
+            else:
+                base = project_data_path.stem
+            inferred = project_data_path.with_name(f"{base}_resolved_targets.json")
+            if inferred.exists():
+                resolved_targets_path = inferred
+        resolved_targets = None
+        if resolved_targets_path is not None and resolved_targets_path.exists():
+            log.info(f"Loading resolved targets: {resolved_targets_path}")
+            resolved_targets = load_json(resolved_targets_path)
         log.info(f"Loading app ui config: {app_ui_path}")
         app_ui = load_json(app_ui_path)
 
@@ -115,14 +130,26 @@ def main() -> int:
             pages = user.get("pages", [])
             if not isinstance(pages, list) or not pages:
                 continue
-            html = render_single_device_html(project_data, app_ui, project_stem=project_data_path.stem, device_index=device_index)
+            html = render_single_device_html(
+                project_data,
+                app_ui,
+                project_stem=project_data_path.stem,
+                device_index=device_index,
+                resolved_targets=resolved_targets,
+            )
             device_name = user.get("displayName", f"device-{device_index}")
             out_path = out_dir / device_filename(project_data_path.stem, str(device_name), device_index)
             log.info(f"Writing html output: {out_path}")
             out_path.write_text(html, encoding="utf-8")
             written += 1
             _emit_progress(int((written * 100) / max(total_units, 1)))
-            payload = build_device_payload(project_data, app_ui, project_stem=project_data_path.stem, device_index=device_index)
+            payload = build_device_payload(
+                project_data,
+                app_ui,
+                project_stem=project_data_path.stem,
+                device_index=device_index,
+                resolved_targets=resolved_targets,
+            )
             payload_path = out_dir / device_payload_filename(project_data_path.stem, str(device_name), device_index)
             log.info(f"Writing payload output: {payload_path}")
             payload_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")

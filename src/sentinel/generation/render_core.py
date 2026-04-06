@@ -442,13 +442,32 @@ def _page_all_buttons(page: dict[str, Any], orientation: str) -> list[dict[str, 
     return buttons
 
 
-def _page_target_map(project_data: dict[str, Any], project_stem: str, device_index: int) -> dict[int, str]:
+def _page_target_map(
+    project_data: dict[str, Any],
+    project_stem: str,
+    device_index: int,
+    resolved_targets: dict[str, Any] | None = None,
+) -> dict[int, str]:
     device = project_data["devices"][device_index]
     user_pages = device["userFacing"]["pages"]
     diag_pages = project_data["devices"][device_index].get("diagnostics", {}).get("pages", [])
     device_name = str(device["userFacing"].get("displayName", f"device-{device_index}"))
     target_href = device_filename(project_stem, device_name, device_index)
     out: dict[int, str] = {}
+    if isinstance(resolved_targets, dict):
+        rows = resolved_targets.get("devices", [])
+        if isinstance(rows, list):
+            diag_device_id = int((project_data["devices"][device_index].get("diagnostics", {}) or {}).get("deviceId") or 0)
+            match = next((r for r in rows if isinstance(r, dict) and int(r.get("deviceId") or 0) == diag_device_id), None)
+            if isinstance(match, dict):
+                page_ids = match.get("pageIds", [])
+                if isinstance(page_ids, list):
+                    for idx, page_id in enumerate(page_ids):
+                        if idx >= len(user_pages):
+                            break
+                        out[int(page_id)] = target_href
+                    if out:
+                        return out
     for index, diag_page in enumerate(diag_pages):
         if index >= len(user_pages):
             break
@@ -459,9 +478,25 @@ def _page_target_map(project_data: dict[str, Any], project_stem: str, device_ind
     return out
 
 
-def _page_target_indexes(project_data: dict[str, Any], device_index: int) -> dict[int, int]:
+def _page_target_indexes(
+    project_data: dict[str, Any],
+    device_index: int,
+    resolved_targets: dict[str, Any] | None = None,
+) -> dict[int, int]:
     diag_pages = project_data["devices"][device_index].get("diagnostics", {}).get("pages", [])
     out: dict[int, int] = {}
+    if isinstance(resolved_targets, dict):
+        rows = resolved_targets.get("devices", [])
+        if isinstance(rows, list):
+            diag_device_id = int((project_data["devices"][device_index].get("diagnostics", {}) or {}).get("deviceId") or 0)
+            match = next((r for r in rows if isinstance(r, dict) and int(r.get("deviceId") or 0) == diag_device_id), None)
+            if isinstance(match, dict):
+                page_ids = match.get("pageIds", [])
+                if isinstance(page_ids, list):
+                    for index, page_id in enumerate(page_ids):
+                        out[int(page_id)] = index
+                    if out:
+                        return out
     for index, diag_page in enumerate(diag_pages):
         page_id = diag_page.get("pageId")
         if page_id is not None:
@@ -549,6 +584,7 @@ def _page_payload(
     device_index: int,
     page_index: int,
     orientation: str,
+    resolved_targets: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     diag = device.get("diagnostics", {}) if isinstance(device, dict) else {}
@@ -566,8 +602,8 @@ def _page_payload(
     uf = device["userFacing"]
     page = uf["pages"][page_index]
     variable_label = app_ui.get("testingPopup", {}).get("variableLabelTemplate", "Variable - {variableType}")
-    page_targets = _page_target_map(project_data, project_stem, device_index)
-    page_target_indexes = _page_target_indexes(project_data, device_index)
+    page_targets = _page_target_map(project_data, project_stem, device_index, resolved_targets)
+    page_target_indexes = _page_target_indexes(project_data, device_index, resolved_targets)
     layer_name_by_key = {
         str(layer.get("key") or ""): str(layer.get("name") or "")
         for layer in _page_layer_state(page)
@@ -3360,7 +3396,13 @@ _connectTechWs();
 document.getElementById('close').addEventListener('click', function(){{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click', function(e){{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
 </script></body></html>"""
-def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> str:
+def render_single_device_html(
+    project_data: dict[str, Any],
+    app_ui: dict[str, Any],
+    project_stem: str,
+    device_index: int = 0,
+    resolved_targets: dict[str, Any] | None = None,
+) -> str:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
     device_ui = uf.get("deviceUI", {})
@@ -3398,7 +3440,7 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
     page_markup: list[str] = []
     page_state: list[dict[str, Any]] = []
     for page_index, _page in enumerate(pages):
-        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation)
+        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation, resolved_targets)
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
         page_markup.append(
             f"<div class='device-page{' active' if page_index == 0 else ''}' data-page-index='{page_index}'>"
@@ -3427,7 +3469,13 @@ def render_single_device_html(project_data: dict[str, Any], app_ui: dict[str, An
     )
 
 
-def build_device_payload(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str, device_index: int = 0) -> dict[str, Any]:
+def build_device_payload(
+    project_data: dict[str, Any],
+    app_ui: dict[str, Any],
+    project_stem: str,
+    device_index: int = 0,
+    resolved_targets: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
     device_ui = uf.get("deviceUI", {})
@@ -3446,7 +3494,7 @@ def build_device_payload(project_data: dict[str, Any], app_ui: dict[str, Any], p
     page_payloads: list[dict[str, Any]] = []
     diag_pages = device.get("diagnostics", {}).get("pages", []) if isinstance(device, dict) else []
     for page_index, _page in enumerate(pages):
-        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation)
+        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation, resolved_targets)
         diag_page = diag_pages[page_index] if isinstance(diag_pages, list) and page_index < len(diag_pages) else {}
         page_payloads.append(
             {
