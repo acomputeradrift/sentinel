@@ -4,6 +4,7 @@ import sys
 import io
 import json
 import tempfile
+import time
 from contextlib import redirect_stdout
 from unittest import mock
 
@@ -64,8 +65,85 @@ class ExtractionProgressStagingTest(unittest.TestCase):
 
             self.assertEqual(rc, 0)
             progress_lines = [line.strip() for line in buf.getvalue().splitlines() if "SENTINEL_PROGRESS EXTRACTING" in line]
-            self.assertIn("SENTINEL_PROGRESS EXTRACTING 99.00", progress_lines)
-            self.assertIn("SENTINEL_PROGRESS EXTRACTING 100.00", progress_lines)
+            values = [float(line.split("SENTINEL_PROGRESS EXTRACTING ", 1)[1]) for line in progress_lines]
+            self.assertIn(99.0, values)
+            self.assertIn(100.0, values)
+
+    def test_extract_script_does_not_emit_synthetic_ticks_during_slow_extraction(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            apex_path = tmp / "sample.apex"
+            contract_path = tmp / "apex_project_structure_v4.json"
+            out_dir = tmp / "out"
+            apex_path.write_bytes(b"sqlite-placeholder")
+            contract_path.write_text(json.dumps({}), encoding="utf-8")
+
+            fake_payload = {"events": {"system": [], "driver": []}, "devices": []}
+            argv = [
+                "extract_project_data.py",
+                "--apex",
+                str(apex_path),
+                "--project-structure",
+                str(contract_path),
+                "--out-dir",
+                str(out_dir),
+            ]
+
+            def _slow_extract(*args, **kwargs):
+                _ = args, kwargs
+                time.sleep(4.2)
+                return fake_payload
+
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(extract_script, "extract_project_data", side_effect=_slow_extract),
+                mock.patch.object(extract_script, "validate_contract_shape", return_value=None),
+            ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = extract_script.main()
+
+            self.assertEqual(rc, 0)
+            progress_lines = [line.strip() for line in buf.getvalue().splitlines() if "SENTINEL_PROGRESS EXTRACTING" in line]
+            values = [float(line.split("SENTINEL_PROGRESS EXTRACTING ", 1)[1]) for line in progress_lines]
+            pre_99 = [v for v in values if v < 99.0]
+            self.assertEqual(len(pre_99), 0)
+
+    def test_extract_script_emits_intermediate_finalize_progress(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            apex_path = tmp / "sample.apex"
+            contract_path = tmp / "apex_project_structure_v4.json"
+            out_dir = tmp / "out"
+            apex_path.write_bytes(b"sqlite-placeholder")
+            contract_path.write_text(json.dumps({}), encoding="utf-8")
+
+            large_values = ["x" * 1024 for _ in range(1500)]
+            fake_payload = {"events": {"system": [], "driver": []}, "devices": [{"blob": large_values}]}
+            argv = [
+                "extract_project_data.py",
+                "--apex",
+                str(apex_path),
+                "--project-structure",
+                str(contract_path),
+                "--out-dir",
+                str(out_dir),
+            ]
+
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(extract_script, "extract_project_data", return_value=fake_payload),
+                mock.patch.object(extract_script, "validate_contract_shape", return_value=None),
+            ):
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = extract_script.main()
+
+            self.assertEqual(rc, 0)
+            progress_lines = [line.strip() for line in buf.getvalue().splitlines() if "SENTINEL_PROGRESS EXTRACTING" in line]
+            values = [float(line.split("SENTINEL_PROGRESS EXTRACTING ", 1)[1]) for line in progress_lines]
+            near_done = [v for v in values if 99.0 < v < 100.0]
+            self.assertGreaterEqual(len(near_done), 3)
 
     def test_extract_script_logs_large_input_context(self):
         with tempfile.TemporaryDirectory() as td:

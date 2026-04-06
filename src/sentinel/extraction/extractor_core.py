@@ -1240,7 +1240,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
         nonlocal last_percent_reported
         if not progress_enabled:
             return
-        mapped = round(float(_map_staged_progress(stage, stage_percent)), 2)
+        mapped = round(float(_map_staged_progress(stage, stage_percent)), 4)
         if force or mapped != last_percent_reported:
             last_percent_reported = mapped
             try:

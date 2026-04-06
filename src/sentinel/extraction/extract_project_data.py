@@ -34,9 +34,11 @@ def main() -> int:
     out_dir = Path(args.out_dir).resolve()
     started_at = datetime.now(timezone.utc)
     started_perf = time.perf_counter()
+    current_progress = 0.0
 
     try:
         def _emit_progress(percent: float) -> None:
+            nonlocal current_progress
             try:
                 pct = float(percent or 0.0)
             except Exception:
@@ -45,8 +47,11 @@ def main() -> int:
                 pct = 0.0
             if pct > 100:
                 pct = 100.0
-            # Keep precision for smoother UI updates on large projects.
-            print(f"SENTINEL_PROGRESS EXTRACTING {pct:.2f}", flush=True)
+            if pct < current_progress:
+                pct = current_progress
+            current_progress = pct
+            # Preserve high precision from real extraction progress events.
+            print(f"SENTINEL_PROGRESS EXTRACTING {pct:.4f}", flush=True)
 
         log.info(f"Extractor start version={SCRIPT_VERSION}")
         log.info(f"Extraction started_at={started_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}")
@@ -73,12 +78,34 @@ def main() -> int:
         data.setdefault("source", {})
         data["source"]["scriptVersion"] = SCRIPT_VERSION
         contract = json.loads(project_structure.read_text(encoding="utf-8"))
+        _emit_progress(99.2)
         validate_contract_shape(contract=contract, payload=data)
+        _emit_progress(99.4)
 
         out_path = out_dir / f"{apex.stem}_project_data.json"
         log.info(f"Writing output json: {out_path}")
+        class _ProgressWriter:
+            def __init__(self, file_obj):
+                self._f = file_obj
+                self._next_tick_bytes = 256 * 1024
+                self._written = 0
+                self._current = 99.4
+
+            def write(self, s):
+                out = self._f.write(s)
+                self._written += len(str(s).encode("utf-8"))
+                while self._written >= self._next_tick_bytes and self._current < 99.95:
+                    self._current = min(99.95, self._current + 0.05)
+                    _emit_progress(self._current)
+                    self._next_tick_bytes += 256 * 1024
+                return out
+
+            def __getattr__(self, name):
+                return getattr(self._f, name)
+
         with out_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=True)
+            json.dump(data, _ProgressWriter(f), indent=2, ensure_ascii=True)
+        _emit_progress(99.99)
         _emit_progress(100)
 
         ended_at = datetime.now(timezone.utc)

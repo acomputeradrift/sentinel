@@ -391,23 +391,24 @@ function _setGenerationPhaseUi(projectId, phaseRaw, percentRaw) {
   if (!state.uploadInFlightByProject[pid] && phase !== "ready") return;
   const pct = Number(percentRaw);
   const hasPct = Number.isFinite(pct);
+  const pctText = hasPct ? `${pct.toFixed(2)}%` : "";
 
   if (phase === "extracting") {
     setProgressHidden($("uploadProgressRow"), false);
     if (hasPct) setProgress($("uploadProgress"), pct);
-    setStatus($("uploadProgressLabel"), "Extracting...");
+    setStatus($("uploadProgressLabel"), hasPct ? `Extracting (${pctText})...` : "Extracting...");
     return;
   }
   if (phase === "generating") {
     setProgressHidden($("uploadProgressRow"), false);
     if (hasPct) setProgress($("uploadProgress"), pct);
-    setStatus($("uploadProgressLabel"), "Generating...");
+    setStatus($("uploadProgressLabel"), hasPct ? `Generating (${pctText})...` : "Generating...");
     return;
   }
   if (phase === "ready") {
     setProgressHidden($("uploadProgressRow"), false);
     setProgress($("uploadProgress"), 100);
-    setStatus($("uploadProgressLabel"), "Generating...");
+    setStatus($("uploadProgressLabel"), "Generating (100.00%)...");
   }
 }
 
