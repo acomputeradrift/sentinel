@@ -220,6 +220,20 @@ class ScopeTargetKeyDerivationTest(unittest.TestCase):
         self.assertIn("tt2:2:ROOM:2:88:20:macro:3122:Macro", expected)
         self.assertNotIn("tt2:2:ROOM:23:74:20:macro:3122:Macro", expected)
 
+    def test_macrostep_scope_key_falls_back_to_macro_id_when_macrostep_ids_absent(self):
+        button = {
+            "apexScopeSource": {
+                "page": {"pageId": 513, "roomId": 23, "sourceDeviceId": 74, "rtiAddress": 2},
+                "viewportLayer": {"layerId": 300, "sharedLayerId": 700, "roomId": 23, "sourceId": 74},
+                "pageLayer": {"roomId": None, "sourceId": None},
+                "button": {"buttonId": 48551, "buttonTagId": 20},
+                "bindings": {"macroIds": [3122], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
+            },
+        }
+
+        scoped = progress._scoped_target_key_from_button(button=button, label="MacroStep")
+        self.assertEqual(scoped, "tt2:2:ROOM:23:74:20:mstepmacro:3122:MacroStep")
+
 
 if __name__ == "__main__":
     unittest.main()

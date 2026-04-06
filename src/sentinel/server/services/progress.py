@@ -90,8 +90,10 @@ def _scope_program_ref(*, label: str, bindings: dict[str, Any]) -> str:
     macro_step_id = int(macro_step_ids[0]) if isinstance(macro_step_ids, list) and macro_step_ids else None
     if lower in {"macro", "macros"} and macro_id is not None:
         return f"macro:{macro_id}"
-    if lower in {"macrostep", "macrosteps"} and macro_id is not None and macro_step_id is not None:
-        return f"mstep:{macro_id}:{macro_step_id}"
+    if lower in {"macrostep", "macrosteps"} and macro_id is not None:
+        if macro_step_id is not None:
+            return f"mstep:{macro_id}:{macro_step_id}"
+        return f"mstepmacro:{macro_id}"
     if lower.startswith("variable - ") or lower.startswith("var."):
         if variable_id is not None:
             return f"var:{variable_id}"

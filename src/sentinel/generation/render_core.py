@@ -1337,8 +1337,12 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     if (lowerLabel === "macro" || lowerLabel === "macros") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
     }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
-     if (firstMacroId != null && firstMacroStepId != null && Number.isFinite(firstMacroId) && Number.isFinite(firstMacroStepId)) {{
-      programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
+     if (firstMacroId != null && Number.isFinite(firstMacroId)) {{
+      if (firstMacroStepId != null && Number.isFinite(firstMacroStepId)) {{
+       programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
+      }} else {{
+       programRef = `mstepmacro:${{firstMacroId}}`;
+      }}
      }}
     }} else if (lowerLabel.startsWith("variable - ") || lowerLabel.startsWith("var.")) {{
      if (firstVarId != null && Number.isFinite(firstVarId)) programRef = `var:${{firstVarId}}`;
@@ -3138,8 +3142,12 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     if (lowerLabel === "macro" || lowerLabel === "macros") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
     }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
-     if (firstMacroId != null && firstMacroStepId != null && Number.isFinite(firstMacroId) && Number.isFinite(firstMacroStepId)) {{
-      programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
+     if (firstMacroId != null && Number.isFinite(firstMacroId)) {{
+      if (firstMacroStepId != null && Number.isFinite(firstMacroStepId)) {{
+       programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
+      }} else {{
+       programRef = `mstepmacro:${{firstMacroId}}`;
+      }}
      }}
     }} else if (lowerLabel.startsWith("variable - ") || lowerLabel.startsWith("var.")) {{
      if (firstVarId != null && Number.isFinite(firstVarId)) programRef = `var:${{firstVarId}}`;

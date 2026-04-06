@@ -897,7 +897,7 @@ def _resolve_button(
     scoped_tag_macro_rows = [m for m in all_tag_macro_rows if int(m["RoomId"] or 0) in {0, page_room_id}]
     tag_macro_rows = scoped_tag_macro_rows or all_tag_macro_rows
     has_macros_target = bool(explicit_macro_ids)
-    has_macro_steps_target = False
+    has_macro_steps_target = any(macro_non_empty_by_id.get(int(m["MacroId"]), False) for m in tag_macro_rows)
     resolved_macro_summaries: list[str] = []
     for macro_row in tag_macro_rows:
         macro_id = int(macro_row["MacroId"] or 0)
