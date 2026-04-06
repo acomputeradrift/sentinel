@@ -897,7 +897,7 @@ def _resolve_button(
     scoped_tag_macro_rows = [m for m in all_tag_macro_rows if int(m["RoomId"] or 0) in {0, page_room_id}]
     tag_macro_rows = scoped_tag_macro_rows or all_tag_macro_rows
     has_macros_target = bool(explicit_macro_ids)
-    has_macro_steps_target = any(macro_non_empty_by_id.get(int(m["MacroId"]), False) for m in tag_macro_rows)
+    has_macro_steps_target = False
     resolved_macro_summaries: list[str] = []
     for macro_row in tag_macro_rows:
         macro_id = int(macro_row["MacroId"] or 0)
@@ -1024,21 +1024,6 @@ def _resolve_button(
                 break
 
     macro_step_ids: list[int] = []
-    if candidate_macro_ids:
-        placeholders = ",".join("?" for _ in candidate_macro_ids)
-        cur.execute(
-            f"""
-            select MacroStepId
-            from MacroStepsView
-            where MacroId in ({placeholders})
-            order by MacroId, StepIndex, MacroStepId
-            """,
-            tuple(candidate_macro_ids),
-        )
-        for row in cur.fetchall():
-            step_id = int(row["MacroStepId"] or 0)
-            if step_id > 0 and step_id not in macro_step_ids:
-                macro_step_ids.append(step_id)
 
     button_ui = _button_ui(
         button_row,
