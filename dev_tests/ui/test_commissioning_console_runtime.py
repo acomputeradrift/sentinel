@@ -1013,16 +1013,35 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("macros")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLink")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("text")
+        page.evaluate(
+            """
+() => {
+  if (!window.__sentinelProjectWsManager || typeof window.__sentinelProjectWsManager.dispatchIncoming !== "function") return;
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "test_result.recorded",
+    projectId: "proj-1",
+    recordedAtUtc: "2026-03-21T00:00:06Z",
+    targetKey: "btn:81:700:48553:Bitmap",
+    outcome: "FAIL",
+    targetName: "Bitmap",
+    kind: "BUTTON",
+    failNote: "Bitmap mismatch",
+    refs: { deviceName: "IST-5 (Global)", pageName: "Sound", buttonName: "Room 4 -> 2", scope: "BUTTON" },
+  });
+}
+"""
+        )
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("graphics (2")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Fail (")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Pass (")
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("")
-        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Not Started (4")
+        expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Not Started (5")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("In Progress (0")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Complete (0")
 
         page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show").click()
         expect(page.get_by_role("dialog", name="Tech Notes")).to_be_visible()
-        expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Remote Tech says: "Button does not respond."')
+        expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Remote Tech says: "Bitmap mismatch."')
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog", name="Tech Notes")).to_have_count(0)
 

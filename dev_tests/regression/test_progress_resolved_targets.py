@@ -73,6 +73,21 @@ class ProgressResolvedTargetsTest(unittest.TestCase):
             self.assertEqual(out["counts"]["totalTargets"], 1)
             self.assertEqual(out["counts"]["pass"], 1)
 
+    def test_button_target_labels_include_graphics_bitmap_and_icon(self):
+        btn = {
+            "testTargets": {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "graphics": {"bitmap": True, "icon": True},
+                "pageLink": False,
+            }
+        }
+        labels = progress._button_target_labels(btn)
+        self.assertIn("Bitmap", labels)
+        self.assertIn("Icon", labels)
+
     def test_commissioning_progress_reuses_derived_targets_when_project_data_unchanged(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)

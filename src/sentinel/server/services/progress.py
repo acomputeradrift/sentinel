@@ -217,6 +217,9 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
     vars_t = t.get("variables", {})
     if not isinstance(vars_t, dict):
         vars_t = {}
+    graphics_t = t.get("graphics", {})
+    if not isinstance(graphics_t, dict):
+        graphics_t = {}
     out: list[str] = []
     if t.get("text"):
         out.append("Text")
@@ -227,6 +230,10 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(f"Variable - {name}")
+    if graphics_t.get("bitmap"):
+        out.append("Bitmap")
+    if graphics_t.get("icon"):
+        out.append("Icon")
     if t.get("pageLink"):
         out.append("PageLink")
     return out

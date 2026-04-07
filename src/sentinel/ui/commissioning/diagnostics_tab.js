@@ -835,7 +835,7 @@ function _failCategoryFromTask(task) {
   if (label === "macro step") return "macroSteps";
   if (label === "pageLink") return "pageLink";
   if (label.startsWith("variable")) return "variables";
-  if (label.includes("icon") || label.includes("graphic")) return "graphics";
+  if (label.includes("icon") || label.includes("bitmap") || label.includes("graphic")) return "graphics";
   return "text";
 }
 
