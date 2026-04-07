@@ -194,7 +194,7 @@ function normalizeTargetLabel(targetName) {
   if (!raw) return "";
   const lower = raw.toLowerCase();
   if (lower === "macro") return "macro";
-  if (lower === "macrosteps" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro step";
+  if (lower === "macrosteps" || lower === "macrostep" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro step";
   if (lower === "pagelink" || lower === "page link") return "pageLink";
   if (lower === "text" || lower === "texts") return "text";
   if (lower === "command" || lower === "commands") return "command";
