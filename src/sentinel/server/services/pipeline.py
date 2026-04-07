@@ -230,11 +230,13 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
                 child.unlink()
 
         final_project_data = out_dir / project_data.name
+        resolved_targets = out_dir / project_data.name.replace("_project_data.json", "_resolved_targets.json")
         total_elapsed_s = max(0.0, time.perf_counter() - total_t0)
         return {
             "projectId": projectId,
             "outDir": str(out_dir),
             "projectData": str(final_project_data),
+            "resolvedTargets": str(resolved_targets) if resolved_targets.exists() else None,
             "timings": {
                 "extractSec": round(float(extract_elapsed_s), 3),
                 "generateSec": round(float(generate_elapsed_s), 3),

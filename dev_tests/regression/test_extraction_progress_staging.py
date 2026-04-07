@@ -205,8 +205,11 @@ class ExtractionProgressStagingTest(unittest.TestCase):
                 mock.patch.object(generate_script, "load_json", side_effect=[fake_project, fake_ui]),
                 mock.patch.object(generate_script, "render_project_home_html", return_value="<html></html>"),
                 mock.patch.object(generate_script, "build_project_manifest", return_value={"devices": []}),
-                mock.patch.object(generate_script, "render_single_device_html", return_value="<html></html>"),
-                mock.patch.object(generate_script, "build_device_payload", return_value={"x": 1}),
+                mock.patch.object(
+                    generate_script,
+                    "build_device_render_bundle",
+                    return_value={"html": "<html></html>", "payload": {"x": 1}},
+                ),
             ):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
@@ -218,6 +221,43 @@ class ExtractionProgressStagingTest(unittest.TestCase):
             self.assertIn("app_ui_size_bytes=2", text)
             self.assertIn("renderable_devices=1", text)
             self.assertIn("total_units=4", text)
+
+    def test_generate_script_uses_shared_device_bundle_once_per_device(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            project_path = tmp / "sample_project_data.json"
+            ui_path = tmp / "app_ui_structure.json"
+            out_dir = tmp / "out"
+            project_path.write_text("{}", encoding="utf-8")
+            ui_path.write_text("{}", encoding="utf-8")
+
+            fake_project = {"devices": [{"userFacing": {"displayName": "Device A", "pages": [{"pageName": "Home"}]}}]}
+            fake_ui = {}
+            argv = [
+                "generate_html.py",
+                "--project-data",
+                str(project_path),
+                "--app-ui",
+                str(ui_path),
+                "--out-dir",
+                str(out_dir),
+            ]
+
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(generate_script, "load_json", side_effect=[fake_project, fake_ui]),
+                mock.patch.object(generate_script, "render_project_home_html", return_value="<html></html>"),
+                mock.patch.object(generate_script, "build_project_manifest", return_value={"devices": []}),
+                mock.patch.object(
+                    generate_script,
+                    "build_device_render_bundle",
+                    return_value={"html": "<html>device</html>", "payload": {"k": "v"}},
+                ) as build_bundle,
+            ):
+                rc = generate_script.main()
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(build_bundle.call_count, 1)
 
 
 if __name__ == "__main__":

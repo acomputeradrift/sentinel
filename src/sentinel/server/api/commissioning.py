@@ -202,13 +202,15 @@ def _log_regen_baseline(
         timings = {}
     extract_s = timings.get("extractSec")
     generate_s = timings.get("generateSec")
+    preload_s = generate_s
     total_s = timings.get("totalSec")
     log.info(
-        "REGEN_BASELINE projectId=%s uploadId=%s file=%s extractSec=%s generateSec=%s totalSec=%s",
+        "REGEN_BASELINE projectId=%s uploadId=%s file=%s extractSec=%s preloadSec=%s generateSec=%s totalSec=%s",
         str(projectId or ""),
         str(uploadId or ""),
         str(originalFilename or ""),
         extract_s if extract_s is not None else "",
+        preload_s if preload_s is not None else "",
         generate_s if generate_s is not None else "",
         total_s if total_s is not None else "",
     )

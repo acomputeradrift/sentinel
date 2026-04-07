@@ -1325,3 +1325,64 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 page.close()
             finally:
                 app_server.stop()
+
+    def test_live_device_page_change_resets_zoom_to_default(self):
+        from playwright.sync_api import expect
+
+        try:
+            import websockets  # noqa: F401
+        except Exception as e:
+            raise unittest.SkipTest("websockets runtime is not installed in this environment") from e
+
+        apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
+        if not apex_path.exists():
+            raise unittest.SkipTest(f"Missing apex fixture: {apex_path}")
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
+            app_server.start()
+            try:
+                base_url = str(app_server.base_url or "").rstrip("/")
+                page = self._browser.new_page()
+                page.goto(f"{base_url}/commissioning/index.html")
+                page.get_by_role("button", name="Projects").click()
+
+                page.get_by_label("New client name").fill("Live Client")
+                page.get_by_role("button", name="Create client").click()
+                page.get_by_label("New project name").fill("Live Project")
+                page.get_by_role("button", name="Create project").click()
+                expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
+
+                project_id = str(page.locator("#projectSelect").input_value() or "").strip()
+                self.assertTrue(project_id, "Expected selected project id.")
+
+                page.set_input_files("input[type=file][name=apex]", str(apex_path))
+                page.get_by_role("button", name="Load File").click()
+                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
+
+                create_link_req = urlrequest.Request(
+                    f"{base_url}/api/v1/commissioning/projects/{project_id}/tech-links",
+                    data=b"{}",
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                with urlrequest.urlopen(create_link_req, timeout=10.0) as resp:
+                    tech_link = json.loads(resp.read().decode("utf-8"))
+                tech_url = str(tech_link.get("techUrl") or "").strip()
+                self.assertTrue(tech_url.startswith("/testing/"), f"Unexpected techUrl: {tech_url}")
+
+                page.goto(f"{base_url}{tech_url}", wait_until="domcontentloaded")
+                page.locator("a.home-row.device-row").first.click()
+                expect(page.locator(".zoom-reset")).to_have_text("100%")
+                page.locator(".zoom-inc").click()
+                expect(page.locator(".zoom-reset")).to_have_text("110%")
+
+                page_count = int(page.evaluate("() => Array.isArray(window.PAGE_STATE) ? window.PAGE_STATE.length : 0"))
+                if page_count < 2:
+                    raise unittest.SkipTest("Generated device has fewer than 2 pages; cannot verify page-change zoom reset.")
+                page.evaluate("() => { if (typeof window.setActivePage === 'function') window.setActivePage(1); }")
+                expect(page.locator(".zoom-reset")).to_have_text("100%")
+                page.close()
+            finally:
+                app_server.stop()

@@ -103,6 +103,22 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
             time.sleep(0.2)
         self.fail(f"Expected {selector} value={want!r}")
 
+    def _ensure_projects_tab_open(self, page, *, timeout_s: float = 20.0) -> None:  # noqa: ANN001
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                is_visible = bool(page.locator("#panel-manage").is_visible())
+            except Exception:
+                is_visible = False
+            if is_visible:
+                return
+            try:
+                page.get_by_role("button", name="Projects").click()
+            except Exception:
+                pass
+            time.sleep(0.2)
+        self.fail("Expected Projects panel to be visible.")
+
     def _wait_for_health(self, base_url: str, *, timeout_s: float = 60.0) -> None:
         deadline = time.time() + timeout_s
         while time.time() < deadline:
@@ -178,6 +194,7 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         console_logs: list[str] = []
         page.on("console", lambda msg: console_logs.append(str(msg.text or "")))
         page.goto(f"{base_url}/commissioning/")
+        self._ensure_projects_tab_open(page)
 
         page.select_option("#clientSelect", label=client_name)
         page.select_option("#projectSelect", label=project_name)
@@ -192,6 +209,7 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         self._wait_for_text(page, "#diagnosticsTaskBody", name1.lower(), timeout_s=40.0)
 
         page.reload()
+        self._ensure_projects_tab_open(page)
         page.select_option("#clientSelect", label=client_name)
         page.select_option("#projectSelect", label=project_name)
         page.get_by_role("button", name="Commission").click()
@@ -245,6 +263,7 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         context = self._browser.new_context()
         page = context.new_page()
         page.goto(f"{base_url}/commissioning/")
+        self._ensure_projects_tab_open(page)
 
         page.select_option("#clientSelect", label=client_name)
         self._wait_for_project_options(page, [project_a_id], timeout_s=30.0)
@@ -261,8 +280,10 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         page.get_by_role("button", name="Diagnostics").click()
         self._wait_for_text(page, "#diagnosticsTaskBody", name1.lower(), timeout_s=40.0)
 
+        self._ensure_projects_tab_open(page)
         page.select_option("#projectSelect", label=project_b_name)
         page.get_by_role("button", name="Commission").click()
+        self._ensure_projects_tab_open(page)
         page.select_option("#projectSelect", value=project_a_id)
         self.assertEqual(str(page.locator("#projectSelect").input_value() or "").strip(), project_a_id)
         page.get_by_role("button", name="Commission").click()
@@ -301,12 +322,14 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         context = self._browser.new_context()
         page = context.new_page()
         page.goto(f"{base_url}/commissioning/")
+        self._ensure_projects_tab_open(page)
         page.select_option("#clientSelect", label=client_name)
         self._wait_for_project_options(page, [project_a_id], timeout_s=30.0)
         page.select_option("#projectSelect", value=project_a_id)
         self._wait_for_select_value(page, "#projectSelect", project_a_id, timeout_s=10.0)
 
         page.reload()
+        self._ensure_projects_tab_open(page)
         self._wait_for_select_value(page, "#clientSelect", client_id, timeout_s=30.0)
         self._wait_for_select_value(page, "#projectSelect", project_a_id, timeout_s=30.0)
         page.get_by_role("button", name="Commission").click()
@@ -339,6 +362,7 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         context = self._browser.new_context()
         page = context.new_page()
         page.goto(f"{base_url}/commissioning/")
+        self._ensure_projects_tab_open(page)
         page.select_option("#clientSelect", label=client_name)
         page.select_option("#projectSelect", label=project_name)
         page.get_by_role("button", name="Commission").click()

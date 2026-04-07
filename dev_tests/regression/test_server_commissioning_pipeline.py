@@ -175,8 +175,8 @@ class CommissioningPipelineTest(unittest.TestCase):
         ui_file = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "commissioning.js"
         text = ui_file.read_text(encoding="utf-8")
         self.assertIn("generation_phase", text)
-        self.assertIn("Extracting (", text)
-        self.assertIn("Generating (", text)
+        self.assertIn('setStatus($("uploadProgressLabel"), "Extracting...")', text)
+        self.assertIn('setStatus($("uploadProgressLabel"), "Generating...")', text)
         self.assertIn("setProgress($(\"uploadProgress\"), pct)", text)
         self.assertIn("setStatus($(\"uploadProgressLabel\"), \"Uploading...\")", text)
         index_file = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "index.html"

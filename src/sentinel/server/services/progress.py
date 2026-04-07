@@ -25,6 +25,16 @@ def _latest_project_data_path(*, projectId: str) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def _resolved_targets_path_for_project_data(project_data_path: Path) -> Path:
+    name = str(project_data_path.name or "")
+    suffix = "_project_data.json"
+    if name.endswith(suffix):
+        base = name[: -len(suffix)]
+    else:
+        base = project_data_path.stem
+    return project_data_path.with_name(f"{base}_resolved_targets.json")
+
+
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8", errors="replace"))
 
@@ -90,8 +100,10 @@ def _scope_program_ref(*, label: str, bindings: dict[str, Any]) -> str:
     macro_step_id = int(macro_step_ids[0]) if isinstance(macro_step_ids, list) and macro_step_ids else None
     if lower in {"macro", "macros"} and macro_id is not None:
         return f"macro:{macro_id}"
-    if lower in {"macrostep", "macrosteps"} and macro_id is not None and macro_step_id is not None:
-        return f"mstep:{macro_id}:{macro_step_id}"
+    if lower in {"macrostep", "macrosteps"} and macro_id is not None:
+        if macro_step_id is not None:
+            return f"mstep:{macro_id}:{macro_step_id}"
+        return f"mstepmacro:{macro_id}"
     if lower.startswith("variable - ") or lower.startswith("var."):
         if variable_id is not None:
             return f"var:{variable_id}"
@@ -424,14 +436,93 @@ def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]
     return out
 
 
+def build_resolved_targets(project_data: dict[str, Any]) -> dict[str, Any]:
+    event_targets = _derive_event_section_targets(project_data)
+    device_targets = _derive_device_targets(project_data)
+    page_ids_by_device: dict[int, list[int]] = {}
+    devices = project_data.get("devices", [])
+    if isinstance(devices, list):
+        for dev in devices:
+            if not isinstance(dev, dict):
+                continue
+            diag = dev.get("diagnostics", {})
+            if not isinstance(diag, dict):
+                continue
+            device_id = int(diag.get("deviceId") or 0)
+            pages = diag.get("pages", [])
+            if device_id <= 0 or not isinstance(pages, list):
+                continue
+            page_ids: list[int] = []
+            for p in pages:
+                if not isinstance(p, dict):
+                    continue
+                if p.get("pageId") is None:
+                    continue
+                page_ids.append(int(p.get("pageId")))
+            page_ids_by_device[device_id] = page_ids
+    return {
+        "format": "sentinel-resolved-targets-v1",
+        "events": {
+            "system": sorted(event_targets.get("system", set())),
+            "driver": sorted(event_targets.get("driver", set())),
+        },
+        "devices": [
+            {
+                "deviceId": int(row.get("deviceId") or 0),
+                "displayName": str(row.get("displayName") or ""),
+                "expected": sorted(set(row.get("expected") or set())),
+                "pageIds": page_ids_by_device.get(int(row.get("deviceId") or 0), []),
+            }
+            for row in device_targets
+        ],
+    }
+
+
+def _targets_from_resolved_payload(resolved_payload: dict[str, Any]) -> tuple[dict[str, set[str]], list[dict[str, Any]]]:
+    events = resolved_payload.get("events", {})
+    if not isinstance(events, dict):
+        events = {}
+    system_raw = events.get("system", [])
+    driver_raw = events.get("driver", [])
+    system = {str(x) for x in (system_raw if isinstance(system_raw, list) else []) if str(x).strip()}
+    driver = {str(x) for x in (driver_raw if isinstance(driver_raw, list) else []) if str(x).strip()}
+    device_rows: list[dict[str, Any]] = []
+    devices = resolved_payload.get("devices", [])
+    if isinstance(devices, list):
+        for row in devices:
+            if not isinstance(row, dict):
+                continue
+            expected_raw = row.get("expected", [])
+            expected = {str(x) for x in (expected_raw if isinstance(expected_raw, list) else []) if str(x).strip()}
+            device_rows.append(
+                {
+                    "deviceId": int(row.get("deviceId") or 0),
+                    "displayName": str(row.get("displayName") or ""),
+                    "expected": expected,
+                }
+            )
+    return {"system": system, "driver": driver}, device_rows
+
+
 def commissioning_progress(*, projectId: str, latest_results: dict[str, TestResultRecord]) -> dict[str, Any]:
     path = _latest_project_data_path(projectId=projectId)
     if path is None:
         raise FileNotFoundError("project_data_missing")
     project_data = _load_json(path)
 
-    event_targets = _derive_event_section_targets(project_data)
-    device_targets = _derive_device_targets(project_data)
+    resolved_path = _resolved_targets_path_for_project_data(path)
+    event_targets: dict[str, set[str]]
+    device_targets: list[dict[str, Any]]
+    if resolved_path.exists():
+        resolved_payload = _load_json(resolved_path)
+        if isinstance(resolved_payload, dict) and str(resolved_payload.get("format") or "").strip() == "sentinel-resolved-targets-v1":
+            event_targets, device_targets = _targets_from_resolved_payload(resolved_payload)
+        else:
+            event_targets = _derive_event_section_targets(project_data)
+            device_targets = _derive_device_targets(project_data)
+    else:
+        event_targets = _derive_event_section_targets(project_data)
+        device_targets = _derive_device_targets(project_data)
 
     all_expected: set[str] = set()
     for section_keys in event_targets.values():

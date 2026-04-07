@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 from sentinel.extraction.extractor_core import ExtractContext, extract_project_data, validate_contract_shape
 from sentinel.logging.event_logger import EventLogger
+from sentinel.server.services.progress import build_resolved_targets
 
 
 SCRIPT_VERSION = "0.1.0"
@@ -83,6 +84,7 @@ def main() -> int:
         _emit_progress(99.4)
 
         out_path = out_dir / f"{apex.stem}_project_data.json"
+        resolved_targets_path = out_dir / f"{apex.stem}_resolved_targets.json"
         log.info(f"Writing output json: {out_path}")
         class _ProgressWriter:
             def __init__(self, file_obj):
@@ -105,6 +107,9 @@ def main() -> int:
 
         with out_path.open("w", encoding="utf-8") as f:
             json.dump(data, _ProgressWriter(f), indent=2, ensure_ascii=True)
+        log.info(f"Writing resolved targets json: {resolved_targets_path}")
+        resolved_targets = build_resolved_targets(data)
+        resolved_targets_path.write_text(json.dumps(resolved_targets, indent=2, ensure_ascii=True), encoding="utf-8")
         _emit_progress(99.99)
         _emit_progress(100)
 
