@@ -88,6 +88,65 @@ class ProgressResolvedTargetsTest(unittest.TestCase):
         self.assertIn("Bitmap", labels)
         self.assertIn("Icon", labels)
 
+    def test_derive_device_targets_uses_scope_button_id_for_textless_bitmap_button(self):
+        project_data = {
+            "devices": [
+                {
+                    "diagnostics": {
+                        "deviceId": 89,
+                        "pages": [
+                            {
+                                "pageId": 353,
+                                "buttons": [
+                                    {
+                                        "buttonId": 41392,
+                                        "buttonTagName": None,
+                                        "identifiers": {"text": ""},
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "userFacing": {
+                        "displayName": "Entry KA11",
+                        "pages": [
+                            {
+                                "layers": [
+                                    {
+                                        "buttonCategories": {
+                                            "uiItems": [
+                                                {
+                                                    "buttonIdentity": {
+                                                        "buttonTagName": None,
+                                                        "text": "",
+                                                        "buttonType": None,
+                                                    },
+                                                    "testTargets": {
+                                                        "text": False,
+                                                        "macros": False,
+                                                        "macroSteps": False,
+                                                        "variables": {},
+                                                        "graphics": {"bitmap": True, "icon": False},
+                                                        "pageLink": False,
+                                                    },
+                                                    "apexScopeSource": {"button": {"buttonId": 41392}},
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+
+        rows = progress._derive_device_targets(project_data)
+        self.assertEqual(len(rows), 1)
+        expected = set(rows[0].get("expected") or set())
+        self.assertIn("btn:89:353:41392:Bitmap", expected)
+
     def test_commissioning_progress_reuses_derived_targets_when_project_data_unchanged(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)

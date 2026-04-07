@@ -322,6 +322,22 @@ def _match_diag_viewport_button_id(diag_frame_buttons: list[dict[str, Any]], use
     return _match_diag_button_id(diag_frame_buttons, user_button)
 
 
+def _scope_button_id(user_button: dict[str, Any]) -> int | None:
+    scope_source = user_button.get("apexScopeSource")
+    if not isinstance(scope_source, dict):
+        return None
+    button = scope_source.get("button")
+    if not isinstance(button, dict):
+        return None
+    value = button.get("buttonId")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
 def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]:
     devices = project_data.get("devices", [])
     if not isinstance(devices, list):
@@ -369,6 +385,12 @@ def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]
                 if not labels:
                     continue
                 button_id = _match_diag_button_id([b for b in diag_buttons if isinstance(b, dict)], uf_btn)
+                if button_id is None:
+                    scoped_button_id = _scope_button_id(uf_btn)
+                    if scoped_button_id is not None and any(
+                        isinstance(b, dict) and int(b.get("buttonId") or -1) == scoped_button_id for b in diag_buttons
+                    ):
+                        button_id = scoped_button_id
                 if button_id is None:
                     continue
                 for label in labels:
