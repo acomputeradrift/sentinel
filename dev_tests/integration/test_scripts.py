@@ -746,6 +746,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertIn("const PAGE_HTML_BY_INDEX=", html)
             self.assertIn("function ensurePageMaterialized(pageIndex)", html)
             self.assertEqual(html.count("class='device-page"), 1)
+            self.assertIn("currentZoomPercent=ZOOM_DEFAULT;", html)
+            self.assertIn("const activePage=activePageEl();", html)
+            self.assertIn("if (activePage) activePage.querySelectorAll('.vp-box').forEach(el=>{", html)
+            self.assertIn("if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{", html)
             self.assertFalse((td_path / "sample_project_data__page-0-home.html").exists())
             self.assertFalse((td_path / "sample_project_data__page-1-lights.html").exists())
 

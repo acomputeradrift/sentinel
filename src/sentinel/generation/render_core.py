@@ -2026,7 +2026,8 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
    let contentBottom=vh;
    let contentRight=vw;
    const btnNodes=[...pageEl.querySelectorAll(`.btn-wrap.vp-btn[data-vp="${{vpIndex}}"]`)];
-   btnNodes.forEach(node=>{{
+   const frameFiltered=btnNodes.filter(node=>activeFrame==null || Number(node.dataset.frame)===Number(activeFrame));
+   frameFiltered.forEach(node=>{{
     // Popup uses viewport-relative coordinates; source nodes store device-absolute coords.
     const relTop=Number(node.dataset.top||0) - vpTop;
     const relLeft=Number(node.dataset.left||0) - vpLeft;
@@ -2046,7 +2047,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   stage.appendChild(viewportWindow);
 
    viewportMode.popupScrollY=0;
-	   btnNodes.forEach(node=>{{
+	   frameFiltered.forEach(node=>{{
 	     const clone=node.cloneNode(true);
 	     clone.style.display='';
 	     // Ensure popup controls remain topmost regardless of source z-index.
@@ -2440,7 +2441,8 @@ function applyRtiLayout() {{
   }}
 
  document.querySelectorAll('.device-page').forEach(page=>page.classList.toggle('active', Number(page.dataset.pageIndex)===activePageIndex));
- document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
+ const activePage=activePageEl();
+ if (activePage) activePage.querySelectorAll('.vp-box').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
@@ -2451,7 +2453,7 @@ function applyRtiLayout() {{
    el.style.height=`${{height}}px`;
  }});
 
- document.querySelectorAll('.device-page .btn-wrap').forEach(el=>{{
+ if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
@@ -2582,6 +2584,9 @@ function setActivePage(nextPageIndex) {{
  if (!Number.isFinite(target) || !PAGE_STATE[target]) return;
  ensurePageMaterialized(target);
  activePageIndex=target;
+ currentZoomPercent=ZOOM_DEFAULT;
+ viewportMode.popupZoomPercent=ZOOM_DEFAULT;
+ syncZoomResetText();
  currentViewportIndexes=(PAGE_STATE[target].vpFrames||[]).map(()=>0);
  const rtiCanvas=document.getElementById('rtiCanvas');
  if (rtiCanvas) {{
