@@ -742,6 +742,10 @@ class ScriptContractsTest(unittest.TestCase):
             self.assertTrue((td_path / "sample_project_data__device-0-ist-5-global.html").exists())
             self.assertTrue((td_path / "sample_project_data__project-manifest.json").exists())
             self.assertTrue((td_path / "sample_project_data__device-0-ist-5-global__payload.json").exists())
+            html = (td_path / "sample_project_data__device-0-ist-5-global.html").read_text(encoding="utf-8")
+            self.assertIn("const PAGE_HTML_BY_INDEX=", html)
+            self.assertIn("function ensurePageMaterialized(pageIndex)", html)
+            self.assertEqual(html.count("class='device-page"), 1)
             self.assertFalse((td_path / "sample_project_data__page-0-home.html").exists())
             self.assertFalse((td_path / "sample_project_data__page-1-lights.html").exists())
 

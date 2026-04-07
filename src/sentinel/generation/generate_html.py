@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from sentinel.generation.render_core import (
-    build_device_payload,
+    build_device_render_bundle,
     build_project_manifest,
     device_filename,
     device_payload_filename,
@@ -20,7 +20,6 @@ from sentinel.generation.render_core import (
     project_home_filename,
     project_manifest_filename,
     render_project_home_html,
-    render_single_device_html,
 )
 from sentinel.logging.event_logger import EventLogger
 
@@ -130,26 +129,23 @@ def main() -> int:
             pages = user.get("pages", [])
             if not isinstance(pages, list) or not pages:
                 continue
-            html = render_single_device_html(
+            bundle = build_device_render_bundle(
                 project_data,
                 app_ui,
                 project_stem=project_data_path.stem,
                 device_index=device_index,
                 resolved_targets=resolved_targets,
             )
+            html = str(bundle.get("html") or "")
             device_name = user.get("displayName", f"device-{device_index}")
             out_path = out_dir / device_filename(project_data_path.stem, str(device_name), device_index)
             log.info(f"Writing html output: {out_path}")
             out_path.write_text(html, encoding="utf-8")
             written += 1
             _emit_progress(int((written * 100) / max(total_units, 1)))
-            payload = build_device_payload(
-                project_data,
-                app_ui,
-                project_stem=project_data_path.stem,
-                device_index=device_index,
-                resolved_targets=resolved_targets,
-            )
+            payload = bundle.get("payload")
+            if not isinstance(payload, dict):
+                payload = {}
             payload_path = out_dir / device_payload_filename(project_data_path.stem, str(device_name), device_index)
             log.info(f"Writing payload output: {payload_path}")
             payload_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")

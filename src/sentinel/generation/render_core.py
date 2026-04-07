@@ -790,6 +790,7 @@ def _render_document(
     w: int,
     h: int,
     body_markup: str,
+    page_html_by_index_json: str,
     page_state_json: str,
     project_session_key: str,
     orientation_state_json: str,
@@ -945,6 +946,7 @@ const ZOOM_MAX={max(300, int(app_ui.get("zoomControls", {}).get("zoom", {}).get(
 const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
+const PAGE_HTML_BY_INDEX={page_html_by_index_json};
 const PAGE_STATE={page_state_json};
 const ORIENTATION_STATE={orientation_state_json};
 const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
@@ -1591,10 +1593,22 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
      }}
      ov.classList.add('open');
      bindResultRows(b, m);
-    }});
    }});
-  }}
+  }});
+ }}
+ function bindViewportBoxClicks(root) {{
+  const scope=root||document;
+  scope.querySelectorAll('.vp-box').forEach(el=>{{
+   if (el.dataset.boundVpClick) return;
+   el.dataset.boundVpClick='1';
+   el.addEventListener('click', ()=>{{
+    if (viewportMode.active) return;
+    enterViewportMode(el.dataset.vp);
+   }});
+  }});
+ }}
 bindTestButtonClicks(document);
+bindViewportBoxClicks(document);
  _connectTechWs();
 document.getElementById('close').addEventListener('click',()=>{{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
@@ -2517,9 +2531,29 @@ function updateZoom(nextPercent){{
  syncZoomResetText();
  scheduleRtiLayout("zoom");
 }}
+function ensurePageMaterialized(pageIndex) {{
+ const normalized=Number(pageIndex);
+ if (!Number.isFinite(normalized) || !PAGE_STATE[normalized]) return null;
+ let pageEl=document.querySelector(`.device-page[data-page-index="${{normalized}}"]`);
+ if (pageEl) return pageEl;
+ const rtiDeviceCanvas=document.getElementById('rtiDeviceCanvas');
+ if (!rtiDeviceCanvas) return null;
+ const inner=PAGE_HTML_BY_INDEX[String(normalized)];
+ if (typeof inner !== 'string') return null;
+ pageEl=document.createElement('div');
+ pageEl.className='device-page';
+ pageEl.dataset.pageIndex=String(normalized);
+ pageEl.innerHTML=inner;
+ rtiDeviceCanvas.appendChild(pageEl);
+ bindTestButtonClicks(pageEl);
+ bindViewportBoxClicks(pageEl);
+ applyOrientationState();
+ return pageEl;
+}}
 function setActivePage(nextPageIndex) {{
  const target=Number(nextPageIndex);
  if (!Number.isFinite(target) || !PAGE_STATE[target]) return;
+ ensurePageMaterialized(target);
  activePageIndex=target;
  currentViewportIndexes=(PAGE_STATE[target].vpFrames||[]).map(()=>0);
  const rtiCanvas=document.getElementById('rtiCanvas');
@@ -2553,14 +2587,6 @@ if (zoomReset) zoomReset.addEventListener('click',()=>updateZoom(ZOOM_DEFAULT));
 const vpPopupClose=document.getElementById('vpPopupClose');
 if (vpPopupClose) vpPopupClose.addEventListener('click',()=>exitViewportMode());
 // Only the X closes the popup. Backdrop click and Escape are ignored on purpose.
-document.querySelectorAll('.device-page .vp-box').forEach(el=>{{
- if (el.dataset.boundVpClick) return;
- el.dataset.boundVpClick='1';
- el.addEventListener('click', ()=>{{
-  if (viewportMode.active) return;
-  enterViewportMode(el.dataset.vp);
- }});
-}});
 const popupUp=document.getElementById('vpPopupUp');
 const popupDown=document.getElementById('vpPopupDown');
 if (popupUp) popupUp.addEventListener('click',()=>{{
@@ -3396,13 +3422,13 @@ _connectTechWs();
 document.getElementById('close').addEventListener('click', function(){{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click', function(e){{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
 </script></body></html>"""
-def render_single_device_html(
+def build_device_render_bundle(
     project_data: dict[str, Any],
     app_ui: dict[str, Any],
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
-) -> str:
+) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
     device_ui = uf.get("deviceUI", {})
@@ -3437,15 +3463,14 @@ def render_single_device_html(
     header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
-    page_markup: list[str] = []
+    page_html_by_index: dict[str, str] = {}
     page_state: list[dict[str, Any]] = []
+    page_payloads: list[dict[str, Any]] = []
     for page_index, _page in enumerate(pages):
         payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation, resolved_targets)
+        page_payloads.append(payload)
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
-        page_markup.append(
-            f"<div class='device-page{' active' if page_index == 0 else ''}' data-page-index='{page_index}'>"
-            f"{payload['viewport_boxes']}{payload['page_button_rows']}{payload['viewport_button_rows']}</div>"
-        )
+        page_html_by_index[str(page_index)] = f"{payload['viewport_boxes']}{payload['page_button_rows']}{payload['viewport_button_rows']}"
         page_state.append(
             {
                 "deviceName": uf.get("displayName", ""),
@@ -3455,48 +3480,25 @@ def render_single_device_html(
                 "vpFrames": payload["vp_frames"],
             }
         )
-    return _render_document(
+    first_page_inner = page_html_by_index.get("0", "")
+    initial_page_markup = f"<div class='device-page active' data-page-index='0'>{first_page_inner}</div>" if pages else ""
+    html = _render_document(
         app_ui,
         header,
         w,
         h,
-        "".join(page_markup),
+        initial_page_markup,
+        json.dumps(page_html_by_index),
         json.dumps(page_state),
         project_stem,
         json.dumps(orientation_state),
         show_orientation_toggle,
         home_href=project_home_filename(project_stem),
     )
-
-
-def build_device_payload(
-    project_data: dict[str, Any],
-    app_ui: dict[str, Any],
-    project_stem: str,
-    device_index: int = 0,
-    resolved_targets: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    device = project_data["devices"][device_index]
-    uf = device["userFacing"]
-    device_ui = uf.get("deviceUI", {})
-    portrait = device_ui.get("portrait", {})
-    landscape = device_ui.get("landscape", {})
-    portrait_resolution = _resolution_or_default(portrait.get("resolution"), 480, 854)
-    landscape_resolution = _resolution_or_default(landscape.get("resolution"), 854, 480)
-    if bool(portrait.get("supported")):
-        active_orientation = "portrait"
-    elif bool(landscape.get("supported")):
-        active_orientation = "landscape"
-    else:
-        active_orientation = "portrait"
-    orientation_options = [name for name, cfg in (("portrait", portrait), ("landscape", landscape)) if bool(cfg.get("supported"))]
-    pages = uf.get("pages", [])
-    page_payloads: list[dict[str, Any]] = []
-    diag_pages = device.get("diagnostics", {}).get("pages", []) if isinstance(device, dict) else []
-    for page_index, _page in enumerate(pages):
-        payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation, resolved_targets)
+    payload_doc_pages: list[dict[str, Any]] = []
+    for page_index, payload in enumerate(page_payloads):
         diag_page = diag_pages[page_index] if isinstance(diag_pages, list) and page_index < len(diag_pages) else {}
-        page_payloads.append(
+        payload_doc_pages.append(
             {
                 "pageName": payload.get("page_name", ""),
                 "pageIndex": int(payload.get("page_index", page_index)),
@@ -3505,7 +3507,7 @@ def build_device_payload(
                 "vpFrames": payload.get("vp_frames", []),
             }
         )
-    return {
+    payload_doc = {
         "format": "sentinel-testing-payload-v1",
         "projectStem": project_stem,
         "deviceIndex": int(device_index),
@@ -3516,8 +3518,44 @@ def build_device_payload(
             "options": orientation_options,
             "sizes": {"portrait": portrait_resolution, "landscape": landscape_resolution},
         },
-        "pages": page_payloads,
+        "pages": payload_doc_pages,
     }
+    return {"html": html, "payload": payload_doc}
+
+
+def render_single_device_html(
+    project_data: dict[str, Any],
+    app_ui: dict[str, Any],
+    project_stem: str,
+    device_index: int = 0,
+    resolved_targets: dict[str, Any] | None = None,
+) -> str:
+    bundle = build_device_render_bundle(
+        project_data,
+        app_ui,
+        project_stem,
+        device_index=device_index,
+        resolved_targets=resolved_targets,
+    )
+    return str(bundle.get("html") or "")
+
+
+def build_device_payload(
+    project_data: dict[str, Any],
+    app_ui: dict[str, Any],
+    project_stem: str,
+    device_index: int = 0,
+    resolved_targets: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    bundle = build_device_render_bundle(
+        project_data,
+        app_ui,
+        project_stem,
+        device_index=device_index,
+        resolved_targets=resolved_targets,
+    )
+    payload = bundle.get("payload")
+    return payload if isinstance(payload, dict) else {}
 
 
 def build_project_manifest(project_data: dict[str, Any], project_stem: str) -> dict[str, Any]:
