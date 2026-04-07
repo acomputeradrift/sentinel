@@ -862,7 +862,7 @@ function updateFailureTypesPie() {
   const slices = [
     { label: "text", value: counts.text, color: "var(--brand-orange)" },
     { label: "macros", value: counts.macros, color: "var(--brand-dark-gray)" },
-    { label: "macroSteps", value: counts.macroSteps, color: "var(--brand-light-gray)" },
+    { label: "macro step", value: counts.macroSteps, color: "var(--brand-light-gray)" },
     { label: "variables", value: counts.variables, color: "var(--brand-green)" },
     { label: "graphics", value: counts.graphics, color: "var(--brand-black)" },
     { label: "pageLink", value: counts.pageLink, color: "#177bb5" },
