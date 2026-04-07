@@ -56,6 +56,17 @@ def _btn_text(identity: dict[str, Any]) -> str:
     return text if text else tag
 
 
+def _button_identity_label(btn: dict[str, Any]) -> str:
+    identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
+    value = _btn_text(identity if isinstance(identity, dict) else {})
+    if value:
+        return value
+    targets = btn.get("testTargets", {}) if isinstance(btn, dict) else {}
+    graphics = targets.get("graphics", {}) if isinstance(targets, dict) else {}
+    has_graphics = bool(graphics.get("bitmap")) or bool(graphics.get("icon"))
+    return "Graphics" if has_graphics else ""
+
+
 def _page_link_enabled(targets: dict[str, Any]) -> bool:
     page_link = targets.get("pageLink")
     if isinstance(page_link, dict):
@@ -536,11 +547,12 @@ def _render_button_control(
     fs = int(btn["buttonUI"].get("fontSize") or app_ui.get("buttonPresentation", {}).get("fallbackFontSize", 10))
     identity = btn.get("buttonIdentity", {})
     targets = btn.get("testTargets", {})
+    identity_label = _button_identity_label(btn)
     category_key = _category_key_from_label(label)
     meta = {
         "category": label,
         "categoryKey": category_key,
-        "identity": _btn_text(identity),
+        "identity": identity_label,
         "buttonType": identity.get("buttonType") or "",
         "targets": _targets(btn, variable_label),
     }
@@ -571,7 +583,7 @@ def _render_button_control(
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-button-category='{escape(category_key, quote=True)}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
-        f"<button class='test-btn' data-meta='{meta_attr}'>{escape(_btn_text(identity))}</button>"
+        f"<button class='test-btn' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
         f"<div class='btn-pass-total' aria-hidden='true'></div>"
         f"{link_html}</div>"
     )

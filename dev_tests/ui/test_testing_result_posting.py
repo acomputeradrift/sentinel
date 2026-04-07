@@ -578,6 +578,96 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_graphics_only_button_posts_graphics_identity(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "", "text": "", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 10,
+                                                        "orientations": {
+                                                            "portrait": {
+                                                                "visible": True,
+                                                                "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120},
+                                                            }
+                                                        },
+                                                    },
+                                                    "testTargets": {
+                                                        "text": False,
+                                                        "macros": False,
+                                                        "macroSteps": False,
+                                                        "variables": {},
+                                                        "graphics": {"bitmap": True, "icon": False},
+                                                        "pageLink": False,
+                                                    },
+                                                    "resolvedPageLink": {"targetPageId": None},
+                                                }
+                                            ],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}],
+                                "buttons": [{"buttonId": 48551, "buttonTagName": "", "identifiers": {"text": ""}, "testTargets": {}}],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        token = "techTokenGraphicsIdentity"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click(".btn-wrap .test-btn")
+
+            self.assertTrue(page.locator("#pt").inner_text().endswith("Graphics"))
+
+            page.click("#rows .row .actions button")  # first "Pass"
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["target"]["targetName"], "Bitmap")
+            self.assertEqual(sent["target"]["refs"].get("buttonName"), "Graphics")
+        finally:
+            server.stop()
+
     def test_button_fail_requires_note_enables_button(self):
         from sentinel.generation.render_core import render_single_device_html, load_json
 
