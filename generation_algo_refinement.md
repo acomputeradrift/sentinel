@@ -40,17 +40,18 @@
 ## Probe Definition
 - Probe name: `generation_algo_refinement_probe.py`
 - Scope:
-  - Benchmark `generate at upload/store` on the real commissioning UI path by timing `Load File` click until uploaded-ready UI state.
+  - Benchmark `preload` on the real commissioning UI path using server timing from the same upload/regenerate run (`generation.timings.generateSec`).
   - Benchmark `redraw on project-menu selection` on the real testing route (`/testing/{techToken}`) from device-row click until usable render.
 - UI timing markers:
-  - Preload generation: `Load File` click -> `uploadStatus` contains `Uploaded:`.
-  - Usable render: device-row click -> `#rtiCanvas` exists and active-page `.btn-wrap` exists.
+  - Preload (`preload_sec`): server `generation.timings.generateSec` from same run.
+  - Display (`display_sec`): device-row click -> `#rtiCanvas` exists and active-page `.btn-wrap` exists.
   - Supporting paint markers: first paint / first contentful paint (navigation-relative).
 - Output:
   - Per-file run list with:
-    - `preload_generation_sec`
-    - `click_to_usable_render_sec`
+    - `preload_sec`
+    - `display_sec`
   - Summary with `p50`, `p95`, and mean for both metrics.
+  - Extraction remains outside this probe and is sourced from extraction probe and server `REGEN_BASELINE extractSec`.
 
 ## Evidence Log Template
 Use this section for each benchmark/experiment.
@@ -75,6 +76,7 @@ Use this section for each benchmark/experiment.
 ## Baseline Results (Real UI Flow)
 - Date: 2026-04-06
 - Method: `generation_algo_refinement_probe.py` using real commissioning/testing routes.
+- Historical note: this baseline used legacy field names (`preload_generation_sec`, `click_to_usable_render_sec`) and legacy preload semantics.
 - Metrics:
   - `preload_generation_sec`: `Load File` click -> `Uploaded:` visible in manage panel.
   - `click_to_usable_render_sec`: device row click on Project Home -> usable device UI (`#rtiCanvas` + active page button wrappers present).

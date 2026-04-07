@@ -187,8 +187,31 @@ def _inject_base_href(html: str, *, base_href: str) -> str:
     return f'<base href="{base_href}">' + html
 
 
+def _log_display_baseline(
+    *,
+    stage: str,
+    project_id: str,
+    tech_token: str,
+    serve_ms: float,
+    size_bytes: int,
+    path: str = "",
+    is_device_html: bool = False,
+) -> None:
+    log.info(
+        "DISPLAY_BASELINE stage=%s projectId=%s techToken=%s path=%s serveMs=%.3f sizeBytes=%s isDeviceHtml=%s",
+        str(stage or ""),
+        str(project_id or ""),
+        str(tech_token or ""),
+        str(path or ""),
+        float(serve_ms),
+        int(size_bytes),
+        "1" if bool(is_device_html) else "0",
+    )
+
+
 @router.get("/testing/{techToken}", response_class=HTMLResponse)
 def testing_html(request: Request, techToken: str) -> HTMLResponse:
+    t0 = time.perf_counter()
     try:
         tok = _repo(request).resolve_active_token(techToken=techToken)
     except KeyError:
@@ -204,21 +227,49 @@ def testing_html(request: Request, techToken: str) -> HTMLResponse:
                 "<body><h1>Sentinel Testing Runtime</h1><p>Payload has not been generated yet.</p></body></html>"
             )
             with_base = _inject_base_href(html, base_href=f"/testing/{techToken}/files/")
+            _log_display_baseline(
+                stage="home",
+                project_id=tok.projectId,
+                tech_token=techToken,
+                serve_ms=(time.perf_counter() - t0) * 1000.0,
+                size_bytes=len(with_base.encode("utf-8")),
+                path="/testing/{techToken}",
+                is_device_html=False,
+            )
             return HTMLResponse(content=with_base)
 
     home = _find_project_home(project_dir)
     if home is None:
         html = "<!doctype html><html><head><meta charset='utf-8'><title>Sentinel Testing</title></head><body><h1>Sentinel Testing</h1><p>Testing UI has not been generated yet.</p></body></html>"
         with_base = _inject_base_href(html, base_href=f"/testing/{techToken}/files/")
+        _log_display_baseline(
+            stage="home",
+            project_id=tok.projectId,
+            tech_token=techToken,
+            serve_ms=(time.perf_counter() - t0) * 1000.0,
+            size_bytes=len(with_base.encode("utf-8")),
+            path="/testing/{techToken}",
+            is_device_html=False,
+        )
         return HTMLResponse(content=with_base)
 
     raw = home.read_text(encoding="utf-8", errors="replace")
     with_base = _inject_base_href(raw, base_href=f"/testing/{techToken}/files/")
+    _log_display_baseline(
+        stage="home",
+        project_id=tok.projectId,
+        tech_token=techToken,
+        serve_ms=(time.perf_counter() - t0) * 1000.0,
+        size_bytes=len(with_base.encode("utf-8")),
+        path=home.name,
+        is_device_html=False,
+    )
     return HTMLResponse(content=with_base)
 
 
 @router.get("/testing/{techToken}/files/{path:path}")
 def testing_file(request: Request, techToken: str, path: str) -> FileResponse:
+    t0 = time.perf_counter()
     try:
         tok = _repo(request).resolve_active_token(techToken=techToken)
     except KeyError:
@@ -235,7 +286,41 @@ def testing_file(request: Request, techToken: str, path: str) -> FileResponse:
     if not target.exists() or not target.is_file():
         raise http_error(404, code="NOT_FOUND", message="File not found.")
 
+    is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
+    _log_display_baseline(
+        stage="file",
+        project_id=tok.projectId,
+        tech_token=techToken,
+        serve_ms=(time.perf_counter() - t0) * 1000.0,
+        size_bytes=int(target.stat().st_size),
+        path=str(path or ""),
+        is_device_html=is_device_html,
+    )
     return FileResponse(path=str(target))
+
+
+@router.post("/api/v1/testing/{techToken}/ready")
+def post_ready_baseline(request: Request, techToken: str, payload: dict) -> dict:
+    try:
+        tok = _repo(request).resolve_active_token(techToken=techToken)
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+    ready_raw = (payload or {}).get("readySec")
+    try:
+        ready_sec = float(ready_raw)
+    except (TypeError, ValueError):
+        raise http_error(400, code="VALIDATION_ERROR", message="readySec must be a number.")
+    if ready_sec < 0:
+        raise http_error(400, code="VALIDATION_ERROR", message="readySec must be >= 0.")
+
+    log.info(
+        "READY_BASELINE projectId=%s techToken=%s readySec=%.3f",
+        str(tok.projectId or ""),
+        str(techToken or ""),
+        ready_sec,
+    )
+    return {"projectId": tok.projectId, "techToken": techToken, "readySec": round(float(ready_sec), 3)}
 
 
 @router.post("/api/v1/testing/{techToken}/results")

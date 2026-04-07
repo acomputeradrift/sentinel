@@ -118,14 +118,53 @@ def _measure_one_run(
         if not _wait_for_text(page, "#projectSelect", project_name, timeout_ms):
             raise RuntimeError("Project was not created/selected.")
 
+        api_responses: list[Any] = []
+
+        def _capture_response(resp: Any) -> None:
+            try:
+                url = str(resp.url or "")
+                method = str(resp.request.method or "").upper()
+                if method != "POST":
+                    return
+                if "/upload-and-regenerate" not in url and not url.endswith("/regenerate"):
+                    return
+                api_responses.append(resp)
+            except Exception:
+                return
+
+        page.on("response", _capture_response)
         page.set_input_files("#apexFile", str(apex_path.resolve()))
-        t0 = time.perf_counter()
         page.locator("#uploadBtn").click()
         ready_ok = _wait_for_text(page, "#uploadStatus", "Uploaded:", timeout_ms)
-        t1 = time.perf_counter()
         if not ready_ok:
             raise RuntimeError("Upload/regenerate did not reach Uploaded status in time.")
-        preload_generation_sec = t1 - t0
+
+        preload_sec: float | None = None
+        for resp in reversed(api_responses):
+            if not bool(resp.ok):
+                continue
+            ct = str(resp.headers.get("content-type") or "")
+            if "application/json" not in ct.lower():
+                continue
+            try:
+                payload = resp.json()
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            generation = payload.get("generation")
+            if not isinstance(generation, dict):
+                continue
+            timings = generation.get("timings")
+            if not isinstance(timings, dict):
+                continue
+            g = timings.get("generateSec")
+            if g is None:
+                continue
+            preload_sec = float(g)
+            break
+        if preload_sec is None:
+            raise RuntimeError("Missing generation.timings.generateSec from upload/regenerate response.")
 
         project_id = str(page.locator("#projectSelect").input_value() or "").strip()
         if not project_id:
@@ -168,7 +207,11 @@ def _measure_one_run(
         c1 = time.perf_counter()
         if not usable_ok:
             raise RuntimeError("Device page did not reach usable render in time.")
-        click_to_usable_render_sec = c1 - c0
+        ready_sec_value = page.evaluate("() => (typeof window.__sentinelReadySec === 'number' ? window.__sentinelReadySec : null)")
+        if ready_sec_value is None:
+            ready_sec = c1 - c0
+        else:
+            ready_sec = float(ready_sec_value)
 
         paints = page.evaluate(
             """() => {
@@ -187,9 +230,9 @@ def _measure_one_run(
             "run": int(run_index),
             "apexFile": apex_path.name,
             "projectName": project_name,
-            "preload_generation_sec": round(preload_generation_sec, 3),
+            "preload_sec": round(preload_sec, 3),
             "device_label": device_label,
-            "click_to_usable_render_sec": round(click_to_usable_render_sec, 3),
+            "ready_sec": round(ready_sec, 3),
             "first_paint_sec_from_nav": (
                 round(float(paints.get("firstPaintMs")) / 1000.0, 3)
                 if paints.get("firstPaintMs") is not None
@@ -208,7 +251,7 @@ def _measure_one_run(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Real UI benchmark for Sentinel generation preload and device click-to-usable-render."
+        description="Real UI benchmark for Sentinel preload and ready timing."
     )
     p.add_argument("--commissioning-url", default="http://127.0.0.1:8000/commissioning/index.html")
     p.add_argument("--assets-dir", default=str(ROOT / "Assets"))
@@ -265,27 +308,27 @@ def main() -> int:
                         file_row["runs"].append({"run": int(i), "error": str(exc)})
 
                 gen_vals = [
-                    float(r["preload_generation_sec"])
+                    float(r["preload_sec"])
                     for r in file_row["runs"]
-                    if isinstance(r, dict) and "preload_generation_sec" in r
+                    if isinstance(r, dict) and "preload_sec" in r
                 ]
-                click_vals = [
-                    float(r["click_to_usable_render_sec"])
+                ready_vals = [
+                    float(r["ready_sec"])
                     for r in file_row["runs"]
-                    if isinstance(r, dict) and "click_to_usable_render_sec" in r
+                    if isinstance(r, dict) and "ready_sec" in r
                 ]
 
                 file_row["summary"] = {
                     "successfulRuns": len(gen_vals),
-                    "preload_generation_sec": {
+                    "preload_sec": {
                         "p50": (round(float(_pct(gen_vals, 50) or 0.0), 3) if gen_vals else None),
                         "p95": (round(float(_pct(gen_vals, 95) or 0.0), 3) if gen_vals else None),
                         "mean": (round(float(statistics.mean(gen_vals)), 3) if gen_vals else None),
                     },
-                    "click_to_usable_render_sec": {
-                        "p50": (round(float(_pct(click_vals, 50) or 0.0), 3) if click_vals else None),
-                        "p95": (round(float(_pct(click_vals, 95) or 0.0), 3) if click_vals else None),
-                        "mean": (round(float(statistics.mean(click_vals)), 3) if click_vals else None),
+                    "ready_sec": {
+                        "p50": (round(float(_pct(ready_vals, 50) or 0.0), 3) if ready_vals else None),
+                        "p95": (round(float(_pct(ready_vals, 95) or 0.0), 3) if ready_vals else None),
+                        "mean": (round(float(statistics.mean(ready_vals)), 3) if ready_vals else None),
                     },
                 }
                 out["files"].append(file_row)

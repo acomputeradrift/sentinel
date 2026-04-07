@@ -2497,6 +2497,7 @@ function applyRtiLayout() {{
   syncViewportControls();
   applyViewportState();
   if (viewportMode.active) applyViewportPopupLayout();
+  maybeReportReadyBaseline();
  }} finally {{
   _recordLayoutPerf(_perfNow()-_layoutT0);
  }}
@@ -2508,10 +2509,36 @@ function scheduleRtiLayout(reason) {{
  _rtiLayoutScheduled=true;
  requestAnimationFrame(() => {{
   _rtiLayoutScheduled=false;
-  applyRtiLayout();
+ applyRtiLayout();
  }});
 }}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
+let _readyBaselineSent=false;
+function maybeReportReadyBaseline() {{
+ if (_readyBaselineSent) return;
+ const canvas=document.getElementById('rtiCanvas');
+ if (!canvas) return;
+ const rows=document.querySelectorAll('.device-page.active .btn-wrap');
+ if (!rows || !rows.length) return;
+ const rect=canvas.getBoundingClientRect();
+ if (!rect || rect.width<=0 || rect.height<=0) return;
+ const readySec=Number((performance.now()/1000).toFixed(3));
+ window.__sentinelReadySec=readySec;
+ _readyBaselineSent=true;
+ const techToken=techTokenFromLocation();
+ if (!techToken) return;
+ const url=`/api/v1/testing/${{encodeURIComponent(techToken)}}/ready`;
+ const payload={{readySec, recordedAtUtc:new Date().toISOString()}};
+ const body=JSON.stringify(payload);
+ try {{
+  if (navigator.sendBeacon) {{
+   const blob=new Blob([body], {{type:'application/json'}});
+   navigator.sendBeacon(url, blob);
+  }} else {{
+   fetch(url, {{method:'POST', headers:{{'content-type':'application/json'}}, body, keepalive:true}}).catch(()=>{{}});
+  }}
+ }} catch (_e) {{}}
+}}
 function updateZoom(nextPercent){{
  if (viewportMode.active) {{
   viewportMode.popupZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
