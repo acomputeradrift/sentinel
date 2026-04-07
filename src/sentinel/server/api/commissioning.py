@@ -80,6 +80,7 @@ def _safe_progress(*, repo: Repository, projectId: str) -> dict:
 
 def _rollups_from_repo(*, repo: Repository, projectId: str, latest_results: dict, progress_payload: dict) -> dict:
     tags = repo.get_fail_tags_for_project(projectId=projectId)
+    first_time_fail_targets = repo.count_first_time_fail_targets(projectId=projectId)
     by_target: dict[str, int] = {}
     by_tag = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "DONE": 0}
     total = 0
@@ -102,9 +103,9 @@ def _rollups_from_repo(*, repo: Repository, projectId: str, latest_results: dict
         "progress": progress_payload,
         "counts": {
             "totalTargets": int((progress_payload or {}).get("counts", {}).get("totalTargets") or 0),
-            "firstTimeFailTargets": repo.count_first_time_fail_targets(projectId=projectId),
+            "firstTimeFailTargets": first_time_fail_targets,
         },
-        "firstTimeFailTargets": repo.count_first_time_fail_targets(projectId=projectId),
+        "firstTimeFailTargets": first_time_fail_targets,
         "currentFailures": {"total": total, "byTargetName": by_target, "byTag": by_tag},
     }
 

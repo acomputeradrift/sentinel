@@ -8,6 +8,8 @@ from typing import Any
 
 from sentinel.server.services.repositories import TestResultRecord
 
+_RESOLVED_TARGETS_CACHE: dict[str, dict[str, Any]] = {}
+
 
 def _generated_root() -> Path:
     return Path(os.environ.get("SENTINEL_GENERATED_ROOT") or "generated").resolve()
@@ -37,6 +39,13 @@ def _resolved_targets_path_for_project_data(project_data_path: Path) -> Path:
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+
+
+def _mtime_ns(path: Path) -> int | None:
+    try:
+        return int(path.stat().st_mtime_ns)
+    except Exception:
+        return None
 
 
 def _parse_ts(ts: str) -> datetime:
@@ -508,21 +517,53 @@ def commissioning_progress(*, projectId: str, latest_results: dict[str, TestResu
     path = _latest_project_data_path(projectId=projectId)
     if path is None:
         raise FileNotFoundError("project_data_missing")
-    project_data = _load_json(path)
-
     resolved_path = _resolved_targets_path_for_project_data(path)
+    project_data_mtime_ns = _mtime_ns(path)
+    resolved_exists = bool(resolved_path.exists())
+    resolved_mtime_ns = _mtime_ns(resolved_path) if resolved_exists else None
+    cache_entry = _RESOLVED_TARGETS_CACHE.get(str(projectId))
+
+    cache_hit = (
+        isinstance(cache_entry, dict)
+        and str(cache_entry.get("project_data_path") or "") == str(path)
+        and cache_entry.get("project_data_mtime_ns") == project_data_mtime_ns
+        and str(cache_entry.get("resolved_path") or "") == str(resolved_path)
+        and bool(cache_entry.get("resolved_exists")) == resolved_exists
+        and cache_entry.get("resolved_mtime_ns") == resolved_mtime_ns
+    )
+
     event_targets: dict[str, set[str]]
     device_targets: list[dict[str, Any]]
-    if resolved_path.exists():
+    if cache_hit:
+        event_targets = cache_entry["event_targets"]
+        device_targets = cache_entry["device_targets"]
+    elif resolved_exists:
         resolved_payload = _load_json(resolved_path)
-        if isinstance(resolved_payload, dict) and str(resolved_payload.get("format") or "").strip() == "sentinel-resolved-targets-v1":
-            event_targets, device_targets = _targets_from_resolved_payload(resolved_payload)
+        if (
+            isinstance(resolved_payload, dict)
+            and str(resolved_payload.get("format") or "").strip() == "sentinel-resolved-targets-v1"
+        ):
+            event_targets, device_targets = _targets_from_resolved_payload(
+                resolved_payload
+            )
         else:
+            project_data = _load_json(path)
             event_targets = _derive_event_section_targets(project_data)
             device_targets = _derive_device_targets(project_data)
     else:
+        project_data = _load_json(path)
         event_targets = _derive_event_section_targets(project_data)
         device_targets = _derive_device_targets(project_data)
+
+    _RESOLVED_TARGETS_CACHE[str(projectId)] = {
+        "project_data_path": str(path),
+        "project_data_mtime_ns": project_data_mtime_ns,
+        "resolved_path": str(resolved_path),
+        "resolved_exists": resolved_exists,
+        "resolved_mtime_ns": resolved_mtime_ns,
+        "event_targets": event_targets,
+        "device_targets": device_targets,
+    }
 
     all_expected: set[str] = set()
     for section_keys in event_targets.values():
