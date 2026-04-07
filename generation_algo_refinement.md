@@ -131,3 +131,16 @@ Use this section for each benchmark/experiment.
 - `output/generation_algo_refinement_probe_post_phase2_run1.json`
 - `output/generation_algo_refinement_probe_post_phase2_run3.json`
 - `output/generation_algo_refinement_probe_post_phase2_sung_run3_timeout600.json`
+
+## Server Baseline Capture (Preload + Ready)
+- Date: 2026-04-07
+- Project: `e0861032-ce48-4754-945a-822d6070ef73` (`Sung Residence v207.2.apex`)
+- Source: Sentinel server logs (`REGEN_BASELINE` + `READY_BASELINE`)
+
+### Captured Values
+- `Preload`:
+  - `preloadSec=6.401` at `2026-04-07 19:14:20`
+  - Same run context: `extractSec=75.167`, `totalSec=81.589`
+- `Ready`:
+  - `readySec=3.627` at `2026-04-07 19:15:08`
+  - `readySec=3.703` at `2026-04-07 19:15:27`
