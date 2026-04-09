@@ -6,10 +6,16 @@ import re
 from pathlib import Path
 from typing import Any
 
+DEVICE_STATIC_FRAMEWORK_PATH = Path(__file__).resolve().parents[1] / "ui" / "commissioning" / "project_device_static_layout.html"
+
 
 def load_json(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _load_device_static_framework() -> str:
+    return DEVICE_STATIC_FRAMEWORK_PATH.read_text(encoding="utf-8")
 
 
 def _resolution_or_default(resolution: dict[str, Any] | None, default_width: int, default_height: int) -> dict[str, int]:
@@ -822,6 +828,27 @@ def _render_document(
     app_json = json.dumps(app_ui)
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
+    home_link_markup = f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"
+    orientation_controls_markup = (
+        "<div class='app-ui-controls orientation-controls' id='orientationControls'>"
+        "<div class='orientation-toggle' id='orientationToggle'>"
+        "<button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button>"
+        "<button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button>"
+        "</div></div>"
+        if show_orientation_toggle
+        else ""
+    )
+    framework_markup = (
+        _load_device_static_framework()
+        .replace("__PROJECT_HOME_LINK__", home_link_markup)
+        .replace("__HEADER__", header)
+        .replace("__ORIENTATION_CONTROLS__", orientation_controls_markup)
+        .replace("__LAYER_PANEL_TITLE__", escape(str(layer_panel_cfg.get("title", "Layers"))))
+        .replace("__ZOOM_DECREASE__", str(app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")))
+        .replace("__ZOOM_RESET__", str(app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")))
+        .replace("__ZOOM_INCREASE__", str(app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")))
+        .replace("__BODY_MARKUP__", body_markup)
+    )
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2\">
@@ -937,15 +964,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
-<body><div class='app-canvas' id='appCanvas'>
-<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
-{f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}
-<div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
-<div class='app-ui-controls bottom-controls' id='bottomControls'></div>
-<div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
- <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
- <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
- <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
+<body>{framework_markup}
 <script>
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
