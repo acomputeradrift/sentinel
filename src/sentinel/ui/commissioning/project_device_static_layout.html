@@ -1,1 +1,30 @@
-﻿<!doctype html><html lang="en"><head>  <meta charset="utf-8">  <meta name="viewport" content="width=device-width, initial-scale=1">  <title>Project Device Static Layout</title>  <link rel="stylesheet" href="./project_device_static_layout.css"></head><body>  <input class="panel-toggle" type="checkbox" id="left-panel-toggle" checked>  <input class="panel-toggle" type="checkbox" id="right-panel-toggle" checked>  <div class="layout-shell">    <header class="bar bar-top">      <div class="bar-label">Top Reserved Area (Project Navigation / Device Title)</div>    </header>    <main class="layout-stage">      <section class="device-canvas" aria-label="RTI Device Canvas">        <div class="canvas-label">RTI Device Canvas</div>      </section>    </main>    <aside class="side-panel side-panel-left" aria-label="Left Controls">      <div class="panel-content">        <div class="panel-label">Orientation</div>        <div class="panel-label">Device Zoom</div>        <div class="panel-label">Text Zoom</div>      </div>      <label class="panel-handle panel-handle-left" for="left-panel-toggle" aria-label="Toggle left controls"></label>    </aside>    <aside class="side-panel side-panel-right" aria-label="Right Controls">      <div class="panel-content">        <div class="panel-label">Layer Management</div>      </div>      <label class="panel-handle panel-handle-right" for="right-panel-toggle" aria-label="Toggle right controls"></label>    </aside>    <footer class="bar bar-bottom">      <div class="bar-label">Bottom Reserved Area</div>    </footer>  </div></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project Device Static Layout</title>
+  <link rel="stylesheet" href="./project_device_static_layout.css">
+</head>
+<body>
+  <input class="panel-toggle" type="checkbox" id="left-panel-toggle" checked>
+  <input class="panel-toggle" type="checkbox" id="right-panel-toggle" checked>
+
+  <div class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">
+    <header id="deviceHeaderCanvas" class="deviceHeaderCanvas"></header>
+
+    <main class="deviceLayoutStage">
+      <section id="rtiUsableCanvas" class="rtiUsableCanvas"></section>
+      <footer id="deviceFooterCanvas" class="deviceFooterCanvas"></footer>
+
+      <aside id="deviceViewControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasLeft" aria-label="Device View Controls">
+        <label class="deviceControlsToggle deviceControlsToggleLeft" for="left-panel-toggle" aria-label="Toggle left controls"></label>
+      </aside>
+
+      <aside id="deviceLayerControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasRight" aria-label="Device Layer Controls">
+        <label class="deviceControlsToggle deviceControlsToggleRight" for="right-panel-toggle" aria-label="Toggle right controls"></label>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>

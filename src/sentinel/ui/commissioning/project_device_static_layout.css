@@ -1,1 +1,136 @@
-﻿:root {  --top-bar-h: 52px;  --bottom-bar-h: 42px;  --panel-expanded-w: 260px;  --panel-collapsed-w: 42px;  --handle-w: 42px;  --green: #6ced43;  --red: #ef3d22;  --blue: #2436df;  --ink: #102133;  --line: rgba(0, 0, 0, 0.2);}* {  box-sizing: border-box;}html,body {  width: 100%;  height: 100%;  margin: 0;  font-family: "Segoe UI", Tahoma, sans-serif;  color: var(--ink);  background: #e9edf2;}.panel-toggle {  position: fixed;  inline-size: 1px;  block-size: 1px;  opacity: 0;  pointer-events: none;}.layout-shell {  min-height: 100dvh;  display: grid;  grid-template-rows: var(--top-bar-h) 1fr var(--bottom-bar-h);  position: relative;}.bar {  background: var(--green);  display: grid;  place-items: center;  border: 1px solid var(--line);}.bar-label {  font-size: 14px;  font-weight: 700;  letter-spacing: 0.2px;}.layout-stage {  position: relative;  overflow: hidden;  isolation: isolate;}.device-canvas {  position: absolute;  inset-block: 0;  inset-inline-start: var(--handle-w);  inset-inline-end: var(--handle-w);  background: var(--blue);  border: 1px solid var(--line);  z-index: 0;  display: grid;  place-items: center;}.canvas-label {  color: rgba(255, 255, 255, 0.9);  font-weight: 700;  font-size: clamp(14px, 2vw, 20px);  letter-spacing: 0.3px;}.side-panel {  position: absolute;  inset-block-start: var(--top-bar-h);  inset-block-end: 0;  background: var(--red);  border: 1px solid var(--line);  z-index: 1;  transition: width 180ms ease;}.side-panel-left {  inset-inline-start: 0;  width: var(--panel-expanded-w);}.side-panel-right {  inset-inline-end: 0;  width: var(--panel-expanded-w);}.panel-content {  height: 100%;  padding: 56px 12px calc(var(--bottom-bar-h) + 12px);  display: grid;  align-content: start;  gap: 10px;  transition: opacity 120ms ease;}.panel-label {  padding: 9px 10px;  background: rgba(255, 255, 255, 0.85);  border: 1px solid rgba(16, 33, 51, 0.2);  border-radius: 8px;  font-size: 13px;  font-weight: 700;  text-align: center;}.panel-handle {  position: absolute;  inset-block-start: 0;  transform: none;  width: var(--handle-w);  height: 42px;  background: rgba(255, 255, 255, 0.95);  border: 1px solid rgba(16, 33, 51, 0.35);  border-radius: 0;  cursor: pointer;  display: grid;  place-items: center;}.panel-handle::before {  font-size: 22px;  font-weight: 900;  line-height: 1;  color: var(--ink);}.panel-handle-left {  inset-inline-end: 0;}.panel-handle-right {  inset-inline-start: 0;}#left-panel-toggle:checked ~ .layout-shell .panel-handle-left::before {  content: "\2039";}#left-panel-toggle:not(:checked) ~ .layout-shell .panel-handle-left::before {  content: "\203A";}#right-panel-toggle:checked ~ .layout-shell .panel-handle-right::before {  content: "\203A";}#right-panel-toggle:not(:checked) ~ .layout-shell .panel-handle-right::before {  content: "\2039";}#left-panel-toggle:not(:checked) ~ .layout-shell .side-panel-left {  width: var(--panel-collapsed-w);}#right-panel-toggle:not(:checked) ~ .layout-shell .side-panel-right {  width: var(--panel-collapsed-w);}#left-panel-toggle:not(:checked) ~ .layout-shell .side-panel-left .panel-content,#right-panel-toggle:not(:checked) ~ .layout-shell .side-panel-right .panel-content {  opacity: 0;  pointer-events: none;}@media (max-width: 960px) {  :root {    --panel-expanded-w: 180px;    --top-bar-h: 46px;    --bottom-bar-h: 38px;  }  .bar-label {    font-size: 12px;  }}
+:root {
+  --device-header-h: 50px;
+  --device-footer-h: 40px;
+  --controls-expanded-w: 250px;
+  --controls-collapsed-w: 46px;
+
+  --color-header-footer: #68f043;
+  --color-controls: #ef3d22;
+  --color-rti: #315fdd;
+  --outline: rgba(0, 0, 0, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.panel-toggle {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.projectDeviceStaticLayout {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: var(--device-header-h) 1fr;
+  background: #ffffff;
+}
+
+.deviceHeaderCanvas {
+  background: var(--color-header-footer);
+  border: 1px solid var(--outline);
+}
+
+.deviceLayoutStage {
+  position: relative;
+  overflow: hidden;
+}
+
+.rtiUsableCanvas {
+  position: absolute;
+  inset-block-start: 0;
+  inset-block-end: var(--device-footer-h);
+  inset-inline-start: var(--controls-collapsed-w);
+  inset-inline-end: var(--controls-collapsed-w);
+  background: var(--color-rti);
+  border: 1px solid var(--outline);
+  z-index: 1;
+}
+
+.deviceFooterCanvas {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: var(--controls-collapsed-w);
+  inset-inline-end: var(--controls-collapsed-w);
+  height: var(--device-footer-h);
+  background: var(--color-header-footer);
+  border: 1px solid var(--outline);
+  z-index: 1;
+}
+
+.deviceControlsCanvas {
+  position: absolute;
+  inset-block: 0;
+  background: var(--color-controls);
+  border: 1px solid var(--outline);
+  z-index: 2;
+  transition: width 180ms ease;
+}
+
+.deviceControlsCanvasLeft {
+  inset-inline-start: 0;
+  width: var(--controls-expanded-w);
+}
+
+.deviceControlsCanvasRight {
+  inset-inline-end: 0;
+  width: var(--controls-expanded-w);
+}
+
+.deviceControlsToggle {
+  position: absolute;
+  inset-block-start: 0;
+  width: var(--controls-collapsed-w);
+  height: var(--controls-collapsed-w);
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  color: #000000;
+  font: 900 36px/1 sans-serif;
+  cursor: pointer;
+  user-select: none;
+}
+
+.deviceControlsToggleLeft {
+  inset-inline-end: 0;
+}
+
+.deviceControlsToggleRight {
+  inset-inline-start: 0;
+}
+
+#left-panel-toggle:checked ~ .projectDeviceStaticLayout .deviceControlsToggleLeft::before {
+  content: "<";
+}
+
+#left-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceControlsToggleLeft::before {
+  content: ">";
+}
+
+#right-panel-toggle:checked ~ .projectDeviceStaticLayout .deviceControlsToggleRight::before {
+  content: ">";
+}
+
+#right-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceControlsToggleRight::before {
+  content: "<";
+}
+
+#left-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceControlsCanvasLeft {
+  width: var(--controls-collapsed-w);
+}
+
+#right-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceControlsCanvasRight {
+  width: var(--controls-collapsed-w);
+}
