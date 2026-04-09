@@ -8,6 +8,8 @@ from typing import Any
 
 from sentinel.server.services.repositories import TestResultRecord
 
+_RESOLVED_TARGETS_CACHE: dict[str, dict[str, Any]] = {}
+
 
 def _generated_root() -> Path:
     return Path(os.environ.get("SENTINEL_GENERATED_ROOT") or "generated").resolve()
@@ -37,6 +39,13 @@ def _resolved_targets_path_for_project_data(project_data_path: Path) -> Path:
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+
+
+def _mtime_ns(path: Path) -> int | None:
+    try:
+        return int(path.stat().st_mtime_ns)
+    except Exception:
+        return None
 
 
 def _parse_ts(ts: str) -> datetime:
@@ -208,6 +217,9 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
     vars_t = t.get("variables", {})
     if not isinstance(vars_t, dict):
         vars_t = {}
+    graphics_t = t.get("graphics", {})
+    if not isinstance(graphics_t, dict):
+        graphics_t = {}
     out: list[str] = []
     if t.get("text"):
         out.append("Text")
@@ -218,6 +230,10 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(f"Variable - {name}")
+    if graphics_t.get("bitmap"):
+        out.append("Bitmap")
+    if graphics_t.get("icon"):
+        out.append("Icon")
     if t.get("pageLink"):
         out.append("PageLink")
     return out
@@ -306,6 +322,22 @@ def _match_diag_viewport_button_id(diag_frame_buttons: list[dict[str, Any]], use
     return _match_diag_button_id(diag_frame_buttons, user_button)
 
 
+def _scope_button_id(user_button: dict[str, Any]) -> int | None:
+    scope_source = user_button.get("apexScopeSource")
+    if not isinstance(scope_source, dict):
+        return None
+    button = scope_source.get("button")
+    if not isinstance(button, dict):
+        return None
+    value = button.get("buttonId")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
 def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]:
     devices = project_data.get("devices", [])
     if not isinstance(devices, list):
@@ -353,6 +385,12 @@ def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]
                 if not labels:
                     continue
                 button_id = _match_diag_button_id([b for b in diag_buttons if isinstance(b, dict)], uf_btn)
+                if button_id is None:
+                    scoped_button_id = _scope_button_id(uf_btn)
+                    if scoped_button_id is not None and any(
+                        isinstance(b, dict) and int(b.get("buttonId") or -1) == scoped_button_id for b in diag_buttons
+                    ):
+                        button_id = scoped_button_id
                 if button_id is None:
                     continue
                 for label in labels:
@@ -508,21 +546,53 @@ def commissioning_progress(*, projectId: str, latest_results: dict[str, TestResu
     path = _latest_project_data_path(projectId=projectId)
     if path is None:
         raise FileNotFoundError("project_data_missing")
-    project_data = _load_json(path)
-
     resolved_path = _resolved_targets_path_for_project_data(path)
+    project_data_mtime_ns = _mtime_ns(path)
+    resolved_exists = bool(resolved_path.exists())
+    resolved_mtime_ns = _mtime_ns(resolved_path) if resolved_exists else None
+    cache_entry = _RESOLVED_TARGETS_CACHE.get(str(projectId))
+
+    cache_hit = (
+        isinstance(cache_entry, dict)
+        and str(cache_entry.get("project_data_path") or "") == str(path)
+        and cache_entry.get("project_data_mtime_ns") == project_data_mtime_ns
+        and str(cache_entry.get("resolved_path") or "") == str(resolved_path)
+        and bool(cache_entry.get("resolved_exists")) == resolved_exists
+        and cache_entry.get("resolved_mtime_ns") == resolved_mtime_ns
+    )
+
     event_targets: dict[str, set[str]]
     device_targets: list[dict[str, Any]]
-    if resolved_path.exists():
+    if cache_hit:
+        event_targets = cache_entry["event_targets"]
+        device_targets = cache_entry["device_targets"]
+    elif resolved_exists:
         resolved_payload = _load_json(resolved_path)
-        if isinstance(resolved_payload, dict) and str(resolved_payload.get("format") or "").strip() == "sentinel-resolved-targets-v1":
-            event_targets, device_targets = _targets_from_resolved_payload(resolved_payload)
+        if (
+            isinstance(resolved_payload, dict)
+            and str(resolved_payload.get("format") or "").strip() == "sentinel-resolved-targets-v1"
+        ):
+            event_targets, device_targets = _targets_from_resolved_payload(
+                resolved_payload
+            )
         else:
+            project_data = _load_json(path)
             event_targets = _derive_event_section_targets(project_data)
             device_targets = _derive_device_targets(project_data)
     else:
+        project_data = _load_json(path)
         event_targets = _derive_event_section_targets(project_data)
         device_targets = _derive_device_targets(project_data)
+
+    _RESOLVED_TARGETS_CACHE[str(projectId)] = {
+        "project_data_path": str(path),
+        "project_data_mtime_ns": project_data_mtime_ns,
+        "resolved_path": str(resolved_path),
+        "resolved_exists": resolved_exists,
+        "resolved_mtime_ns": resolved_mtime_ns,
+        "event_targets": event_targets,
+        "device_targets": device_targets,
+    }
 
     all_expected: set[str] = set()
     for section_keys in event_targets.values():

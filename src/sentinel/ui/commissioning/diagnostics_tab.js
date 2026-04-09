@@ -194,7 +194,7 @@ function normalizeTargetLabel(targetName) {
   if (!raw) return "";
   const lower = raw.toLowerCase();
   if (lower === "macro") return "macro";
-  if (lower === "macrosteps" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro step";
+  if (lower === "macrosteps" || lower === "macrostep" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro step";
   if (lower === "pagelink" || lower === "page link") return "pageLink";
   if (lower === "text" || lower === "texts") return "text";
   if (lower === "command" || lower === "commands") return "command";
@@ -835,7 +835,7 @@ function _failCategoryFromTask(task) {
   if (label === "macro step") return "macroSteps";
   if (label === "pageLink") return "pageLink";
   if (label.startsWith("variable")) return "variables";
-  if (label.includes("icon") || label.includes("graphic")) return "graphics";
+  if (label.includes("icon") || label.includes("bitmap") || label.includes("graphic")) return "graphics";
   return "text";
 }
 
@@ -862,7 +862,7 @@ function updateFailureTypesPie() {
   const slices = [
     { label: "text", value: counts.text, color: "var(--brand-orange)" },
     { label: "macros", value: counts.macros, color: "var(--brand-dark-gray)" },
-    { label: "macroSteps", value: counts.macroSteps, color: "var(--brand-light-gray)" },
+    { label: "macro step", value: counts.macroSteps, color: "var(--brand-light-gray)" },
     { label: "variables", value: counts.variables, color: "var(--brand-green)" },
     { label: "graphics", value: counts.graphics, color: "var(--brand-black)" },
     { label: "pageLink", value: counts.pageLink, color: "#177bb5" },

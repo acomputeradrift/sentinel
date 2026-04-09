@@ -641,6 +641,48 @@ def _coords(top: Any, left: Any, height: Any, width: Any) -> dict[str, int]:
     }
 
 
+def _coords_fit_resolution(coords: dict[str, int], resolution: dict[str, int]) -> bool:
+    left = int(coords.get("left") or 0)
+    top = int(coords.get("top") or 0)
+    width = int(coords.get("width") or 0)
+    height = int(coords.get("height") or 0)
+    res_w = int(resolution.get("width") or 0)
+    res_h = int(resolution.get("height") or 0)
+    if width <= 0 or height <= 0 or res_w <= 0 or res_h <= 0:
+        return False
+    if left < 0 or top < 0:
+        return False
+    return (left + width) <= res_w and (top + height) <= res_h
+
+
+def _select_orientation_coordinates(
+    *,
+    orientation: str,
+    primary: dict[str, int],
+    alt: dict[str, int],
+    portrait_supported: bool,
+    landscape_supported: bool,
+    portrait_resolution: dict[str, int],
+    landscape_resolution: dict[str, int],
+) -> dict[str, int]:
+    is_landscape = str(orientation or "").strip().lower() == "landscape"
+    resolution = landscape_resolution if is_landscape else portrait_resolution
+    both_supported = bool(portrait_supported) and bool(landscape_supported)
+    landscape_only = bool(landscape_supported) and not bool(portrait_supported)
+    if is_landscape:
+        # Preserve explicit portrait/landscape split when both are supported.
+        default_candidate = alt if both_supported else primary if landscape_only else alt
+        fallback_candidate = primary if default_candidate is alt else alt
+    else:
+        default_candidate = primary
+        fallback_candidate = alt
+    if _coords_fit_resolution(default_candidate, resolution):
+        return default_candidate
+    if _coords_fit_resolution(fallback_candidate, resolution):
+        return fallback_candidate
+    return default_candidate
+
+
 def _orientation_visibility(mask: int) -> dict[str, bool]:
     if mask == 3:
         return {"portrait": True, "landscape": True}
@@ -654,30 +696,54 @@ def _orientation_visibility(mask: int) -> dict[str, bool]:
 def _button_ui(
     button_row: sqlite3.Row,
     *,
+    portrait_supported: bool = True,
+    landscape_supported: bool = True,
+    portrait_resolution: dict[str, int] | None = None,
+    landscape_resolution: dict[str, int] | None = None,
     layer_order: int = 0,
     button_order: int = 0,
     frame_number: int = 0,
 ) -> dict[str, Any]:
     vis = _orientation_visibility(int(button_row["VisibleOrientations"] or 0))
+    primary = _coords(
+        button_row["ButtonTop"],
+        button_row["ButtonLeft"],
+        button_row["ButtonHeight"],
+        button_row["ButtonWidth"],
+    )
+    alt = _coords(
+        button_row["ButtonTopAlt"],
+        button_row["ButtonLeftAlt"],
+        button_row["ButtonHeightAlt"],
+        button_row["ButtonWidthAlt"],
+    )
+    portrait_res = portrait_resolution or {"width": 0, "height": 0}
+    landscape_res = landscape_resolution or {"width": 0, "height": 0}
     return {
         "fontSize": int(button_row["TextSize"] or 0),
         "orientations": {
             "portrait": {
                 "visible": vis["portrait"],
-                "coordinates": _coords(
-                    button_row["ButtonTop"],
-                    button_row["ButtonLeft"],
-                    button_row["ButtonHeight"],
-                    button_row["ButtonWidth"],
+                "coordinates": _select_orientation_coordinates(
+                    orientation="portrait",
+                    primary=primary,
+                    alt=alt,
+                    portrait_supported=portrait_supported,
+                    landscape_supported=landscape_supported,
+                    portrait_resolution=portrait_res,
+                    landscape_resolution=landscape_res,
                 ),
             },
             "landscape": {
                 "visible": vis["landscape"],
-                "coordinates": _coords(
-                    button_row["ButtonTopAlt"],
-                    button_row["ButtonLeftAlt"],
-                    button_row["ButtonHeightAlt"],
-                    button_row["ButtonWidthAlt"],
+                "coordinates": _select_orientation_coordinates(
+                    orientation="landscape",
+                    primary=primary,
+                    alt=alt,
+                    portrait_supported=portrait_supported,
+                    landscape_supported=landscape_supported,
+                    portrait_resolution=portrait_res,
+                    landscape_resolution=landscape_res,
                 ),
             },
         },
@@ -849,6 +915,10 @@ def _resolve_button(
     button_order: int,
     frame_number: int,
     host_viewport_button_id: int | None,
+    portrait_supported: bool = True,
+    landscape_supported: bool = True,
+    portrait_resolution: dict[str, int] | None = None,
+    landscape_resolution: dict[str, int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -1044,6 +1114,10 @@ def _resolve_button(
 
     button_ui = _button_ui(
         button_row,
+        portrait_supported=portrait_supported,
+        landscape_supported=landscape_supported,
+        portrait_resolution=portrait_resolution or {"width": 0, "height": 0},
+        landscape_resolution=landscape_resolution or {"width": 0, "height": 0},
         layer_order=layer_order,
         button_order=button_order,
         frame_number=frame_number,
@@ -1799,6 +1873,10 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         button_order=int(b["ButtonOrder"] or 0),
                         frame_number=int(b["FrameNumber"] or 0),
                         host_viewport_button_id=None,
+                        portrait_supported=portrait_supported,
+                        landscape_supported=landscape_supported,
+                        portrait_resolution=portrait_resolution,
+                        landscape_resolution=landscape_resolution,
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -1839,6 +1917,10 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             lowest_nonzero_device_room_id,
                             (int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                             (int(layer["SourceId"]) if layer["SourceId"] is not None else None),
+                            portrait_supported,
+                            landscape_supported,
+                            portrait_resolution,
+                            landscape_resolution,
                             shared_layer_buttons_cache,
                             _mark_viewport_frame_button_processed,
                         )
@@ -1963,11 +2045,16 @@ def _resolve_viewport_frames(
     global_room_fallback_id: int | None,
     parent_layer_room_id: int | None,
     parent_layer_source_id: int | None,
-    shared_layer_buttons_cache: dict[int, list[sqlite3.Row]],
+    portrait_supported: bool = True,
+    landscape_supported: bool = True,
+    portrait_resolution: dict[str, int] | None = None,
+    landscape_resolution: dict[str, int] | None = None,
+    shared_layer_buttons_cache: dict[int, list[sqlite3.Row]] | None = None,
     button_processed_hook: Any = None,
 ) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
     child_layers = cur.fetchall()
+    layer_buttons_cache = shared_layer_buttons_cache if isinstance(shared_layer_buttons_cache, dict) else {}
 
     frame_user: dict[int, dict[str, Any]] = {}
     frame_diag: dict[int, dict[str, Any]] = {}
@@ -1990,7 +2077,7 @@ def _resolve_viewport_frames(
                 "roomId": int(layer["RoomId"] or 0),
             }
         )
-        for b in _shared_layer_buttons(cur, int(layer["SharedLayerId"]), shared_layer_buttons_cache):
+        for b in _shared_layer_buttons(cur, int(layer["SharedLayerId"]), layer_buttons_cache):
             frame_button_count += 1
             if callable(button_processed_hook):
                 try:
@@ -2051,6 +2138,10 @@ def _resolve_viewport_frames(
                 button_order=int(b["ButtonOrder"] or 0),
                 frame_number=int(b["FrameNumber"] or 0),
                 host_viewport_button_id=int(viewport_button_id),
+                portrait_supported=portrait_supported,
+                landscape_supported=landscape_supported,
+                portrait_resolution=portrait_resolution or {"width": 0, "height": 0},
+                landscape_resolution=landscape_resolution or {"width": 0, "height": 0},
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(
