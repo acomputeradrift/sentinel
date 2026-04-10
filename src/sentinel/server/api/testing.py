@@ -360,22 +360,6 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
 
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
-    if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
-        rendered = target.read_text(encoding="utf-8", errors="replace")
-        if _is_phase2_shell_device_html(rendered):
-            shell_html = rendered
-        else:
-            shell_html = _build_static_shell_device_html(tech_token=techToken)
-        _log_display_baseline(
-            stage="file",
-            project_id=tok.projectId,
-            tech_token=techToken,
-            serve_ms=(time.perf_counter() - t0) * 1000.0,
-            size_bytes=len(shell_html.encode("utf-8")),
-            path=str(path or ""),
-            is_device_html=True,
-        )
-        return HTMLResponse(content=shell_html, headers={"X-Sentinel-Runtime-Mode": SHELL_RUNTIME_MODE})
     _log_display_baseline(
         stage="file",
         project_id=tok.projectId,
