@@ -48,7 +48,7 @@ class ProjectDeviceStaticShellRuntimeTest(unittest.TestCase):
                 "<!doctype html><html><head><meta charset='utf-8'><title>Old Runtime Device</title></head><body>"
                 "<div class='app-ui-controls top-controls' id='topControls'><div></div><div class='header'>Device A - Page 1</div><div></div></div>"
                 "<div class='rti-device-canvas' id='rtiDeviceCanvas'><div class='device-page active' data-page-index='0'>"
-                "<div class='btn-wrap' data-left='20' data-top='30' data-width='120' data-height='44' data-font-size='12' data-visible='1'>"
+                "<div class='btn-wrap' data-p-left='20' data-p-top='30' data-p-width='120' data-p-height='44' data-p-visible='1' data-font-size='12'>"
                 "<button class='test-btn' type='button'>BTN</button></div></div></div>"
                 "<script>const PAGE_STATE=[{\"deviceName\":\"Device A\",\"pageName\":\"Page 1\",\"layers\":[{\"key\":\"layer-0\",\"name\":\"Main\"},{\"key\":\"layer-1\",\"name\":\"Overlay\"}],\"vpFrames\":[]}];"
                 "const ORIENTATION_STATE={\"current\":\"portrait\",\"options\":[\"portrait\"]};"
@@ -86,6 +86,10 @@ class ProjectDeviceStaticShellRuntimeTest(unittest.TestCase):
                 self.assertGreater(float(btn_box["height"]), 1.0)
                 self.assertGreater(float(btn_box["x"]), 0.0)
                 self.assertGreater(float(btn_box["y"]), 0.0)
+                btn_left = page.locator("#rtiDeviceContent .btn-wrap").first.evaluate("el => parseFloat(el.style.left||'0')")
+                btn_top = page.locator("#rtiDeviceContent .btn-wrap").first.evaluate("el => parseFloat(el.style.top||'0')")
+                self.assertGreater(float(btn_left), 0.0)
+                self.assertGreater(float(btn_top), 0.0)
 
                 home_href = page.locator(".project-home-link").first.get_attribute("href") or ""
                 self.assertIn(f"/testing/{tech_token}?runtime=shell", home_href)
