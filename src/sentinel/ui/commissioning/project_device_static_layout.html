@@ -11,17 +11,82 @@
   <input class="panel-toggle" type="checkbox" id="right-panel-toggle" checked>
 
   <div class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">
-    <header id="deviceHeaderCanvas" class="deviceHeaderCanvas"></header>
+    <header id="deviceHeaderCanvas" class="deviceHeaderCanvas">
+      <div class="app-ui-controls top-controls" id="topControlsStatic">
+        <a class="project-home-link" href="#" aria-label="Project Home">Project Home</a>
+        <div class="header">Device / Page</div>
+        <div class="top-controls-spacer" aria-hidden="true"></div>
+      </div>
+    </header>
 
     <main class="deviceLayoutStage">
       <section id="rtiUsableCanvas" class="rtiUsableCanvas"></section>
       <footer id="deviceFooterCanvas" class="deviceFooterCanvas"></footer>
 
       <aside id="deviceViewControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasLeft" aria-label="Device View Controls">
+        <div class="deviceViewControlsContent" aria-label="Static View Controls">
+          <section class="viewControlGroup" aria-label="Device Zoom">
+            <h3 class="viewControlLabel">Device</h3>
+            <div class="staticZoomControls" role="group" aria-label="Device zoom controls">
+              <button class="zoomBtn zoomBtnDec" type="button" aria-label="Decrease device zoom">-</button>
+              <button class="zoomBtn zoomBtnReset" type="button" aria-label="Device zoom percent">100%</button>
+              <button class="zoomBtn zoomBtnInc" type="button" aria-label="Increase device zoom">+</button>
+            </div>
+          </section>
+
+          <section class="viewControlGroup" aria-label="Text Zoom">
+            <h3 class="viewControlLabel">Text</h3>
+            <div class="staticZoomControls" role="group" aria-label="Text zoom controls">
+              <button class="zoomBtn zoomBtnDec" type="button" aria-label="Decrease text zoom">-</button>
+              <button class="zoomBtn zoomBtnReset" type="button" aria-label="Text zoom percent">100%</button>
+              <button class="zoomBtn zoomBtnInc" type="button" aria-label="Increase text zoom">+</button>
+            </div>
+          </section>
+
+          <section class="viewControlGroup" aria-label="Orientation Controls">
+            <h3 class="viewControlLabel">Orientation</h3>
+            <div class="orientationToggleStatic" role="group" aria-label="Orientation controls">
+              <button class="orientationBtnStatic" type="button" aria-label="Portrait orientation">Portrait</button>
+              <button class="orientationBtnStatic orientationBtnStaticActive" type="button" aria-label="Landscape orientation">Landscape</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="collapsedViewControls" aria-label="Collapsed View Controls">
+          <section class="collapsedControlGroup" aria-label="Collapsed Device Zoom">
+            <div class="collapsedControlLabel">D</div>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Increase device zoom">+</button>
+            <button class="zoomBtn zoomBtnResetMini" type="button" aria-label="Device zoom percent"><span class="zoomPctVertical">100%</span></button>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Decrease device zoom">-</button>
+          </section>
+
+          <section class="collapsedControlGroup" aria-label="Collapsed Text Zoom">
+            <div class="collapsedControlLabel">T</div>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Increase text zoom">+</button>
+            <button class="zoomBtn zoomBtnResetMini" type="button" aria-label="Text zoom percent"><span class="zoomPctVertical">100%</span></button>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Decrease text zoom">-</button>
+          </section>
+
+          <section class="collapsedControlGroup" aria-label="Collapsed Orientation Placeholder" aria-hidden="true">
+            <div class="collapsedControlLabel">O</div>
+            <button class="zoomBtn zoomBtnMini zoomBtnMiniOrient" type="button">P</button>
+            <button class="zoomBtn zoomBtnMini zoomBtnMiniOrient" type="button">L</button>
+          </section>
+        </div>
         <label class="deviceControlsToggle deviceControlsToggleLeft" for="left-panel-toggle" aria-label="Toggle left controls"></label>
       </aside>
 
       <aside id="deviceLayerControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasRight" aria-label="Device Layer Controls">
+        <div class="deviceLayerControlsContent" aria-label="Layer Controls Placeholder">
+          <div class="layer-panel layer-panel-static" aria-label="Layer panel">
+            <div class="layer-panel-title">Layers</div>
+            <div class="layer-list">
+              <button class="layer-toggle" type="button" aria-label="Layer 1 active">Layer 1</button>
+              <button class="layer-toggle is-inactive" type="button" aria-label="Layer 2 inactive">Layer 2</button>
+              <button class="layer-toggle is-inactive" type="button" aria-label="Layer 3 inactive">Layer 3</button>
+            </div>
+          </div>
+        </div>
         <label class="deviceControlsToggle deviceControlsToggleRight" for="right-panel-toggle" aria-label="Toggle right controls"></label>
       </aside>
     </main>
