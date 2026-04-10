@@ -141,3 +141,78 @@ class TestingUiServingTest(unittest.TestCase):
             self.assertEqual(r.status_code, 200)
             self.assertIn("Payload has not been generated yet", r.text)
 
+    def test_testing_ui_shell_mode_serves_static_device_shell_and_default_stays_runtime_generated(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = td
+
+            from sentinel.server.app.main import create_app
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            link = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links", json={"label": "Onsite"}).json()
+            tech_token = link["techUrl"].split("/testing/")[1]
+
+            project_dir = Path(td) / p["projectId"]
+            project_dir.mkdir(parents=True, exist_ok=True)
+            (project_dir / "unittest__project-home.html").write_text(
+                "<!doctype html><html><head><meta charset='utf-8'><title>Home</title></head>"
+                "<body><a id='d' href='unittest__device-demo-0.html'>Device</a></body></html>",
+                encoding="utf-8",
+            )
+            device_file = project_dir / "unittest__device-demo-0.html"
+            device_file.write_text(
+                "<!doctype html><html><head><meta charset='utf-8'><title>Old Runtime Device</title></head><body>OLD_RUNTIME</body></html>",
+                encoding="utf-8",
+            )
+
+            default_r = client.get(f"/testing/{tech_token}/files/{device_file.name}")
+            self.assertEqual(default_r.status_code, 200)
+            self.assertIn("OLD_RUNTIME", default_r.text)
+            self.assertEqual(default_r.headers.get("x-sentinel-runtime-mode"), "default")
+
+            shell_r = client.get(f"/testing/{tech_token}/files/{device_file.name}?runtime=shell")
+            self.assertEqual(shell_r.status_code, 200)
+            self.assertIn('name="sentinel-runtime-mode" content="shell"', shell_r.text)
+            self.assertIn('id="topControlsStatic"', shell_r.text)
+            self.assertIn('id="deviceViewControlsCanvas"', shell_r.text)
+            self.assertIn('id="deviceLayerControlsCanvas"', shell_r.text)
+            self.assertIn('id="rtiUsableCanvas"', shell_r.text)
+            self.assertIn("/commissioning/project_device_static_layout.css", shell_r.text)
+            self.assertIn(f'href="/testing/{tech_token}?runtime=shell"', shell_r.text)
+            self.assertNotIn("OLD_RUNTIME", shell_r.text)
+            self.assertEqual(shell_r.headers.get("x-sentinel-runtime-mode"), "shell")
+
+    def test_testing_ui_shell_mode_home_keeps_runtime_shell_on_device_navigation_links(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = td
+
+            from sentinel.server.app.main import create_app
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            link = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links", json={"label": "Onsite"}).json()
+            tech_token = link["techUrl"].split("/testing/")[1]
+
+            project_dir = Path(td) / p["projectId"]
+            project_dir.mkdir(parents=True, exist_ok=True)
+            (project_dir / "unittest__project-home.html").write_text(
+                "<!doctype html><html><head><meta charset='utf-8'><title>Home</title></head>"
+                "<body><a id='d1' href='unittest__device-demo-0.html'>Device</a></body></html>",
+                encoding="utf-8",
+            )
+
+            shell_home = client.get(f"/testing/{tech_token}?runtime=shell")
+            self.assertEqual(shell_home.status_code, 200)
+            self.assertIn("u.searchParams.set('runtime','shell')", shell_home.text)
+            self.assertEqual(shell_home.headers.get("x-sentinel-runtime-mode"), "shell")
+

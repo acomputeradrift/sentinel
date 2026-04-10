@@ -4,6 +4,7 @@ import os
 import logging
 import time
 from pathlib import Path, PurePosixPath
+import re
 
 import asyncio
 import json
@@ -11,6 +12,7 @@ import json
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
+from fastapi.responses import Response
 
 from sentinel.server.api.errors import http_error
 from sentinel.server.services import progress
@@ -22,6 +24,7 @@ router = APIRouter(tags=["testing"])
 log = logging.getLogger("uvicorn.error")
 WS_KEEPALIVE_TIMEOUT_S = 15.0
 WS_SEND_TIMEOUT_S = 5.0
+SHELL_RUNTIME_MODE = "shell"
 
 
 def _repo(request: Request) -> Repository:
@@ -187,6 +190,65 @@ def _inject_base_href(html: str, *, base_href: str) -> str:
     return f'<base href="{base_href}">' + html
 
 
+def _inject_shell_runtime_home_navigation(html: str) -> str:
+    script = (
+        "<script>"
+        "(function(){"
+        "function patch(a){"
+        "if(!a||!a.getAttribute)return;"
+        "var href=a.getAttribute('href')||'';"
+        "if(!href||href.charAt(0)==='#'||href.indexOf('javascript:')===0||href.indexOf('mailto:')===0||href.indexOf('tel:')===0)return;"
+        "try{"
+        "var u=new URL(href,window.location.href);"
+        "var p=(u.pathname||'').toLowerCase();"
+        "if(!p.endsWith('.html'))return;"
+        "if((u.searchParams.get('runtime')||'').toLowerCase()==='shell')return;"
+        "u.searchParams.set('runtime','shell');"
+        "a.setAttribute('href',u.pathname+u.search+u.hash);"
+        "}catch(_e){}"
+        "}"
+        "document.querySelectorAll('a[href]').forEach(patch);"
+        "document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;patch(a);},true);"
+        "})();"
+        "</script>"
+    )
+    needle = "</body>"
+    if needle in html:
+        return html.replace(needle, script + needle, 1)
+    return html + script
+
+
+def _shell_template_path() -> Path:
+    return (Path(__file__).resolve().parents[2] / "ui" / "commissioning" / "project_device_static_layout.html").resolve()
+
+
+def _build_static_shell_device_html(*, tech_token: str) -> str:
+    template_path = _shell_template_path()
+    if not template_path.exists():
+        raise FileNotFoundError(str(template_path))
+    html = template_path.read_text(encoding="utf-8", errors="replace")
+    html = re.sub(
+        r'href\s*=\s*["\']\./project_device_static_layout\.css["\']',
+        'href="/commissioning/project_device_static_layout.css"',
+        html,
+        count=1,
+    )
+    html = re.sub(
+        r'href\s*=\s*["\']#["\']',
+        f'href="/testing/{tech_token}?runtime={SHELL_RUNTIME_MODE}"',
+        html,
+        count=1,
+    )
+    if "<meta name=\"sentinel-runtime-mode\"" not in html:
+        html = html.replace("</head>", '<meta name="sentinel-runtime-mode" content="shell"></head>', 1)
+    html = html.replace(
+        '<div class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">',
+        '<div class="projectDeviceStaticLayout" data-runtime-mode="shell" aria-label="Project Device Static Layout">',
+        1,
+    )
+    return html
+
+
 def _log_display_baseline(
     *,
     stage: str,
@@ -236,7 +298,7 @@ def testing_html(request: Request, techToken: str) -> HTMLResponse:
                 path="/testing/{techToken}",
                 is_device_html=False,
             )
-            return HTMLResponse(content=with_base)
+            return HTMLResponse(content=with_base, headers={"X-Sentinel-Runtime-Mode": "payload"})
 
     home = _find_project_home(project_dir)
     if home is None:
@@ -251,9 +313,12 @@ def testing_html(request: Request, techToken: str) -> HTMLResponse:
             path="/testing/{techToken}",
             is_device_html=False,
         )
-        return HTMLResponse(content=with_base)
+        mode_header = SHELL_RUNTIME_MODE if runtime_mode == SHELL_RUNTIME_MODE else "default"
+        return HTMLResponse(content=with_base, headers={"X-Sentinel-Runtime-Mode": mode_header})
 
     raw = home.read_text(encoding="utf-8", errors="replace")
+    if runtime_mode == SHELL_RUNTIME_MODE:
+        raw = _inject_shell_runtime_home_navigation(raw)
     with_base = _inject_base_href(raw, base_href=f"/testing/{techToken}/files/")
     _log_display_baseline(
         stage="home",
@@ -264,11 +329,12 @@ def testing_html(request: Request, techToken: str) -> HTMLResponse:
         path=home.name,
         is_device_html=False,
     )
-    return HTMLResponse(content=with_base)
+    mode_header = SHELL_RUNTIME_MODE if runtime_mode == SHELL_RUNTIME_MODE else "default"
+    return HTMLResponse(content=with_base, headers={"X-Sentinel-Runtime-Mode": mode_header})
 
 
 @router.get("/testing/{techToken}/files/{path:path}")
-def testing_file(request: Request, techToken: str, path: str) -> FileResponse:
+def testing_file(request: Request, techToken: str, path: str) -> Response:
     t0 = time.perf_counter()
     try:
         tok = _repo(request).resolve_active_token(techToken=techToken)
@@ -287,6 +353,19 @@ def testing_file(request: Request, techToken: str, path: str) -> FileResponse:
         raise http_error(404, code="NOT_FOUND", message="File not found.")
 
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
+    runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
+    if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
+        shell_html = _build_static_shell_device_html(tech_token=techToken)
+        _log_display_baseline(
+            stage="file",
+            project_id=tok.projectId,
+            tech_token=techToken,
+            serve_ms=(time.perf_counter() - t0) * 1000.0,
+            size_bytes=len(shell_html.encode("utf-8")),
+            path=str(path or ""),
+            is_device_html=True,
+        )
+        return HTMLResponse(content=shell_html, headers={"X-Sentinel-Runtime-Mode": SHELL_RUNTIME_MODE})
     _log_display_baseline(
         stage="file",
         project_id=tok.projectId,
@@ -296,7 +375,7 @@ def testing_file(request: Request, techToken: str, path: str) -> FileResponse:
         path=str(path or ""),
         is_device_html=is_device_html,
     )
-    return FileResponse(path=str(target))
+    return FileResponse(path=str(target), headers={"X-Sentinel-Runtime-Mode": "default"})
 
 
 @router.post("/api/v1/testing/{techToken}/ready")
