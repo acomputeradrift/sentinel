@@ -110,3 +110,33 @@ Entry template (required for each failed attempt):
 1. Before each new shell-render fix attempt, append the previous failed attempt to this log.
 2. Every attempt must include direct evidence (test output, screenshot, or server log snippet).
 3. If user-visible behavior does not improve, escalate to a narrower parity checkpoint before further implementation changes.
+
+## Thread-Level Failures and Corrections (Phase 2)
+
+### 2026-04-10 - Strategy drift: helper patching instead of clean transition
+1. Date/Time: 2026-04-10
+2. Goal: Implement Phase 2 injection without breaking old-runtime behavior.
+3. What failed: Repeated API-layer helper patching in `testing.py` replaced deterministic migration architecture with ad-hoc behavior fixes.
+4. Evidence: User-visible regressions across multiple deploys (blank/partial RTI content, outline/centering issues, no-change reports).
+5. Correction: Stop behavior-reimplementation patches in API responses; keep old runtime behavior as source of truth and migrate via hook/container adapter approach.
+
+### 2026-04-10 - Scope discipline issue: Phase 1 stable, Phase 2 repeatedly broken
+1. Date/Time: 2026-04-10
+2. Goal: Preserve successful Phase 1 while completing Phase 2.
+3. What failed: Phase 2 fixes repeatedly introduced new regressions; work pattern did not protect stable behavior before additional changes.
+4. Evidence: User directive: "phase 1 was fine... phase two that you keep breaking."
+5. Correction: Freeze Phase 1 implementation; all subsequent work explicitly limited to Phase 2 correction path.
+
+### 2026-04-10 - Communication quality failure: over-agreement instead of technical pushback
+1. Date/Time: 2026-04-10
+2. Goal: Provide reliable technical guidance under pressure.
+3. What failed: Responses were too agreeable instead of directly flagging that the current approach was technically unsound.
+4. Evidence: User feedback that agreement without critical evaluation reduced usefulness.
+5. Correction: Require explicit pushback when approach risk is high; state viability directly before implementation.
+
+## Locked Direction for Remaining Phase 2 Work
+
+1. Do not continue adding ad-hoc runtime behavior patches in `testing.py`.
+2. Target architecture: preserve old device runtime behavior exactly, with static-shell integration through deterministic hook/container adapters only.
+3. Reject fixes that duplicate old runtime layout/zoom/orientation math in new inline helper code.
+4. Any deviation from this direction must be explicitly approved before implementation.

@@ -166,20 +166,13 @@ class TestingUiServingTest(unittest.TestCase):
             )
             device_file = project_dir / "unittest__device-demo-0.html"
             device_file.write_text(
-                "<!doctype html><html><head><meta charset='utf-8'><title>Old Runtime Device</title></head><body>"
-                "<div class='app-ui-controls top-controls' id='topControls'><div></div><div class='header'>Device A - Page 1</div><div></div></div>"
-                "<div class='rti-device-canvas' id='rtiDeviceCanvas'><div class='device-page active' data-page-index='0'><div class='btn-wrap'>BTN</div></div></div>"
-                "<script>const PAGE_STATE=[{\"deviceName\":\"Device A\",\"pageName\":\"Page 1\",\"layers\":[{\"key\":\"layer-0\",\"name\":\"Main\"},{\"key\":\"layer-1\",\"name\":\"Overlay\"}],\"vpFrames\":[]}];"
-                "const ORIENTATION_STATE={\"current\":\"portrait\",\"options\":[\"portrait\"]};"
-                "const ZOOM_DEFAULT=125;</script>"
-                "</body></html>",
+                "<!doctype html><html><head><meta charset='utf-8'><title>Old Runtime Device</title></head><body>OLD_RUNTIME</body></html>",
                 encoding="utf-8",
             )
 
             default_r = client.get(f"/testing/{tech_token}/files/{device_file.name}")
             self.assertEqual(default_r.status_code, 200)
-            self.assertIn("id='topControls'", default_r.text)
-            self.assertNotIn('name="sentinel-runtime-mode" content="shell"', default_r.text)
+            self.assertIn("OLD_RUNTIME", default_r.text)
             self.assertEqual(default_r.headers.get("x-sentinel-runtime-mode"), "default")
 
             shell_r = client.get(f"/testing/{tech_token}/files/{device_file.name}?runtime=shell")
@@ -191,11 +184,6 @@ class TestingUiServingTest(unittest.TestCase):
             self.assertIn('id="rtiUsableCanvas"', shell_r.text)
             self.assertIn("/commissioning/project_device_static_layout.css", shell_r.text)
             self.assertIn(f'href="/testing/{tech_token}?runtime=shell"', shell_r.text)
-            self.assertIn('data-shell-phase="2"', shell_r.text)
-            self.assertIn("const st=", shell_r.text)
-            self.assertIn("rtiDeviceContent", shell_r.text)
-            self.assertIn(f"/testing/{tech_token}/files/{device_file.name}?embed=1", shell_r.text)
-            self.assertIn("id=\"rtiRuntimeFrame\"", shell_r.text)
             self.assertNotIn("OLD_RUNTIME", shell_r.text)
             self.assertEqual(shell_r.headers.get("x-sentinel-runtime-mode"), "shell")
 
@@ -230,37 +218,4 @@ class TestingUiServingTest(unittest.TestCase):
             self.assertIn("new URL(href,base)", shell_home.text)
             self.assertNotIn("new URL(href,window.location.href)", shell_home.text)
             self.assertEqual(shell_home.headers.get("x-sentinel-runtime-mode"), "shell")
-
-    def test_testing_ui_device_embed_mode_hides_duplicate_controls(self):
-        TestClient = _require_fastapi()
-
-        with tempfile.TemporaryDirectory() as td:
-            os.environ["SENTINEL_GENERATED_ROOT"] = td
-
-            from sentinel.server.app.main import create_app
-
-            app = create_app()
-            client = TestClient(app)
-
-            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
-            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
-            link = client.post(f"/api/v1/commissioning/projects/{p['projectId']}/tech-links", json={"label": "Onsite"}).json()
-            tech_token = link["techUrl"].split("/testing/")[1]
-
-            project_dir = Path(td) / p["projectId"]
-            project_dir.mkdir(parents=True, exist_ok=True)
-            device_name = "unittest__device-demo-0.html"
-            (project_dir / device_name).write_text(
-                "<!doctype html><html><head><meta charset='utf-8'><title>Device</title></head>"
-                "<body><div id='topControls'></div><div id='zoomControls'></div><div id='rtiCanvas'></div></body></html>",
-                encoding="utf-8",
-            )
-
-            embed_r = client.get(f"/testing/{tech_token}/files/{device_name}?embed=1")
-            self.assertEqual(embed_r.status_code, 200)
-            self.assertEqual(embed_r.headers.get("x-sentinel-runtime-mode"), "embed")
-            self.assertIn("sentinel-shell-embed-style", embed_r.text)
-            self.assertIn("#topControls,#bottomControls,#orientationControls,#layerControls,#zoomControls{display:none!important;}", embed_r.text)
-            self.assertNotIn('const APP_UI_CONTROLS={"top":1', embed_r.text)
-            self.assertNotIn(".rti-device-canvas{border:0!important;border-radius:0!important;}", embed_r.text)
 
