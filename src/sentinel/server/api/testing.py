@@ -4,7 +4,6 @@ import os
 import logging
 import time
 from pathlib import Path, PurePosixPath
-import re
 
 import asyncio
 import json
@@ -219,37 +218,6 @@ def _inject_shell_runtime_home_navigation(html: str) -> str:
     return html + script
 
 
-def _shell_template_path() -> Path:
-    return (Path(__file__).resolve().parents[2] / "ui" / "commissioning" / "project_device_static_layout.html").resolve()
-
-
-def _build_static_shell_device_html(*, tech_token: str) -> str:
-    template_path = _shell_template_path()
-    if not template_path.exists():
-        raise FileNotFoundError(str(template_path))
-    html = template_path.read_text(encoding="utf-8", errors="replace")
-    html = re.sub(
-        r'href\s*=\s*["\']\./project_device_static_layout\.css["\']',
-        'href="/commissioning/project_device_static_layout.css"',
-        html,
-        count=1,
-    )
-    html = re.sub(
-        r'href\s*=\s*["\']#["\']',
-        f'href="/testing/{tech_token}?runtime={SHELL_RUNTIME_MODE}"',
-        html,
-        count=1,
-    )
-    if "<meta name=\"sentinel-runtime-mode\"" not in html:
-        html = html.replace("</head>", '<meta name="sentinel-runtime-mode" content="shell"></head>', 1)
-    html = html.replace(
-        '<div class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">',
-        '<div class="projectDeviceStaticLayout" data-runtime-mode="shell" aria-label="Project Device Static Layout">',
-        1,
-    )
-    return html
-
-
 def _log_display_baseline(
     *,
     stage: str,
@@ -355,18 +323,6 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
 
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
-    if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
-        shell_html = _build_static_shell_device_html(tech_token=techToken)
-        _log_display_baseline(
-            stage="file",
-            project_id=tok.projectId,
-            tech_token=techToken,
-            serve_ms=(time.perf_counter() - t0) * 1000.0,
-            size_bytes=len(shell_html.encode("utf-8")),
-            path=str(path or ""),
-            is_device_html=True,
-        )
-        return HTMLResponse(content=shell_html, headers={"X-Sentinel-Runtime-Mode": SHELL_RUNTIME_MODE})
     _log_display_baseline(
         stage="file",
         project_id=tok.projectId,
@@ -376,7 +332,8 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
         path=str(path or ""),
         is_device_html=is_device_html,
     )
-    return FileResponse(path=str(target), headers={"X-Sentinel-Runtime-Mode": "default"})
+    mode_header = SHELL_RUNTIME_MODE if runtime_mode == SHELL_RUNTIME_MODE else "default"
+    return FileResponse(path=str(target), headers={"X-Sentinel-Runtime-Mode": mode_header})
 
 
 @router.post("/api/v1/testing/{techToken}/ready")
