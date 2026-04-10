@@ -214,5 +214,8 @@ class TestingUiServingTest(unittest.TestCase):
             shell_home = client.get(f"/testing/{tech_token}?runtime=shell")
             self.assertEqual(shell_home.status_code, 200)
             self.assertIn("u.searchParams.set('runtime','shell')", shell_home.text)
+            self.assertIn("var base=(document.baseURI", shell_home.text)
+            self.assertIn("new URL(href,base)", shell_home.text)
+            self.assertNotIn("new URL(href,window.location.href)", shell_home.text)
             self.assertEqual(shell_home.headers.get("x-sentinel-runtime-mode"), "shell")
 

@@ -82,6 +82,8 @@ Validation note:
 
 Known gotchas:
 - Avoid `rsync --delete` against `/opt/sentinel/app` (it can remove required modules and break imports).
+- I initially did a bad deploy step by running copy/extract in parallel; that could extract an old zip.
+- I corrected it with a strict sequential redeploy and re-verified server file contents.
 
 ### If zip creation is blocked locally
 
