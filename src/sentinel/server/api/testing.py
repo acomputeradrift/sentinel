@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 import re
 import base64
 import html as html_lib
+from urllib.parse import quote
 
 import asyncio
 import json
@@ -332,7 +333,39 @@ def _extract_device_shell_state(source_html: str) -> dict:
     }
 
 
-def _build_static_shell_device_html(*, tech_token: str, source_device_html: str) -> str:
+def _build_embedded_device_html(source_device_html: str) -> str:
+    embed_style = (
+        "<style id=\"sentinel-shell-embed-style\">"
+        "html,body,.app-canvas{margin:0!important;width:100%!important;height:100%!important;overflow:hidden!important;background:transparent!important;}"
+        "#topControls,#bottomControls,#orientationControls,#layerControls,#zoomControls{display:none!important;}"
+        "#rtiCanvas{left:0!important;top:0!important;width:100%!important;height:100%!important;border:0!important;}"
+        "#rtiContent{min-width:100%!important;min-height:100%!important;}"
+        ".rti-device-canvas{border:0!important;border-radius:0!important;}"
+        "</style>"
+    )
+    embed_script = (
+        "<script>"
+        "(function(){"
+        "function apply(){try{if(typeof applyRtiLayout==='function'){applyRtiLayout();}}catch(_e){}}"
+        "if(document.readyState==='complete'||document.readyState==='interactive'){setTimeout(apply,0);}else{window.addEventListener('DOMContentLoaded',function(){setTimeout(apply,0);},{once:true});}"
+        "window.addEventListener('resize',function(){setTimeout(apply,0);});"
+        "setTimeout(apply,100);"
+        "})();"
+        "</script>"
+    )
+    out = source_device_html
+    if "</head>" in out:
+        out = out.replace("</head>", embed_style + "</head>", 1)
+    else:
+        out = embed_style + out
+    if "</body>" in out:
+        out = out.replace("</body>", embed_script + "</body>", 1)
+    else:
+        out = out + embed_script
+    return out
+
+
+def _build_static_shell_device_html(*, tech_token: str, source_device_html: str, device_rel_path: str) -> str:
     template_path = _shell_template_path()
     if not template_path.exists():
         raise FileNotFoundError(str(template_path))
@@ -357,6 +390,9 @@ def _build_static_shell_device_html(*, tech_token: str, source_device_html: str)
         '<div class="projectDeviceStaticLayout" data-runtime-mode="shell" data-shell-phase="2" aria-label="Project Device Static Layout">',
         1,
     )
+    encoded_rel = quote(str(device_rel_path or "").lstrip("/"), safe="/")
+    embed_src = f"/testing/{tech_token}/files/{encoded_rel}?embed=1"
+    state["embedSrc"] = embed_src
     shell_state_json = json.dumps(state, ensure_ascii=False).replace("</", "<\\/")
     shell_script = (
         "<script>"
@@ -385,44 +421,8 @@ def _build_static_shell_device_html(*, tech_token: str, source_device_html: str)
         "}"
         "const rti=document.getElementById('rtiUsableCanvas');"
         "if(rti){"
-        "const decoded=st.rtiMarkupB64?atob(String(st.rtiMarkupB64)):'';"
-        "rti.innerHTML=`<div id=\"rtiDeviceCanvas\" class=\"rtiDeviceCanvas\" style=\"position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;\"><div id=\"rtiDeviceContent\" class=\"rtiDeviceContent\" style=\"position:relative;inset:0;\">${decoded}</div></div>`;"
-        "const device=document.getElementById('rtiDeviceCanvas');"
-        "const content=document.getElementById('rtiDeviceContent');"
-        "const pages=[...content.querySelectorAll('.device-page')];"
-        "pages.forEach((p,i)=>p.classList.toggle('active',i===0));"
-        "const sourceW=Math.max(Number(st.sourceWidth||480),1);"
-        "const sourceH=Math.max(Number(st.sourceHeight||854),1);"
-        "const apply=()=>{"
-        "const rwRaw=Math.max(rti.clientWidth||0,0);"
-        "const rhRaw=Math.max(rti.clientHeight||0,0);"
-        "const rw=Math.max(rwRaw>20?rwRaw:sourceW,1);"
-        "const rh=Math.max(rhRaw>20?rhRaw:sourceH,1);"
-        "const scale=Math.min(rw/sourceW,rh/sourceH);"
-        "const w=sourceW*scale; const h=sourceH*scale;"
-        "const left=(rw-w)/2; const top=(rh-h)/2;"
-        "device.style.left=`${left}px`; device.style.top=`${top}px`;"
-        "device.style.width=`${w}px`; device.style.height=`${h}px`;"
-        "const orient=String(st.orientationCurrent||'portrait').toLowerCase()==='landscape'?'l':'p';"
-        "content.querySelectorAll('.btn-wrap,.vp-box').forEach((el)=>{"
-        "const left=Number((el.dataset[`${orient}Left`]!==undefined)?el.dataset[`${orient}Left`]:((el.dataset.left!==undefined)?el.dataset.left:0));"
-        "const top=Number((el.dataset[`${orient}Top`]!==undefined)?el.dataset[`${orient}Top`]:((el.dataset.top!==undefined)?el.dataset.top:0));"
-        "const width=Number((el.dataset[`${orient}Width`]!==undefined)?el.dataset[`${orient}Width`]:((el.dataset.width!==undefined)?el.dataset.width:0));"
-        "const height=Number((el.dataset[`${orient}Height`]!==undefined)?el.dataset[`${orient}Height`]:((el.dataset.height!==undefined)?el.dataset.height:0));"
-        "const visRaw=(el.dataset[`${orient}Visible`]!==undefined)?el.dataset[`${orient}Visible`]:((el.dataset.visible!==undefined)?el.dataset.visible:'1');"
-        "const vis=String(visRaw||'1')!=='0';"
-        "el.style.position='absolute';"
-        "el.style.display=vis?'':'none';"
-        "el.style.left=`${left*scale}px`;"
-        "el.style.top=`${top*scale}px`;"
-        "el.style.width=`${width*scale}px`;"
-        "el.style.height=`${height*scale}px`;"
-        "const fs=Number(el.dataset.fontSize||0);"
-        "if(fs>0){const btn=el.querySelector('.test-btn'); if(btn) btn.style.fontSize=`${Math.max(8,fs*scale)}px`;}"
-        "});"
-        "};"
-        "apply();"
-        "window.addEventListener('resize',apply);"
+        "const src=String(st.embedSrc||'').trim();"
+        "rti.innerHTML=`<div id=\"rtiDeviceCanvas\" class=\"rtiDeviceCanvas\" style=\"position:absolute;inset:0;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;\"><div id=\"rtiDeviceContent\" class=\"rtiDeviceContent\" style=\"position:relative;inset:0;width:100%;height:100%;\"><iframe id=\"rtiRuntimeFrame\" title=\"RTI Runtime\" style=\"width:100%;height:100%;border:0;display:block;\" src=\"${src}\"></iframe></div></div>`;"
         "}"
         "})();"
         "</script>"
@@ -535,10 +535,24 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
         raise http_error(404, code="NOT_FOUND", message="File not found.")
 
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
+    embed_mode = str(request.query_params.get("embed") or "").strip() == "1"
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
+    if embed_mode and is_device_html:
+        source_html = target.read_text(encoding="utf-8", errors="replace")
+        embedded_html = _build_embedded_device_html(source_html)
+        _log_display_baseline(
+            stage="file",
+            project_id=tok.projectId,
+            tech_token=techToken,
+            serve_ms=(time.perf_counter() - t0) * 1000.0,
+            size_bytes=len(embedded_html.encode("utf-8")),
+            path=str(path or ""),
+            is_device_html=True,
+        )
+        return HTMLResponse(content=embedded_html, headers={"X-Sentinel-Runtime-Mode": "embed"})
     if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
         source_html = target.read_text(encoding="utf-8", errors="replace")
-        shell_html = _build_static_shell_device_html(tech_token=techToken, source_device_html=source_html)
+        shell_html = _build_static_shell_device_html(tech_token=techToken, source_device_html=source_html, device_rel_path=path)
         _log_display_baseline(
             stage="file",
             project_id=tok.projectId,
