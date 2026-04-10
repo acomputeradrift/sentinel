@@ -250,11 +250,6 @@ def _build_static_shell_device_html(*, tech_token: str) -> str:
     return html
 
 
-def _is_phase2_shell_device_html(html: str) -> bool:
-    text = str(html or "")
-    return "id='topControlsStatic'" in text and "id='rtiDeviceContent'" in text
-
-
 def _log_display_baseline(
     *,
     stage: str,
@@ -360,6 +355,18 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
 
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
+    if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
+        shell_html = _build_static_shell_device_html(tech_token=techToken)
+        _log_display_baseline(
+            stage="file",
+            project_id=tok.projectId,
+            tech_token=techToken,
+            serve_ms=(time.perf_counter() - t0) * 1000.0,
+            size_bytes=len(shell_html.encode("utf-8")),
+            path=str(path or ""),
+            is_device_html=True,
+        )
+        return HTMLResponse(content=shell_html, headers={"X-Sentinel-Runtime-Mode": SHELL_RUNTIME_MODE})
     _log_display_baseline(
         stage="file",
         project_id=tok.projectId,
@@ -369,8 +376,7 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
         path=str(path or ""),
         is_device_html=is_device_html,
     )
-    mode_header = SHELL_RUNTIME_MODE if runtime_mode == SHELL_RUNTIME_MODE else "default"
-    return FileResponse(path=str(target), headers={"X-Sentinel-Runtime-Mode": mode_header})
+    return FileResponse(path=str(target), headers={"X-Sentinel-Runtime-Mode": "default"})
 
 
 @router.post("/api/v1/testing/{techToken}/ready")

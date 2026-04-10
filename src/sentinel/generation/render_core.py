@@ -859,7 +859,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .btn-wrap{{position:absolute;z-index:2;}}
  .device-page .btn-wrap.vp-btn{{pointer-events:none;}}
  .vp-popup-stage .btn-wrap.vp-btn{{pointer-events:auto;}}
- .viewport-mode #rtiUsableCanvas{{pointer-events:none;overflow:hidden;}}
+ .viewport-mode #rtiCanvas{{pointer-events:none;overflow:hidden;}}
  .vp-popup{{position:fixed;left:0;top:0;width:0;height:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
  .viewport-mode .vp-popup{{display:flex;}}
  .vp-popup[hidden]{{display:none;}}
@@ -937,70 +937,16 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
-<body><div class='app-canvas projectDeviceStaticLayout' id='appCanvas'>
-<header class='deviceHeaderCanvas' id='deviceHeaderCanvas'><div class='app-ui-controls top-controls' id='topControlsStatic'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div></header>
-<main class='deviceLayoutStage'>
- <section class='rti-canvas rtiUsableCanvas' id='rtiUsableCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiDeviceCanvas'><div class='rti-device-canvas' id='rtiDeviceContent'>{body_markup}</div></div></section>
- <footer class='app-ui-controls bottom-controls deviceFooterCanvas' id='deviceFooterCanvas'></footer>
- <aside class='app-ui-controls orientation-controls deviceControlsCanvas deviceControlsCanvasLeft' id='deviceViewControlsCanvas'><div class='zoom-controls staticZoomControls' id='zoomControls'><button class='zoom-btn zoomBtn zoomBtnDec zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoomBtn zoomBtnReset zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoomBtn zoomBtnInc zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>{f"<div class='orientation-toggle orientationToggleStatic' id='orientationToggle'><button class='orientation-btn orientationBtnStatic' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn orientationBtnStatic' type='button' data-orientation='landscape'>Landscape</button></div>" if show_orientation_toggle else ""}</aside>
- <aside class='app-ui-controls layer-controls deviceControlsCanvas deviceControlsCanvasRight' id='deviceLayerControlsCanvas'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></aside>
-</main></div>
+<body><div class='app-canvas' id='appCanvas'>
+<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
+{f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}
+<div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
+<div class='app-ui-controls bottom-controls' id='bottomControls'></div>
+<div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
+ <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
  <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
  <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
-function _installStaticHookAdapter() {{
- const idMap = {{
-  topControls: "topControlsStatic",
-  orientationControls: "deviceViewControlsCanvas",
-  layerControls: "deviceLayerControlsCanvas",
-  bottomControls: "deviceFooterCanvas",
-  rtiCanvas: "rtiUsableCanvas",
-  rtiContent: "rtiDeviceCanvas",
-  rtiDeviceCanvas: "rtiDeviceContent",
- }};
- const selectorMap = {{
-  "#topControls .header": "#topControlsStatic .header",
- }};
- const originalGetElementById = document.getElementById.bind(document);
- const originalQuerySelector = Document.prototype.querySelector;
- const originalQuerySelectorAll = Document.prototype.querySelectorAll;
- document.getElementById = function(id) {{
-  const mapped = Object.prototype.hasOwnProperty.call(idMap, String(id || "")) ? idMap[String(id || "")] : id;
-  return originalGetElementById(mapped);
- }};
- Document.prototype.querySelector = function(selector) {{
-  const mapped = Object.prototype.hasOwnProperty.call(selectorMap, String(selector || "")) ? selectorMap[String(selector || "")] : selector;
-  return originalQuerySelector.call(this, mapped);
- }};
- Document.prototype.querySelectorAll = function(selector) {{
-  const mapped = Object.prototype.hasOwnProperty.call(selectorMap, String(selector || "")) ? selectorMap[String(selector || "")] : selector;
-  return originalQuerySelectorAll.call(this, mapped);
- }};
-}}
-function _isShellRuntimeMode() {{
- try {{
-  const params = new URLSearchParams(window.location.search || "");
-  return String(params.get("runtime") || "").trim().toLowerCase() === "shell";
- }} catch (_e) {{
-  return false;
- }}
-}}
-function _ensureShellRuntimeLinks() {{
- if (!_isShellRuntimeMode()) return;
- document.querySelectorAll("a.project-home-link[href]").forEach((anchor) => {{
-  const raw = String(anchor.getAttribute("href") || "").trim();
-  if (!raw) return;
-  try {{
-   const url = new URL(raw, window.location.href);
-   if (String(url.searchParams.get("runtime") || "").toLowerCase() !== "shell") {{
-    url.searchParams.set("runtime", "shell");
-    anchor.setAttribute("href", url.pathname + url.search + url.hash);
-   }}
-  }} catch (_e) {{}}
- }});
-}}
-_installStaticHookAdapter();
-_ensureShellRuntimeLinks();
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
