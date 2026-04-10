@@ -261,4 +261,6 @@ class TestingUiServingTest(unittest.TestCase):
             self.assertEqual(embed_r.headers.get("x-sentinel-runtime-mode"), "embed")
             self.assertIn("sentinel-shell-embed-style", embed_r.text)
             self.assertIn("#topControls,#bottomControls,#orientationControls,#layerControls,#zoomControls{display:none!important;}", embed_r.text)
+            self.assertNotIn('const APP_UI_CONTROLS={"top":1', embed_r.text)
+            self.assertNotIn(".rti-device-canvas{border:0!important;border-radius:0!important;}", embed_r.text)
 

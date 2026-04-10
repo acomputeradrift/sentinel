@@ -96,6 +96,15 @@ Entry template (required for each failed attempt):
 6. Evidence (test/screenshot/log): User response "no change" after deploy.
 7. Disposition (kept/reverted/follow-up): Follow-up; replace custom inline RTI layout helper with embedded original runtime path (`embed=1`) to avoid duplicated layout logic.
 
+### 2026-04-10 - Embedded runtime improved content but missed outline/centering
+1. Date/Time: 2026-04-10
+2. Goal: Restore correct RTI rendering by embedding original runtime page in shell.
+3. Change Attempted: Added `embed=1` mode and iframe runtime embedding.
+4. Why It Seemed Valid: Reuses original runtime JS/layout flow instead of duplicating it.
+5. Observed Result: Content appeared, but device outline was missing and device was not centered.
+6. Evidence (test/screenshot/log): User screenshot `Screenshot 2026-04-10 at 4.02.09 PM.png`.
+7. Disposition (kept/reverted/follow-up): Follow-up in progress; remove border suppression and patch embedded `APP_UI_CONTROLS` to zero offsets for full-frame centering.
+
 ## Operating Rule
 
 1. Before each new shell-render fix attempt, append the previous failed attempt to this log.

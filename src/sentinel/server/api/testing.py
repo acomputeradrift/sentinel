@@ -334,13 +334,13 @@ def _extract_device_shell_state(source_html: str) -> dict:
 
 
 def _build_embedded_device_html(source_device_html: str) -> str:
+    app_controls_patch = "<script>const APP_UI_CONTROLS={\"top\":0,\"bottom\":0,\"left\":0,\"right\":0};</script>"
     embed_style = (
         "<style id=\"sentinel-shell-embed-style\">"
         "html,body,.app-canvas{margin:0!important;width:100%!important;height:100%!important;overflow:hidden!important;background:transparent!important;}"
         "#topControls,#bottomControls,#orientationControls,#layerControls,#zoomControls{display:none!important;}"
         "#rtiCanvas{left:0!important;top:0!important;width:100%!important;height:100%!important;border:0!important;}"
         "#rtiContent{min-width:100%!important;min-height:100%!important;}"
-        ".rti-device-canvas{border:0!important;border-radius:0!important;}"
         "</style>"
     )
     embed_script = (
@@ -354,6 +354,7 @@ def _build_embedded_device_html(source_device_html: str) -> str:
         "</script>"
     )
     out = source_device_html
+    out = re.sub(r"const\s+APP_UI_CONTROLS\s*=\s*\{.*?\};", app_controls_patch, out, count=1, flags=re.DOTALL)
     if "</head>" in out:
         out = out.replace("</head>", embed_style + "</head>", 1)
     else:
