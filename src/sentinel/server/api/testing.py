@@ -250,6 +250,11 @@ def _build_static_shell_device_html(*, tech_token: str) -> str:
     return html
 
 
+def _is_phase2_shell_device_html(html: str) -> bool:
+    text = str(html or "")
+    return "id='topControlsStatic'" in text and "id='rtiDeviceContent'" in text
+
+
 def _log_display_baseline(
     *,
     stage: str,
@@ -356,7 +361,11 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
     if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
-        shell_html = _build_static_shell_device_html(tech_token=techToken)
+        rendered = target.read_text(encoding="utf-8", errors="replace")
+        if _is_phase2_shell_device_html(rendered):
+            shell_html = rendered
+        else:
+            shell_html = _build_static_shell_device_html(tech_token=techToken)
         _log_display_baseline(
             stage="file",
             project_id=tok.projectId,
