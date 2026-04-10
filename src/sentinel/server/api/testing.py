@@ -309,6 +309,15 @@ def _extract_device_shell_state(source_html: str) -> dict:
 
     zoom_default = _extract_number_const(source_html, "ZOOM_DEFAULT")
     zoom_reset_label = f"{int(zoom_default)}%" if isinstance(zoom_default, int) and zoom_default > 0 else "100%"
+    source_device_size = _extract_json_const(source_html, "SOURCE_DEVICE_SIZE")
+    source_w = 480
+    source_h = 854
+    if isinstance(source_device_size, dict):
+        try:
+            source_w = int(source_device_size.get("width") or source_w)
+            source_h = int(source_device_size.get("height") or source_h)
+        except Exception:
+            pass
     rti_markup = _extract_div_inner_by_id(source_html, "rtiDeviceCanvas")
 
     return {
@@ -317,6 +326,8 @@ def _extract_device_shell_state(source_html: str) -> dict:
         "orientationOptions": orientation_options,
         "orientationCurrent": orientation_current,
         "zoomResetLabel": zoom_reset_label,
+        "sourceWidth": source_w,
+        "sourceHeight": source_h,
         "rtiMarkupB64": base64.b64encode(rti_markup.encode("utf-8")).decode("ascii"),
     }
 
@@ -375,7 +386,37 @@ def _build_static_shell_device_html(*, tech_token: str, source_device_html: str)
         "const rti=document.getElementById('rtiUsableCanvas');"
         "if(rti){"
         "const decoded=st.rtiMarkupB64?atob(String(st.rtiMarkupB64)):'';"
-        "rti.innerHTML=`<div id=\"rtiDeviceCanvas\" class=\"rtiDeviceCanvas\"><div id=\"rtiDeviceContent\" class=\"rtiDeviceContent\">${decoded}</div></div>`;"
+        "rti.innerHTML=`<div id=\"rtiDeviceCanvas\" class=\"rtiDeviceCanvas\" style=\"position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;\"><div id=\"rtiDeviceContent\" class=\"rtiDeviceContent\" style=\"position:relative;inset:0;\">${decoded}</div></div>`;"
+        "const device=document.getElementById('rtiDeviceCanvas');"
+        "const content=document.getElementById('rtiDeviceContent');"
+        "const pages=[...content.querySelectorAll('.device-page')];"
+        "pages.forEach((p,i)=>p.classList.toggle('active',i===0));"
+        "const sourceW=Math.max(Number(st.sourceWidth||480),1);"
+        "const sourceH=Math.max(Number(st.sourceHeight||854),1);"
+        "const apply=()=>{"
+        "const rwRaw=Math.max(rti.clientWidth||0,0);"
+        "const rhRaw=Math.max(rti.clientHeight||0,0);"
+        "const rw=Math.max(rwRaw>20?rwRaw:sourceW,1);"
+        "const rh=Math.max(rhRaw>20?rhRaw:sourceH,1);"
+        "const scale=Math.min(rw/sourceW,rh/sourceH);"
+        "const w=sourceW*scale; const h=sourceH*scale;"
+        "const left=(rw-w)/2; const top=(rh-h)/2;"
+        "device.style.left=`${left}px`; device.style.top=`${top}px`;"
+        "device.style.width=`${w}px`; device.style.height=`${h}px`;"
+        "content.querySelectorAll('.btn-wrap,.vp-box').forEach((el)=>{"
+        "const vis=String(el.dataset.visible||'1')!=='0';"
+        "el.style.position='absolute';"
+        "el.style.display=vis?'':'none';"
+        "el.style.left=`${Number(el.dataset.left||0)*scale}px`;"
+        "el.style.top=`${Number(el.dataset.top||0)*scale}px`;"
+        "el.style.width=`${Number(el.dataset.width||0)*scale}px`;"
+        "el.style.height=`${Number(el.dataset.height||0)*scale}px`;"
+        "const fs=Number(el.dataset.fontSize||0);"
+        "if(fs>0){const btn=el.querySelector('.test-btn'); if(btn) btn.style.fontSize=`${Math.max(8,fs*scale)}px`;}"
+        "});"
+        "};"
+        "apply();"
+        "window.addEventListener('resize',apply);"
         "}"
         "})();"
         "</script>"
