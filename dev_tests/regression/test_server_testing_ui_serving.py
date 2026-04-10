@@ -166,13 +166,20 @@ class TestingUiServingTest(unittest.TestCase):
             )
             device_file = project_dir / "unittest__device-demo-0.html"
             device_file.write_text(
-                "<!doctype html><html><head><meta charset='utf-8'><title>Old Runtime Device</title></head><body>OLD_RUNTIME</body></html>",
+                "<!doctype html><html><head><meta charset='utf-8'><title>Old Runtime Device</title></head><body>"
+                "<div class='app-ui-controls top-controls' id='topControls'><div></div><div class='header'>Device A - Page 1</div><div></div></div>"
+                "<div class='rti-device-canvas' id='rtiDeviceCanvas'><div class='device-page active' data-page-index='0'><div class='btn-wrap'>BTN</div></div></div>"
+                "<script>const PAGE_STATE=[{\"deviceName\":\"Device A\",\"pageName\":\"Page 1\",\"layers\":[{\"key\":\"layer-0\",\"name\":\"Main\"},{\"key\":\"layer-1\",\"name\":\"Overlay\"}],\"vpFrames\":[]}];"
+                "const ORIENTATION_STATE={\"current\":\"portrait\",\"options\":[\"portrait\"]};"
+                "const ZOOM_DEFAULT=125;</script>"
+                "</body></html>",
                 encoding="utf-8",
             )
 
             default_r = client.get(f"/testing/{tech_token}/files/{device_file.name}")
             self.assertEqual(default_r.status_code, 200)
-            self.assertIn("OLD_RUNTIME", default_r.text)
+            self.assertIn("id='topControls'", default_r.text)
+            self.assertNotIn('name="sentinel-runtime-mode" content="shell"', default_r.text)
             self.assertEqual(default_r.headers.get("x-sentinel-runtime-mode"), "default")
 
             shell_r = client.get(f"/testing/{tech_token}/files/{device_file.name}?runtime=shell")
@@ -184,6 +191,9 @@ class TestingUiServingTest(unittest.TestCase):
             self.assertIn('id="rtiUsableCanvas"', shell_r.text)
             self.assertIn("/commissioning/project_device_static_layout.css", shell_r.text)
             self.assertIn(f'href="/testing/{tech_token}?runtime=shell"', shell_r.text)
+            self.assertIn('data-shell-phase="2"', shell_r.text)
+            self.assertIn("const st=", shell_r.text)
+            self.assertIn("rtiDeviceContent", shell_r.text)
             self.assertNotIn("OLD_RUNTIME", shell_r.text)
             self.assertEqual(shell_r.headers.get("x-sentinel-runtime-mode"), "shell")
 

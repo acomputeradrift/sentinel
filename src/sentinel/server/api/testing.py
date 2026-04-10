@@ -5,6 +5,8 @@ import logging
 import time
 from pathlib import Path, PurePosixPath
 import re
+import base64
+import html as html_lib
 
 import asyncio
 import json
@@ -223,11 +225,108 @@ def _shell_template_path() -> Path:
     return (Path(__file__).resolve().parents[2] / "ui" / "commissioning" / "project_device_static_layout.html").resolve()
 
 
-def _build_static_shell_device_html(*, tech_token: str) -> str:
+def _extract_json_const(source_html: str, const_name: str):
+    m = re.search(rf"const\s+{re.escape(const_name)}\s*=\s*(.+?);", source_html, flags=re.DOTALL)
+    if not m:
+        return None
+    raw = str(m.group(1) or "").strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+def _extract_number_const(source_html: str, const_name: str) -> int | None:
+    m = re.search(rf"const\s+{re.escape(const_name)}\s*=\s*(-?\d+)\s*;", source_html)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except Exception:
+        return None
+
+
+def _extract_div_inner_by_id(source_html: str, div_id: str) -> str:
+    id_match = re.search(rf"""id=['"]{re.escape(div_id)}['"]""", source_html)
+    if not id_match:
+        return ""
+    div_start = source_html.rfind("<div", 0, id_match.start())
+    if div_start < 0:
+        return ""
+    open_end = source_html.find(">", div_start)
+    if open_end < 0:
+        return ""
+    depth = 1
+    i = open_end + 1
+    while i < len(source_html):
+        next_open = source_html.find("<div", i)
+        next_close = source_html.find("</div>", i)
+        if next_close < 0:
+            return ""
+        if 0 <= next_open < next_close:
+            depth += 1
+            i = next_open + 4
+            continue
+        depth -= 1
+        if depth == 0:
+            return source_html[open_end + 1 : next_close]
+        i = next_close + 6
+    return ""
+
+
+def _extract_device_shell_state(source_html: str) -> dict:
+    header_match = re.search(
+        r"""<div\s+class=['"]app-ui-controls top-controls['"]\s+id=['"]topControls['"]>.*?<div\s+class=['"]header['"]>(.*?)</div>""",
+        source_html,
+        flags=re.DOTALL,
+    )
+    header_html = str(header_match.group(1) if header_match else "").strip()
+    header_text = html_lib.unescape(re.sub(r"<[^>]+>", "", header_html)).strip() or "Device / Page"
+
+    page_state = _extract_json_const(source_html, "PAGE_STATE")
+    first_page = page_state[0] if isinstance(page_state, list) and page_state and isinstance(page_state[0], dict) else {}
+    layers = first_page.get("layers", []) if isinstance(first_page, dict) else []
+    if not isinstance(layers, list):
+        layers = []
+    normalized_layers: list[dict[str, str]] = []
+    for idx, layer in enumerate(layers):
+        if not isinstance(layer, dict):
+            continue
+        key = str(layer.get("key") or f"layer-{idx}")
+        name = str(layer.get("name") or f"Layer {idx + 1}").strip() or f"Layer {idx + 1}"
+        normalized_layers.append({"key": key, "name": name})
+
+    orientation_state = _extract_json_const(source_html, "ORIENTATION_STATE")
+    orientation_options = []
+    orientation_current = "portrait"
+    if isinstance(orientation_state, dict):
+        opts = orientation_state.get("options", [])
+        if isinstance(opts, list):
+            orientation_options = [str(x).strip().lower() for x in opts if str(x).strip()]
+        cur = str(orientation_state.get("current") or "").strip().lower()
+        if cur in ("portrait", "landscape"):
+            orientation_current = cur
+
+    zoom_default = _extract_number_const(source_html, "ZOOM_DEFAULT")
+    zoom_reset_label = f"{int(zoom_default)}%" if isinstance(zoom_default, int) and zoom_default > 0 else "100%"
+    rti_markup = _extract_div_inner_by_id(source_html, "rtiDeviceCanvas")
+
+    return {
+        "headerText": header_text,
+        "layers": normalized_layers,
+        "orientationOptions": orientation_options,
+        "orientationCurrent": orientation_current,
+        "zoomResetLabel": zoom_reset_label,
+        "rtiMarkupB64": base64.b64encode(rti_markup.encode("utf-8")).decode("ascii"),
+    }
+
+
+def _build_static_shell_device_html(*, tech_token: str, source_device_html: str) -> str:
     template_path = _shell_template_path()
     if not template_path.exists():
         raise FileNotFoundError(str(template_path))
     html = template_path.read_text(encoding="utf-8", errors="replace")
+    state = _extract_device_shell_state(source_device_html)
     html = re.sub(
         r'href\s*=\s*["\']\./project_device_static_layout\.css["\']',
         'href="/commissioning/project_device_static_layout.css"',
@@ -244,9 +343,44 @@ def _build_static_shell_device_html(*, tech_token: str) -> str:
         html = html.replace("</head>", '<meta name="sentinel-runtime-mode" content="shell"></head>', 1)
     html = html.replace(
         '<div class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">',
-        '<div class="projectDeviceStaticLayout" data-runtime-mode="shell" aria-label="Project Device Static Layout">',
+        '<div class="projectDeviceStaticLayout" data-runtime-mode="shell" data-shell-phase="2" aria-label="Project Device Static Layout">',
         1,
     )
+    shell_state_json = json.dumps(state, ensure_ascii=False).replace("</", "<\\/")
+    shell_script = (
+        "<script>"
+        "(function(){"
+        f"const st={shell_state_json};"
+        "const header=document.querySelector('#topControlsStatic .header');"
+        "if(header) header.textContent=String(st.headerText||'Device / Page');"
+        "const zooms=document.querySelectorAll('.zoomBtnReset, .zoomBtnResetMini .zoomPctVertical');"
+        "zooms.forEach((z)=>{ z.textContent=String(st.zoomResetLabel||'100%'); });"
+        "const orientBtns=[...document.querySelectorAll('.orientationBtnStatic')];"
+        "const options=Array.isArray(st.orientationOptions)?st.orientationOptions:[];"
+        "orientBtns.forEach((btn)=>{"
+        "const label=String(btn.textContent||'').trim().toLowerCase();"
+        "const enabled=options.includes(label);"
+        "btn.style.display=enabled?'':'none';"
+        "btn.classList.toggle('orientationBtnStaticActive', enabled && label===String(st.orientationCurrent||''));"
+        "});"
+        "const collapsed=document.querySelector('.collapsedControlGroup[aria-label=\"Collapsed Orientation Placeholder\"]');"
+        "if(collapsed&&options.length<=1) collapsed.style.display='none';"
+        "const list=document.querySelector('#deviceLayerControlsCanvas .layer-list');"
+        "const panel=document.querySelector('#deviceLayerControlsCanvas .layer-panel');"
+        "const layers=Array.isArray(st.layers)?st.layers:[];"
+        "if(list){"
+        "if(!layers.length){list.innerHTML=''; if(panel) panel.setAttribute('hidden','hidden');}"
+        "else{list.innerHTML=layers.map((l,i)=>`<button class=\"layer-toggle${i===0?'':' is-inactive'}\" type=\"button\" data-layer-key=\"${String(l.key||'').replace(/\"/g,'&quot;')}\">${String(l.name||'Layer')}</button>`).join(''); if(panel) panel.removeAttribute('hidden');}"
+        "}"
+        "const rti=document.getElementById('rtiUsableCanvas');"
+        "if(rti){"
+        "const decoded=st.rtiMarkupB64?atob(String(st.rtiMarkupB64)):'';"
+        "rti.innerHTML=`<div id=\"rtiDeviceCanvas\" class=\"rtiDeviceCanvas\"><div id=\"rtiDeviceContent\" class=\"rtiDeviceContent\">${decoded}</div></div>`;"
+        "}"
+        "})();"
+        "</script>"
+    )
+    html = html.replace("</body>", shell_script + "</body>", 1)
     return html
 
 
@@ -356,7 +490,8 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
     if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
-        shell_html = _build_static_shell_device_html(tech_token=techToken)
+        source_html = target.read_text(encoding="utf-8", errors="replace")
+        shell_html = _build_static_shell_device_html(tech_token=techToken, source_device_html=source_html)
         _log_display_baseline(
             stage="file",
             project_id=tok.projectId,
