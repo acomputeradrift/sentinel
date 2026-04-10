@@ -772,11 +772,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.get_by_label("Tech label").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
-        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc?runtime=payload")
+        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc?runtime=shell")
         with page.expect_popup() as open_popup_info:
             page.get_by_role("button", name="Open").click()
         open_popup = open_popup_info.value
-        self.assertIn("/testing/token-abc?runtime=payload", str(open_popup.url))
+        self.assertIn("/testing/token-abc?runtime=shell", str(open_popup.url))
         open_popup.close()
         expect(page.get_by_role("button", name="Legacy")).to_have_count(0)
         row_actions = page.locator("#techLinksBody tr").first.locator("td").nth(2).locator("button")

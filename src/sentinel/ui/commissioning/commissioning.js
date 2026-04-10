@@ -247,10 +247,10 @@ function buildPayloadTechUrl(rawUrl) {
   if (!/^\/testing\/[^/?#]+/i.test(s)) return s;
   try {
     const u = new URL(s, window.location.origin);
-    u.searchParams.set("runtime", "payload");
+    u.searchParams.set("runtime", "shell");
     return `${u.pathname}${u.search}${u.hash}`;
   } catch (_e) {
-    return s.includes("?") ? `${s}&runtime=payload` : `${s}?runtime=payload`;
+    return s.includes("?") ? `${s}&runtime=shell` : `${s}?runtime=shell`;
   }
 }
 
