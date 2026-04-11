@@ -776,7 +776,7 @@ def _page_payload(
     viewport_boxes = "".join(
         [
             "<div class='vp-box' style='z-index:{z};' data-vp='{vp_index}' data-nav-mode='{nav_mode}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
-                z=9200 + int(c["layer_order"]),
+                z=100 + int(c["layer_order"]),
                 nav_mode=escape(str((c.get("viewport_ui") or {}).get("navigationMode") or "page")),
                 orientation_attrs=_orientation_data_attrs(c["viewport_ui"]),
                 **c,
