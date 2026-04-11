@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --device-header-h: 50px;
   --device-footer-h: 40px;
   --controls-expanded-w: 300px;
@@ -21,6 +21,8 @@ body {
   width: 100%;
   height: 100%;
   margin: 0;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  color: #183247;
   overflow: hidden;
 }
 
@@ -40,8 +42,68 @@ body {
 }
 
 .deviceHeaderCanvas {
+  position: relative;
   background: var(--color-header-footer);
   border: 1px solid var(--outline);
+}
+
+.app-ui-controls {
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 20;
+}
+
+.top-controls {
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  box-sizing: border-box;
+  gap: 12px;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.header {
+  font-weight: 700;
+  font-size: 20px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+}
+
+.project-home-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 132px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid #a9bccd;
+  background: #f7fbff;
+  color: #14324b;
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.project-home-link:hover {
+  filter: brightness(0.98);
+}
+
+.top-controls-spacer {
+  min-width: 132px;
+  height: 40px;
 }
 
 .deviceLayoutStage {
@@ -144,6 +206,208 @@ body {
   border-bottom-left-radius: var(--panel-corner-radius);
 }
 
+.deviceViewControlsContent {
+  position: absolute;
+  inset-inline: 0;
+  inset-block: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 76px;
+  padding-inline: 14px;
+}
+
+.viewControlGroup {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.viewControlLabel {
+  margin: 0;
+  color: #1f2d3a;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.staticZoomControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.zoomBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 2px solid #f0a126;
+  background: transparent;
+  color: #29445a;
+  font-size: 18px;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.zoomBtnReset {
+  min-width: 72px;
+  width: auto;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.orientationToggleStatic {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  justify-content: center;
+  max-width: 120px;
+}
+
+.orientationBtnStatic {
+  min-width: 96px;
+  height: 40px;
+  border-radius: 12px;
+  border: 2px solid #f0a126;
+  background: transparent;
+  color: #29445a;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 10px;
+}
+
+.orientationBtnStaticActive {
+  background: #29445a;
+  color: #ffffff;
+}
+
+.deviceLayerControlsContent {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.layer-panel {
+  width: min(100%, 240px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #b9cad8;
+  border-radius: 18px;
+  background: rgba(247, 251, 255, 0.94);
+  box-shadow: 0 10px 30px rgba(20, 50, 75, 0.10);
+  box-sizing: border-box;
+}
+
+.layer-panel-title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: #14324b;
+  text-align: center;
+}
+
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.layer-toggle {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 0;
+  box-shadow: inset 0 0 0 1px #154665;
+  background: #1e5f86;
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1.15;
+  padding: 10px 12px;
+  cursor: default;
+  text-align: center;
+}
+
+.layer-toggle.is-inactive {
+  background: #f7fbff;
+  color: #14324b;
+  box-shadow: inset 0 0 0 1px #a9bccd;
+}
+
+.collapsedViewControls {
+  position: absolute;
+  inset-inline: 0;
+  inset-block: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.collapsedControlGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapsedControlLabel {
+  color: #1f2d3a;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.zoomBtnMini {
+  width: 44px;
+  height: 44px;
+}
+
+.zoomBtnResetMini {
+  width: 44px;
+  min-width: 44px;
+  height: 68px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.zoomPctVertical {
+  display: inline-block;
+  transform: rotate(-90deg);
+}
+
+.zoomBtnMiniOrient {
+  font-size: 14px;
+}
+
 .deviceControlsToggle {
   position: absolute;
   inset-block-start: 7px;
@@ -192,4 +456,24 @@ body {
 
 #right-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceControlsCanvasRight {
   width: var(--controls-collapsed-w);
+}
+
+#left-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceViewControlsContent {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#left-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .collapsedViewControls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#left-panel-toggle:checked ~ .projectDeviceStaticLayout .collapsedViewControls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#right-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceLayerControlsContent {
+  opacity: 0;
+  pointer-events: none;
 }

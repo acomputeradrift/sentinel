@@ -100,7 +100,6 @@
     (function () {
       const HOOK_REMAP = [
         ["#topControls", "#topControlsStatic"],
-        ["#orientationControls", "#deviceViewControlsCanvas"],
         ["#orientationToggle", ".orientationToggleStatic"],
         [".orientation-btn", ".orientationBtnStatic"],
         ["#zoomControls", "#zoomControlsStatic"],
@@ -150,7 +149,6 @@
       function installSelectorAdapter() {
         const idMap = {
           topControls: "topControlsStatic",
-          orientationControls: "deviceViewControlsCanvas",
           orientationToggle: "__shell_orientation_toggle__",
           zoomControls: "zoomControlsStatic",
           layerControls: "deviceLayerControlsCanvas",
