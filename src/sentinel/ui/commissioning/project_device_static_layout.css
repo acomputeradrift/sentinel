@@ -58,6 +58,56 @@ body {
   background: var(--color-rti);
   border: 1px solid var(--outline);
   z-index: 1;
+  overflow: auto;
+  scrollbar-width: none;
+  scrollbar-gutter: stable overlay;
+}
+
+.rtiUsableCanvas.scroll-hover:hover {
+  scrollbar-width: thin;
+}
+
+.rtiUsableCanvas::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.rtiUsableCanvas::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.rtiUsableCanvas.scroll-hover:hover::-webkit-scrollbar-thumb {
+  background: #a9bccd;
+  border-radius: 999px;
+}
+
+.vp-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.05);
+  z-index: 9000;
+  pointer-events: none;
+  display: none;
+}
+
+.viewport-mode .vp-overlay {
+  display: block;
+}
+
+.rtiDeviceCanvas {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.rtiDeviceContent {
+  position: absolute;
+  border: 1px solid #c6d2dd;
+  border-radius: 10px;
+  background: #f8fbfe;
+  overflow: hidden;
+  box-sizing: border-box;
+  z-index: 2;
 }
 
 .deviceFooterCanvas {
@@ -143,4 +193,3 @@ body {
 #right-panel-toggle:not(:checked) ~ .projectDeviceStaticLayout .deviceControlsCanvasRight {
   width: var(--controls-collapsed-w);
 }
-

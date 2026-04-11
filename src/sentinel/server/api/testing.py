@@ -223,7 +223,7 @@ def _shell_template_path() -> Path:
     return (Path(__file__).resolve().parents[2] / "ui" / "commissioning" / "project_device_static_layout.html").resolve()
 
 
-def _build_static_shell_device_html(*, tech_token: str) -> str:
+def _build_static_shell_device_html(*, tech_token: str, source_path: str) -> str:
     template_path = _shell_template_path()
     if not template_path.exists():
         raise FileNotFoundError(str(template_path))
@@ -242,6 +242,13 @@ def _build_static_shell_device_html(*, tech_token: str) -> str:
     )
     if "<meta name=\"sentinel-runtime-mode\"" not in html:
         html = html.replace("</head>", '<meta name="sentinel-runtime-mode" content="shell"></head>', 1)
+    source_href = f"/testing/{tech_token}/files/{source_path}"
+    if "<meta name=\"sentinel-shell-source\"" not in html:
+        html = html.replace(
+            "</head>",
+            f'<meta name="sentinel-shell-source" content="{source_href}"></head>',
+            1,
+        )
     html = html.replace(
         '<div class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">',
         '<div class="projectDeviceStaticLayout" data-runtime-mode="shell" aria-label="Project Device Static Layout">',
@@ -356,7 +363,7 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
     if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
-        shell_html = _build_static_shell_device_html(tech_token=techToken)
+        shell_html = _build_static_shell_device_html(tech_token=techToken, source_path=str(path or ""))
         _log_display_baseline(
             stage="file",
             project_id=tok.projectId,

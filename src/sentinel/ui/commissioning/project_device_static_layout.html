@@ -10,7 +10,7 @@
   <input class="panel-toggle" type="checkbox" id="left-panel-toggle" checked>
   <input class="panel-toggle" type="checkbox" id="right-panel-toggle" checked>
 
-  <div class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">
+  <div id="appCanvas" class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">
     <header id="deviceHeaderCanvas" class="deviceHeaderCanvas">
       <div class="app-ui-controls top-controls" id="topControlsStatic">
         <a class="project-home-link" href="#" aria-label="Project Home">Project Home</a>
@@ -20,17 +20,22 @@
     </header>
 
     <main class="deviceLayoutStage">
-      <section id="rtiUsableCanvas" class="rtiUsableCanvas"></section>
+      <section id="rtiUsableCanvas" class="rtiUsableCanvas">
+        <div id="vpOverlay" class="vp-overlay" hidden></div>
+        <div id="rtiDeviceCanvas" class="rtiDeviceCanvas">
+          <div id="rtiDeviceContent" class="rtiDeviceContent"></div>
+        </div>
+      </section>
       <footer id="deviceFooterCanvas" class="deviceFooterCanvas"></footer>
 
       <aside id="deviceViewControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasLeft" aria-label="Device View Controls">
         <div class="deviceViewControlsContent" aria-label="Static View Controls">
           <section class="viewControlGroup" aria-label="Device Zoom">
             <h3 class="viewControlLabel">Device</h3>
-            <div class="staticZoomControls" role="group" aria-label="Device zoom controls">
-              <button class="zoomBtn zoomBtnDec" type="button" aria-label="Decrease device zoom">-</button>
-              <button class="zoomBtn zoomBtnReset" type="button" aria-label="Device zoom percent">100%</button>
-              <button class="zoomBtn zoomBtnInc" type="button" aria-label="Increase device zoom">+</button>
+            <div id="zoomControlsStatic" class="staticZoomControls" role="group" aria-label="Device zoom controls">
+              <button class="zoomBtn zoomBtnDec zoom-btn zoom-dec" type="button" aria-label="Decrease device zoom">-</button>
+              <button class="zoomBtn zoomBtnReset zoom-btn zoom-reset" type="button" aria-label="Device zoom percent">100%</button>
+              <button class="zoomBtn zoomBtnInc zoom-btn zoom-inc" type="button" aria-label="Increase device zoom">+</button>
             </div>
           </section>
 
@@ -45,9 +50,9 @@
 
           <section class="viewControlGroup" aria-label="Orientation Controls">
             <h3 class="viewControlLabel">Orientation</h3>
-            <div class="orientationToggleStatic" role="group" aria-label="Orientation controls">
-              <button class="orientationBtnStatic" type="button" aria-label="Portrait orientation">Portrait</button>
-              <button class="orientationBtnStatic orientationBtnStaticActive" type="button" aria-label="Landscape orientation">Landscape</button>
+            <div class="orientationToggleStatic orientation-toggle" role="group" aria-label="Orientation controls">
+              <button class="orientationBtnStatic orientation-btn" type="button" aria-label="Portrait orientation" data-orientation="portrait">Portrait</button>
+              <button class="orientationBtnStatic orientationBtnStaticActive orientation-btn active" type="button" aria-label="Landscape orientation" data-orientation="landscape">Landscape</button>
             </div>
           </section>
         </div>
@@ -76,7 +81,7 @@
         <label class="deviceControlsToggle deviceControlsToggleLeft" for="left-panel-toggle" aria-label="Toggle left controls"></label>
       </aside>
 
-      <aside id="deviceLayerControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasRight" aria-label="Device Layer Controls">
+      <aside id="deviceLayerControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasRight app-ui-controls layer-controls" aria-label="Device Layer Controls">
         <div class="deviceLayerControlsContent" aria-label="Layer Controls Placeholder">
           <div class="layer-panel layer-panel-static" aria-label="Layer panel">
             <div class="layer-panel-title">Layers</div>
@@ -91,5 +96,231 @@
       </aside>
     </main>
   </div>
+  <script data-shell-runtime-adapter="1">
+    (function () {
+      const HOOK_REMAP = [
+        ["#topControls", "#topControlsStatic"],
+        ["#orientationControls", "#deviceViewControlsCanvas"],
+        ["#orientationToggle", ".orientationToggleStatic"],
+        [".orientation-btn", ".orientationBtnStatic"],
+        ["#zoomControls", "#zoomControlsStatic"],
+        [".zoom-dec", ".zoomBtnDec"],
+        [".zoom-reset", ".zoomBtnReset"],
+        [".zoom-inc", ".zoomBtnInc"],
+        ["#layerControls", "#deviceLayerControlsCanvas"],
+        ["#layerPanel", ".layer-panel"],
+        ["#layerList", ".layer-list"],
+        ["#rtiCanvas", "#rtiUsableCanvas"],
+        ["#rtiContent", "#rtiDeviceCanvas"],
+        ["#rtiDeviceCanvas", "#rtiDeviceContent"],
+        ["#bottomControls", "#deviceFooterCanvas"]
+      ];
+
+      function escapeRegExp(value) {
+        return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function remapText(text) {
+        let result = String(text || "");
+        const placeholders = [];
+        HOOK_REMAP.forEach(function (pair, index) {
+          const from = pair[0];
+          const token = "__SHELL_HOOK_" + String(index) + "__";
+          placeholders.push([token, pair[1]]);
+          result = result.replace(new RegExp(escapeRegExp(from), "g"), token);
+        });
+        placeholders.forEach(function (pair) {
+          const token = pair[0];
+          const to = pair[1];
+          result = result.replace(new RegExp(escapeRegExp(token), "g"), to);
+        });
+        return result;
+      }
+
+      function copyStyles(sourceDoc) {
+        const styles = sourceDoc.querySelectorAll("style");
+        styles.forEach(function (node, index) {
+          const style = document.createElement("style");
+          style.setAttribute("data-shell-source-style", String(index));
+          style.textContent = remapText(node.textContent || "");
+          document.head.appendChild(style);
+        });
+      }
+
+      function installSelectorAdapter() {
+        const idMap = {
+          topControls: "topControlsStatic",
+          orientationControls: "deviceViewControlsCanvas",
+          orientationToggle: "__shell_orientation_toggle__",
+          zoomControls: "zoomControlsStatic",
+          layerControls: "deviceLayerControlsCanvas",
+          layerPanel: "__shell_layer_panel__",
+          layerList: "__shell_layer_list__",
+          rtiCanvas: "rtiUsableCanvas",
+          rtiContent: "rtiDeviceCanvas",
+          rtiDeviceCanvas: "rtiDeviceContent",
+          bottomControls: "deviceFooterCanvas"
+        };
+
+        function remapSelector(selector) {
+          return remapText(selector);
+        }
+
+        const documentGetById = document.getElementById.bind(document);
+        document.getElementById = function (id) {
+          const mapped = idMap[id] || id;
+          if (mapped === "__shell_orientation_toggle__") {
+            return document.querySelector(".orientationToggleStatic");
+          }
+          if (mapped === "__shell_layer_panel__") {
+            return document.querySelector(".layer-panel");
+          }
+          if (mapped === "__shell_layer_list__") {
+            return document.querySelector(".layer-list");
+          }
+          return documentGetById(mapped);
+        };
+
+        const docQuery = Document.prototype.querySelector;
+        const docQueryAll = Document.prototype.querySelectorAll;
+        const elQuery = Element.prototype.querySelector;
+        const elQueryAll = Element.prototype.querySelectorAll;
+        const elClosest = Element.prototype.closest;
+
+        Document.prototype.querySelector = function (selector) {
+          return docQuery.call(this, remapSelector(String(selector || "")));
+        };
+        Document.prototype.querySelectorAll = function (selector) {
+          return docQueryAll.call(this, remapSelector(String(selector || "")));
+        };
+        Element.prototype.querySelector = function (selector) {
+          return elQuery.call(this, remapSelector(String(selector || "")));
+        };
+        Element.prototype.querySelectorAll = function (selector) {
+          return elQueryAll.call(this, remapSelector(String(selector || "")));
+        };
+        Element.prototype.closest = function (selector) {
+          return elClosest.call(this, remapSelector(String(selector || "")));
+        };
+      }
+
+      function mountTopControls(sourceDoc) {
+        const src = sourceDoc.getElementById("topControls");
+        const dst = document.getElementById("topControlsStatic");
+        if (!src || !dst) return;
+        const home = src.querySelector(".project-home-link");
+        const header = src.querySelector(".header");
+        if (home) {
+          const slot = dst.querySelector(".project-home-link");
+          if (slot) slot.outerHTML = home.outerHTML;
+        }
+        if (header) {
+          const slot = dst.querySelector(".header");
+          if (slot) slot.outerHTML = header.outerHTML;
+        }
+      }
+
+      function mountOrientation(sourceDoc) {
+        const srcToggle = sourceDoc.getElementById("orientationToggle");
+        const dstToggle = document.querySelector(".orientationToggleStatic");
+        if (!dstToggle) return;
+        if (!srcToggle) {
+          const group = dstToggle.closest(".viewControlGroup");
+          const collapsed = document.querySelector('.collapsedControlGroup[aria-label="Collapsed Orientation Placeholder"]');
+          if (group) group.hidden = true;
+          if (collapsed) collapsed.hidden = true;
+          return;
+        }
+        dstToggle.innerHTML = remapText(srcToggle.innerHTML || "");
+      }
+
+      function mountZoom(sourceDoc) {
+        const srcZoom = sourceDoc.getElementById("zoomControls");
+        const dstZoom = document.getElementById("zoomControlsStatic");
+        if (!srcZoom || !dstZoom) return;
+        dstZoom.innerHTML = remapText(srcZoom.innerHTML || "");
+      }
+
+      function mountLayers(sourceDoc) {
+        const srcPanel = sourceDoc.getElementById("layerPanel");
+        const dstPanel = document.querySelector("#deviceLayerControlsCanvas .layer-panel");
+        if (!dstPanel) return;
+        if (!srcPanel) {
+          dstPanel.setAttribute("hidden", "hidden");
+          return;
+        }
+        const srcTitle = srcPanel.querySelector(".layer-panel-title");
+        const dstTitle = dstPanel.querySelector(".layer-panel-title");
+        if (srcTitle && dstTitle) {
+          dstTitle.textContent = srcTitle.textContent || "";
+        }
+        const srcList = srcPanel.querySelector("#layerList, .layer-list");
+        const dstList = dstPanel.querySelector(".layer-list");
+        if (srcList && dstList) {
+          dstList.innerHTML = remapText(srcList.innerHTML || "");
+        }
+      }
+
+      function mountRtiContent(sourceDoc) {
+        const src = sourceDoc.getElementById("rtiDeviceCanvas");
+        const dst = document.getElementById("rtiDeviceContent");
+        if (!src || !dst) return;
+        dst.innerHTML = src.innerHTML || "";
+      }
+
+      function mountPopups(sourceDoc) {
+        ["vpPopup", "ov"].forEach(function (id) {
+          const src = sourceDoc.getElementById(id);
+          if (!src) return;
+          const existing = document.getElementById(id);
+          if (existing) existing.remove();
+          document.body.appendChild(src.cloneNode(true));
+        });
+      }
+
+      function runScripts(sourceDoc) {
+        const scripts = sourceDoc.querySelectorAll("script");
+        scripts.forEach(function (script, index) {
+          const text = script.textContent || "";
+          if (!text.trim()) return;
+          const node = document.createElement("script");
+          node.setAttribute("data-shell-source-script", String(index));
+          node.textContent = text;
+          document.body.appendChild(node);
+        });
+      }
+
+      function sourceUrl() {
+        const sourceMeta = document.querySelector('meta[name="sentinel-shell-source"]');
+        const sourceFromMeta = sourceMeta && sourceMeta.getAttribute("content");
+        if (sourceFromMeta) {
+          const absolute = new URL(sourceFromMeta, window.location.origin);
+          absolute.searchParams.delete("runtime");
+          return absolute.toString();
+        }
+        const current = new URL(window.location.href);
+        current.searchParams.delete("runtime");
+        return current.toString();
+      }
+
+      fetch(sourceUrl(), { credentials: "same-origin" })
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          const sourceDoc = new DOMParser().parseFromString(html, "text/html");
+          copyStyles(sourceDoc);
+          installSelectorAdapter();
+          mountTopControls(sourceDoc);
+          mountOrientation(sourceDoc);
+          mountZoom(sourceDoc);
+          mountLayers(sourceDoc);
+          mountRtiContent(sourceDoc);
+          mountPopups(sourceDoc);
+          runScripts(sourceDoc);
+        })
+        .catch(function () {
+          window.__sentinelShellRuntimeError = "shell-runtime-load-failed";
+        });
+    })();
+  </script>
 </body>
 </html>
