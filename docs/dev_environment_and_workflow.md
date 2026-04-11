@@ -66,15 +66,39 @@ Goal: deploy code without accidentally deleting server files.
    - Example: `git archive --format=zip -o sentinel_patch.zip HEAD src`
 2) Copy the archive to the droplet:
    - Example: `scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip`
-3) Extract on the droplet:
-   - If `unzip` is not available, use Python:
-     - `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`
+3) Extract on the droplet (overwrite required):
+   - Do not rely on extraction behavior that might skip existing files.
+   - Required: force-write archive contents into `/opt/sentinel/app` (overwrite existing files).
+   - If using Python extraction, use a script that explicitly writes each file with `wb` mode.
 4) Restart the app:
    - `sudo systemctl restart sentinel`
 5) Validate:
    - Wait ~3-5 seconds after restart (service warm-up window).
    - `curl http://127.0.0.1/health`
    - `sudo journalctl -u sentinel -n 50 --no-pager`
+
+### Mandatory deployment sequence (no parallelization)
+
+Run these steps strictly one at a time:
+1. Build archive.
+2. Copy archive.
+3. Extract with overwrite.
+4. Verify deployed file content/hash on server.
+5. Restart service.
+6. Health check.
+7. Route-level verification for the user-visible path.
+
+Do not run copy/extract/restart in parallel under any circumstances.
+
+### Mandatory post-extract verification
+
+Before restarting, verify the server file matches the archive for changed files.
+
+Example (required check pattern):
+- Compare hash of `/tmp/sentinel_patch.zip` entry vs `/opt/sentinel/app/...` target file.
+- Or verify exact expected marker lines in deployed source with `grep`/`sed`.
+
+If verification fails, stop and re-extract with overwrite before restart.
 
 Validation note:
 - A brief `502 Bad Gateway` can occur immediately after restart while Uvicorn is still coming up behind Nginx.
@@ -84,6 +108,8 @@ Known gotchas:
 - Avoid `rsync --delete` against `/opt/sentinel/app` (it can remove required modules and break imports).
 - I initially did a bad deploy step by running copy/extract in parallel; that could extract an old zip.
 - I corrected it with a strict sequential redeploy and re-verified server file contents.
+- Repeated failure: extraction completed but did not overwrite an existing server file, leaving old runtime behavior active.
+- Prevention: force overwrite extraction + pre-restart source/hash verification is mandatory.
 
 ### If zip creation is blocked locally
 

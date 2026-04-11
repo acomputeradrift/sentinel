@@ -116,7 +116,7 @@ Phase 1 (Static Shell, opt-in only):
 Phase 2 (Injection Wiring):
 1. Inject layers to right panel only.
 2. Inject view controls to left panel only.
-3. Inject RTI content into `rtiDeviceCanvas`.
+3. Inject RTI content into `rtiDeviceContent`.
 4. Hide unsupported controls based on payload capability.
 
 Phase 3 (Parity Validation):
