@@ -210,6 +210,93 @@
         });
       }
 
+      function copyFilteredStyles(sourceDoc) {
+        const allowTokens = [
+          ".rti-canvas",
+          ".rti-content",
+          ".rti-device-canvas",
+          ".device-page",
+          ".vp-box",
+          ".vp-overlay",
+          ".btn-wrap",
+          ".test-btn",
+          ".btn-pass-total",
+          ".page-link-hit",
+          ".page-link-icon",
+          ".material-symbols-outlined",
+          ".vp-popup",
+          ".vp-popup-panel",
+          ".vp-popup-scroller",
+          ".vp-popup-stage",
+          ".vp-popup-scrollpad",
+          ".vp-popup-close",
+          ".vp-popup-nav",
+          ".vp-popup-prev",
+          ".vp-popup-next",
+          ".vp-popup-up",
+          ".vp-popup-down",
+          ".vp-popup-indicator",
+          ".vp-popup-viewport",
+          ".vp-popup-vcontent",
+          ".vp-indicator",
+          ".dot",
+          ".viewport-mode"
+        ];
+        const blockTokens = [
+          ".app-canvas",
+          ".app-ui-controls",
+          ".top-controls",
+          ".bottom-controls",
+          ".left-controls",
+          ".right-controls",
+          ".layer-controls",
+          ".orientation-controls",
+          ".zoom-controls",
+          "#topControls",
+          "#bottomControls",
+          "#layerControls",
+          "#orientationControls",
+          "#zoomControls",
+          "#rtiCanvas",
+          "#rtiContent",
+          "#rtiDeviceCanvas"
+        ];
+
+        function allowSelector(sel) {
+          const s = String(sel || "");
+          if (!s || s.indexOf("#") >= 0) return false;
+          for (let i = 0; i < blockTokens.length; i += 1) {
+            if (s.indexOf(blockTokens[i]) >= 0) return false;
+          }
+          for (let i = 0; i < allowTokens.length; i += 1) {
+            if (s.indexOf(allowTokens[i]) >= 0) return true;
+          }
+          return false;
+        }
+
+        const styles = sourceDoc.querySelectorAll("style");
+        styles.forEach(function (node, idx) {
+          const raw = String(node.textContent || "");
+          if (!raw.trim()) return;
+          const blocks = raw.split("}");
+          const kept = [];
+          blocks.forEach(function (block) {
+            const rule = String(block || "").trim();
+            if (!rule) return;
+            const brace = rule.indexOf("{");
+            if (brace <= 0) return;
+            const selector = rule.slice(0, brace).trim();
+            if (!allowSelector(selector)) return;
+            kept.push(remapText(selector + "{" + rule.slice(brace + 1) + "}"));
+          });
+          if (!kept.length) return;
+          const style = document.createElement("style");
+          style.setAttribute("data-shell-source-style-filtered", String(idx));
+          style.textContent = kept.join("\n");
+          document.head.appendChild(style);
+        });
+      }
+
       function installSelectorAdapter() {
         const idMap = {
           topControls: "topControlsStatic",
@@ -305,6 +392,7 @@
         .then(function (res) { return res.text(); })
         .then(function (html) {
           const sourceDoc = new DOMParser().parseFromString(html, "text/html");
+          copyFilteredStyles(sourceDoc);
           mountTopControls(sourceDoc);
           mountOrientation(sourceDoc);
           mountZoom(sourceDoc);
