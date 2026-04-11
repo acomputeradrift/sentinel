@@ -164,6 +164,12 @@
           return;
         }
         dstToggle.innerHTML = remapText(srcToggle.innerHTML || "");
+        dstToggle.querySelectorAll("button").forEach(function (btn) {
+          btn.classList.add("orientationBtnStatic");
+          if (btn.classList.contains("active")) {
+            btn.classList.add("orientationBtnStaticActive");
+          }
+        });
       }
 
       function mountZoom(sourceDoc) {
@@ -171,6 +177,17 @@
         const dstZoom = document.getElementById("zoomControlsStatic");
         if (!srcZoom || !dstZoom) return;
         dstZoom.innerHTML = remapText(srcZoom.innerHTML || "");
+        dstZoom.querySelectorAll("button").forEach(function (btn) {
+          if (btn.classList.contains("zoom-dec")) {
+            btn.classList.add("zoomBtn", "zoomBtnDec");
+          }
+          if (btn.classList.contains("zoom-reset")) {
+            btn.classList.add("zoomBtn", "zoomBtnReset");
+          }
+          if (btn.classList.contains("zoom-inc")) {
+            btn.classList.add("zoomBtn", "zoomBtnInc");
+          }
+        });
       }
 
       function mountLayers(sourceDoc) {
@@ -327,6 +344,12 @@
         };
       }
 
+      function parsePxVariable(name, fallback) {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue(name) || "";
+        const value = Number.parseFloat(String(raw).trim().replace("px", ""));
+        return Number.isFinite(value) ? value : fallback;
+      }
+
       function lockShellGeometry() {
         const rti = document.getElementById("rtiUsableCanvas");
         const right = document.getElementById("deviceLayerControlsCanvas");
@@ -366,13 +389,24 @@
       function runScripts(sourceDoc) {
         const scripts = sourceDoc.querySelectorAll("script");
         scripts.forEach(function (script, index) {
-          const text = script.textContent || "";
+          let text = script.textContent || "";
           if (!text.trim()) return;
+          text = text.replace(/\bconst\s+APP_UI_CONTROLS\s*=/g, "var APP_UI_CONTROLS=");
           const node = document.createElement("script");
           node.setAttribute("data-shell-source-script", String(index));
           node.textContent = remapText(text);
           document.body.appendChild(node);
         });
+      }
+
+      function alignRuntimeControlsToShell() {
+        const controls = window.APP_UI_CONTROLS;
+        if (!controls) return;
+        controls.top = parsePxVariable("--device-header-h", 50);
+        controls.bottom = parsePxVariable("--device-footer-h", 40);
+        const side = parsePxVariable("--controls-collapsed-w", 58);
+        controls.left = side;
+        controls.right = side;
       }
 
       function sourceUrl() {
@@ -401,8 +435,12 @@
           mountPopups(sourceDoc);
           installSelectorAdapter();
           runScripts(sourceDoc);
+          alignRuntimeControlsToShell();
           lockShellGeometry();
           observeShellGeometry();
+          if (typeof window.applyRtiLayout === "function") {
+            window.applyRtiLayout();
+          }
         })
         .catch(function () {
           window.__sentinelShellRuntimeError = "shell-runtime-load-failed";
