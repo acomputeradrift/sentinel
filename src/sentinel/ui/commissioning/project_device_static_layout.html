@@ -439,12 +439,10 @@
         const sourceMeta = document.querySelector('meta[name="sentinel-shell-source"]');
         const sourceFromMeta = sourceMeta && sourceMeta.getAttribute("content");
         if (sourceFromMeta) {
-          const absolute = new URL(sourceFromMeta, window.location.origin);
-          absolute.searchParams.delete("runtime");
-          return absolute.toString();
+          return new URL(sourceFromMeta, window.location.origin).toString();
         }
         const current = new URL(window.location.href);
-        current.searchParams.delete("runtime");
+        current.searchParams.set("runtime", "source");
         return current.toString();
       }
 

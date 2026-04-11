@@ -25,6 +25,7 @@ log = logging.getLogger("uvicorn.error")
 WS_KEEPALIVE_TIMEOUT_S = 15.0
 WS_SEND_TIMEOUT_S = 5.0
 SHELL_RUNTIME_MODE = "shell"
+SOURCE_RUNTIME_MODE = "source"
 
 
 def _repo(request: Request) -> Repository:
@@ -242,7 +243,7 @@ def _build_static_shell_device_html(*, tech_token: str, source_path: str) -> str
     )
     if "<meta name=\"sentinel-runtime-mode\"" not in html:
         html = html.replace("</head>", '<meta name="sentinel-runtime-mode" content="shell"></head>', 1)
-    source_href = f"/testing/{tech_token}/files/{source_path}"
+    source_href = f"/testing/{tech_token}/files/{source_path}?runtime={SOURCE_RUNTIME_MODE}"
     if "<meta name=\"sentinel-shell-source\"" not in html:
         html = html.replace(
             "</head>",
@@ -363,6 +364,17 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
     if is_device_html:
+        if runtime_mode == SOURCE_RUNTIME_MODE:
+            _log_display_baseline(
+                stage="file",
+                project_id=tok.projectId,
+                tech_token=techToken,
+                serve_ms=(time.perf_counter() - t0) * 1000.0,
+                size_bytes=int(target.stat().st_size),
+                path=str(path or ""),
+                is_device_html=True,
+            )
+            return FileResponse(path=str(target), headers={"X-Sentinel-Runtime-Mode": SOURCE_RUNTIME_MODE})
         shell_html = _build_static_shell_device_html(tech_token=techToken, source_path=str(path or ""))
         _log_display_baseline(
             stage="file",
