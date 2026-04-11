@@ -257,7 +257,16 @@
           ".vp-popup-vcontent",
           ".vp-indicator",
           ".dot",
-          ".viewport-mode"
+          ".viewport-mode",
+          ".ov",
+          ".pop",
+          ".pop-head",
+          ".rows-scroll",
+          ".row",
+          ".row-head",
+          ".row-meta",
+          ".actions",
+          ".post-status"
         ];
         const blockTokens = [
           ".app-canvas",
@@ -281,7 +290,9 @@
 
         function allowSelector(sel) {
           const s = String(sel || "");
-          if (!s || s.indexOf("#") >= 0) return false;
+          if (!s) return false;
+          if (s.indexOf(".viewport-mode #rtiCanvas") >= 0) return true;
+          if (s.indexOf("#") >= 0) return false;
           for (let i = 0; i < blockTokens.length; i += 1) {
             if (s.indexOf(blockTokens[i]) >= 0) return false;
           }
@@ -311,6 +322,22 @@
           style.setAttribute("data-shell-source-style-filtered", String(idx));
           style.textContent = kept.join("\n");
           document.head.appendChild(style);
+        });
+      }
+
+      function copyAllowedHeadLinks(sourceDoc) {
+        const links = sourceDoc.querySelectorAll('link[rel="stylesheet"]');
+        links.forEach(function (link, index) {
+          const href = String(link.getAttribute("href") || "");
+          if (!href) return;
+          const isMaterialSymbols = href.indexOf("fonts.googleapis.com") >= 0 && href.indexOf("Material+Symbols+Outlined") >= 0;
+          if (!isMaterialSymbols) return;
+          if (document.querySelector('link[data-shell-source-font="' + String(index) + '"]')) return;
+          const clone = document.createElement("link");
+          clone.setAttribute("rel", "stylesheet");
+          clone.setAttribute("href", href);
+          clone.setAttribute("data-shell-source-font", String(index));
+          document.head.appendChild(clone);
         });
       }
 
@@ -404,9 +431,8 @@
         if (!controls) return;
         controls.top = parsePxVariable("--device-header-h", 50);
         controls.bottom = parsePxVariable("--device-footer-h", 40);
-        const side = parsePxVariable("--controls-collapsed-w", 58);
-        controls.left = side;
-        controls.right = side;
+        controls.left = parsePxVariable("--controls-collapsed-w", 58);
+        controls.right = parsePxVariable("--controls-expanded-w", 300);
       }
 
       function sourceUrl() {
@@ -427,6 +453,7 @@
         .then(function (html) {
           const sourceDoc = new DOMParser().parseFromString(html, "text/html");
           copyFilteredStyles(sourceDoc);
+          copyAllowedHeadLinks(sourceDoc);
           mountTopControls(sourceDoc);
           mountOrientation(sourceDoc);
           mountZoom(sourceDoc);

@@ -362,7 +362,7 @@ def testing_file(request: Request, techToken: str, path: str) -> Response:
 
     is_device_html = target.suffix.lower() == ".html" and "__device-" in target.name.lower()
     runtime_mode = str(request.query_params.get("runtime") or "").strip().lower()
-    if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:
+    if is_device_html:
         shell_html = _build_static_shell_device_html(tech_token=techToken, source_path=str(path or ""))
         _log_display_baseline(
             stage="file",
