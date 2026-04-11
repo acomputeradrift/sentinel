@@ -1,5 +1,7 @@
 # Phase 2 Guide (Static Shell Injection)
 
+Our goal is to build on the phase 1 framework and add the phase 2 functionality.  We DO NOT need multiple payloads or runtimes.  We need to add the injected runtime functions that exist in the code to the new Phase 1 framework.
+
 Purpose: prevent Phase 2 drift and ensure migration from old runtime behavior to static shell is clean, testable, and reversible.
 
 ## Target Outcome
@@ -225,3 +227,176 @@ Static shell target hooks:
 1. Mistake: treated Phase 1 and Phase 2 as alternate branches during remediation.
 2. Impact: decisions optimized for route stability but regressed injection goals.
 3. Prevention: enforce progressive model in every scope review: Phase 1 base + Phase 2 injection in same path.
+
+### 2026-04-11 - Surgical injection removal fixed layout regressions but broke runtime injection
+1. Date/Time: 2026-04-11
+2. Goal: remove shell-route over-injection without breaking working shell behavior.
+3. Change Attempted: removed source runtime style injection and source runtime script execution from shell adapter.
+4. What worked:
+   - right layer-panel collapse toggle resumed working
+   - top white-gap regression was removed
+   - `rtiUsableCanvas` shell geometry stayed at static-shell size instead of legacy runtime-resized bounds
+5. What broke:
+   - runtime layer-panel list/state no longer injected
+   - RTI device runtime no longer positioned/injected correctly (raw controls/buttons appeared unlaid-out)
+   - view controls presentation regressed due to missing runtime state wiring
+6. Why it broke: runtime behavior/state (layer population, RTI layout application, state sync) depends on source runtime script path; removing script execution removed required behavior, not only bad side effects.
+7. Disposition (kept/reverted/follow-up): follow-up required to restore runtime script execution with bounded shell-container mutation guards (allow state/content logic, block shell layout overrides).
+
+### 2026-04-11 - Bounded runtime restore preserved layer injection but RTI/view CSS still regressed (LOCK)
+1. Date/Time: 2026-04-11
+2. Goal: restore runtime behavior while keeping shell layout protections.
+3. Change Attempted: re-enabled runtime script execution with selector remap and shell geometry lock guards.
+4. What worked (LOCKED: do not modify this behavior path during next fix):
+   - Layer panel runtime injection is working again (layer buttons/state visible).
+5. What did not work:
+   - View panel CSS/runtime presentation is still not at required parity.
+   - RTI device visuals are not correctly rendered/styled/positioned.
+6. Why this likely remains broken:
+   - Source runtime style injection was removed entirely to avoid shell override regressions.
+   - RTI/button runtime classes depend on source runtime style rules that are no longer present.
+7. Required next action:
+   - Investigate and isolate exactly which source runtime style subsets are required for RTI/view-runtime rendering.
+   - Restore only the safe subset needed for RTI/view rendering without reintroducing shell container overrides.
+
+### 2026-04-11 - Exact action that broke RTI device rendering
+1. Date/Time: 2026-04-11
+2. Goal at the time: stop shell layout regressions (top whitespace, wrong canvas bounds, broken right-panel collapse).
+3. Exact change that caused RTI break:
+   - Removed source runtime `<style>` injection from shell adapter (`copyStyles(...)` path removed from `project_device_static_layout.html`).
+   - Removed source runtime script execution in the same pass (later partially restored).
+4. Why this broke RTI specifically:
+   - Generated runtime relies on inline style definitions from `render_core.py` for RTI/button rendering (`.btn-wrap`, `.test-btn`, `.device-page`, `.vp-box`, and related runtime classes).
+   - After style injection removal, RTI DOM still injected, but those runtime classes no longer had required style rules in shell mode.
+   - Result: RTI controls rendered as tiny/default/unpositioned artifacts instead of full device visuals.
+5. What was not broken by this exact change:
+   - Layer injection path could still function when runtime script execution was restored.
+6. Prevention rule added from this failure:
+   - Do not remove runtime style injection wholesale.
+   - Replace with selector-scoped style allowlist for RTI/view runtime classes while explicitly denying shell-layout selectors.
+
+### 2026-04-11 - Post deploy status after scoped style bridge
+1. Date/Time: 2026-04-11
+2. What worked:
+   - RTI device button generation/rendering improved versus prior tiny/unstyled artifact state.
+   - Layer injection continues to work (locked behavior; do not modify layer-path behavior during next fix).
+3. What did not work:
+   - Left view panel CSS is still not at required parity.
+   - `rtiDeviceContent` is not correctly centered in `rtiDeviceCanvas`.
+   - Bottom whitespace remains and clips/cuts off part of RTI content in shell route.
+4. Required investigation focus:
+   - identify exact class/selector mismatch causing left-panel control styling drift.
+   - identify exact runtime layout math conflict causing RTI centering/cutoff under static shell geometry.
+
+### 2026-04-11 - Root cause isolated and corrected for RTI bottom cutoff (in-progress validation)
+1. Date/Time: 2026-04-11
+2. What worked and is preserved:
+   - Layer injection path remains intact (no changes to `mountLayers` behavior path).
+   - Right panel collapse and shell-canvas underlay behavior remain on the lock path.
+3. What was broken:
+   - `#rtiDeviceContent` height exceeded `#rtiUsableCanvas` by ~8px and clipped at bottom.
+4. Why it broke:
+   - Runtime `APP_UI_CONTROLS.bottom` remained at source value `32`, while static shell footer is `40`.
+   - Runtime applied layout using source control geometry, then shell lock restored shell container geometry, leaving content/device sizing out of sync.
+5. Fix applied:
+   - Keep existing shell lock strategy.
+   - Set `APP_UI_CONTROLS.top/bottom/left/right` from static shell CSS variables before runtime layout (`--device-header-h`, `--device-footer-h`, `--controls-collapsed-w`).
+6. Additional guard added:
+   - UI test now checks left zoom control styling contract (`border-width`, `border-radius`) and RTI bottom-fit in shell mode.
+
+### 2026-04-11 - Consolidated shell regression fix set (no fallback branch, testing restored)
+1. Date/Time: 2026-04-11
+2. Problems addressed together:
+   - device route could still resolve old/default runtime path when `runtime=shell` query was missing.
+   - layer panel width collapsed to min-width due shell control remap using collapsed right width.
+   - testing modal (`#ov`) interaction path visually/functionally regressed from filtered runtime CSS.
+   - material link icons missing because Material Symbols stylesheet link was not carried to shell runtime page.
+   - viewport-mode rule tied to `#rtiCanvas` dropped by blanket `#` selector filter.
+3. Root causes:
+   - `testing.py` still had `default` device-file path branch.
+   - `APP_UI_CONTROLS.right` was forced to `--controls-collapsed-w`.
+   - style filter allowlist omitted testing modal selectors.
+   - shell adapter copied style blocks but not required external font stylesheet link.
+   - style filter denied all `#` selectors, including required `.viewport-mode #rtiCanvas` rule.
+4. Changes applied:
+   - device-file tech route serves shell path deterministically.
+   - shell control remap now uses `--controls-expanded-w` for runtime right panel math.
+   - allowlist expanded for testing modal selectors (`.ov`, `.pop`, `.rows-scroll`, row/status/action classes).
+   - adapter now carries the source Material Symbols Google stylesheet link.
+   - style filter now allows specific `.viewport-mode #rtiCanvas` selector while keeping broader shell-layout blocks.
+5. Validation:
+   - `dev_tests.regression.test_testing_shell_runtime_route` passes.
+   - `ViewportPopupRuntimeTest.test_shell_runtime_injects_real_content_into_rti_device_content` passes.
+   - `ViewportPopupRuntimeTest.test_viewport_popup_opens_and_closes` passes.
+
+### 2026-04-11 - Route change that wiped runtime injection (critical)
+1. Date/Time: 2026-04-11
+2. Goal at the time:
+   - remove old/default runtime behavior on device route.
+3. Exact change that caused break:
+   - in `testing.py`, changed device-file condition from:
+     - `if runtime_mode == SHELL_RUNTIME_MODE and is_device_html:`
+   - to:
+     - `if is_device_html:`
+4. Why this broke injection:
+   - shell adapter reads `sentinel-shell-source` and intentionally strips `runtime` before fetching source html.
+   - after this route change, that no-runtime source fetch returned shell html again instead of runtime source html.
+   - adapter then parsed shell-as-source, so runtime DOM/scripts were unavailable for mount/injection.
+5. User-visible result:
+   - static placeholders shown (`Device / Page`, default layer buttons, empty RTI center) instead of injected runtime content/state.
+6. Evidence:
+   - live screenshot after deploy showed only static shell placeholders.
+7. Prevention rule:
+   - do not make device route unconditional shell if shell adapter source fetch still depends on no-runtime source URL.
+   - preserve deterministic behavior without allowing shell-to-shell recursion.
+
+### 2026-04-11 - RTI de-centered after right control remap change
+1. Date/Time: 2026-04-11
+2. What broke:
+   - injected RTI device no longer centered in shell canvas.
+3. Exact cause:
+   - shell adapter changed `APP_UI_CONTROLS.right` from collapsed-shell width to expanded panel width (`300`).
+   - runtime fit math uses `appWidth - controls.left - controls.right`; increasing right control width reduced computed RTI fit area and shifted device center left.
+4. Evidence:
+   - measured center delta in UI test: `contentCenterX` differed from `usableCenterX` by ~`120px` before fix.
+5. What we used before:
+   - collapsed shell side width (`58`) for RTI fit math in shell mode.
+6. Fix:
+   - restored `controls.right` to collapsed-shell width and kept shell geometry lock behavior.
+
+### 2026-04-11 - Layer spacing guide miss during width hotfix
+1. Date/Time: 2026-04-11
+2. What broke:
+   - injected layer panel sizing/placement did not follow approved static-shell spacing guidance.
+3. Exact cause:
+   - prior hotfix targeted panel width via runtime control remap (`controls.right=300`) instead of preserving shell panel geometry contract.
+   - runtime then kept writing inline `layerPanel.style.width/maxHeight`, overriding static panel spacing intent.
+4. Why guide was missed:
+   - fix focused on width symptom only and did not preserve static panel-space contract as defined in Phase 2 guide.
+5. Fix:
+   - preserve shell panel geometry by clearing runtime inline layer-panel width/max-height in shell lock path.
+   - keep outer spacing controlled by static shell CSS (consistent top/bottom spacing).
+
+### 2026-04-11 - Link size drift root cause and correction
+1. Date/Time: 2026-04-11
+2. What broke:
+   - link visuals appeared inconsistent/unexpectedly scaled.
+3. Exact cause:
+   - runtime link/icon sizing is multiplied by RTI `totalScale`.
+   - when right control remap reduced RTI fit area, total scale dropped and link/icon sizing shifted with it.
+4. What we used before:
+   - RTI fit based on collapsed side controls in shell mode (stable scale baseline).
+5. Fix:
+   - restored previous shell fit baseline (`controls.right=58`) so runtime link sizing returns to prior behavior.
+
+### 2026-04-11 - Testing popup CSS centralized to single static source
+1. Date/Time: 2026-04-11
+2. Problem:
+   - testing popup styling was split between shell static css and injected runtime source css, causing repeated regressions.
+3. Change:
+   - moved testing popup CSS ownership to static shell stylesheet (`project_device_static_layout.css`).
+   - removed testing popup selectors from runtime style-injection allowlist in shell adapter.
+4. Result:
+   - popup behavior remains functional while popup styling no longer depends on runtime injected style blocks.
+5. Rule going forward:
+   - testing popup CSS remains in one place only (static shell CSS), not duplicated across injected runtime styles.

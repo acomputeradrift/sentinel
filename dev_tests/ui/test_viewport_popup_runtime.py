@@ -2,6 +2,9 @@ import sys
 import tempfile
 import unittest
 import json
+import socket
+import threading
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
@@ -178,6 +181,56 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
         out = tmp_dir / "runtime_viewport_popup.html"
         out.write_text(html, encoding="utf-8")
         return out
+
+    def _write_shell_fixture_html(self, *, source_html: Path) -> Path:
+        shell_template = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "project_device_static_layout.html"
+        shell_css = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "project_device_static_layout.css"
+        shell_html = source_html.parent / "shell_runtime.html"
+        source_copy = source_html.parent / "source_runtime.html"
+        css_copy = source_html.parent / "project_device_static_layout.css"
+        source_copy.write_text(source_html.read_text(encoding="utf-8"), encoding="utf-8")
+        css_copy.write_text(shell_css.read_text(encoding="utf-8"), encoding="utf-8")
+        doc = shell_template.read_text(encoding="utf-8")
+        doc = doc.replace(
+            "</head>",
+            '<meta name="sentinel-shell-source" content="/source_runtime.html"></head>',
+            1,
+        )
+        shell_html.write_text(doc, encoding="utf-8")
+        return shell_html
+
+    class _StaticServer:
+        def __init__(self, directory: Path):
+            self._directory = directory
+            self._httpd: ThreadingHTTPServer | None = None
+            self._thread: threading.Thread | None = None
+            self.base_url: str | None = None
+
+        def start(self) -> None:
+            directory = self._directory
+
+            class Handler(SimpleHTTPRequestHandler):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, directory=str(directory), **kwargs)
+
+                def log_message(self, fmt: str, *args) -> None:
+                    return
+
+            sock = socket.socket()
+            sock.bind(("127.0.0.1", 0))
+            host, port = sock.getsockname()
+            sock.close()
+
+            self._httpd = ThreadingHTTPServer((host, port), Handler)
+            self.base_url = f"http://{host}:{port}"
+            self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+            self._thread.start()
+
+        def stop(self) -> None:
+            if self._httpd is not None:
+                self._httpd.shutdown()
+                self._httpd.server_close()
+                self._httpd = None
 
     def _write_real_dash_html(self) -> Path | None:
         """
@@ -456,6 +509,218 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             expect(page.locator("#vpPopup")).to_be_hidden()
         finally:
             page.close()
+
+    def test_shell_runtime_injects_real_content_into_rti_device_content(self):
+        from playwright.sync_api import expect
+
+        source_html = self._write_fixture_html()
+        shell_html = self._write_shell_fixture_html(source_html=source_html)
+        server = self._StaticServer(shell_html.parent)
+        server.start()
+
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(f"{server.base_url}/{shell_html.name}?runtime=shell", wait_until="domcontentloaded")
+            expect(page.locator("#rtiDeviceContent .device-page")).to_have_count(1, timeout=15000)
+            injected_count = int(page.evaluate("() => document.querySelectorAll('#rtiDeviceContent .btn-wrap').length"))
+            self.assertGreaterEqual(injected_count, 1)
+            layer_toggle_count = int(page.evaluate("() => document.querySelectorAll('#deviceLayerControlsCanvas .layer-list .layer-toggle').length"))
+            self.assertGreaterEqual(layer_toggle_count, 1)
+            layer_panel_geometry = page.evaluate(
+                """() => {
+                  const panel = document.querySelector('#deviceLayerControlsCanvas .layer-panel');
+                  if (!panel) return null;
+                  const cs = window.getComputedStyle(panel);
+                  return {
+                    width: panel.getBoundingClientRect().width,
+                    paddingTop: cs.paddingTop,
+                    paddingBottom: cs.paddingBottom
+                  };
+                }"""
+            )
+            self.assertIsNotNone(layer_panel_geometry)
+            self.assertGreaterEqual(float(layer_panel_geometry["width"]), 200.0)
+            self.assertEqual(str(layer_panel_geometry["paddingTop"]), str(layer_panel_geometry["paddingBottom"]))
+            layer_spacing = page.evaluate(
+                """() => {
+                  const host = document.querySelector('#deviceLayerControlsCanvas .deviceLayerControlsContent');
+                  const panel = document.querySelector('#deviceLayerControlsCanvas .layer-panel');
+                  if (!host || !panel) return null;
+                  const h = host.getBoundingClientRect();
+                  const p = panel.getBoundingClientRect();
+                  return { outerTop: p.top - h.top, outerBottom: h.bottom - p.bottom };
+                }"""
+            )
+            self.assertIsNotNone(layer_spacing)
+            self.assertLessEqual(
+                abs(float(layer_spacing["outerTop"]) - float(layer_spacing["outerBottom"])),
+                4.0,
+            )
+            expect(page.locator("#topControlsStatic .header")).not_to_have_text("Device / Page", timeout=15000)
+            collapsed_opacity = page.evaluate(
+                """() => {
+                  const el = document.querySelector('.collapsedViewControls');
+                  if (!el) return null;
+                  return window.getComputedStyle(el).opacity;
+                }"""
+            )
+            self.assertEqual(str(collapsed_opacity), "0")
+            rti_canvas_rect = page.evaluate(
+                """() => {
+                  const canvas = document.getElementById('rtiUsableCanvas');
+                  const header = document.getElementById('deviceHeaderCanvas');
+                  if (!canvas) return null;
+                  const r = canvas.getBoundingClientRect();
+                  const hr = header ? header.getBoundingClientRect() : null;
+                  return { top: r.top, left: r.left, width: r.width, headerBottom: hr ? hr.bottom : null };
+                }"""
+            )
+            self.assertIsNotNone(rti_canvas_rect)
+            self.assertIsNotNone(rti_canvas_rect["headerBottom"])
+            self.assertLessEqual(
+                abs(float(rti_canvas_rect["top"]) - float(rti_canvas_rect["headerBottom"])),
+                1.5,
+            )
+            rti_canvas_fit = page.evaluate(
+                """() => {
+                  const usable = document.getElementById('rtiUsableCanvas');
+                  const content = document.getElementById('rtiDeviceContent');
+                  if (!usable || !content) return null;
+                  const u = usable.getBoundingClientRect();
+                  const c = content.getBoundingClientRect();
+                  return {
+                    usableBottom: u.bottom,
+                    contentBottom: c.bottom,
+                    usableCenterX: (u.left + u.right) / 2,
+                    contentCenterX: (c.left + c.right) / 2
+                  };
+                }"""
+            )
+            self.assertIsNotNone(rti_canvas_fit)
+            self.assertLessEqual(float(rti_canvas_fit["contentBottom"]), float(rti_canvas_fit["usableBottom"]) + 1.5)
+            self.assertLessEqual(
+                abs(float(rti_canvas_fit["contentCenterX"]) - float(rti_canvas_fit["usableCenterX"])),
+                1.5,
+            )
+
+            right_before = page.evaluate(
+                """() => {
+                  const panel = document.getElementById('deviceLayerControlsCanvas');
+                  if (!panel) return null;
+                  return panel.getBoundingClientRect().width;
+                }"""
+            )
+            page.evaluate(
+                """() => {
+                  const t = document.getElementById('right-panel-toggle');
+                  if (!t) return;
+                  t.checked = false;
+                  t.dispatchEvent(new Event('change', { bubbles: true }));
+                }"""
+            )
+            page.wait_for_timeout(260)
+            right_after = page.evaluate(
+                """() => {
+                  const panel = document.getElementById('deviceLayerControlsCanvas');
+                  if (!panel) return null;
+                  return panel.getBoundingClientRect().width;
+                }"""
+            )
+            self.assertIsNotNone(right_before)
+            self.assertIsNotNone(right_after)
+            self.assertGreater(float(right_before), float(right_after))
+
+            layout_state = page.evaluate(
+                """() => {
+                  const el = document.getElementById('rtiDeviceContent');
+                  if (!el) return null;
+                  return { width: String(el.style.width || ''), height: String(el.style.height || '') };
+                }"""
+            )
+            self.assertIsNotNone(layout_state)
+            self.assertTrue(str(layout_state["width"]).endswith("px"))
+            self.assertTrue(str(layout_state["height"]).endswith("px"))
+            shell_style_contract = page.evaluate(
+                """() => {
+                  const css = Array.from(document.querySelectorAll('style[data-shell-source-style-filtered]'))
+                    .map((n) => n.textContent || '')
+                    .join('\\n');
+                  const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).map((n) => n.href || '');
+                  return {
+                    hasViewportModeCanvasRule: css.includes('.viewport-mode #rtiCanvas') || css.includes('.viewport-mode #rtiUsableCanvas'),
+                    hasMaterialSymbolsFontLink: links.some((href) => href.includes('fonts.googleapis.com') && href.includes('Material+Symbols+Outlined')),
+                    injectsTestingPopupCss: css.includes('.ov{') || css.includes('.ov.open{') || css.includes('.pop{') || css.includes('.rows-scroll{')
+                  };
+                }"""
+            )
+            self.assertIsNotNone(shell_style_contract)
+            self.assertTrue(bool(shell_style_contract["hasViewportModeCanvasRule"]))
+            self.assertTrue(bool(shell_style_contract["hasMaterialSymbolsFontLink"]))
+            self.assertFalse(bool(shell_style_contract["injectsTestingPopupCss"]))
+            first_button_rect = page.evaluate(
+                """() => {
+                  const el = document.querySelector('#rtiDeviceContent .btn-wrap');
+                  if (!el) return null;
+                  const r = el.getBoundingClientRect();
+                  const cs = window.getComputedStyle(el);
+                  const btn = el.querySelector('.test-btn');
+                  const btnCs = btn ? window.getComputedStyle(btn) : null;
+                  return {
+                    left: r.left,
+                    top: r.top,
+                    wrapPosition: cs.position,
+                    btnPosition: btnCs ? btnCs.position : null,
+                    btnBg: btnCs ? btnCs.backgroundColor : null
+                  };
+                }"""
+            )
+            self.assertIsNotNone(first_button_rect)
+            self.assertGreater(float(first_button_rect["left"]), 220.0)
+            self.assertGreater(float(first_button_rect["top"]), 140.0)
+            self.assertEqual(str(first_button_rect["wrapPosition"]), "absolute")
+            self.assertEqual(str(first_button_rect["btnPosition"]), "absolute")
+            self.assertNotIn("0, 0, 0, 0", str(first_button_rect["btnBg"]))
+            left_panel_classes = page.evaluate(
+                """() => {
+                  const zoom = document.querySelector('#zoomControlsStatic .zoomBtnReset');
+                  const orient = document.querySelector('.orientationToggleStatic');
+                  const zoomStyle = zoom ? window.getComputedStyle(zoom) : null;
+                  return {
+                    zoomPresent: !!zoom,
+                    zoomDisplay: zoomStyle ? zoomStyle.display : null,
+                    zoomBorderWidth: zoomStyle ? zoomStyle.borderTopWidth : null,
+                    zoomBorderRadius: zoomStyle ? zoomStyle.borderTopLeftRadius : null,
+                    orientHtml: orient ? orient.innerHTML : ''
+                  };
+                }"""
+            )
+            self.assertTrue(bool(left_panel_classes["zoomPresent"]))
+            self.assertIn(str(left_panel_classes["zoomDisplay"]), ("inline-flex", "flex"))
+            self.assertEqual(str(left_panel_classes["zoomBorderWidth"]), "2px")
+            self.assertEqual(str(left_panel_classes["zoomBorderRadius"]), "14px")
+            self.assertIn("orientationBtnStatic", str(left_panel_classes["orientHtml"]))
+            testing_modal_contract = page.evaluate(
+                """() => {
+                  const modal = document.getElementById('ov');
+                  const btn = document.querySelector('#rtiDeviceContent .test-btn');
+                  if (!modal || !btn) return null;
+                  const initialOpen = modal.classList.contains('open');
+                  btn.click();
+                  const afterClickOpen = modal.classList.contains('open');
+                  const close = document.getElementById('close');
+                  if (close) close.click();
+                  const afterCloseOpen = modal.classList.contains('open');
+                  return { initialOpen, afterClickOpen, afterCloseOpen };
+                }"""
+            )
+            self.assertIsNotNone(testing_modal_contract)
+            self.assertFalse(bool(testing_modal_contract["initialOpen"]))
+            self.assertTrue(bool(testing_modal_contract["afterClickOpen"]))
+            self.assertFalse(bool(testing_modal_contract["afterCloseOpen"]))
+            self.assertEqual(page.evaluate("() => window.__sentinelShellRuntimeError || ''"), "")
+        finally:
+            page.close()
+            server.stop()
 
     def test_real_dash_scrollbar_gutter_transition_does_not_shift_center(self):
         """
