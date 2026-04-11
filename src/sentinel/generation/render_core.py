@@ -3514,7 +3514,8 @@ def build_device_render_bundle(
         payload = _page_payload(project_data, app_ui, project_stem, device_index, page_index, active_orientation, resolved_targets)
         page_payloads.append(payload)
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
-        page_html_by_index[str(page_index)] = f"{payload['viewport_boxes']}{payload['page_button_rows']}{payload['viewport_button_rows']}"
+        # Keep viewport box click-targets above same-layer button rows while preserving layer z-order.
+        page_html_by_index[str(page_index)] = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
         page_state.append(
             {
                 "deviceName": uf.get("displayName", ""),
