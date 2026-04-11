@@ -257,16 +257,7 @@
           ".vp-popup-vcontent",
           ".vp-indicator",
           ".dot",
-          ".viewport-mode",
-          ".ov",
-          ".pop",
-          ".pop-head",
-          ".rows-scroll",
-          ".row",
-          ".row-head",
-          ".row-meta",
-          ".actions",
-          ".post-status"
+          ".viewport-mode"
         ];
         const blockTokens = [
           ".app-canvas",
@@ -380,6 +371,7 @@
       function lockShellGeometry() {
         const rti = document.getElementById("rtiUsableCanvas");
         const right = document.getElementById("deviceLayerControlsCanvas");
+        const layerPanel = document.querySelector("#deviceLayerControlsCanvas .layer-panel");
         if (rti) {
           rti.style.left = "";
           rti.style.top = "";
@@ -395,6 +387,10 @@
           right.style.top = "";
           right.style.bottom = "";
           right.style.height = "";
+        }
+        if (layerPanel) {
+          layerPanel.style.width = "";
+          layerPanel.style.maxHeight = "";
         }
       }
 
@@ -432,7 +428,7 @@
         controls.top = parsePxVariable("--device-header-h", 50);
         controls.bottom = parsePxVariable("--device-footer-h", 40);
         controls.left = parsePxVariable("--controls-collapsed-w", 58);
-        controls.right = parsePxVariable("--controls-expanded-w", 300);
+        controls.right = parsePxVariable("--controls-collapsed-w", 58);
       }
 
       function sourceUrl() {
