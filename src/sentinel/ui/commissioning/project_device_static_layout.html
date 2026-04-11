@@ -210,6 +210,84 @@
         });
       }
 
+      function installSelectorAdapter() {
+        const idMap = {
+          topControls: "topControlsStatic",
+          orientationToggle: "__shell_orientation_toggle__",
+          zoomControls: "zoomControlsStatic",
+          layerControls: "deviceLayerControlsCanvas",
+          layerPanel: "__shell_layer_panel__",
+          layerList: "__shell_layer_list__",
+          rtiCanvas: "rtiUsableCanvas",
+          rtiContent: "rtiDeviceCanvas",
+          rtiDeviceCanvas: "rtiDeviceContent",
+          bottomControls: "deviceFooterCanvas"
+        };
+
+        const documentGetById = document.getElementById.bind(document);
+        document.getElementById = function (id) {
+          const mapped = idMap[id] || id;
+          if (mapped === "__shell_orientation_toggle__") {
+            return document.querySelector(".orientationToggleStatic");
+          }
+          if (mapped === "__shell_layer_panel__") {
+            return document.querySelector(".layer-panel");
+          }
+          if (mapped === "__shell_layer_list__") {
+            return document.querySelector(".layer-list");
+          }
+          return documentGetById(mapped);
+        };
+      }
+
+      function lockShellGeometry() {
+        const rti = document.getElementById("rtiUsableCanvas");
+        const right = document.getElementById("deviceLayerControlsCanvas");
+        if (rti) {
+          rti.style.left = "";
+          rti.style.top = "";
+          rti.style.width = "";
+          rti.style.height = "";
+          rti.style.bottom = "";
+          rti.style.right = "";
+        }
+        if (right) {
+          right.style.width = "";
+          right.style.left = "";
+          right.style.right = "";
+          right.style.top = "";
+          right.style.bottom = "";
+          right.style.height = "";
+        }
+      }
+
+      function observeShellGeometry() {
+        const targets = [
+          document.getElementById("rtiUsableCanvas"),
+          document.getElementById("deviceLayerControlsCanvas")
+        ].filter(Boolean);
+        if (!targets.length) return;
+        const obs = new MutationObserver(function () {
+          lockShellGeometry();
+        });
+        targets.forEach(function (t) {
+          obs.observe(t, { attributes: true, attributeFilter: ["style"] });
+        });
+        window.addEventListener("resize", lockShellGeometry, { passive: true });
+      }
+
+      function runScripts(sourceDoc) {
+        const scripts = sourceDoc.querySelectorAll("script");
+        scripts.forEach(function (script, index) {
+          const text = script.textContent || "";
+          if (!text.trim()) return;
+          const node = document.createElement("script");
+          node.setAttribute("data-shell-source-script", String(index));
+          node.textContent = remapText(text);
+          document.body.appendChild(node);
+        });
+      }
+
       function sourceUrl() {
         const sourceMeta = document.querySelector('meta[name="sentinel-shell-source"]');
         const sourceFromMeta = sourceMeta && sourceMeta.getAttribute("content");
@@ -233,6 +311,10 @@
           mountLayers(sourceDoc);
           mountRtiContent(sourceDoc);
           mountPopups(sourceDoc);
+          installSelectorAdapter();
+          runScripts(sourceDoc);
+          lockShellGeometry();
+          observeShellGeometry();
         })
         .catch(function () {
           window.__sentinelShellRuntimeError = "shell-runtime-load-failed";
