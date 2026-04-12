@@ -17,6 +17,8 @@
 6. Render-verification tests that fail when browser-rendered or computed button sizes and positions differ from the RTI-derived coordinates and dimensions represented in the generated project-specific JSON.
 7. End-to-end tests that verify the expected flow from `.apex` upload to project-specific JSON generation to interface generation.
 8. Regression tests that protect previously approved extraction rules, rendering behavior, and output structure from silent drift.
+9. Tests must not be the sole measure of safe change.
+10. Changes affecting shared UI, layout, or styling must include explicit validation of unaffected areas, even if tests pass.
 
 ## Rule
 1. New extraction or generation behavior is not complete until it is covered by tests that prove the intended contract and output.

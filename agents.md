@@ -104,6 +104,31 @@ Example expected behavior:
 
 ---
 
+## Blast Radius Control
+
+Before proposing any edit scope, the AI must classify each relevant file as one of:
+- Direct Target
+- Supporting Read-Only
+- Shared/Global
+
+For every file proposed for editing, the AI must state:
+- why the file must be edited
+- whether it is Shared/Global
+- what other pages, components, or flows may be affected
+
+Shared/Global files must not be included in the proposed edit scope unless clearly necessary.
+
+If a Shared/Global file appears necessary, the AI must:
+- explicitly say that blast radius is increased
+- explain why a local change or override is not sufficient
+- list the specific areas that require regression verification
+
+The AI must prefer the smallest isolated change that solves the user-visible problem.
+
+If the blast radius cannot be clearly explained, the AI must remain in investigation mode and not propose implementation yet.
+
+---
+
 ## Scoped Execution
 
 - Once the user approves a proposed change scope, the AI should complete that scoped work without asking for repeated per-file approvals.

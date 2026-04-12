@@ -1642,11 +1642,18 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             page.goto(html_path.as_uri(), wait_until="domcontentloaded")
             expect(page.locator("#vpPopup")).to_be_hidden()
 
-            # Even with higher-order non-viewport layers, viewport click must open the popup.
-            page.locator(".vp-box").first.click(timeout=3000)
-            expect(page.locator("#vpPopup")).to_be_visible()
-            page.locator("#vpPopupClose").click()
-            expect(page.locator("#vpPopup")).to_be_hidden()
+            # With layer-based z-order parity, higher non-viewport layers can block viewport clicks.
+            # This should mirror runtime layer stacking behavior.
+            blocked = page.evaluate(
+                """() => {
+                  const box = document.querySelector('.vp-box');
+                  if (!box) return null;
+                  const r = box.getBoundingClientRect();
+                  const hit = document.elementFromPoint(r.left + (r.width / 2), r.top + (r.height / 2));
+                  return !!(hit && hit.closest && hit.closest('.btn-wrap[data-button-tag="BLOCK"]'));
+                }"""
+            )
+            self.assertTrue(bool(blocked))
 
             # Toggle off all non-viewport layers (simulate user intent via layer panel state).
             page.evaluate(
@@ -1665,6 +1672,211 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             )
 
             # After toggling layers, viewport click still opens the popup.
+            page.locator(".vp-box").first.click(timeout=3000)
+            expect(page.locator("#vpPopup")).to_be_visible()
+        finally:
+            page.close()
+
+    def test_viewport_box_z_order_tracks_viewport_layer_order(self):
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Viewport Z Test)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Viewport Host Layer",
+                                        "layerOrder": 1,
+                                        "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 77},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {"visible": True, "coordinates": {"top": 120, "left": 90, "height": 260, "width": 300}},
+                                                        "landscape": {"visible": True, "coordinates": {"top": 120, "left": 90, "height": 260, "width": 300}},
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "VP Inner",
+                                                        "layerOrder": 1,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [
+                                                                        {
+                                                                            "buttonIdentity": {"buttonTagName": "VP_A", "text": "VP_A", "buttonType": None},
+                                                                            "buttonUI": oriented_ui(
+                                                                                portrait={"visible": True, "coordinates": {"top": 20, "left": 20, "height": 44, "width": 120}},
+                                                                                landscape={"visible": True, "coordinates": {"top": 20, "left": 20, "height": 44, "width": 120}},
+                                                                            ),
+                                                                            "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
+                                                                        }
+                                                                    ],
+                                                                },
+                                                            }
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="viewport_z_order_test", device_index=0)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel-ui-"))
+        html_path = tmp_dir / "viewport_z_order_test.html"
+        html_path.write_text(html, encoding="utf-8")
+
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            z = page.evaluate(
+                """() => {
+                  const box = document.querySelector('.device-page.active .vp-box');
+                  const btnWrap = document.querySelector('.device-page.active .btn-wrap.vp-btn');
+                  if (!box || !btnWrap) return null;
+                  return {
+                    boxZ: Number(getComputedStyle(box).zIndex || 0),
+                    btnZ: Number(getComputedStyle(btnWrap).zIndex || 0),
+                    ownerOrder: Number(box.dataset.ownerLayerOrder || 0)
+                  };
+                }"""
+            )
+            self.assertIsNotNone(z)
+            self.assertEqual(int(z["boxZ"]), 100 + int(z["ownerOrder"]))
+            self.assertEqual(int(z["btnZ"]), 100 + int(z["ownerOrder"]))
+        finally:
+            page.close()
+
+    def test_viewport_popup_opens_when_same_layer_button_overlaps_viewport(self):
+        from playwright.sync_api import expect
+
+        def overlay_button(*, tag: str, text: str, left: int, top: int, width: int, height: int) -> dict:
+            return {
+                "buttonIdentity": {"buttonTagName": tag, "text": text, "buttonType": None},
+                "buttonUI": oriented_ui(
+                    portrait={"visible": True, "coordinates": {"top": top, "left": left, "height": height, "width": width}},
+                    landscape={"visible": True, "coordinates": {"top": top, "left": left, "height": height, "width": width}},
+                ),
+                "testTargets": {"text": True, "macros": False, "macroSteps": False, "variables": {}},
+            }
+
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Same Layer Overlap Test)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Combined Layer",
+                                        "layerOrder": 2,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "screenButtons": [overlay_button(tag="BLOCK_SAME", text="BLOCK_SAME", left=0, top=0, width=900, height=900)],
+                                            "hardButtons": [],
+                                        },
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 123},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {"visible": True, "coordinates": {"top": 200, "left": 90, "height": 260, "width": 300}},
+                                                        "landscape": {"visible": True, "coordinates": {"top": 120, "left": 160, "height": 220, "width": 420}},
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Inner Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [{"frameId": 0, "buttonCategories": {"screenLabels": [], "hardButtons": [], "screenButtons": []}}],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="same_layer_overlap_viewport_test", device_index=0)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel-ui-"))
+        html_path = tmp_dir / "same_layer_overlap_viewport_test.html"
+        html_path.write_text(html, encoding="utf-8")
+
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
             page.locator(".vp-box").first.click(timeout=3000)
             expect(page.locator("#vpPopup")).to_be_visible()
         finally:

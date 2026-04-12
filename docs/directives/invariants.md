@@ -9,7 +9,8 @@
 6. Critical flows must be event-logged from day one so important actions, failures, and transitions are traceable.
 7. If a button, UI element, or testing target exists in the extracted project data, Sentinel must not silently omit or misrepresent it in generated output.
 8. Testing artifacts must remain tightly separated from app files so cleanup can happen safely without risking application code, approved docs, or source assets.
-9. Shared logic must not be reimplemented in conflicting ways when a single reusable function or module can enforce the same behavior correctly.
+9. Shared logic must not be reimplemented in conflicting ways,
+but must also not be modified when a localized solution can safely resolve the issue.
 10. Failure handling must provide verbose, useful information about what failed, where it failed, and why the app cannot safely continue or complete the current operation.
 11. A failed test result must always include notes so the failure is useful for troubleshooting and follow-up work.
 
@@ -20,6 +21,13 @@
 4. Critical failures must provide enough detail for the user or developer to understand the cause, affected stage, and required next action.
 5. Recovery may continue only after the app returns to a stable and trusted state.
 6. Human review is required before accepting results from any flow that previously violated an invariant.
+
+## Change Safety Invariant
+
+1. Changes must prefer the smallest isolated scope that resolves the user-visible problem.
+2. Shared or reusable system elements must not be modified when a local override or isolated change can achieve the same result.
+3. A correct implementation is invalid if it introduces unintended side effects in other areas of the system.
+4. Safety of change scope is as important as correctness of implementation.
 
 ---
 
