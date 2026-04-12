@@ -45,21 +45,15 @@ Purpose: describe **how we develop and deploy** (repo layout, local vs droplet, 
 
 ## Safe deployment workflow (recommended)
 
-Goal: deploy code without accidentally deleting server files.
+Authoritative runbook: **`docs/directives/dev_environment_and_workflow.md`** (preflight, one-shot PowerShell block, **pre-restart grep or hash verify**, then restart — avoids “uploaded but still old” and boot crash loops).
 
-1) **Commit** what you intend to ship, then build an archive from git (preferred):
-   - `git archive … HEAD` packs **only the `HEAD` commit**; uncommitted edits are not in the zip. Run `git status`, commit, optionally note `git rev-parse HEAD`, then archive.
-   - Example: `git archive --format=zip -o sentinel_patch.zip HEAD src`
-2) Copy the archive to the droplet:
-   - Example: `scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip`
-3) Extract on the droplet:
-   - If `unzip` is not available, use Python:
-     - `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`
-4) Restart the app:
-   - `sudo systemctl restart sentinel`
-5) Validate:
-   - `curl http://127.0.0.1/health`
-   - `sudo journalctl -u sentinel -n 50 --no-pager`
+Short form:
+
+1. `git status` → `git rev-parse HEAD` → `git archive --format=zip -o sentinel_patch.zip HEAD src` → confirm zip lists files you changed (`python -m zipfile -l …`).
+2. `scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip`
+3. `ssh -o BatchMode=yes sentinelServer 'sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app'`
+4. **Verify on server before restart** (grep a marker from this deploy, or `verify_deploy_hash.py` on the droplet).
+5. `ssh … 'sudo -n systemctl restart sentinel'` → sleep 5–10s → `curl --max-time 10 http://127.0.0.1/health` (retry if 502).
 
 Known gotchas:
 - Avoid `rsync --delete` against `/opt/sentinel/app` (it can remove required modules and break imports).

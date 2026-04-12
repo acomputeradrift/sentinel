@@ -52,6 +52,61 @@ def _migrations_dir() -> Path:
     return Path(__file__).resolve().parent / "migrations"
 
 
+def _split_sql_migration_statements(sql: str) -> list[str]:
+    """
+    Split migration file text into executable statements.
+
+    Naive ``sql.split(";")`` breaks on semicolons inside ``--`` line comments (and
+    would break on ``;`` inside string literals). This scanner skips full-line
+    ``--`` comments and respects single-quoted SQL string literals (``''`` escape).
+    """
+    statements: list[str] = []
+    buf: list[str] = []
+    i = 0
+    n = len(sql)
+    in_squote = False
+
+    def flush() -> None:
+        stmt = "".join(buf).strip()
+        buf.clear()
+        if stmt:
+            statements.append(stmt)
+
+    while i < n:
+        c = sql[i]
+
+        if not in_squote:
+            if c == "-" and i + 1 < n and sql[i + 1] == "-":
+                while i < n and sql[i] != "\n":
+                    i += 1
+                continue
+            if c == "'":
+                in_squote = True
+                buf.append(c)
+                i += 1
+                continue
+            if c == ";":
+                flush()
+                i += 1
+                continue
+        else:
+            buf.append(c)
+            if c == "'":
+                if i + 1 < n and sql[i + 1] == "'":
+                    buf.append(sql[i + 1])
+                    i += 2
+                    continue
+                in_squote = False
+            i += 1
+            continue
+
+        buf.append(c)
+        i += 1
+
+    flush()
+    return statements
+
+
 def apply_migrations(database_url: str) -> None:
     migrations_dir = _migrations_dir()
     sql_paths = sorted(migrations_dir.glob("*.sql"))
@@ -62,9 +117,8 @@ def apply_migrations(database_url: str) -> None:
     try:
         cur = con.cursor()
         for sql_path in sql_paths:
-            sql = sql_path.read_text(encoding="utf-8")
-            statements = [s.strip() for s in sql.split(";") if s.strip()]
-            for stmt in statements:
+            raw = sql_path.read_text(encoding="utf-8")
+            for stmt in _split_sql_migration_statements(raw):
                 cur.execute(stmt)
         con.commit()
     finally:
