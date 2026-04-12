@@ -100,6 +100,10 @@ Example (required check pattern):
 
 If verification fails, stop and re-extract with overwrite before restart.
 
+Important hash-check note:
+- On Windows working trees, local file hashes can differ from deployed hashes because of line-ending conversion.
+- Verify against archive bytes (`sentinel_patch.zip` entry hash) vs server file hash, not working-tree file hash.
+
 Validation note:
 - A brief `502 Bad Gateway` can occur immediately after restart while Uvicorn is still coming up behind Nginx.
 - Treat this as expected during the first seconds; retry health check after a short delay before treating it as a failure.
@@ -110,6 +114,9 @@ Known gotchas:
 - I corrected it with a strict sequential redeploy and re-verified server file contents.
 - Repeated failure: extraction completed but did not overwrite an existing server file, leaving old runtime behavior active.
 - Prevention: force overwrite extraction + pre-restart source/hash verification is mandatory.
+- Some droplets do not have `unzip` installed; do not assume `unzip -o` is available.
+- Preferred fallback when `unzip` is missing: `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`.
+- Windows PowerShell quoting for complex `ssh "...python -c ..."` commands is fragile; prefer simple remote commands (or script files) over nested one-liners.
 
 ### If zip creation is blocked locally
 
