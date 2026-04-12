@@ -45,6 +45,7 @@ Purpose: run UI runtime tests with Playwright.
   - Find files: `Get-ChildItem -Recurse`
   - Search text: `Select-String`
 - When unsure whether local environment has dependencies (FastAPI, Playwright, etc.), tests may skip locally. Prefer verifying on the droplet when needed.
+- **PowerShell command chaining:** on some Windows PowerShell versions, `cmd1 && cmd2` is not valid; use `cmd1 ; cmd2` to run deploy steps sequentially in one line.
 
 ## Droplet (remote server) topology
 
@@ -62,7 +63,9 @@ Purpose: run UI runtime tests with Playwright.
 
 Goal: deploy code without accidentally deleting server files.
 
-1) Build an archive locally from git (preferred):
+1) **Commit** anything you intend to ship, then build an archive from git (preferred):
+   - `git archive` only includes **committed** blobs for the ref you pass (usually `HEAD`). **Uncommitted working-tree changes are not in the zip**—a deploy built before commit will look successful but will still run the previous revision on the server.
+   - Before archiving, run `git status` (clean or intentional commits only), then record what you are shipping, e.g. `git rev-parse HEAD` (full hash) or `git rev-parse --short HEAD` for runbooks / chat.
    - Example: `git archive --format=zip -o sentinel_patch.zip HEAD src`
 2) Copy the archive to the droplet:
    - Example: `scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip`
@@ -80,7 +83,7 @@ Goal: deploy code without accidentally deleting server files.
 ### Mandatory deployment sequence (no parallelization)
 
 Run these steps strictly one at a time:
-1. Build archive.
+1. Commit (if needed) so `HEAD` matches what you intend to deploy, then build archive.
 2. Copy archive.
 3. Extract with overwrite.
 4. Verify deployed file content/hash on server.
@@ -89,6 +92,13 @@ Run these steps strictly one at a time:
 7. Route-level verification for the user-visible path.
 
 Do not run copy/extract/restart in parallel under any circumstances.
+
+**Route-level verification (proven on 2026-04-12):** after health is OK, from the droplet check the commissioning UI path (served via nginx → app), for example:
+
+- `curl -sS -I http://127.0.0.1/commissioning/` → expect `HTTP/1.1 200` and HTML content type.
+- Responses may include an `x-request-id` header (trace middleware); presence confirms the new stack is in front of static routes.
+
+If `SENTINEL_COMMISSIONING_API_KEY` is set in the service environment **without** configuring the browser (see `docs/directives/commissioning_security_model.md`), commissioning REST calls will return **401** until the matching header or WS `commissioningKey` query is supplied—either unset the key on trusted LAN-only deploys or configure operators accordingly.
 
 ### Mandatory post-extract verification
 
@@ -117,6 +127,18 @@ Known gotchas:
 - Some droplets do not have `unzip` installed; do not assume `unzip -o` is available.
 - Preferred fallback when `unzip` is missing: `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`.
 - Windows PowerShell quoting for complex `ssh "...python -c ..."` commands is fragile; prefer simple remote commands (or script files) over nested one-liners.
+- Proven Windows-safe remote execution pattern (verified on 2026-04-12):
+  1) Write a local temporary script file.
+  2) `scp .tmp_remote_probe.py sentinelServer:/tmp/codex_remote_probe.py`
+  3) `ssh sentinelServer "python3 /tmp/codex_remote_probe.py"`
+  4) Cleanup both sides: `ssh sentinelServer "rm -f /tmp/codex_remote_probe.py"` and `Remove-Item -Force .tmp_remote_probe.py`
+- Do not use inline PowerShell heredoc/one-liner remote Python payloads over `ssh` for deploy verification steps.
+- **`pip install -e .` / editable installs** can create `src/sentinel.egg-info/` (and similar). Do **not** commit those into `git archive HEAD src` deploys—they are build metadata, not application source. They are listed in `.gitignore`; if they were ever committed, remove them from the index with `git rm -r --cached src/sentinel.egg-info` and commit once.
+- **SQL migrations under `src/sentinel/server/persistence/migrations/`:** `apply_migrations` splits each file on every `;` (semicolon). Do **not** put a semicolon inside a line—even inside a `--` SQL comment—or a fragment can be executed as its own statement and Postgres will error (example failure: `syntax error at or near "historical"` when a comment contained `...result; historical...`).
+
+### Optional: `verify_deploy_hash.py` (pre-restart hash match)
+
+Repo root: `verify_deploy_hash.py` — compares SHA-256 of a member inside `/tmp/sentinel_patch.zip` on the droplet to the deployed file under `/opt/sentinel/app/...`. Intended to be **copied to the server** (or `scp` to `/tmp/`) and run with `python3` **on the droplet** after extract and **before** `systemctl restart` (mandatory sequence: verify, then restart). Defaults match the standard paths; run with `--help` for overrides.
 
 ### If zip creation is blocked locally
 
@@ -194,9 +216,9 @@ Intent Check Gate (required before deploy)
 - Deploy is blocked unless `Pass/Fail` is explicitly `Pass`.
 
 3) Deploy to droplet
-   - Commit changes before archiving (git archive uses `HEAD` only):
-     - `git add src`
-     - `git commit -m "Describe change"`
+   - **Commit before `git archive`:** the archive is built from **git objects only** (the `HEAD` commit). Neither staged nor unstaged working-tree edits are included until you `git commit`. Record what shipped: `git rev-parse HEAD`.
+   - Prefer **`git add` with paths you intend to ship** (e.g. specific packages under `src/sentinel/`), not blind `git add src`, so editable-install metadata such as `src/sentinel.egg-info/` is never committed (see Known gotchas).
+   - `git commit -m "Describe change"`
    - Build archive: `git archive --format=zip -o sentinel_patch.zip HEAD src`
    - Copy: `scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip`
    - Extract: `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`

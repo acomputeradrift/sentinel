@@ -47,7 +47,8 @@ Purpose: describe **how we develop and deploy** (repo layout, local vs droplet, 
 
 Goal: deploy code without accidentally deleting server files.
 
-1) Build an archive locally from git (preferred):
+1) **Commit** what you intend to ship, then build an archive from git (preferred):
+   - `git archive … HEAD` packs **only the `HEAD` commit**; uncommitted edits are not in the zip. Run `git status`, commit, optionally note `git rev-parse HEAD`, then archive.
    - Example: `git archive --format=zip -o sentinel_patch.zip HEAD src`
 2) Copy the archive to the droplet:
    - Example: `scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip`
