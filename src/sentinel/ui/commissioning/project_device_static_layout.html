@@ -41,10 +41,10 @@
 
           <section class="viewControlGroup" aria-label="Text Zoom">
             <h3 class="viewControlLabel">Text</h3>
-            <div class="staticZoomControls" role="group" aria-label="Text zoom controls">
-              <button class="zoomBtn zoomBtnDec" type="button" aria-label="Decrease text zoom">-</button>
-              <button class="zoomBtn zoomBtnReset" type="button" aria-label="Text zoom percent">100%</button>
-              <button class="zoomBtn zoomBtnInc" type="button" aria-label="Increase text zoom">+</button>
+            <div id="textZoomControlsStatic" class="staticZoomControls" role="group" aria-label="Text zoom controls">
+              <button class="zoomBtn zoomBtnDec" type="button" aria-label="Decrease text zoom" data-control="text-zoom-dec" data-variant="full">-</button>
+              <button class="zoomBtn zoomBtnReset" type="button" aria-label="Text zoom percent" data-control="text-zoom-reset" data-variant="full">100%</button>
+              <button class="zoomBtn zoomBtnInc" type="button" aria-label="Increase text zoom" data-control="text-zoom-inc" data-variant="full">+</button>
             </div>
           </section>
 
@@ -60,22 +60,22 @@
         <div class="collapsedViewControls" aria-label="Collapsed View Controls">
           <section class="collapsedControlGroup" aria-label="Collapsed Device Zoom">
             <div class="collapsedControlLabel">D</div>
-            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Increase device zoom">+</button>
-            <button class="zoomBtn zoomBtnResetMini" type="button" aria-label="Device zoom percent"><span class="zoomPctVertical">100%</span></button>
-            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Decrease device zoom">-</button>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Increase device zoom" data-control="device-zoom-inc" data-variant="mini">+</button>
+            <button class="zoomBtn zoomBtnResetMini" type="button" aria-label="Device zoom percent" data-control="device-zoom-reset" data-variant="mini"><span class="zoomPctVertical">100%</span></button>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Decrease device zoom" data-control="device-zoom-dec" data-variant="mini">-</button>
           </section>
 
           <section class="collapsedControlGroup" aria-label="Collapsed Text Zoom">
             <div class="collapsedControlLabel">T</div>
-            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Increase text zoom">+</button>
-            <button class="zoomBtn zoomBtnResetMini" type="button" aria-label="Text zoom percent"><span class="zoomPctVertical">100%</span></button>
-            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Decrease text zoom">-</button>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Increase text zoom" data-control="text-zoom-inc" data-variant="mini">+</button>
+            <button class="zoomBtn zoomBtnResetMini" type="button" aria-label="Text zoom percent" data-control="text-zoom-reset" data-variant="mini"><span class="zoomPctVertical">100%</span></button>
+            <button class="zoomBtn zoomBtnMini" type="button" aria-label="Decrease text zoom" data-control="text-zoom-dec" data-variant="mini">-</button>
           </section>
 
-          <section class="collapsedControlGroup" aria-label="Collapsed Orientation Placeholder" aria-hidden="true">
+          <section class="collapsedControlGroup" aria-label="Collapsed Orientation Placeholder">
             <div class="collapsedControlLabel">O</div>
-            <button class="zoomBtn zoomBtnMini zoomBtnMiniOrient" type="button">P</button>
-            <button class="zoomBtn zoomBtnMini zoomBtnMiniOrient" type="button">L</button>
+            <button class="zoomBtn zoomBtnMini zoomBtnMiniOrient orientation-btn" type="button" data-orientation="portrait" data-control="orientation-portrait" data-variant="mini" aria-label="Portrait orientation">P</button>
+            <button class="zoomBtn zoomBtnMini zoomBtnMiniOrient orientation-btn active" type="button" data-orientation="landscape" data-control="orientation-landscape" data-variant="mini" aria-label="Landscape orientation">L</button>
           </section>
         </div>
         <label class="deviceControlsToggle deviceControlsToggleLeft" for="left-panel-toggle" aria-label="Toggle left controls"></label>
@@ -170,6 +170,7 @@
             btn.classList.add("orientationBtnStaticActive");
           }
         });
+        annotateControls();
       }
 
       function mountZoom(sourceDoc) {
@@ -188,6 +189,37 @@
             btn.classList.add("zoomBtn", "zoomBtnInc");
           }
         });
+        annotateControls();
+      }
+
+      function annotateControls() {
+        const deviceRoot = document.getElementById("zoomControlsStatic");
+        if (deviceRoot) {
+          const dec = deviceRoot.querySelector(".zoom-dec");
+          const reset = deviceRoot.querySelector(".zoom-reset");
+          const inc = deviceRoot.querySelector(".zoom-inc");
+          if (dec) {
+            dec.setAttribute("data-control", "device-zoom-dec");
+            dec.setAttribute("data-variant", "full");
+          }
+          if (reset) {
+            reset.setAttribute("data-control", "device-zoom-reset");
+            reset.setAttribute("data-variant", "full");
+          }
+          if (inc) {
+            inc.setAttribute("data-control", "device-zoom-inc");
+            inc.setAttribute("data-variant", "full");
+          }
+        }
+        const fullOrientation = document.querySelector(".orientationToggleStatic");
+        if (fullOrientation) {
+          fullOrientation.querySelectorAll(".orientation-btn").forEach(function (button) {
+            const orientation = String(button.getAttribute("data-orientation") || "");
+            if (!orientation) return;
+            button.setAttribute("data-control", "orientation-" + orientation);
+            button.setAttribute("data-variant", "full");
+          });
+        }
       }
 
       function mountLayers(sourceDoc) {
@@ -431,6 +463,173 @@
         controls.right = parsePxVariable("--controls-collapsed-w", 58);
       }
 
+      const SHELL_TEXT_ZOOM = {
+        percent: 100,
+        step: 10,
+        min: 100,
+        max: 300
+      };
+
+      function clampNumber(value, min, max) {
+        return Math.min(max, Math.max(min, Number(value || min)));
+      }
+
+      function activePageElement() {
+        return document.querySelector("#rtiDeviceContent .device-page.active");
+      }
+
+      function syncTextZoomLabels() {
+        const value = String(SHELL_TEXT_ZOOM.percent) + "%";
+        document.querySelectorAll('[data-control="text-zoom-reset"]').forEach(function (button) {
+          const vertical = button.querySelector(".zoomPctVertical");
+          if (vertical) {
+            vertical.textContent = value;
+          } else {
+            button.textContent = value;
+          }
+        });
+      }
+
+      function applyTextZoom() {
+        const pageEl = activePageElement();
+        if (!pageEl) return;
+        pageEl.querySelectorAll(".test-btn").forEach(function (button) {
+          if (!button.dataset.shellBaseFontPx) {
+            const base = Number.parseFloat(getComputedStyle(button).fontSize || "0");
+            button.dataset.shellBaseFontPx = String(Number.isFinite(base) && base > 0 ? base : 12);
+          }
+          const basePx = Number.parseFloat(button.dataset.shellBaseFontPx || "12");
+          const nextPx = (basePx * SHELL_TEXT_ZOOM.percent) / 100;
+          button.style.fontSize = String(nextPx) + "px";
+        });
+      }
+
+      function resetTextZoomOnInactivePages() {
+        document.querySelectorAll("#rtiDeviceContent .device-page").forEach(function (pageEl) {
+          if (pageEl.classList.contains("active")) return;
+          pageEl.querySelectorAll(".test-btn").forEach(function (button) {
+            button.style.fontSize = "";
+          });
+        });
+      }
+
+      function updateTextZoom(nextPercent) {
+        SHELL_TEXT_ZOOM.percent = clampNumber(nextPercent, SHELL_TEXT_ZOOM.min, SHELL_TEXT_ZOOM.max);
+        syncTextZoomLabels();
+        applyTextZoom();
+        resetTextZoomOnInactivePages();
+      }
+
+      function findDeviceZoomButton(action) {
+        if (action === "inc") return document.querySelector('#zoomControlsStatic .zoom-inc');
+        if (action === "dec") return document.querySelector('#zoomControlsStatic .zoom-dec');
+        if (action === "reset") return document.querySelector('#zoomControlsStatic .zoom-reset');
+        return null;
+      }
+
+      function findFullOrientationButton(orientation) {
+        return document.querySelector('.orientationToggleStatic .orientation-btn[data-orientation="' + String(orientation) + '"]');
+      }
+
+      function syncMiniDeviceZoomFromFull() {
+        const full = document.querySelector('[data-control="device-zoom-reset"][data-variant="full"]');
+        if (!full) return;
+        const value = String(full.textContent || "").trim();
+        const mini = document.querySelector('[data-control="device-zoom-reset"][data-variant="mini"]');
+        if (!mini) return;
+        const vertical = mini.querySelector(".zoomPctVertical");
+        if (vertical) {
+          vertical.textContent = value;
+        } else {
+          mini.textContent = value;
+        }
+      }
+
+      function syncMiniOrientationStateFromFull() {
+        const fullButtons = document.querySelectorAll('.orientationToggleStatic .orientation-btn[data-orientation]');
+        fullButtons.forEach(function (button) {
+          const orientation = String(button.getAttribute("data-orientation") || "");
+          if (!orientation) return;
+          const active = button.classList.contains("active");
+          const mini = document.querySelector('.collapsedViewControls .orientation-btn[data-orientation="' + orientation + '"]');
+          if (!mini) return;
+          mini.classList.toggle("active", active);
+          mini.classList.toggle("orientationBtnStaticActive", active);
+          mini.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+      }
+
+      function bindShellControls() {
+        document.addEventListener("click", function (event) {
+          const target = event.target && event.target.closest ? event.target.closest("[data-control]") : null;
+          if (!target) return;
+          const control = String(target.getAttribute("data-control") || "");
+          if (!control) return;
+
+          if (control === "device-zoom-inc") {
+            const btn = findDeviceZoomButton("inc");
+            if (btn && btn !== target) btn.click();
+            return;
+          }
+          if (control === "device-zoom-dec") {
+            const btn = findDeviceZoomButton("dec");
+            if (btn && btn !== target) btn.click();
+            return;
+          }
+          if (control === "device-zoom-reset") {
+            const btn = findDeviceZoomButton("reset");
+            if (btn && btn !== target) btn.click();
+            return;
+          }
+
+          if (control === "text-zoom-inc") {
+            updateTextZoom(SHELL_TEXT_ZOOM.percent + SHELL_TEXT_ZOOM.step);
+            return;
+          }
+          if (control === "text-zoom-dec") {
+            updateTextZoom(SHELL_TEXT_ZOOM.percent - SHELL_TEXT_ZOOM.step);
+            return;
+          }
+          if (control === "text-zoom-reset") {
+            updateTextZoom(100);
+            return;
+          }
+
+          if (control === "orientation-portrait") {
+            const button = findFullOrientationButton("portrait");
+            if (button && button !== target) button.click();
+            return;
+          }
+          if (control === "orientation-landscape") {
+            const button = findFullOrientationButton("landscape");
+            if (button && button !== target) button.click();
+          }
+        });
+      }
+
+      function observeActivePageChanges() {
+        const root = document.getElementById("rtiDeviceContent");
+        if (!root) return;
+        const observer = new MutationObserver(function () {
+          applyTextZoom();
+          resetTextZoomOnInactivePages();
+        });
+        observer.observe(root, { subtree: true, attributes: true, attributeFilter: ["class"] });
+      }
+
+      function observeFullControlState() {
+        const fullZoom = document.querySelector('[data-control="device-zoom-reset"][data-variant="full"]');
+        if (fullZoom) {
+          const zoomObserver = new MutationObserver(syncMiniDeviceZoomFromFull);
+          zoomObserver.observe(fullZoom, { subtree: true, childList: true, characterData: true });
+        }
+        const orientationRoot = document.querySelector(".orientationToggleStatic");
+        if (orientationRoot) {
+          const orientationObserver = new MutationObserver(syncMiniOrientationStateFromFull);
+          orientationObserver.observe(orientationRoot, { subtree: true, attributes: true, attributeFilter: ["class", "aria-pressed"] });
+        }
+      }
+
       function sourceUrl() {
         const sourceMeta = document.querySelector('meta[name="sentinel-shell-source"]');
         const sourceFromMeta = sourceMeta && sourceMeta.getAttribute("content");
@@ -456,12 +655,22 @@
           mountPopups(sourceDoc);
           installSelectorAdapter();
           runScripts(sourceDoc);
+          annotateControls();
+          bindShellControls();
           alignRuntimeControlsToShell();
           lockShellGeometry();
           observeShellGeometry();
+          observeActivePageChanges();
+          observeFullControlState();
+          syncTextZoomLabels();
+          syncMiniDeviceZoomFromFull();
+          syncMiniOrientationStateFromFull();
+          applyTextZoom();
           if (typeof window.applyRtiLayout === "function") {
             window.applyRtiLayout();
           }
+          syncMiniDeviceZoomFromFull();
+          syncMiniOrientationStateFromFull();
         })
         .catch(function () {
           window.__sentinelShellRuntimeError = "shell-runtime-load-failed";

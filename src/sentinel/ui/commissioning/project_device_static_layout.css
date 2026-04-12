@@ -6,9 +6,9 @@
   --panel-border-color: #c6d2dd;
   --panel-corner-radius: 16px;
 
-  --color-header-footer: #f2f9ed;
-  --color-controls: #fcf1ee;
-  --color-rti: #eff4fd;
+  --color-header-footer: transparent;
+  --color-controls: transparent;
+  --color-rti: transparent;
   --outline: transparent;
 }
 
@@ -511,6 +511,11 @@ body {
 }
 
 .orientationBtnStaticActive {
+  background: #29445a;
+  color: #ffffff;
+}
+
+.orientation-btn.active {
   background: #29445a;
   color: #ffffff;
 }
