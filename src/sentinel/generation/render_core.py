@@ -215,11 +215,27 @@ def _page_layers(page: dict[str, Any]) -> list[dict[str, Any]]:
 def _page_layer_state(page: dict[str, Any]) -> list[dict[str, Any]]:
     layers = _page_layers(page)
     if not layers:
-        return [{"key": _layer_key(0), "name": "Page Layer", "layerOrder": 0}]
+        return [{"key": _layer_key(0), "name": "Page Layer", "layerOrder": 0, "sharedLayerId": None}]
     out: list[dict[str, Any]] = []
     for index, layer in enumerate(layers):
         name = str(layer.get("layerName") or "").strip() or f"Layer {index + 1}"
-        out.append({"key": _layer_key(index), "name": name, "layerOrder": int(layer.get("layerOrder", 0) or 0)})
+        shared_layer_id: int | None = None
+        raw_shared_layer_id = layer.get("sharedLayerId")
+        if raw_shared_layer_id is not None:
+            try:
+                parsed_shared_layer_id = int(raw_shared_layer_id)
+            except Exception:
+                parsed_shared_layer_id = 0
+            if parsed_shared_layer_id > 0:
+                shared_layer_id = parsed_shared_layer_id
+        out.append(
+            {
+                "key": _layer_key(index),
+                "name": name,
+                "layerOrder": int(layer.get("layerOrder", 0) or 0),
+                "sharedLayerId": shared_layer_id,
+            }
+        )
     return sorted(out, key=lambda layer: (-int(layer.get("layerOrder", 0) or 0), str(layer.get("name") or "")))
 
 
@@ -824,7 +840,7 @@ def _render_document(
     rti_device_json = json.dumps(rti_device_cfg)
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
-<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2\">
+<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open\">
 <style>
 html,body{{margin:0;width:100%;height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;overflow:hidden;}}
@@ -902,7 +918,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .layer-list{{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:2px;}}
 .layer-toggle{{width:100%;min-height:{int(layer_panel_button_cfg.get("minHeight", 44))}px;border-radius:{int(layer_panel_button_cfg.get("borderRadius", 12))}px;border:0;box-shadow:inset 0 0 0 1px {str(layer_button_active_cfg.get("border", "#154665"))};background:{str(layer_button_active_cfg.get("background", "#1e5f86"))};color:{str(layer_button_active_cfg.get("text", "#ffffff"))};font-size:{int(layer_panel_button_cfg.get("fontSize", 13))}px;line-height:1.15;padding:10px 12px;cursor:pointer;text-align:left;display:inline-flex;align-items:center;gap:8px;}}
 .layer-toggle.is-inactive{{background:{str(layer_button_inactive_cfg.get("background", "#f7fbff"))};color:{str(layer_button_inactive_cfg.get("text", "#14324b"))};box-shadow:inset 0 0 0 1px {str(layer_button_inactive_cfg.get("border", "#a9bccd"))};}}
-.layer-lock-toggle{{display:inline-flex;width:16px;min-width:16px;justify-content:center;}}
+.layer-lock-toggle{{display:inline-flex;align-items:center;justify-content:center;width:1em;min-width:1em;height:1em;font-size:1em;line-height:1;background:transparent;border-radius:0;}}
+.layer-lock-icon.material-symbols-outlined{{font-size:1em;line-height:1;}}
 .layer-toggle-label{{flex:1;text-align:left;}}
 .layer-toggle:hover{{filter:brightness(0.98);}}
 .vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;}}
@@ -2128,7 +2145,7 @@ function enterViewportMode(vpIndex) {{
   viewportRoot.classList.add('viewport-mode');
   focusViewportElements();
   renderViewportPopup();
-  syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+  syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   applyLayerVisibility();
 }}
@@ -2153,7 +2170,7 @@ function exitViewportMode() {{
   viewportMode.preZoom=null;
   focusViewportElements();
   applyRtiLayout();
-  syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+  syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   syncViewportControls();
   applyLayerVisibility();
@@ -2166,6 +2183,32 @@ function layerScopeKey(state) {{
 }}
 function layerLockCompositeKey(scopeKey, layerKey) {{
  return `${{String(scopeKey||'')}}::${{String(layerKey||'')}}`;
+}}
+function normalizeSharedLayerId(layer) {{
+ const raw=layer && typeof layer==='object' ? layer.sharedLayerId : null;
+ if (raw == null) return null;
+ const value=Number(raw);
+ if (!Number.isFinite(value)) return null;
+ const normalized=Math.trunc(value);
+ return normalized > 0 ? normalized : null;
+}}
+function layerPersistenceScopeKey(layer, defaultScopeKey) {{
+ const fallbackScope=String(defaultScopeKey||'').trim();
+ if (viewportMode.active) return fallbackScope;
+ const sharedLayerId=normalizeSharedLayerId(layer);
+ if (sharedLayerId == null) return fallbackScope;
+ const state=activePageState();
+ return [PROJECT_SESSION_KEY, state?.deviceName||'', `shared-layer:${{sharedLayerId}}`].join('::');
+}}
+function layerPersistenceLayerKey(layer) {{
+ const sharedLayerId=normalizeSharedLayerId(layer);
+ if (sharedLayerId == null) return String(layer?.key||'');
+ return `shared-layer-${{sharedLayerId}}`;
+}}
+function layerPersistenceLockKey(layer, defaultScopeKey) {{
+ const scopeKey=layerPersistenceScopeKey(layer, defaultScopeKey);
+ const layerKey=layerPersistenceLayerKey(layer);
+ return layerLockCompositeKey(scopeKey, layerKey);
 }}
 function layerLocksApiUrl() {{
  const techToken=techTokenFromLocation();
@@ -2196,6 +2239,19 @@ async function syncLayerLocksForScope(scopeKey, force) {{
   }});
   loadedLayerLockScopes.add(scope);
  }} catch (_err) {{}}
+}}
+async function syncLayerLocksForActiveLayers(force) {{
+ const baseScope=activeLayerScopeKey();
+ const scopes=new Set();
+ const addScope=(value)=>{{
+  const scope=String(value||'').trim();
+  if (scope) scopes.add(scope);
+ }};
+ addScope(baseScope);
+ (activeLayerList()||[]).forEach(layer=>{{ addScope(layerPersistenceScopeKey(layer, baseScope)); }});
+ for (const scope of scopes) {{
+  await syncLayerLocksForScope(scope, force);
+ }}
 }}
 function loadLayerVisibility(scopeKey) {{
  try {{
@@ -2242,12 +2298,12 @@ function activeLayerScopeKey() {{
  const base=layerScopeKey(activePageState());
  return viewportMode.active ? (base+`::viewport:${{Number(viewportMode.vpIndex||0)}}`) : base;
 }}
-function isLayerLocked(scopeKey, layerKey) {{
- const lockKey=layerLockCompositeKey(scopeKey, layerKey);
+function isLayerLocked(scopeKey, layer) {{
+ const lockKey=layerPersistenceLockKey(layer, scopeKey);
  return persistedLayerLocksByScope.has(lockKey) && !sessionUnlockedLayerLocks.has(lockKey);
 }}
-function persistedLayerVisibility(scopeKey, layerKey) {{
- const lockKey=layerLockCompositeKey(scopeKey, layerKey);
+function persistedLayerVisibility(scopeKey, layer) {{
+ const lockKey=layerPersistenceLockKey(layer, scopeKey);
  const row=persistedLayerLocksByScope.get(lockKey);
  return row ? Boolean(row.visible) : true;
 }}
@@ -2258,8 +2314,8 @@ function ensureActiveLayerVisibility() {{
  const visibility=(stored && typeof stored==='object') ? stored : Object.fromEntries((layers||[]).map(layer=>[layer.key,true]));
  (layers||[]).forEach(layer=>{{ if (!(layer.key in visibility)) visibility[layer.key]=true; }});
  (layers||[]).forEach(layer=>{{
-  if (isLayerLocked(scopeKey, layer.key)) {{
-   visibility[layer.key]=persistedLayerVisibility(scopeKey, layer.key);
+  if (isLayerLocked(scopeKey, layer)) {{
+   visibility[layer.key]=persistedLayerVisibility(scopeKey, layer);
   }}
  }});
  saveLayerVisibility(scopeKey, visibility);
@@ -2331,22 +2387,26 @@ function renderLayerPanel() {{
     panel.setAttribute('hidden','hidden');
     return;
   }}
+  const layerByKey=new Map((layers||[]).map(layer=>[String(layer?.key||''), layer]));
  list.innerHTML=layers.map(layer=>{{
-  const locked=isLayerLocked(scopeKey, layer.key);
-  const icon=locked ? '🔒' : '🔓';
-  return `<button class="layer-toggle${{isLayerVisible(layer.key)?'':' is-inactive'}}${{locked?' is-locked':''}}" type="button" data-layer-key="${{esc(layer.key)}}" aria-pressed="${{isLayerVisible(layer.key)?'true':'false'}}"><span class="layer-lock-toggle" role="button" aria-label="${{locked?'Unlock layer':'Lock layer'}}">${{icon}}</span><span class="layer-toggle-label">${{esc(layer.name)}}</span></button>`;
+  const locked=isLayerLocked(scopeKey, layer);
+  const icon=locked ? 'lock' : 'lock_open';
+  return `<button class="layer-toggle${{isLayerVisible(layer.key)?'':' is-inactive'}}${{locked?' is-locked':''}}" type="button" data-layer-key="${{esc(layer.key)}}" aria-pressed="${{isLayerVisible(layer.key)?'true':'false'}}"><span class="layer-lock-toggle" role="button" aria-label="${{locked?'Unlock layer':'Lock layer'}}"><span class="layer-lock-icon material-symbols-outlined" aria-hidden="true">${{icon}}</span></span><span class="layer-toggle-label">${{esc(layer.name)}}</span></button>`;
  }}).join('');
  panel.removeAttribute('hidden');
   list.querySelectorAll('.layer-toggle').forEach(button=>button.addEventListener('click',(event)=>{{
     const key=button.dataset.layerKey||'';
-    const scopeKey=activeLayerScopeKey();
-    const lockKey=layerLockCompositeKey(scopeKey, key);
+    const currentScopeKey=activeLayerScopeKey();
+    const layer=layerByKey.get(String(key)) || {{key}};
+    const lockScopeKey=layerPersistenceScopeKey(layer, currentScopeKey);
+    const lockLayerKey=layerPersistenceLayerKey(layer);
+    const lockKey=layerLockCompositeKey(lockScopeKey, lockLayerKey);
     const lockBtn=event.target && event.target.closest ? event.target.closest('.layer-lock-toggle') : null;
     if (lockBtn) {{
       event.preventDefault();
       event.stopPropagation();
       const visibility=ensureActiveLayerVisibility();
-      if (isLayerLocked(scopeKey, key)) {{
+      if (isLayerLocked(currentScopeKey, layer)) {{
         sessionUnlockedLayerLocks.add(lockKey);
         renderLayerPanel();
         applyLayerVisibility();
@@ -2361,17 +2421,17 @@ function renderLayerPanel() {{
           method:'POST',
           headers:{{'content-type':'application/json'}},
           credentials:'same-origin',
-          body:JSON.stringify({{scopeKey, layerKey:key, visible:Boolean(lockedVisible), locked:true}})
+          body:JSON.stringify({{scopeKey:lockScopeKey, layerKey:lockLayerKey, visible:Boolean(lockedVisible), locked:true}})
         }}).catch(()=>{{}});
       }}
       renderLayerPanel();
       applyLayerVisibility();
       return;
     }}
-    if (isLayerLocked(scopeKey, key)) return;
+    if (isLayerLocked(currentScopeKey, layer)) return;
     const visibility=ensureActiveLayerVisibility();
     visibility[key]=!(visibility[key] !== false);
-    saveLayerVisibility(scopeKey, visibility);
+    saveLayerVisibility(currentScopeKey, visibility);
     renderLayerPanel();
     applyLayerVisibility();
   }}));
@@ -2794,13 +2854,13 @@ function setActivePage(nextPageIndex) {{
    rtiCanvas.scrollLeft=0;
    rtiCanvas.scrollTop=0;
  }}
- syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+ syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
  applyRtiLayout();
 }}
 window.addEventListener('resize', applyRtiLayout);
 renderOrientationToggle();
 applyOrientationState();
-syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
 syncTextZoomResetText();
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');

@@ -1824,6 +1824,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             for layer in [l for l in page_layers if l["ViewPortButtonId"] is None]:
                 layer_user = {
                     "layerName": shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
+                    "sharedLayerId": int(layer["SharedLayerId"]),
                     "layerOrder": int(layer["LayerOrder"] or 0),
                     "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "emptyTag": [], "uiItems": []},
                     "viewports": [],

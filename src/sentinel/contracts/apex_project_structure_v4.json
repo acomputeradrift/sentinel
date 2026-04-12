@@ -122,6 +122,7 @@
             "layers": [
               {
                 "layerName": "DISPLAY - Now Playing",
+                "sharedLayerId": 0,
                 "layerOrder": 0,
                 "buttonCategories": {
                   "screenLabels": [
