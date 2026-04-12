@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: sentinel
+Version: 0.1.0
+Summary: Sentinel commissioning and testing server
+Requires-Python: >=3.11
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn>=0.27
+Requires-Dist: pydantic>=2.6
+Requires-Dist: pg8000>=1.31
+Provides-Extra: dev
+Requires-Dist: playwright>=1.40; extra == "dev"

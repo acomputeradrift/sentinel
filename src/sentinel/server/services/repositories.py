@@ -124,6 +124,10 @@ class Repository(Protocol):
 
     def clear_project_testing_data(self, *, projectId: str) -> None: ...
 
+    def get_idempotency_response(self, *, scope: str, key: str) -> dict[str, Any] | None: ...
+
+    def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None: ...
+
 
 class InMemoryRepository:
     def __init__(self) -> None:
@@ -138,6 +142,7 @@ class InMemoryRepository:
         self._results_by_project_target: dict[tuple[str, str], list[TestResultRecord]] = {}
         self._fail_tags_by_project_target: dict[tuple[str, str], str] = {}
         self._layer_locks_by_project_scope_layer: dict[tuple[str, str, str], dict[str, Any]] = {}
+        self._idempotency: dict[tuple[str, str], dict[str, Any]] = {}
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -152,7 +157,8 @@ class InMemoryRepository:
     def _earliest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
         if not items:
             return None
-        return min(items, key=lambda r: (r.recordedAtUtc, r.testResultId))
+        # Tie-break on identical timestamps by list insertion order (chronological append order).
+        return min(enumerate(items), key=lambda pair: (pair[1].recordedAtUtc, pair[0]))[1]
 
     def create_client(self, *, name: str) -> Client:
         with self._lock:
@@ -385,6 +391,14 @@ class InMemoryRepository:
             for key in drop_lock_keys:
                 self._layer_locks_by_project_scope_layer.pop(key, None)
 
+    def get_idempotency_response(self, *, scope: str, key: str) -> dict[str, Any] | None:
+        with self._lock:
+            return self._idempotency.get((str(scope), str(key)))
+
+    def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None:
+        with self._lock:
+            self._idempotency[(str(scope), str(key))] = dict(response)
+
 
 class PostgresRepository:
     def __init__(self, *, database_url: str) -> None:
@@ -536,7 +550,7 @@ class PostgresRepository:
         tok = self.resolve_active_token(techToken=techToken)
         generation_run_id = self._q.ensure_generation_run(self._database_url, project_id=tok.projectId)
 
-        self._q.append_test_result(
+        test_result_id = self._q.append_test_result(
             self._database_url,
             project_id=tok.projectId,
             generation_run_id=generation_run_id,
@@ -550,7 +564,7 @@ class PostgresRepository:
         )
 
         return TestResultRecord(
-            testResultId=new_uuid(),
+            testResultId=str(test_result_id),
             projectId=tok.projectId,
             recordedAtUtc=utc_now(),
             recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
@@ -647,4 +661,10 @@ class PostgresRepository:
 
     def clear_project_testing_data(self, *, projectId: str) -> None:
         self._q.clear_project_testing_data(self._database_url, project_id=projectId)
+
+    def get_idempotency_response(self, *, scope: str, key: str) -> dict[str, Any] | None:
+        return self._q.get_idempotency_response(self._database_url, scope=str(scope), idempotency_key=str(key))
+
+    def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None:
+        self._q.put_idempotency_response(self._database_url, scope=str(scope), idempotency_key=str(key), response=response)
 

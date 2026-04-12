@@ -10,11 +10,16 @@ from fastapi.staticfiles import StaticFiles
 from sentinel.server.api.commissioning import router as commissioning_router
 from sentinel.server.api.events import router as events_router
 from sentinel.server.api.testing import router as testing_router
+from sentinel.server.middleware.commissioning_auth_middleware import CommissioningAuthMiddleware
+from sentinel.server.middleware.trace_middleware import TraceIdMiddleware
+from sentinel.server import request_context
 from sentinel.server.services.repositories import InMemoryRepository, PostgresRepository, Repository
 
 
 def create_app(repo: Repository | None = None) -> FastAPI:
     app = FastAPI(title="Sentinel", version="0.1.0")
+    app.add_middleware(CommissioningAuthMiddleware)
+    app.add_middleware(TraceIdMiddleware)
 
     if repo is not None:
         app.state.repo = repo
@@ -23,10 +28,19 @@ def create_app(repo: Repository | None = None) -> FastAPI:
         app.state.repo = PostgresRepository(database_url=database_url) if database_url else InMemoryRepository()
 
     @app.exception_handler(HTTPException)
-    async def http_exception_handler(_: Request, exc: HTTPException):  # type: ignore[override]
+    async def http_exception_handler(request: Request, exc: HTTPException):  # type: ignore[override]
+        tid = getattr(request.state, "trace_id", None) or request_context.current_trace_id()
         if isinstance(exc.detail, dict) and "error" in exc.detail:
-            return JSONResponse(status_code=exc.status_code, content=exc.detail)
-        return JSONResponse(status_code=exc.status_code, content={"error": {"code": "HTTP_ERROR", "message": str(exc.detail), "details": {}, "traceId": None}})
+            body = dict(exc.detail)
+            err = dict(body["error"])
+            if err.get("traceId") is None and tid is not None:
+                err["traceId"] = tid
+                body["error"] = err
+            return JSONResponse(status_code=exc.status_code, content=body)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": {"code": "HTTP_ERROR", "message": str(exc.detail), "details": {}, "traceId": tid}},
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:

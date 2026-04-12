@@ -11,7 +11,15 @@ function api(path) {
 function wsUrl(path) {
   const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
   const host = window.location && window.location.host ? window.location.host : "localhost";
-  return `${proto}://${host}${path}`;
+  const base = `${proto}://${host}${path}`;
+  try {
+    const k = window.localStorage.getItem("sentinel.commissioning.apiKey");
+    if (!k) return base;
+    const sep = base.indexOf("?") >= 0 ? "&" : "?";
+    return `${base}${sep}commissioningKey=${encodeURIComponent(k)}`;
+  } catch (_e) {
+    return base;
+  }
 }
 
 function logProjectWs(action, detail) {

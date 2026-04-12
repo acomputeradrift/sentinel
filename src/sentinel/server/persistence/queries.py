@@ -459,7 +459,7 @@ def count_first_time_fail_targets(database_url: str, *, project_id: str) -> int:
 
     "First" is determined by:
     - recorded_at_utc ASC
-    - test_result_id ASC (deterministic tie-breaker)
+    - ctid ASC (insertion order tie-breaker; stable for identical timestamps)
     """
     con = db.connect(database_url)
     try:
@@ -468,7 +468,7 @@ def count_first_time_fail_targets(database_url: str, *, project_id: str) -> int:
             "select count(*) as \"count\" from ("
             "  select distinct on (target_key) target_key, outcome "
             "  from test_results where project_id=%s "
-            "  order by target_key, recorded_at_utc asc, test_result_id asc"
+            "  order by target_key, recorded_at_utc asc, ctid asc"
             ") firsts where outcome='FAIL'",
             (project_id,),
         )
@@ -498,6 +498,39 @@ def clear_project_testing_data(database_url: str, *, project_id: str) -> None:
         cur = con.cursor()
         cur.execute("delete from test_results where project_id=%s", (project_id,))
         cur.execute("delete from fail_tags where project_id=%s", (project_id,))
+        con.commit()
+    finally:
+        con.close()
+
+
+def get_idempotency_response(database_url: str, *, scope: str, idempotency_key: str) -> dict[str, Any] | None:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select response_json as \"responseJson\" from idempotency_keys where scope=%s and idempotency_key=%s",
+            (scope, idempotency_key),
+        )
+        if not row:
+            return None
+        rj = row.get("responseJson")
+        if isinstance(rj, str):
+            return json.loads(rj)
+        if isinstance(rj, dict):
+            return dict(rj)
+        return None
+    finally:
+        con.close()
+
+
+def put_idempotency_response(database_url: str, *, scope: str, idempotency_key: str, response: dict[str, Any]) -> None:
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "insert into idempotency_keys (scope, idempotency_key, response_json) values (%s,%s,%s::jsonb)",
+            (scope, idempotency_key, json.dumps(response)),
+        )
         con.commit()
     finally:
         con.close()

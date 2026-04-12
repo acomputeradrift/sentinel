@@ -11,7 +11,28 @@ function api(path) {
 function wsUrl(path) {
   const proto = window.location && window.location.protocol === "https:" ? "wss" : "ws";
   const host = window.location && window.location.host ? window.location.host : "localhost";
-  return `${proto}://${host}${path}`;
+  const base = `${proto}://${host}${path}`;
+  return withCommissioningKeyQuery(base);
+}
+
+function commissioningAuthHeaders() {
+  const h = {};
+  try {
+    const k = window.localStorage.getItem("sentinel.commissioning.apiKey");
+    if (k) h["X-Sentinel-Commissioning-Key"] = k;
+  } catch (_e) {}
+  return h;
+}
+
+function withCommissioningKeyQuery(url) {
+  try {
+    const k = window.localStorage.getItem("sentinel.commissioning.apiKey");
+    if (!k) return url;
+    const sep = url.indexOf("?") >= 0 ? "&" : "?";
+    return `${url}${sep}commissioningKey=${encodeURIComponent(k)}`;
+  } catch (_e) {
+    return url;
+  }
 }
 
 function ensureWsConsoleLogger() {
@@ -78,7 +99,9 @@ function setActiveTab(tabName) {
 }
 
 async function jsonFetch(url, options) {
-  const res = await fetch(url, options);
+  const merged = { ...(options || {}) };
+  merged.headers = { ...commissioningAuthHeaders(), ...(merged.headers || {}) };
+  const res = await fetch(url, merged);
   const ct = res.headers.get("content-type") || "";
   if (!res.ok) {
     const body = ct.includes("application/json") ? await res.json() : await res.text();

@@ -9,13 +9,16 @@ import re
 import asyncio
 import json
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 from fastapi.responses import Response
 
+from pydantic import ValidationError
+
 from sentinel.server.api.errors import http_error
-from sentinel.server.services import progress
+from sentinel.server.api.schemas import PostReadyBaselineBody, PostTestResultBody
+from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import ws_broker
 from sentinel.server.services.repositories import Repository
 
@@ -53,42 +56,7 @@ def _ws_broker(websocket: WebSocket) -> ws_broker.ProjectEventBroker:
 
 
 def _compute_progress_and_rollups(*, repo: Repository, projectId: str) -> tuple[dict | None, dict | None]:
-    try:
-        latest = repo.get_latest_results_for_project(projectId=projectId)
-        prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
-    except FileNotFoundError:
-        log.info("[testing-ws] rollups:project-model-missing projectId=%s", projectId)
-        return None, None
-    except Exception:
-        log.exception("[testing-ws] rollups:compute-failed projectId=%s", projectId)
-        return None, None
-
-    tags = repo.get_fail_tags_for_project(projectId=projectId)
-    by_target: dict[str, int] = {}
-    by_tag = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "DONE": 0}
-    total = 0
-    for rec in latest.values():
-        if rec.outcome != "FAIL":
-            continue
-        target = rec.target if isinstance(rec.target, dict) else {}
-        target_key = str(target.get("targetKey") or "").strip()
-        if not target_key:
-            continue
-        total += 1
-        name = str(target.get("targetName") or "").strip() or "(unknown)"
-        by_target[name] = by_target.get(name, 0) + 1
-        tag = str(tags.get(target_key, "NOT_STARTED") or "NOT_STARTED").strip().upper()
-        if tag not in by_tag:
-            tag = "NOT_STARTED"
-        by_tag[tag] += 1
-
-    rollups = {
-        "projectId": projectId,
-        "progress": prog,
-        "firstTimeFailTargets": repo.count_first_time_fail_targets(projectId=projectId),
-        "currentFailures": {"total": total, "byTargetName": by_target, "byTag": by_tag},
-    }
-    return prog, rollups
+    return commissioning_rollups.compute_progress_and_testing_rollups(repo=repo, projectId=projectId)
 
 
 def _build_test_result_event(*, repo: Repository, rec) -> dict:
@@ -405,14 +373,12 @@ def post_ready_baseline(request: Request, techToken: str, payload: dict) -> dict
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
 
-    ready_raw = (payload or {}).get("readySec")
     try:
-        ready_sec = float(ready_raw)
-    except (TypeError, ValueError):
+        body = PostReadyBaselineBody.model_validate(payload or {})
+    except ValidationError:
         raise http_error(400, code="VALIDATION_ERROR", message="readySec must be a number.")
-    if ready_sec < 0:
-        raise http_error(400, code="VALIDATION_ERROR", message="readySec must be >= 0.")
 
+    ready_sec = float(body.readySec)
     log.info(
         "READY_BASELINE projectId=%s techToken=%s readySec=%.3f",
         str(tok.projectId or ""),
@@ -422,25 +388,7 @@ def post_ready_baseline(request: Request, techToken: str, payload: dict) -> dict
     return {"projectId": tok.projectId, "techToken": techToken, "readySec": round(float(ready_sec), 3)}
 
 
-@router.post("/api/v1/testing/{techToken}/results")
-def post_result(request: Request, techToken: str, payload: dict) -> dict:
-    target = payload.get("target") or {}
-    outcome = str(payload.get("outcome") or "").strip().upper()
-    fail_note = payload.get("failNote")
-
-    if outcome not in ("PASS", "FAIL"):
-        raise http_error(400, code="VALIDATION_ERROR", message="Outcome must be PASS or FAIL.")
-    if outcome == "FAIL" and not str(fail_note or "").strip():
-        raise http_error(400, code="FAIL_NOTE_REQUIRED", message="Fail note is required when outcome is FAIL.")
-
-    try:
-        rec = _repo(request).append_test_result(techToken=techToken, target=target, outcome=outcome, failNote=(str(fail_note).strip() if fail_note is not None else None))
-    except KeyError:
-        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
-
-    target_key = str(rec.target.get("targetKey") or "")
-    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(repo=_repo(request), rec=rec))
-
+def _post_test_result_response(*, rec) -> dict:
     return {
         "testResultId": rec.testResultId,
         "projectId": rec.projectId,
@@ -451,6 +399,54 @@ def post_result(request: Request, techToken: str, payload: dict) -> dict:
         "outcome": rec.outcome,
         "failNote": rec.failNote,
     }
+
+
+@router.post("/api/v1/testing/{techToken}/results")
+def post_result(
+    request: Request,
+    techToken: str,
+    payload: dict,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> dict:
+    try:
+        body = PostTestResultBody.model_validate(payload or {})
+    except ValidationError:
+        raise http_error(400, code="VALIDATION_ERROR", message="Invalid test result payload.")
+
+    fail_note = body.fail_note_normalized()
+    if body.outcome == "FAIL" and not str(fail_note or "").strip():
+        raise http_error(400, code="FAIL_NOTE_REQUIRED", message="Fail note is required when outcome is FAIL.")
+
+    repo = _repo(request)
+    ikey = str(idempotency_key or "").strip()
+    if ikey:
+        if len(ikey) > 256:
+            raise http_error(400, code="VALIDATION_ERROR", message="Idempotency-Key too long.")
+        scope = f"post_test_result:{techToken}"
+        cached = repo.get_idempotency_response(scope=scope, key=ikey)
+        if cached is not None:
+            return dict(cached)
+
+    target = body.target.model_dump(mode="python", exclude_none=False)
+    if target.get("kind") is None and target.get("targetKind"):
+        target["kind"] = target["targetKind"]
+
+    try:
+        rec = repo.append_test_result(
+            techToken=techToken,
+            target=target,
+            outcome=body.outcome,
+            failNote=fail_note,
+        )
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(repo=repo, rec=rec))
+
+    resp = _post_test_result_response(rec=rec)
+    if ikey:
+        repo.put_idempotency_response(scope=f"post_test_result:{techToken}", key=ikey, response=resp)
+    return resp
 
 
 @router.websocket("/api/v1/testing/{techToken}/ws")
