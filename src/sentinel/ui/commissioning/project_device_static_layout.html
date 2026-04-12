@@ -463,76 +463,16 @@
         controls.right = parsePxVariable("--controls-collapsed-w", 58);
       }
 
-      const SHELL_TEXT_ZOOM = {
-        percent: 100,
-        step: 10,
-        min: 100,
-        max: 300
-      };
-
-      function clampNumber(value, min, max) {
-        return Math.min(max, Math.max(min, Number(value || min)));
+      function dispatchTextZoom(action) {
+        if (typeof window.__sentinelTextZoomAction !== "function") return false;
+        window.__sentinelTextZoomAction(action);
+        return true;
       }
 
-      function activePageElement() {
-        return document.querySelector("#rtiDeviceContent .device-page.active");
-      }
-
-      function syncTextZoomLabels() {
-        const value = String(SHELL_TEXT_ZOOM.percent) + "%";
-        document.querySelectorAll('[data-control="text-zoom-reset"]').forEach(function (button) {
-          const vertical = button.querySelector(".zoomPctVertical");
-          if (vertical) {
-            vertical.textContent = value;
-          } else {
-            button.textContent = value;
-          }
-        });
-      }
-
-      function applyTextZoom() {
-        const pageEl = activePageElement();
-        if (!pageEl) return;
-        pageEl.querySelectorAll(".test-btn").forEach(function (button) {
-          if (!button.dataset.shellBaseFontPx) {
-            const base = Number.parseFloat(getComputedStyle(button).fontSize || "0");
-            button.dataset.shellBaseFontPx = String(Number.isFinite(base) && base > 0 ? base : 12);
-          }
-          const basePx = Number.parseFloat(button.dataset.shellBaseFontPx || "12");
-          const nextPx = (basePx * SHELL_TEXT_ZOOM.percent) / 100;
-          button.style.fontSize = String(nextPx) + "px";
-          button.querySelectorAll(".page-link-hit, .page-link-icon").forEach(function (node) {
-            node.style.fontSize = String(nextPx) + "px";
-          });
-        });
-        document.querySelectorAll("#vpPopup .vp-popup-vcontent .test-btn").forEach(function (button) {
-          if (!button.dataset.shellBaseFontPx) {
-            const base = Number.parseFloat(getComputedStyle(button).fontSize || "0");
-            button.dataset.shellBaseFontPx = String(Number.isFinite(base) && base > 0 ? base : 12);
-          }
-          const basePx = Number.parseFloat(button.dataset.shellBaseFontPx || "12");
-          const nextPx = (basePx * SHELL_TEXT_ZOOM.percent) / 100;
-          button.style.fontSize = String(nextPx) + "px";
-          button.querySelectorAll(".page-link-hit, .page-link-icon").forEach(function (node) {
-            node.style.fontSize = String(nextPx) + "px";
-          });
-        });
-      }
-
-      function resetTextZoomOnInactivePages() {
-        document.querySelectorAll("#rtiDeviceContent .device-page").forEach(function (pageEl) {
-          if (pageEl.classList.contains("active")) return;
-          pageEl.querySelectorAll(".test-btn").forEach(function (button) {
-            button.style.fontSize = "";
-          });
-        });
-      }
-
-      function updateTextZoom(nextPercent) {
-        SHELL_TEXT_ZOOM.percent = clampNumber(nextPercent, SHELL_TEXT_ZOOM.min, SHELL_TEXT_ZOOM.max);
-        syncTextZoomLabels();
-        applyTextZoom();
-        resetTextZoomOnInactivePages();
+      function syncTextZoomFromRuntime() {
+        if (typeof window.__sentinelSyncTextZoomControls === "function") {
+          window.__sentinelSyncTextZoomControls();
+        }
       }
 
       function findDeviceZoomButton(action) {
@@ -598,15 +538,15 @@
           }
 
           if (control === "text-zoom-inc") {
-            updateTextZoom(SHELL_TEXT_ZOOM.percent + SHELL_TEXT_ZOOM.step);
+            dispatchTextZoom("inc");
             return;
           }
           if (control === "text-zoom-dec") {
-            updateTextZoom(SHELL_TEXT_ZOOM.percent - SHELL_TEXT_ZOOM.step);
+            dispatchTextZoom("dec");
             return;
           }
           if (control === "text-zoom-reset") {
-            updateTextZoom(100);
+            dispatchTextZoom("reset");
             return;
           }
 
@@ -620,26 +560,6 @@
             if (button && button !== target) button.click();
           }
         });
-      }
-
-      function observeActivePageChanges() {
-        const root = document.getElementById("rtiDeviceContent");
-        if (!root) return;
-        const initialPage = root.querySelector(".device-page.active");
-        let lastPageIndex = initialPage ? String(initialPage.getAttribute("data-page-index") || "") : "";
-        const observer = new MutationObserver(function () {
-          const activePage = root.querySelector(".device-page.active");
-          const nextPageIndex = activePage ? String(activePage.getAttribute("data-page-index") || "") : "";
-          if (lastPageIndex && nextPageIndex && lastPageIndex !== nextPageIndex) {
-            updateTextZoom(100);
-          }
-          if (nextPageIndex) {
-            lastPageIndex = nextPageIndex;
-          }
-          applyTextZoom();
-          resetTextZoomOnInactivePages();
-        });
-        observer.observe(root, { subtree: true, attributes: true, attributeFilter: ["class"] });
       }
 
       function observeFullControlState() {
@@ -685,15 +605,14 @@
           alignRuntimeControlsToShell();
           lockShellGeometry();
           observeShellGeometry();
-          observeActivePageChanges();
           observeFullControlState();
-          syncTextZoomLabels();
+          syncTextZoomFromRuntime();
           syncMiniDeviceZoomFromFull();
           syncMiniOrientationStateFromFull();
-          applyTextZoom();
           if (typeof window.applyRtiLayout === "function") {
             window.applyRtiLayout();
           }
+          syncTextZoomFromRuntime();
           syncMiniDeviceZoomFromFull();
           syncMiniOrientationStateFromFull();
         })

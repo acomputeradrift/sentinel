@@ -6,7 +6,6 @@ import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -100,7 +99,14 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
                                                 {
                                                     "buttonIdentity": {"buttonTagName": "Button A", "text": "Button A", "buttonType": None},
                                                     "buttonUI": _oriented_ui(top=120, left=90, height=60, width=220),
-                                                    "testTargets": {"text": True, "macros": False, "macroSteps": False, "variables": {}},
+                                                    "resolvedPageLink": {"targetPageId": 2},
+                                                    "testTargets": {
+                                                        "text": True,
+                                                        "macros": False,
+                                                        "macroSteps": False,
+                                                        "variables": {},
+                                                        "pageLink": {"enabled": True},
+                                                    },
                                                 }
                                             ],
                                         },
@@ -330,6 +336,104 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
 """
             )
             self.assertGreater(after, before)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_text_zoom_is_additive_with_device_zoom(self):
+        page, server = self._open_shell_page()
+        try:
+            before = page.evaluate(
+                """
+() => {
+  const btn = document.querySelector('#rtiDeviceContent .device-page.active .test-btn');
+  return parseFloat(getComputedStyle(btn).fontSize || '0');
+}
+"""
+            )
+            page.click('[data-control="device-zoom-inc"][data-variant="full"]')
+            page.click('[data-control="device-zoom-inc"][data-variant="full"]')
+            page.click('[data-control="device-zoom-inc"][data-variant="full"]')
+            page.wait_for_timeout(120)
+            after_device = page.evaluate(
+                """
+() => {
+  const btn = document.querySelector('#rtiDeviceContent .device-page.active .test-btn');
+  return parseFloat(getComputedStyle(btn).fontSize || '0');
+}
+"""
+            )
+            page.click('[data-control="text-zoom-inc"][data-variant="full"]')
+            page.wait_for_timeout(120)
+            after_text = page.evaluate(
+                """
+() => {
+  const btn = document.querySelector('#rtiDeviceContent .device-page.active .test-btn');
+  return parseFloat(getComputedStyle(btn).fontSize || '0');
+}
+"""
+            )
+            self.assertGreater(after_device, before)
+            self.assertGreater(after_text, after_device)
+            self.assertGreater(after_text, after_device * 1.08)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_link_icon_matches_button_font_size(self):
+        page, server = self._open_shell_page()
+        try:
+            page.click('[data-control="device-zoom-inc"][data-variant="full"]')
+            page.click('[data-control="text-zoom-inc"][data-variant="full"]')
+            page.wait_for_timeout(150)
+            sizes = page.evaluate(
+                """
+() => {
+  const btn = document.querySelector('#rtiDeviceContent .device-page.active .test-btn');
+  const icon = document.querySelector('#rtiDeviceContent .device-page.active .page-link-icon');
+  if (!btn || !icon) return null;
+  return {
+    button: parseFloat(getComputedStyle(btn).fontSize || '0'),
+    icon: parseFloat(getComputedStyle(icon).fontSize || '0')
+  };
+}
+"""
+            )
+            self.assertIsNotNone(sizes)
+            self.assertAlmostEqual(float(sizes["button"]), float(sizes["icon"]), delta=0.2)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_zoom_logs_are_emitted_for_device_and_text(self):
+        page, server = self._open_shell_page()
+        try:
+            logs: list[dict] = []
+
+            def on_console(msg):
+                if "SENTINEL_ZOOM" not in msg.text:
+                    return
+                payload = {}
+                try:
+                    if len(msg.args) > 1:
+                        payload = msg.args[1].json_value() or {}
+                except Exception:
+                    payload = {}
+                logs.append({"text": msg.text, "payload": payload})
+
+            page.on("console", on_console)
+            page.click('[data-control="device-zoom-inc"][data-variant="full"]')
+            page.click('[data-control="text-zoom-inc"][data-variant="full"]')
+            page.wait_for_timeout(200)
+            self.assertGreaterEqual(len(logs), 2)
+            payload_lines = [entry.get("payload") for entry in logs if isinstance(entry.get("payload"), dict)]
+            merged = {}
+            for row in payload_lines:
+                merged.update(row)
+            self.assertIn("deviceZoomPercent", merged)
+            self.assertIn("textZoomPercent", merged)
+            self.assertIn("buttonTextPx", merged)
+            self.assertIn("linkIconPx", merged)
         finally:
             page.close()
             server.stop()

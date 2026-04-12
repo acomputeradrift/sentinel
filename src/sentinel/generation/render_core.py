@@ -885,8 +885,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .btn-wrap{{--btn-fill-color:#2c6fb7;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:var(--btn-fill-color);box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
 .btn-pass-total{{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:none;visibility:hidden;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.22);color:#fff;font-size:11px;line-height:1.1;font-weight:700;white-space:nowrap;pointer-events:none;}}
-.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;}}
-.page-link-icon{{display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:0;}}
+.page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;font-size:inherit;}}
+.page-link-icon{{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;font-size:1em;line-height:1;background:transparent;border-radius:0;}}
+.page-link-icon .material-symbols-outlined{{font-size:1em;line-height:1;}}
 .material-symbols-outlined{{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:115%;line-height:1;}}
 .vp-nav{{width:44px;height:44px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:22px;cursor:pointer;position:relative;z-index:21;}}
 .orientation-toggle{{display:flex;flex-direction:column;gap:8px;align-items:stretch;justify-content:center;max-width:120px;}}
@@ -958,6 +959,10 @@ const LAYER_PANEL={json.dumps(layer_panel_cfg)};
 const ZOOM_DEFAULT={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("defaultPercent", 100))};
 const ZOOM_MAX={max(300, int(app_ui.get("zoomControls", {}).get("zoom", {}).get("maxPercent", 300)))};
 const ZOOM_STEP={int(app_ui.get("zoomControls", {}).get("zoom", {}).get("stepPercent", 10))};
+const TEXT_ZOOM_DEFAULT=100;
+const TEXT_ZOOM_MIN=100;
+const TEXT_ZOOM_MAX=300;
+const TEXT_ZOOM_STEP=10;
 const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
 const PAGE_HTML_BY_INDEX={page_html_by_index_json};
@@ -965,6 +970,7 @@ const PAGE_STATE={page_state_json};
 const ORIENTATION_STATE={orientation_state_json};
 const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
 let currentZoomPercent=ZOOM_DEFAULT;
+let currentTextZoomPercent=TEXT_ZOOM_DEFAULT;
 let currentTotalScale=1;
 let currentDeviceLeft=0;
 let currentDeviceTop=0;
@@ -1953,11 +1959,22 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
    el.style.height=`${{height}}px`;
    const btn=el.querySelector('.test-btn');
    if (btn) {{
-    const sourceFont=Number(el.dataset.fontSize||APP_UI.buttonPresentation?.fallbackFontSize||10);
-    if (APP_UI.buttonPresentation?.scaleRtiDerivedFontSizes) btn.style.fontSize=`${{Math.max(1, sourceFont*scale)}}px`;
-    else btn.style.fontSize=`${{sourceFont}}px`;
+    const buttonFontPx=resolveButtonFontPx(el, scale);
+    btn.style.fontSize=`${{buttonFontPx}}px`;
     btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+    const linkHit=el.querySelector('.page-link-hit');
+    if (linkHit) applyLinkSizing(linkHit, buttonFontPx, scale);
    }}
+  }});
+  stage.querySelectorAll('.vp-popup-vcontent .test-btn').forEach(btn=>{{
+   const wrap=btn.closest('.btn-wrap');
+   if (wrap && wrap.dataset && wrap.dataset.srcLeft!=null) return;
+   if (!btn.dataset.baseFontPx) {{
+    const base=Number.parseFloat(getComputedStyle(btn).fontSize||'0');
+    btn.dataset.baseFontPx=String(Number.isFinite(base)&&base>0?base:10);
+   }}
+   const basePx=Number(btn.dataset.baseFontPx||10);
+   btn.style.fontSize=`${{Math.max(1, basePx*textZoomFactor())}}px`;
   }});
 
    // Virtual scrolling for vertical scroll viewports (no native scrollbars).
@@ -2428,6 +2445,12 @@ function syncHeader() {{
   function activeZoomPercent() {{
    return Number(viewportMode.active ? (viewportMode.popupZoomPercent||ZOOM_DEFAULT) : (currentZoomPercent||ZOOM_DEFAULT));
   }}
+  function activeTextZoomPercent() {{
+   return Number(currentTextZoomPercent||TEXT_ZOOM_DEFAULT);
+  }}
+  function textZoomFactor() {{
+   return clamp(activeTextZoomPercent(), TEXT_ZOOM_MIN, TEXT_ZOOM_MAX)/100;
+  }}
   function syncZoomResetText() {{
    const zoomControls=document.getElementById('zoomControls');
    if (!zoomControls) return;
@@ -2435,6 +2458,92 @@ function syncHeader() {{
    if (!zoomReset) return;
    zoomReset.textContent = `${{activeZoomPercent()}}%`;
   }}
+  function syncTextZoomResetText() {{
+   const value=`${{activeTextZoomPercent()}}%`;
+   document.querySelectorAll('[data-control="text-zoom-reset"]').forEach(button=>{{
+    const vertical=button.querySelector('.zoomPctVertical');
+    if (vertical) vertical.textContent=value;
+    else button.textContent=value;
+   }});
+  }}
+  function resolveButtonFontPx(el, derivedScale) {{
+   const sourceFont=Number(el?.dataset?.fontSize||APP_UI.buttonPresentation?.fallbackFontSize||10);
+   const basePx=APP_UI.buttonPresentation?.scaleRtiDerivedFontSizes ? (sourceFont*derivedScale) : sourceFont;
+   return Math.max(1, basePx*textZoomFactor());
+  }}
+  function applyLinkSizing(linkHit, buttonFontPx, derivedScale) {{
+   if (!linkHit) return;
+   const hitWidth=Number(linkHit.dataset.hitWidth||28)*derivedScale;
+   const hitPadding=Number(linkHit.dataset.hitPadding||8)*derivedScale;
+   linkHit.style.width=`${{hitWidth}}px`;
+   linkHit.style.paddingRight=`${{hitPadding}}px`;
+   linkHit.style.right='0';
+   linkHit.style.fontSize=`${{buttonFontPx}}px`;
+  }}
+  function firstVisibleNode(nodes) {{
+   if (!Array.isArray(nodes)) return null;
+   for (const node of nodes) {{
+    if (!node) continue;
+    if (node.offsetParent!==null) return node;
+   }}
+   return nodes[0] || null;
+  }}
+  function zoomTelemetrySizes() {{
+   const context=viewportMode.active ? document.getElementById('vpPopupStage') : activePageEl();
+   const root=context || document;
+   const button=firstVisibleNode(Array.from(root.querySelectorAll('.btn-wrap .test-btn')));
+   const icon=firstVisibleNode(Array.from(root.querySelectorAll('.btn-wrap .page-link-icon')));
+   const buttonTextPx=button ? Number.parseFloat(getComputedStyle(button).fontSize||'0') : 0;
+   const linkIconPx=icon ? Number.parseFloat(getComputedStyle(icon).fontSize||'0') : 0;
+   return {{
+    buttonTextPx:Number.isFinite(buttonTextPx)?buttonTextPx:0,
+    linkIconPx:Number.isFinite(linkIconPx)?linkIconPx:0
+   }};
+  }}
+  function emitZoomTelemetry(reason) {{
+   const sizes=zoomTelemetrySizes();
+   try {{
+    if (typeof console!=="undefined" && console.log) {{
+     console.log('SENTINEL_ZOOM', {{
+      reason:String(reason||''),
+      viewportMode:Boolean(viewportMode.active),
+      deviceZoomPercent:Number(currentZoomPercent||ZOOM_DEFAULT),
+      textZoomPercent:activeTextZoomPercent(),
+      activeZoomPercent:activeZoomPercent(),
+      buttonTextPx:Number(sizes.buttonTextPx.toFixed(4)),
+      linkIconPx:Number(sizes.linkIconPx.toFixed(4))
+     }});
+    }}
+   }} catch (_e) {{}}
+  }}
+  function updateTextZoom(nextPercent) {{
+   currentTextZoomPercent=clamp(nextPercent, TEXT_ZOOM_MIN, TEXT_ZOOM_MAX);
+   syncTextZoomResetText();
+   document.querySelectorAll('#vpPopup .vp-popup-vcontent .test-btn').forEach(btn=>{{
+    const wrap=btn.closest('.btn-wrap');
+    if (wrap && wrap.dataset && wrap.dataset.srcLeft!=null) return;
+    if (!btn.dataset.baseFontPx) {{
+     const base=Number.parseFloat(getComputedStyle(btn).fontSize||'0');
+     btn.dataset.baseFontPx=String(Number.isFinite(base)&&base>0?base:10);
+    }}
+    const basePx=Number(btn.dataset.baseFontPx||10);
+    btn.style.fontSize=`${{Math.max(1, basePx*textZoomFactor())}}px`;
+   }});
+   if (viewportMode.active) {{
+    applyViewportPopupLayout();
+    emitZoomTelemetry('text-zoom');
+    return;
+   }}
+   scheduleRtiLayout('text-zoom');
+  }}
+  function textZoomAction(action) {{
+   const normalized=String(action||'').toLowerCase();
+   if (normalized==='inc') {{ updateTextZoom(activeTextZoomPercent()+TEXT_ZOOM_STEP); return; }}
+   if (normalized==='dec') {{ updateTextZoom(activeTextZoomPercent()-TEXT_ZOOM_STEP); return; }}
+   if (normalized==='reset') {{ updateTextZoom(TEXT_ZOOM_DEFAULT); return; }}
+  }}
+  window.__sentinelTextZoomAction=textZoomAction;
+  window.__sentinelSyncTextZoomControls=syncTextZoomResetText;
 function applyRtiLayout() {{
  const _layoutT0=_perfNow();
  try {{
@@ -2563,31 +2672,14 @@ function applyRtiLayout() {{
    el.style.width=`${{width}}px`;
    el.style.height=`${{height}}px`;
    const button=el.querySelector('.test-btn');
-   if (button) {{
-     const sourceFont=Number(el.dataset.fontSize||APP_UI.buttonPresentation?.fallbackFontSize||10);
-     if (APP_UI.buttonPresentation?.scaleRtiDerivedFontSizes) {{
-       button.style.fontSize=`${{Math.max(1, sourceFont*totalScale)}}px`;
-     }} else {{
-       button.style.fontSize=`${{sourceFont}}px`;
-     }}
-     button.style.borderRadius=`${{Math.max(2, 10*totalScale)}}px`;
-   }}
-   const linkHit=el.querySelector('.page-link-hit');
-   if (linkHit) {{
-     const hitWidth=Number(linkHit.dataset.hitWidth||28)*totalScale;
-     const hitPadding=Number(linkHit.dataset.hitPadding||8)*totalScale;
-     linkHit.style.width=`${{hitWidth}}px`;
-     linkHit.style.paddingRight=`${{hitPadding}}px`;
-     linkHit.style.right='0';
-     const icon=linkHit.querySelector('.page-link-icon');
-     if (icon) {{
-       const iconSize=Number(icon.dataset.iconSize||16)*totalScale;
-       icon.style.width=`${{iconSize}}px`;
-       icon.style.height=`${{iconSize}}px`;
-       icon.style.fontSize=`${{iconSize}}px`;
-   }}
-  }}
- }});
+    if (button) {{
+      const buttonFontPx=resolveButtonFontPx(el, totalScale);
+      button.style.fontSize=`${{buttonFontPx}}px`;
+      button.style.borderRadius=`${{Math.max(2, 10*totalScale)}}px`;
+      const linkHit=el.querySelector('.page-link-hit');
+      if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
+    }}
+  }});
  refreshButtonVisualStates();
  syncHeader();
  if (LAYER_PANEL.enabled===false) {{
@@ -2599,6 +2691,10 @@ function applyRtiLayout() {{
   syncViewportControls();
   applyViewportState();
   if (viewportMode.active) applyViewportPopupLayout();
+  if (_pendingZoomTelemetryReason) {{
+   emitZoomTelemetry(_pendingZoomTelemetryReason);
+   _pendingZoomTelemetryReason='';
+  }}
   maybeReportReadyBaseline();
  }} finally {{
   _recordLayoutPerf(_perfNow()-_layoutT0);
@@ -2606,7 +2702,9 @@ function applyRtiLayout() {{
 }}
 let _rtiLayoutScheduled=false;
 let _pendingZoomCenter=null;
+let _pendingZoomTelemetryReason='';
 function scheduleRtiLayout(reason) {{
+ if (reason) _pendingZoomTelemetryReason=String(reason);
  if (_rtiLayoutScheduled) return;
  _rtiLayoutScheduled=true;
  requestAnimationFrame(() => {{
@@ -2646,6 +2744,7 @@ function updateZoom(nextPercent){{
   viewportMode.popupZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
   syncZoomResetText();
   applyViewportPopupLayout();
+  emitZoomTelemetry('device-zoom');
   return;
  }}
  const rtiCanvas=document.getElementById('rtiCanvas');
@@ -2658,7 +2757,7 @@ function updateZoom(nextPercent){{
  currentZoomPercent=clamp(nextPercent, ZOOM_DEFAULT, ZOOM_MAX);
  _pendingZoomCenter={{centerX, centerY}};
  syncZoomResetText();
- scheduleRtiLayout("zoom");
+ scheduleRtiLayout("device-zoom");
 }}
 function ensurePageMaterialized(pageIndex) {{
  const normalized=Number(pageIndex);
@@ -2685,8 +2784,10 @@ function setActivePage(nextPageIndex) {{
  ensurePageMaterialized(target);
  activePageIndex=target;
  currentZoomPercent=ZOOM_DEFAULT;
+ currentTextZoomPercent=TEXT_ZOOM_DEFAULT;
  viewportMode.popupZoomPercent=ZOOM_DEFAULT;
  syncZoomResetText();
+ syncTextZoomResetText();
  currentViewportIndexes=(PAGE_STATE[target].vpFrames||[]).map(()=>0);
  const rtiCanvas=document.getElementById('rtiCanvas');
  if (rtiCanvas) {{
@@ -2700,6 +2801,7 @@ window.addEventListener('resize', applyRtiLayout);
 renderOrientationToggle();
 applyOrientationState();
 syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+syncTextZoomResetText();
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
