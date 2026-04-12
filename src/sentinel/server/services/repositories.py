@@ -143,6 +143,8 @@ class InMemoryRepository:
         self._fail_tags_by_project_target: dict[tuple[str, str], str] = {}
         self._layer_locks_by_project_scope_layer: dict[tuple[str, str, str], dict[str, Any]] = {}
         self._idempotency: dict[tuple[str, str], dict[str, Any]] = {}
+        # First recorded outcome per (projectId, targetKey); mirrors Postgres target_first_test_outcomes.
+        self._first_outcome_by_project_target: dict[tuple[str, str], str] = {}
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -152,13 +154,6 @@ class InMemoryRepository:
         # - primary: recordedAtUtc
         # - tie-break: testResultId (lexicographic)
         return max(items, key=lambda r: (r.recordedAtUtc, r.testResultId))
-
-    @staticmethod
-    def _earliest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
-        if not items:
-            return None
-        # Tie-break on identical timestamps by list insertion order (chronological append order).
-        return min(enumerate(items), key=lambda pair: (pair[1].recordedAtUtc, pair[0]))[1]
 
     def create_client(self, *, name: str) -> Client:
         with self._lock:
@@ -294,6 +289,8 @@ class InMemoryRepository:
         with self._lock:
             key = (tok.projectId, str(target.get("targetKey") or ""))
             self._results_by_project_target.setdefault(key, []).append(rec)
+            if key not in self._first_outcome_by_project_target:
+                self._first_outcome_by_project_target[key] = str(outcome or "").strip().upper()
         return rec
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
@@ -362,14 +359,11 @@ class InMemoryRepository:
 
     def count_first_time_fail_targets(self, *, projectId: str) -> int:
         with self._lock:
-            count = 0
-            for (pid, _target_key), items in self._results_by_project_target.items():
-                if pid != projectId or not items:
-                    continue
-                first = self._earliest_record(items)
-                if first is not None and first.outcome == "FAIL":
-                    count += 1
-            return count
+            return sum(
+                1
+                for (pid, _tk), outcome in self._first_outcome_by_project_target.items()
+                if pid == projectId and outcome == "FAIL"
+            )
 
     def get_tech_link_label(self, *, techLinkId: str) -> str | None:
         with self._lock:
@@ -384,6 +378,9 @@ class InMemoryRepository:
             drop_result_keys = [key for key in self._results_by_project_target.keys() if key[0] == projectId]
             for key in drop_result_keys:
                 self._results_by_project_target.pop(key, None)
+            drop_first_keys = [key for key in self._first_outcome_by_project_target.keys() if key[0] == projectId]
+            for key in drop_first_keys:
+                self._first_outcome_by_project_target.pop(key, None)
             drop_tag_keys = [key for key in self._fail_tags_by_project_target.keys() if key[0] == projectId]
             for key in drop_tag_keys:
                 self._fail_tags_by_project_target.pop(key, None)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Any
 from uuid import uuid4
 
@@ -271,6 +272,7 @@ def append_test_result(
     fail_note: str | None,
 ) -> str:
     test_result_id = _new_uuid()
+    recorded_at = _utc_now()
     con = db.connect(database_url)
     try:
         cur = con.cursor()
@@ -283,7 +285,7 @@ def append_test_result(
                 test_result_id,
                 project_id,
                 generation_run_id,
-                _utc_now(),
+                recorded_at,
                 "TECHNICIAN",
                 recorded_by_tech_link_id,
                 target_key,
@@ -293,6 +295,13 @@ def append_test_result(
                 outcome,
                 fail_note,
             ),
+        )
+        cur.execute(
+            "insert into target_first_test_outcomes "
+            "(project_id, target_key, first_outcome, first_test_result_id, first_recorded_at_utc) "
+            "values (%s,%s,%s,%s,%s) "
+            "on conflict (project_id, target_key) do nothing",
+            (project_id, target_key, outcome, test_result_id, recorded_at),
         )
         con.commit()
         return test_result_id
@@ -453,23 +462,45 @@ def list_layer_lock_states_for_project(
         con.close()
 
 
+@lru_cache(maxsize=32)
+def _ensure_target_first_outcomes_backfilled(database_url: str) -> None:
+    """One-time (per process, per DB URL) fill for rows created before materialized table existed."""
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "insert into target_first_test_outcomes "
+            "(project_id, target_key, first_outcome, first_test_result_id, first_recorded_at_utc) "
+            "select s.project_id, s.target_key, s.outcome, s.test_result_id, s.recorded_at_utc from ( "
+            "  select distinct on (tr.project_id, tr.target_key) tr.project_id, tr.target_key, tr.outcome, "
+            "    tr.test_result_id, tr.recorded_at_utc "
+            "  from test_results tr "
+            "  where not exists ( "
+            "    select 1 from target_first_test_outcomes t "
+            "    where t.project_id = tr.project_id and t.target_key = tr.target_key "
+            "  ) "
+            "  order by tr.project_id, tr.target_key, tr.recorded_at_utc asc, tr.ctid asc "
+            ") s "
+            "on conflict (project_id, target_key) do nothing"
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
 def count_first_time_fail_targets(database_url: str, *, project_id: str) -> int:
     """
     Counts targets where the first ever recorded outcome for that target is FAIL.
 
-    "First" is determined by:
-    - recorded_at_utc ASC
-    - ctid ASC (insertion order tie-breaker; stable for identical timestamps)
+    Uses ``target_first_test_outcomes`` (maintained on append, backfilled once per process).
     """
+    _ensure_target_first_outcomes_backfilled(database_url)
     con = db.connect(database_url)
     try:
         row = db.fetch_one(
             con,
-            "select count(*) as \"count\" from ("
-            "  select distinct on (target_key) target_key, outcome "
-            "  from test_results where project_id=%s "
-            "  order by target_key, recorded_at_utc asc, ctid asc"
-            ") firsts where outcome='FAIL'",
+            "select count(*)::bigint as \"count\" from target_first_test_outcomes "
+            "where project_id=%s and first_outcome='FAIL'",
             (project_id,),
         )
         return int(row["count"]) if row else 0

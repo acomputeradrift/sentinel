@@ -154,6 +154,9 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
         failures = queries.list_latest_failed_targets(database_url, project_id=project_id)
         self.assertEqual([r["targetKey"] for r in failures], ["btn:81:513:48551:Macro"])
 
+        # First outcome FAIL then PASS still counts as first-time fail; PASS-first does not.
+        self.assertEqual(queries.count_first_time_fail_targets(database_url, project_id=project_id), 2)
+
     def test_active_upload_tracking_and_project_pointer(self):
         from sentinel.server.persistence import db, queries
 

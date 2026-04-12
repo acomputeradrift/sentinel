@@ -1212,6 +1212,7 @@ let currentDeviceTop=0;
      refreshButtonVisualStates();
      return;
     }}
+    if (t === "commissioning_rollups") return;
     if (t !== "test_result.recorded" && t !== "test_result") return;
     const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
     if (!targetKey) return;
@@ -3308,6 +3309,7 @@ const APP_UI={app_json};
     _logTechWs("snapshot:applied", {{ total: results.length, applied }});
     return;
    }}
+   if (t === "commissioning_rollups") return;
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;

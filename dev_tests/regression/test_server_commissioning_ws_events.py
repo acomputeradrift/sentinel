@@ -1,6 +1,7 @@
 import json
 import unittest
 import asyncio
+import time
 from pathlib import Path
 import sys
 
@@ -19,7 +20,7 @@ def _require_fastapi():
     return TestClient
 
 
-def _recv_until(ws, predicate, *, max_messages: int = 10):
+def _recv_until(ws, predicate, *, max_messages: int = 30):
     for _ in range(max_messages):
         raw = ws.receive_text()
         msg = json.loads(raw)
@@ -318,7 +319,8 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertEqual(msg2.get("projectId"), project_id)
             self.assertEqual(msg2.get("tag"), "IN_PROGRESS")
 
-    def test_testing_ws_direct_reply_even_if_broker_publish_noop(self):
+    def test_testing_ws_submit_is_slim_then_commissioning_rollups_follow(self):
+        """test_result is ack-sized; progress/rollups arrive on a debounced commissioning_rollups event."""
         TestClient = _require_fastapi()
 
         from sentinel.server.app.main import create_app
@@ -336,10 +338,6 @@ class CommissioningWsEventsTest(unittest.TestCase):
         self.assertTrue(tech_token, "Expected tech token from techUrl.")
 
         with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as ws:
-            broker = getattr(app.state, "project_event_broker", None)
-            self.assertIsNotNone(broker)
-            broker.publish = lambda **kwargs: None
-
             ws.send_text(
                 json.dumps(
                     {
@@ -357,9 +355,15 @@ class CommissioningWsEventsTest(unittest.TestCase):
             msg = _recv_until(ws, lambda m: m.get("type") == "test_result" and m.get("outcome") == "PASS")
             self.assertEqual(msg.get("projectId"), project_id)
             self.assertEqual(msg.get("targetKey"), "btn:1:2:3:Button A")
-            self.assertIn("progress", msg)
-            self.assertIn("rollups", msg)
+            self.assertNotIn("progress", msg)
+            self.assertNotIn("rollups", msg)
             self.assertIsInstance(msg.get("seq"), int)
+            time.sleep(0.25)
+            roll = _recv_until(ws, lambda m: m.get("type") == "commissioning_rollups")
+            self.assertEqual(roll.get("projectId"), project_id)
+            self.assertIn("progress", roll)
+            self.assertIn("rollups", roll)
+            self.assertIsInstance(roll.get("seq"), int)
 
     def test_testing_ws_submits_and_receives_progress_rollups(self):
         TestClient = _require_fastapi()
@@ -395,9 +399,13 @@ class CommissioningWsEventsTest(unittest.TestCase):
             )
             msg = _recv_until(ws, lambda m: m.get("type") in ("test_result", "test_result.recorded") and m.get("outcome") == "PASS")
             self.assertEqual(msg.get("projectId"), project_id)
-            self.assertIn("progress", msg)
-            self.assertIn("rollups", msg)
+            self.assertNotIn("progress", msg)
+            self.assertNotIn("rollups", msg)
             self.assertIsInstance(msg.get("seq"), int)
+            time.sleep(0.25)
+            roll1 = _recv_until(ws, lambda m: m.get("type") == "commissioning_rollups")
+            self.assertIn("progress", roll1)
+            self.assertIn("rollups", roll1)
 
             ws.send_text(
                 json.dumps(
@@ -417,9 +425,13 @@ class CommissioningWsEventsTest(unittest.TestCase):
             msg2 = _recv_until(ws, lambda m: m.get("type") in ("test_result", "test_result.recorded") and m.get("outcome") == "FAIL")
             self.assertEqual(msg2.get("projectId"), project_id)
             self.assertEqual(msg2.get("failNote"), "Button not responding")
-            self.assertIn("progress", msg2)
-            self.assertIn("rollups", msg2)
+            self.assertNotIn("progress", msg2)
+            self.assertNotIn("rollups", msg2)
             self.assertIsInstance(msg2.get("seq"), int)
+            time.sleep(0.25)
+            roll2 = _recv_until(ws, lambda m: m.get("type") == "commissioning_rollups")
+            self.assertIn("progress", roll2)
+            self.assertIn("rollups", roll2)
 
     def test_testing_submit_fanout_reaches_commissioning_ws(self):
         TestClient = _require_fastapi()

@@ -527,6 +527,12 @@ function reduceProjectStore(prevState, payload) {
     return state;
   }
 
+  if (t === "commissioning_rollups") {
+    if (payload?.progress) project.progress = _cloneValue(payload.progress);
+    if (payload?.rollups) project.rollups = _cloneValue(payload.rollups);
+    return state;
+  }
+
   if (t === "test_result" || t === "test_result.recorded") {
     if (payload?.progress) project.progress = _cloneValue(payload.progress);
     if (payload?.rollups) project.rollups = _cloneValue(payload.rollups);

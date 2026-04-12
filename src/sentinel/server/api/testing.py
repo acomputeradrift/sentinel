@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 import os
 import logging
+import threading
 import time
 from pathlib import Path, PurePosixPath
 import re
@@ -27,6 +30,7 @@ router = APIRouter(tags=["testing"])
 log = logging.getLogger("uvicorn.error")
 WS_KEEPALIVE_TIMEOUT_S = 15.0
 WS_SEND_TIMEOUT_S = 5.0
+COMMISSIONING_ROLLUPS_DEBOUNCE_S = 0.1
 SHELL_RUNTIME_MODE = "shell"
 SOURCE_RUNTIME_MODE = "source"
 
@@ -36,11 +40,7 @@ def _repo(request: Request) -> Repository:
 
 
 def _broker(request: Request) -> ws_broker.ProjectEventBroker:
-    broker = getattr(request.app.state, "project_event_broker", None)
-    if broker is None:
-        broker = ws_broker.ProjectEventBroker()
-        request.app.state.project_event_broker = broker
-    return broker
+    return _app_event_broker(request.app)
 
 
 def _ws_repo(websocket: WebSocket) -> Repository:
@@ -48,20 +48,65 @@ def _ws_repo(websocket: WebSocket) -> Repository:
 
 
 def _ws_broker(websocket: WebSocket) -> ws_broker.ProjectEventBroker:
-    broker = getattr(websocket.app.state, "project_event_broker", None)
+    return _app_event_broker(websocket.app)
+
+
+def _rollups_debounce_state(app) -> dict[str, Any]:
+    st = getattr(app.state, "commissioning_rollups_debounce", None)
+    if st is None:
+        st = {"lock": threading.Lock(), "timers": {}}
+        app.state.commissioning_rollups_debounce = st
+    return st
+
+
+def _schedule_commissioning_rollups_refresh(*, app, project_id: str) -> None:
+    """Coalesce expensive progress/rollup work across rapid technician submissions."""
+    pid = str(project_id or "").strip()
+    if not pid:
+        return
+    state = _rollups_debounce_state(app)
+
+    def fire() -> None:
+        with state["lock"]:
+            timers: dict[str, threading.Timer] = state["timers"]
+            timers.pop(pid, None)
+        try:
+            repo = app.state.repo
+            broker = _app_event_broker(app)
+            prog, rollups = commissioning_rollups.compute_progress_and_testing_rollups(repo=repo, projectId=pid)
+            broker.publish(
+                projectId=pid,
+                event={
+                    "type": "commissioning_rollups",
+                    "projectId": pid,
+                    "progress": prog,
+                    "rollups": rollups,
+                },
+            )
+        except Exception:
+            log.exception("[testing] commissioning-rollups-refresh-failed projectId=%s", pid)
+
+    with state["lock"]:
+        timers = state["timers"]
+        existing = timers.get(pid)
+        if existing is not None:
+            existing.cancel()
+        t = threading.Timer(float(COMMISSIONING_ROLLUPS_DEBOUNCE_S), fire)
+        t.daemon = True
+        timers[pid] = t
+        t.start()
+
+
+def _app_event_broker(app) -> ws_broker.ProjectEventBroker:
+    broker = getattr(app.state, "project_event_broker", None)
     if broker is None:
         broker = ws_broker.ProjectEventBroker()
-        websocket.app.state.project_event_broker = broker
+        app.state.project_event_broker = broker
     return broker
 
 
-def _compute_progress_and_rollups(*, repo: Repository, projectId: str) -> tuple[dict | None, dict | None]:
-    return commissioning_rollups.compute_progress_and_testing_rollups(repo=repo, projectId=projectId)
-
-
-def _build_test_result_event(*, repo: Repository, rec) -> dict:
+def _build_test_result_event(*, rec) -> dict:
     target_key = str(rec.target.get("targetKey") or "")
-    progress_payload, rollups_payload = _compute_progress_and_rollups(repo=repo, projectId=rec.projectId)
     return {
         "type": "test_result",
         "projectId": rec.projectId,
@@ -72,8 +117,6 @@ def _build_test_result_event(*, repo: Repository, rec) -> dict:
         "kind": rec.target.get("kind") or rec.target.get("targetKind"),
         "refs": rec.target.get("refs"),
         "failNote": rec.failNote,
-        "progress": progress_payload,
-        "rollups": rollups_payload,
     }
 
 
@@ -441,7 +484,8 @@ def post_result(
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
 
-    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(repo=repo, rec=rec))
+    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec))
+    _schedule_commissioning_rollups_refresh(app=request.app, project_id=rec.projectId)
 
     resp = _post_test_result_response(rec=rec)
     if ikey:
@@ -606,11 +650,9 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                     )
                     await websocket.close(code=1008)
                     return
-                event = _build_test_result_event(repo=repo, rec=rec)
-                published_event = broker.publish(projectId=rec.projectId, event=event)
-                if not isinstance(published_event, dict):
-                    published_event = dict(event)
-                    published_event["seq"] = int(broker.latest_seq(projectId=rec.projectId))
+                event = _build_test_result_event(rec=rec)
+                broker.publish(projectId=rec.projectId, event=event)
+                _schedule_commissioning_rollups_refresh(app=websocket.app, project_id=rec.projectId)
                 log.info(
                     "[testing-ws] publish projectId=%s targetKey=%s outcome=%s broker_id=%s",
                     rec.projectId,
@@ -618,15 +660,6 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                     str(event.get("outcome") or ""),
                     id(broker),
                 )
-                try:
-                    await _send_text_or_fail(
-                        websocket=websocket,
-                        text=json.dumps(published_event, separators=(",", ":"), ensure_ascii=False),
-                        project_id=project_id,
-                        tech_token=techToken,
-                    )
-                except Exception:
-                    log.exception("[testing-ws] direct_send_failed techToken=%s", techToken)
             finally:
                 recv_ms = (time.perf_counter() - recv_started) * 1000.0
                 perf["recv_count"] = int(perf["recv_count"]) + 1
