@@ -1,5 +1,5 @@
 -- Materialized first outcome per (project, target) for O(1) first-time-fail counts.
--- Maintained in append_test_result; historical rows backfilled on first count query.
+-- Maintained in append_test_result. Historical rows backfilled on first count query.
 
 create table if not exists target_first_test_outcomes (
   project_id uuid not null references projects(project_id) on delete cascade,
