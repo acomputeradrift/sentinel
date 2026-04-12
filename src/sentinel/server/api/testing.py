@@ -683,3 +683,35 @@ def target_status(request: Request, techToken: str, targetKey: str) -> dict:
         return _repo(request).get_target_status(techToken=techToken, targetKey=targetKey)
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+
+@router.get("/api/v1/testing/{techToken}/layer-locks")
+def get_layer_locks(request: Request, techToken: str, scopeKey: str | None = None) -> dict:
+    try:
+        tok = _repo(request).resolve_active_token(techToken=techToken)
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+    rows = _repo(request).list_layer_lock_states_for_project(projectId=tok.projectId, scopeKey=scopeKey)
+    return {"projectId": tok.projectId, "scopeKey": scopeKey, "locks": rows}
+
+
+@router.post("/api/v1/testing/{techToken}/layer-locks")
+def post_layer_lock(request: Request, techToken: str, payload: dict) -> dict:
+    scope_key = str((payload or {}).get("scopeKey") or "").strip()
+    layer_key = str((payload or {}).get("layerKey") or "").strip()
+    visible = bool((payload or {}).get("visible", True))
+    locked = bool((payload or {}).get("locked", True))
+    if not scope_key or not layer_key:
+        raise http_error(400, code="VALIDATION_ERROR", message="scopeKey and layerKey are required.")
+    try:
+        tok = _repo(request).resolve_active_token(techToken=techToken)
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+    _repo(request).set_layer_lock_state(
+        projectId=tok.projectId,
+        scopeKey=scope_key,
+        layerKey=layer_key,
+        visible=visible,
+        locked=locked,
+    )
+    return {"projectId": tok.projectId, "scopeKey": scope_key, "layerKey": layer_key, "visible": visible, "locked": locked}

@@ -7,7 +7,7 @@
   --panel-corner-radius: 16px;
 
   --color-header-footer: transparent;
-  --color-controls: transparent;
+  --color-controls: #ffffff;
   --color-rti: transparent;
   --outline: transparent;
 }
@@ -306,6 +306,20 @@ body {
   cursor: not-allowed;
 }
 
+.actions button.is-pass-active {
+  color: #1f5d2d;
+  background: #eaf7ef;
+  border-color: #39b54a;
+  font-weight: 700;
+}
+
+.actions button.is-fail-active {
+  color: #7f1d1d;
+  background: #fdeeee;
+  border-color: #ef4444;
+  font-weight: 700;
+}
+
 .row-last-test {
   font-size: 13px;
   line-height: 1.2;
@@ -388,6 +402,7 @@ body {
   overflow: hidden;
   box-sizing: border-box;
   z-index: 2;
+  padding: 10px;
 }
 
 .deviceFooterCanvas {
@@ -406,7 +421,7 @@ body {
   inset-block: 0;
   background: var(--color-controls);
   border: 1px solid var(--panel-border-color);
-  z-index: 2;
+  z-index: 11050;
   transition: width 180ms ease;
 }
 
@@ -571,7 +586,22 @@ body {
   line-height: 1.15;
   padding: 10px 12px;
   cursor: default;
-  text-align: center;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-lock-toggle {
+  display: inline-flex;
+  width: 16px;
+  min-width: 16px;
+  justify-content: center;
+}
+
+.layer-toggle-label {
+  flex: 1;
+  text-align: left;
 }
 
 .layer-toggle.is-inactive {

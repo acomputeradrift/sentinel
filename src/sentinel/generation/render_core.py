@@ -899,8 +899,10 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .layer-panel[hidden]{{display:none;}}
 .layer-panel-title{{font-size:15px;font-weight:700;line-height:1;color:#14324b;text-align:center;}}
 .layer-list{{display:flex;flex-direction:column;gap:10px;overflow:auto;padding-right:2px;}}
-.layer-toggle{{width:100%;min-height:{int(layer_panel_button_cfg.get("minHeight", 44))}px;border-radius:{int(layer_panel_button_cfg.get("borderRadius", 12))}px;border:0;box-shadow:inset 0 0 0 1px {str(layer_button_active_cfg.get("border", "#154665"))};background:{str(layer_button_active_cfg.get("background", "#1e5f86"))};color:{str(layer_button_active_cfg.get("text", "#ffffff"))};font-size:{int(layer_panel_button_cfg.get("fontSize", 13))}px;line-height:1.15;padding:10px 12px;cursor:pointer;text-align:center;}}
+.layer-toggle{{width:100%;min-height:{int(layer_panel_button_cfg.get("minHeight", 44))}px;border-radius:{int(layer_panel_button_cfg.get("borderRadius", 12))}px;border:0;box-shadow:inset 0 0 0 1px {str(layer_button_active_cfg.get("border", "#154665"))};background:{str(layer_button_active_cfg.get("background", "#1e5f86"))};color:{str(layer_button_active_cfg.get("text", "#ffffff"))};font-size:{int(layer_panel_button_cfg.get("fontSize", 13))}px;line-height:1.15;padding:10px 12px;cursor:pointer;text-align:left;display:inline-flex;align-items:center;gap:8px;}}
 .layer-toggle.is-inactive{{background:{str(layer_button_inactive_cfg.get("background", "#f7fbff"))};color:{str(layer_button_inactive_cfg.get("text", "#14324b"))};box-shadow:inset 0 0 0 1px {str(layer_button_inactive_cfg.get("border", "#a9bccd"))};}}
+.layer-lock-toggle{{display:inline-flex;width:16px;min-width:16px;justify-content:center;}}
+.layer-toggle-label{{flex:1;text-align:left;}}
 .layer-toggle:hover{{filter:brightness(0.98);}}
 .vp-indicator{{display:flex;gap:8px;min-height:14px;align-items:center;justify-content:center;}}
 .dot{{width:10px;height:10px;border-radius:50%;border:1px solid #9fb4c6;background:#e2ebf2;}}
@@ -2093,7 +2095,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
 	   syncZoomResetText();
 	   applyViewportPopupLayout();
 	  }}
-  function enterViewportMode(vpIndex) {{
+function enterViewportMode(vpIndex) {{
   const overlay=document.getElementById('vpOverlay');
   const closeBtn=document.getElementById('vpPopupClose');
   const appCanvas=document.getElementById('appCanvas');
@@ -2109,10 +2111,11 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   viewportRoot.classList.add('viewport-mode');
   focusViewportElements();
   renderViewportPopup();
+  syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   applyLayerVisibility();
- }}
-  function exitViewportMode() {{
+}}
+function exitViewportMode() {{
   const overlay=document.getElementById('vpOverlay');
   const closeBtn=document.getElementById('vpPopupClose');
   const appCanvas=document.getElementById('appCanvas');
@@ -2133,12 +2136,49 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   viewportMode.preZoom=null;
   focusViewportElements();
   applyRtiLayout();
+  syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   syncViewportControls();
   applyLayerVisibility();
- }}
+}}
+const persistedLayerLocksByScope=new Map();
+const sessionUnlockedLayerLocks=new Set();
+const loadedLayerLockScopes=new Set();
 function layerScopeKey(state) {{
  return [PROJECT_SESSION_KEY, state?.deviceName||'', state?.pageName||''].join('::');
+}}
+function layerLockCompositeKey(scopeKey, layerKey) {{
+ return `${{String(scopeKey||'')}}::${{String(layerKey||'')}}`;
+}}
+function layerLocksApiUrl() {{
+ const techToken=techTokenFromLocation();
+ if (!techToken) return '';
+ return `/api/v1/testing/${{encodeURIComponent(techToken)}}/layer-locks`;
+}}
+async function syncLayerLocksForScope(scopeKey, force) {{
+ const scope=String(scopeKey||'').trim();
+ if (!scope) return;
+ if (!force && loadedLayerLockScopes.has(scope)) return;
+ const url=layerLocksApiUrl();
+ if (!url) return;
+ try {{
+  const res=await fetch(`${{url}}?scopeKey=${{encodeURIComponent(scope)}}`, {{credentials:'same-origin'}});
+  if (!res.ok) return;
+  const payload=await res.json();
+  const locks=Array.isArray(payload?.locks) ? payload.locks : [];
+  locks.forEach((row)=>{{
+   const rowScope=String(row?.scopeKey||'').trim();
+   const layerKey=String(row?.layerKey||'').trim();
+   if (!rowScope || !layerKey) return;
+   const lockKey=layerLockCompositeKey(rowScope, layerKey);
+   if (Boolean(row?.locked)) {{
+    persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(row?.visible), locked:true}});
+   }} else {{
+    persistedLayerLocksByScope.delete(lockKey);
+   }}
+  }});
+  loadedLayerLockScopes.add(scope);
+ }} catch (_err) {{}}
 }}
 function loadLayerVisibility(scopeKey) {{
  try {{
@@ -2185,12 +2225,26 @@ function activeLayerScopeKey() {{
  const base=layerScopeKey(activePageState());
  return viewportMode.active ? (base+`::viewport:${{Number(viewportMode.vpIndex||0)}}`) : base;
 }}
+function isLayerLocked(scopeKey, layerKey) {{
+ const lockKey=layerLockCompositeKey(scopeKey, layerKey);
+ return persistedLayerLocksByScope.has(lockKey) && !sessionUnlockedLayerLocks.has(lockKey);
+}}
+function persistedLayerVisibility(scopeKey, layerKey) {{
+ const lockKey=layerLockCompositeKey(scopeKey, layerKey);
+ const row=persistedLayerLocksByScope.get(lockKey);
+ return row ? Boolean(row.visible) : true;
+}}
 function ensureActiveLayerVisibility() {{
  const layers=activeLayerList();
  const scopeKey=activeLayerScopeKey();
  const stored=loadLayerVisibility(scopeKey);
  const visibility=(stored && typeof stored==='object') ? stored : Object.fromEntries((layers||[]).map(layer=>[layer.key,true]));
  (layers||[]).forEach(layer=>{{ if (!(layer.key in visibility)) visibility[layer.key]=true; }});
+ (layers||[]).forEach(layer=>{{
+  if (isLayerLocked(scopeKey, layer.key)) {{
+   visibility[layer.key]=persistedLayerVisibility(scopeKey, layer.key);
+  }}
+ }});
  saveLayerVisibility(scopeKey, visibility);
  return visibility;
 }}
@@ -2253,17 +2307,51 @@ function renderLayerPanel() {{
  const panel=document.getElementById('layerPanel');
  const list=document.getElementById('layerList');
  if (!panel || !list) return;
+ const scopeKey=activeLayerScopeKey();
   const layers=activeLayerList();
   if (!layers.length) {{
     list.innerHTML='';
     panel.setAttribute('hidden','hidden');
     return;
   }}
- list.innerHTML=layers.map(layer=>`<button class="layer-toggle${{isLayerVisible(layer.key)?'':' is-inactive'}}" type="button" data-layer-key="${{esc(layer.key)}}" aria-pressed="${{isLayerVisible(layer.key)?'true':'false'}}">${{esc(layer.name)}}</button>`).join('');
+ list.innerHTML=layers.map(layer=>{{
+  const locked=isLayerLocked(scopeKey, layer.key);
+  const icon=locked ? '🔒' : '🔓';
+  return `<button class="layer-toggle${{isLayerVisible(layer.key)?'':' is-inactive'}}${{locked?' is-locked':''}}" type="button" data-layer-key="${{esc(layer.key)}}" aria-pressed="${{isLayerVisible(layer.key)?'true':'false'}}"><span class="layer-lock-toggle" role="button" aria-label="${{locked?'Unlock layer':'Lock layer'}}">${{icon}}</span><span class="layer-toggle-label">${{esc(layer.name)}}</span></button>`;
+ }}).join('');
  panel.removeAttribute('hidden');
-  list.querySelectorAll('.layer-toggle').forEach(button=>button.addEventListener('click',()=>{{
+  list.querySelectorAll('.layer-toggle').forEach(button=>button.addEventListener('click',(event)=>{{
     const key=button.dataset.layerKey||'';
     const scopeKey=activeLayerScopeKey();
+    const lockKey=layerLockCompositeKey(scopeKey, key);
+    const lockBtn=event.target && event.target.closest ? event.target.closest('.layer-lock-toggle') : null;
+    if (lockBtn) {{
+      event.preventDefault();
+      event.stopPropagation();
+      const visibility=ensureActiveLayerVisibility();
+      if (isLayerLocked(scopeKey, key)) {{
+        sessionUnlockedLayerLocks.add(lockKey);
+        renderLayerPanel();
+        applyLayerVisibility();
+        return;
+      }}
+      sessionUnlockedLayerLocks.delete(lockKey);
+      const lockedVisible=visibility[key] !== false;
+      persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(lockedVisible), locked:true}});
+      const url=layerLocksApiUrl();
+      if (url) {{
+        fetch(url, {{
+          method:'POST',
+          headers:{{'content-type':'application/json'}},
+          credentials:'same-origin',
+          body:JSON.stringify({{scopeKey, layerKey:key, visible:Boolean(lockedVisible), locked:true}})
+        }}).catch(()=>{{}});
+      }}
+      renderLayerPanel();
+      applyLayerVisibility();
+      return;
+    }}
+    if (isLayerLocked(scopeKey, key)) return;
     const visibility=ensureActiveLayerVisibility();
     visibility[key]=!(visibility[key] !== false);
     saveLayerVisibility(scopeKey, visibility);
@@ -2605,11 +2693,13 @@ function setActivePage(nextPageIndex) {{
    rtiCanvas.scrollLeft=0;
    rtiCanvas.scrollTop=0;
  }}
+ syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
  applyRtiLayout();
 }}
 window.addEventListener('resize', applyRtiLayout);
 renderOrientationToggle();
 applyOrientationState();
+syncLayerLocksForScope(activeLayerScopeKey(), false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});

@@ -114,6 +114,10 @@ class Repository(Protocol):
 
     def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]: ...
 
+    def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None: ...
+
+    def list_layer_lock_states_for_project(self, *, projectId: str, scopeKey: str | None = None) -> list[dict[str, Any]]: ...
+
     def count_first_time_fail_targets(self, *, projectId: str) -> int: ...
 
     def get_tech_link_label(self, *, techLinkId: str) -> str | None: ...
@@ -133,6 +137,7 @@ class InMemoryRepository:
         self._active_upload_by_project: dict[str, str] = {}
         self._results_by_project_target: dict[tuple[str, str], list[TestResultRecord]] = {}
         self._fail_tags_by_project_target: dict[tuple[str, str], str] = {}
+        self._layer_locks_by_project_scope_layer: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -325,6 +330,30 @@ class InMemoryRepository:
                     out[target_key] = tag
             return out
 
+    def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None:
+        with self._lock:
+            if projectId not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            self._layer_locks_by_project_scope_layer[(projectId, str(scopeKey), str(layerKey))] = {
+                "scopeKey": str(scopeKey),
+                "layerKey": str(layerKey),
+                "visible": bool(visible),
+                "locked": bool(locked),
+                "updatedAtUtc": utc_now(),
+            }
+
+    def list_layer_lock_states_for_project(self, *, projectId: str, scopeKey: str | None = None) -> list[dict[str, Any]]:
+        with self._lock:
+            rows: list[dict[str, Any]] = []
+            for (pid, scope_key, _layer_key), value in self._layer_locks_by_project_scope_layer.items():
+                if pid != projectId:
+                    continue
+                if scopeKey is not None and str(scope_key) != str(scopeKey):
+                    continue
+                rows.append(dict(value))
+            rows.sort(key=lambda r: str(r.get("updatedAtUtc") or ""), reverse=True)
+            return rows
+
     def count_first_time_fail_targets(self, *, projectId: str) -> int:
         with self._lock:
             count = 0
@@ -352,6 +381,9 @@ class InMemoryRepository:
             drop_tag_keys = [key for key in self._fail_tags_by_project_target.keys() if key[0] == projectId]
             for key in drop_tag_keys:
                 self._fail_tags_by_project_target.pop(key, None)
+            drop_lock_keys = [key for key in self._layer_locks_by_project_scope_layer.keys() if key[0] == projectId]
+            for key in drop_lock_keys:
+                self._layer_locks_by_project_scope_layer.pop(key, None)
 
 
 class PostgresRepository:
@@ -578,6 +610,31 @@ class PostgresRepository:
         out: dict[str, str] = {}
         for r in rows:
             out[str(r.get("targetKey") or "")] = str(r.get("tag") or "")
+        return out
+
+    def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None:
+        self._q.upsert_layer_lock_state(
+            self._database_url,
+            project_id=projectId,
+            scope_key=str(scopeKey),
+            layer_key=str(layerKey),
+            visible=bool(visible),
+            locked=bool(locked),
+        )
+
+    def list_layer_lock_states_for_project(self, *, projectId: str, scopeKey: str | None = None) -> list[dict[str, Any]]:
+        rows = self._q.list_layer_lock_states_for_project(self._database_url, project_id=projectId, scope_key=scopeKey)
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            out.append(
+                {
+                    "scopeKey": str(r.get("scopeKey") or ""),
+                    "layerKey": str(r.get("layerKey") or ""),
+                    "visible": bool(r.get("visible")),
+                    "locked": bool(r.get("locked")),
+                    "updatedAtUtc": str(r.get("updatedAtUtc") or ""),
+                }
+            )
         return out
 
     def count_first_time_fail_targets(self, *, projectId: str) -> int:

@@ -185,25 +185,57 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         page.wait_for_selector("#rtiDeviceContent .device-page.active .test-btn")
         return page, server
 
-    def test_temporary_background_colors_removed_from_shell_regions(self):
+    def test_shell_panel_colors_and_stacking_are_correct(self):
         page, server = self._open_shell_page()
         try:
-            colors = page.evaluate(
+            state = page.evaluate(
                 """
 () => {
-  const ids = ['deviceHeaderCanvas','deviceFooterCanvas','deviceViewControlsCanvas','deviceLayerControlsCanvas','rtiUsableCanvas'];
-  const out = {};
-  ids.forEach((id) => {
-    const el = document.getElementById(id);
-    out[id] = getComputedStyle(el).backgroundColor;
-  });
-  return out;
+  const color = (id) => getComputedStyle(document.getElementById(id)).backgroundColor;
+  const z = (id) => Number(getComputedStyle(document.getElementById(id)).zIndex || "0");
+  const popup = document.getElementById("vpPopup");
+  const popupZ = popup ? Number(getComputedStyle(popup).zIndex || "0") : 0;
+  return {
+    leftColor: color("deviceViewControlsCanvas"),
+    rightColor: color("deviceLayerControlsCanvas"),
+    canvasColor: color("rtiUsableCanvas"),
+    leftZ: z("deviceViewControlsCanvas"),
+    rightZ: z("deviceLayerControlsCanvas"),
+    popupZ
+  };
 }
 """
             )
-            for key, value in colors.items():
-                if value != "rgba(0, 0, 0, 0)":
-                    raise AssertionError(f"Expected transparent background for {key}, got {value}")
+            self.assertEqual(state["leftColor"], "rgb(255, 255, 255)")
+            self.assertEqual(state["rightColor"], "rgb(255, 255, 255)")
+            self.assertEqual(state["canvasColor"], "rgba(0, 0, 0, 0)")
+            self.assertGreater(state["leftZ"], state["popupZ"])
+            self.assertGreater(state["rightZ"], state["popupZ"])
+        finally:
+            page.close()
+            server.stop()
+
+    def test_rti_device_canvas_has_ten_pixel_padding(self):
+        page, server = self._open_shell_page()
+        try:
+            pads = page.evaluate(
+                """
+() => {
+  const el = document.getElementById("rtiDeviceContent");
+  const cs = getComputedStyle(el);
+  return {
+    top: cs.paddingTop,
+    right: cs.paddingRight,
+    bottom: cs.paddingBottom,
+    left: cs.paddingLeft
+  };
+}
+"""
+            )
+            self.assertEqual(pads["top"], "10px")
+            self.assertEqual(pads["right"], "10px")
+            self.assertEqual(pads["bottom"], "10px")
+            self.assertEqual(pads["left"], "10px")
         finally:
             page.close()
             server.stop()
@@ -242,6 +274,128 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
             self.assertGreater(after["font"], before["font"])
             self.assertAlmostEqual(after["width"], before["width"], delta=0.5)
             self.assertAlmostEqual(after["height"], before["height"], delta=0.5)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_text_zoom_resets_on_page_change_and_label_matches(self):
+        page, server = self._open_shell_page()
+        try:
+            page.click('[data-control="text-zoom-inc"][data-variant="full"]')
+            page.wait_for_timeout(120)
+            before = page.locator('[data-control="text-zoom-reset"][data-variant="full"]').inner_text().strip()
+            self.assertNotEqual(before, "100%")
+            page.evaluate("setActivePage(1)")
+            page.wait_for_timeout(120)
+            after = page.locator('[data-control="text-zoom-reset"][data-variant="full"]').inner_text().strip()
+            self.assertEqual(after, "100%")
+        finally:
+            page.close()
+            server.stop()
+
+    def test_page_link_icon_scales_with_text_zoom(self):
+        page, server = self._open_shell_page()
+        try:
+            page.evaluate(
+                """
+() => {
+  const btn = document.querySelector('#rtiDeviceContent .device-page.active .test-btn');
+  if (!btn) return;
+  const link = document.createElement('a');
+  link.className = 'page-link-hit';
+  const icon = document.createElement('span');
+  icon.className = 'page-link-icon';
+  icon.textContent = '>';
+  link.appendChild(icon);
+  btn.appendChild(link);
+}
+"""
+            )
+            before = page.evaluate(
+                """
+() => {
+  const el = document.querySelector('#rtiDeviceContent .device-page.active .page-link-icon');
+  return parseFloat(getComputedStyle(el).fontSize || '0');
+}
+"""
+            )
+            page.click('[data-control="text-zoom-inc"][data-variant="full"]')
+            page.wait_for_timeout(120)
+            after = page.evaluate(
+                """
+() => {
+  const el = document.querySelector('#rtiDeviceContent .device-page.active .page-link-icon');
+  return parseFloat(getComputedStyle(el).fontSize || '0');
+}
+"""
+            )
+            self.assertGreater(after, before)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_viewport_popup_text_scales_with_text_zoom(self):
+        page, server = self._open_shell_page()
+        try:
+            page.evaluate(
+                """
+() => {
+  let popup = document.getElementById('vpPopup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'vpPopup';
+    document.body.appendChild(popup);
+  }
+  let content = popup.querySelector('.vp-popup-vcontent');
+  if (!content) {
+    content = document.createElement('div');
+    content.className = 'vp-popup-vcontent';
+    popup.appendChild(content);
+  }
+  content.innerHTML = '<button class="test-btn">Popup Button</button>';
+}
+"""
+            )
+            before = page.evaluate(
+                """
+() => {
+  const el = document.querySelector('#vpPopup .vp-popup-vcontent .test-btn');
+  return parseFloat(getComputedStyle(el).fontSize || '0');
+}
+"""
+            )
+            page.click('[data-control="text-zoom-inc"][data-variant="full"]')
+            page.wait_for_timeout(120)
+            after = page.evaluate(
+                """
+() => {
+  const el = document.querySelector('#vpPopup .vp-popup-vcontent .test-btn');
+  return parseFloat(getComputedStyle(el).fontSize || '0');
+}
+"""
+            )
+            self.assertGreater(after, before)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_popup_pass_fail_active_colors_are_distinct(self):
+        page, server = self._open_shell_page()
+        try:
+            colors = page.evaluate(
+                """
+() => {
+  const root = document.createElement('div');
+  root.innerHTML = '<div class="actions"><button class="is-pass-active">Pass</button><button class="is-fail-active">Fail</button></div>';
+  document.body.appendChild(root);
+  const pass = getComputedStyle(root.querySelector('.is-pass-active')).backgroundColor;
+  const fail = getComputedStyle(root.querySelector('.is-fail-active')).backgroundColor;
+  root.remove();
+  return {pass, fail};
+}
+"""
+            )
+            self.assertNotEqual(colors["pass"], colors["fail"])
         finally:
             page.close()
             server.stop()

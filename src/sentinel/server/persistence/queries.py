@@ -407,6 +407,52 @@ def list_fail_tags_for_project(database_url: str, *, project_id: str) -> list[di
         con.close()
 
 
+def upsert_layer_lock_state(
+    database_url: str,
+    *,
+    project_id: str,
+    scope_key: str,
+    layer_key: str,
+    visible: bool,
+    locked: bool,
+) -> None:
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "insert into layer_lock_states (project_id, scope_key, layer_key, visible, locked, updated_at_utc) "
+            "values (%s,%s,%s,%s,%s,%s) "
+            "on conflict (project_id, scope_key, layer_key) do update set "
+            "visible=excluded.visible, locked=excluded.locked, updated_at_utc=excluded.updated_at_utc",
+            (project_id, scope_key, layer_key, bool(visible), bool(locked), _utc_now()),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def list_layer_lock_states_for_project(
+    database_url: str, *, project_id: str, scope_key: str | None = None
+) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        if scope_key is not None:
+            return db.fetch_all(
+                con,
+                "select scope_key as \"scopeKey\", layer_key as \"layerKey\", visible, locked, updated_at_utc as \"updatedAtUtc\" "
+                "from layer_lock_states where project_id=%s and scope_key=%s order by updated_at_utc desc",
+                (project_id, scope_key),
+            )
+        return db.fetch_all(
+            con,
+            "select scope_key as \"scopeKey\", layer_key as \"layerKey\", visible, locked, updated_at_utc as \"updatedAtUtc\" "
+            "from layer_lock_states where project_id=%s order by updated_at_utc desc",
+            (project_id,),
+        )
+    finally:
+        con.close()
+
+
 def count_first_time_fail_targets(database_url: str, *, project_id: str) -> int:
     """
     Counts targets where the first ever recorded outcome for that target is FAIL.
