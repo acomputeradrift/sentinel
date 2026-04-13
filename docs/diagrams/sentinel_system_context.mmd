@@ -1,0 +1,31 @@
+flowchart TB
+  subgraph Clients["Clients"]
+    BC["Commissioning browser\n(/commissioning/*)"]
+    TH["Technician browser\n(/testing/{token})"]
+  end
+
+  subgraph Edge["Edge (typical droplet)"]
+    NG["nginx :80\n→ 127.0.0.1:8000"]
+  end
+
+  subgraph Sentinel["Sentinel (Uvicorn / FastAPI)"]
+    APP["create_app()\nmain.py"]
+  end
+
+  subgraph Data["Persistence"]
+    PG[("PostgreSQL\n+ migrations")]
+    MEM["InMemoryRepository\n(dev/tests)"]
+  end
+
+  subgraph Disk["Local / server disk"]
+    UP["uploads / SENTINEL_UPLOAD_ROOT"]
+    GEN["generated / SENTINEL_GENERATED_ROOT\n*_project_data.json, HTML"]
+  end
+
+  BC --> NG
+  TH --> NG
+  NG --> APP
+  APP --> PG
+  APP --> MEM
+  APP --> UP
+  APP --> GEN
