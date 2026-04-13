@@ -12,6 +12,13 @@ def load_json(path: Path) -> Any:
         return json.load(f)
 
 
+_SENTINEL_UI_DIR = Path(__file__).resolve().parent.parent / "ui"
+
+
+def _sentinel_test_status_embed_js() -> str:
+    return (_SENTINEL_UI_DIR / "testing" / "sentinel_test_status_embed.js").read_text(encoding="utf-8")
+
+
 def _resolution_or_default(resolution: dict[str, Any] | None, default_width: int, default_height: int) -> dict[str, int]:
     raw = resolution or {}
     width = int(raw.get("width") or 0)
@@ -838,9 +845,10 @@ def _render_document(
     app_json = json.dumps(app_ui)
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
+    _ts_embed = _sentinel_test_status_embed_js()
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
-<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open\">
+<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
 html,body{{margin:0;width:100%;height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;overflow:hidden;}}
@@ -967,6 +975,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
  <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
+{_ts_embed}
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
@@ -1007,20 +1016,6 @@ let currentDeviceTop=0;
  let passAllContext=null;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
- const CATEGORY_FILL={{screenLabels:"#58585a",screenButtons:"#2c6fb7",hardButtons:"#2c6fb7",uiItems:"#a7a9ac",emptyTag:"#ef4444"}};
- const STATE_TRIM={{pass:"#39b54a",partial:"#fcb040",fail:"#ef4444",untested:"transparent"}};
- function _buttonCategoryKeyFromMeta(meta, wrap) {{
-  const m=(meta&&typeof meta==="object")?meta:{{}};
-  const key=String(m.categoryKey||wrap?.dataset?.buttonCategory||"").trim();
-  if (key && CATEGORY_FILL[key]) return key;
-  const label=String(m.category||"").trim().toLowerCase();
-  if (label==="screen label") return "screenLabels";
-  if (label==="screen button") return "screenButtons";
-  if (label==="hard button") return "hardButtons";
-  if (label==="ui item") return "uiItems";
-  if (label==="empty tag") return "emptyTag";
-  return "screenButtons";
- }}
  function _buttonTargetPrefix(wrap) {{
   if (!wrap || !wrap.dataset) return "";
   const deviceId=wrap.dataset.diagDeviceId;
@@ -1035,63 +1030,14 @@ let currentDeviceTop=0;
   if (deviceId != null && pageId != null && buttonId != null) return `btn:${{deviceId}}:${{pageId}}:${{buttonId}}`;
   return "";
  }}
- function _buttonTargets(meta) {{
-  const m=(meta&&typeof meta==="object")?meta:{{}};
-  const targets=Array.isArray(m.targets)?m.targets:[];
-  return targets.map((t)=>String(t||"").trim()).filter(Boolean);
- }}
- function _stateFromCounts(categoryKey, passCount, totalCount, testedCount) {{
-  if (categoryKey==="emptyTag") return "fail";
-  if (!Number(totalCount)||Number(totalCount)<=0) return "untested";
-  if (!Number(testedCount)||Number(testedCount)<=0) return "untested";
-  if (Number(passCount)>=Number(totalCount)) return "pass";
-  if (Number(passCount)<=0) return "fail";
-  return "partial";
- }}
  function refreshButtonVisualStates() {{
-  document.querySelectorAll(".device-page .btn-wrap, .vp-popup-vcontent .btn-wrap.vp-btn").forEach((wrap)=>{{
-   const btn=wrap.querySelector(".test-btn");
-   if (!btn) return;
-   let meta={{}};
-   try {{ meta=JSON.parse(btn.dataset.meta||"{{}}"); }} catch (_e) {{ meta={{}}; }}
-   const categoryKey=_buttonCategoryKeyFromMeta(meta, wrap);
-   wrap.style.setProperty("--btn-fill-color", CATEGORY_FILL[categoryKey] || CATEGORY_FILL.screenButtons);
-   const targets=_buttonTargets(meta);
-   let passCount=0;
-   let testedCount=0;
-   for (const label of targets) {{
-    const target = buildTargetPayload(btn, meta, label);
-    const key = String(target?.targetKey || "").trim();
-    if (!key) continue;
-    const rec=statusByTargetKey.get(key);
-    if (!rec) continue;
-    const outcome=String(rec.outcome||"").toUpperCase();
-    if (outcome!=="PASS" && outcome!=="FAIL") continue;
-    testedCount += 1;
-    if (outcome==="PASS") passCount += 1;
-   }}
-   const stateKey=_stateFromCounts(categoryKey, passCount, targets.length, testedCount);
-   const trimColor=STATE_TRIM[stateKey] || "transparent";
-   const trimWidth=(stateKey==="untested") ? "0px" : "4px";
-   wrap.style.setProperty("--btn-state-trim-color", trimColor);
-   wrap.style.setProperty("--btn-state-trim-width", trimWidth);
-   const countEl=wrap.querySelector(".btn-pass-total");
-   if (countEl) {{
-    const countText = targets.length > 0 ? `${{passCount}}/${{targets.length}}` : "";
-    countEl.textContent = countText;
-    if (!countText) {{
-     countEl.style.display = "none";
-     countEl.style.visibility = "hidden";
-    }} else {{
-     countEl.style.display = "block";
-     countEl.style.visibility = "hidden";
-     const wrapRect=wrap.getBoundingClientRect();
-     const countRect=countEl.getBoundingClientRect();
-     const fits = countRect.width <= wrapRect.width && countRect.height <= wrapRect.height;
-     countEl.style.visibility = fits ? "visible" : "hidden";
-     if (!fits) countEl.style.display = "none";
-    }}
-   }}
+  const api=globalThis.__sentinelTestStatus;
+  if (!api||typeof api.refreshButtonWraps!=="function") return;
+  api.refreshButtonWraps({{
+   root: document,
+   wrapSelector: ".device-page .btn-wrap, .vp-popup-vcontent .btn-wrap.vp-btn",
+   statusByTargetKey: statusByTargetKey,
+   buildTargetPayload: buildTargetPayload,
   }});
  }}
  const _perfNow=()=>((typeof performance!=="undefined"&&performance.now)?performance.now():Date.now());
@@ -2216,32 +2162,36 @@ function layerLocksApiUrl() {{
  if (!techToken) return '';
  return `/api/v1/testing/${{encodeURIComponent(techToken)}}/layer-locks`;
 }}
-async function syncLayerLocksForScope(scopeKey, force) {{
+function syncLayerLocksForScope(scopeKey, force) {{
  const scope=String(scopeKey||'').trim();
- if (!scope) return;
- if (!force && loadedLayerLockScopes.has(scope)) return;
+ if (!scope) return Promise.resolve();
+ if (!force && loadedLayerLockScopes.has(scope)) return Promise.resolve();
  const url=layerLocksApiUrl();
- if (!url) return;
- try {{
-  const res=await fetch(`${{url}}?scopeKey=${{encodeURIComponent(scope)}}`, {{credentials:'same-origin'}});
-  if (!res.ok) return;
-  const payload=await res.json();
-  const locks=Array.isArray(payload?.locks) ? payload.locks : [];
-  locks.forEach((row)=>{{
-   const rowScope=String(row?.scopeKey||'').trim();
-   const layerKey=String(row?.layerKey||'').trim();
-   if (!rowScope || !layerKey) return;
-   const lockKey=layerLockCompositeKey(rowScope, layerKey);
-   if (Boolean(row?.locked)) {{
-    persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(row?.visible), locked:true}});
-   }} else {{
-    persistedLayerLocksByScope.delete(lockKey);
-   }}
-  }});
-  loadedLayerLockScopes.add(scope);
- }} catch (_err) {{}}
+ if (!url) return Promise.resolve();
+ return fetch(`${{url}}?scopeKey=${{encodeURIComponent(scope)}}`, {{credentials:'same-origin'}})
+  .then((res) => {{
+   if (!res.ok) return null;
+   return res.json();
+  }})
+  .then((payload) => {{
+   if (!payload) return;
+   const locks=Array.isArray(payload?.locks) ? payload.locks : [];
+   locks.forEach((row)=>{{
+    const rowScope=String(row?.scopeKey||'').trim();
+    const layerKey=String(row?.layerKey||'').trim();
+    if (!rowScope || !layerKey) return;
+    const lockKey=layerLockCompositeKey(rowScope, layerKey);
+    if (Boolean(row?.locked)) {{
+     persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(row?.visible), locked:true}});
+    }} else {{
+     persistedLayerLocksByScope.delete(lockKey);
+    }}
+   }});
+   loadedLayerLockScopes.add(scope);
+  }})
+  .catch(() => {{}});
 }}
-async function syncLayerLocksForActiveLayers(force) {{
+function syncLayerLocksForActiveLayers(force) {{
  const baseScope=activeLayerScopeKey();
  const scopes=new Set();
  const addScope=(value)=>{{
@@ -2250,9 +2200,8 @@ async function syncLayerLocksForActiveLayers(force) {{
  }};
  addScope(baseScope);
  (activeLayerList()||[]).forEach(layer=>{{ addScope(layerPersistenceScopeKey(layer, baseScope)); }});
- for (const scope of scopes) {{
-  await syncLayerLocksForScope(scope, force);
- }}
+ const scopeList=Array.from(scopes);
+ return scopeList.reduce((p, scope) => p.then(() => syncLayerLocksForScope(scope, force)), Promise.resolve());
 }}
 function loadLayerVisibility(scopeKey) {{
  try {{
@@ -2391,7 +2340,7 @@ function renderLayerPanel() {{
   const layerByKey=new Map((layers||[]).map(layer=>[String(layer?.key||''), layer]));
  list.innerHTML=layers.map(layer=>{{
   const locked=isLayerLocked(scopeKey, layer);
-  const icon=locked ? 'lock' : 'lock_open';
+  const icon=locked ? 'lock' : 'lock_open_right';
   return `<button class="layer-toggle${{isLayerVisible(layer.key)?'':' is-inactive'}}${{locked?' is-locked':''}}" type="button" data-layer-key="${{esc(layer.key)}}" aria-pressed="${{isLayerVisible(layer.key)?'true':'false'}}"><span class="layer-lock-toggle" role="button" aria-label="${{locked?'Unlock layer':'Lock layer'}}"><span class="layer-lock-icon material-symbols-outlined" aria-hidden="true">${{icon}}</span></span><span class="layer-toggle-label">${{esc(layer.name)}}</span></button>`;
  }}).join('');
  panel.removeAttribute('hidden');
@@ -3081,6 +3030,7 @@ def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
             refs["resolvedData"] = diag.get("resolvedData")
     return {
         "category": "Driver Event" if event_kind == "driver" else "System Event",
+        "categoryKey": "driverEvents" if event_kind == "driver" else "systemEvents",
         "identity": identity,
         "buttonType": "",
         "targets": targets,
@@ -3107,7 +3057,9 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
     for item in system_events:
         meta_attr = json.dumps(_event_meta(item, "system")).replace("'", "&apos;")
         system_rows.append(
-            f"<button class='home-row event-row test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'system')}</button>"
+            f"<div class='btn-wrap btn-wrap--home-event'>"
+            f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'system')}</button>"
+            f"<div class='btn-pass-total' aria-hidden='true'></div></div>"
         )
 
     driver_rows = []
@@ -3121,7 +3073,9 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
         for item in items:
             meta_attr = json.dumps(_event_meta(item, "driver")).replace("'", "&apos;")
             driver_rows.append(
-                f"<button class='home-row event-row test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'driver')}</button>"
+                f"<div class='btn-wrap btn-wrap--home-event'>"
+                f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'driver')}</button>"
+                f"<div class='btn-pass-total' aria-hidden='true'></div></div>"
             )
 
     device_rows = []
@@ -3141,6 +3095,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
     device_content = "".join(device_rows) if device_rows else "<div class='home-empty'>No testable devices in project.</div>"
 
     app_json = json.dumps(app_ui)
+    _ts_embed = _sentinel_test_status_embed_js()
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{project_title}</title>
 <style>
@@ -3161,7 +3116,10 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-list[hidden]{{display:none !important;}}
 .home-row{{width:100%;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:1px solid #a9bccd;background:#1e5f86;color:#fff;text-decoration:none;font-size:15px;line-height:1.35;text-align:left;box-shadow:inset 0 0 0 1px #154665;}}
 .home-row:hover{{filter:brightness(1.05);}}
-.event-row{{cursor:pointer;}}
+.btn-wrap.btn-wrap--home-event{{width:100%;position:relative;border-radius:16px;--btn-fill-color:#1e5f86;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
+.btn-wrap--home-event .test-btn{{width:100%;margin:0;font:inherit;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:0;background:var(--btn-fill-color);color:#fff;box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);font-size:15px;line-height:1.35;text-align:left;cursor:pointer;white-space:normal;}}
+.btn-wrap--home-event:hover .test-btn{{filter:brightness(1.05);}}
+.btn-wrap--home-event .btn-pass-total{{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:none;visibility:hidden;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.22);color:#fff;font-size:11px;line-height:1.1;font-weight:700;white-space:nowrap;pointer-events:none;}}
 .device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px;z-index:10000;}}
@@ -3218,6 +3176,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 </main>
 <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
+{_ts_embed}
 const APP_UI={app_json};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus'),passAllBtn=document.getElementById('passAll');
  let isPosting=false;
@@ -3226,10 +3185,21 @@ const APP_UI={app_json};
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
+ let techLastAppliedSeq=0;
  let passAllQueue=[];
  let passAllContext=null;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
+ function refreshHomeEventVisualStates() {{
+  const api=globalThis.__sentinelTestStatus;
+  if (!api||typeof api.refreshButtonWraps!=="function") return;
+  api.refreshButtonWraps({{
+   root: document,
+   wrapSelector: ".btn-wrap--home-event",
+   statusByTargetKey: statusByTargetKey,
+   buildTargetPayload: buildTargetPayload,
+  }});
+ }}
  function _logTechWs(action, data) {{
   try {{
    if (typeof console !== "undefined" && console.log) {{
@@ -3307,6 +3277,7 @@ const APP_UI={app_json};
      }}
     }}
     _logTechWs("snapshot:applied", {{ total: results.length, applied }});
+    refreshHomeEventVisualStates();
     return;
    }}
    if (t === "commissioning_rollups") return;
@@ -3329,6 +3300,7 @@ const APP_UI={app_json};
     }} else if (pendingTargetKey) {{
      _logTechWs("ack-miss", {{ pending: pendingTargetKey, received: targetKey }});
     }}
+   refreshHomeEventVisualStates();
  }}
  function _handleTechWsMessage(evt) {{
   try {{

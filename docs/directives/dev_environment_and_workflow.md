@@ -13,20 +13,18 @@ Purpose: describe **how we develop and deploy** (repo layout, local vs droplet, 
   - Playwright required for runtime UI tests.
 - Additional directive files live under `docs/` and are treated as equal to root directives.
 
-## Temp test environment (Playwright)
+## Temp test environment (`.tmp_apex_env`)
 
-Purpose: run UI runtime tests with Playwright.
+Purpose: single local venv for **Sentinel package deps, FastAPI stack, and Playwright** so regression and UI runtime tests do not depend on a random system Python.
 
 - Path (Windows): `Y:\Desktop\Development\Sentinel\.tmp_apex_env`
 - Path (UNC): `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env`
 - Python venv structure: `Scripts\python`, `Lib\site-packages`
-- Installed deps (verified):
-  - `playwright==1.58.0`
-  - Playwright browsers present under:
-    - `C:\Users\jamiefeeny\AppData\Local\ms-playwright\chromium-1208`
-    - `C:\Users\jamiefeeny\AppData\Local\ms-playwright\chromium_headless_shell-1208`
-    - `C:\Users\jamiefeeny\AppData\Local\ms-playwright\ffmpeg-1011`
-    - `C:\Users\jamiefeeny\AppData\Local\ms-playwright\winldd-1007`
+- **Create / refresh:** from repo root, run `python devtools/bootstrap_tmp_apex_env.py` (installs `pip install -e ".[dev]"` and `playwright install chromium`). Safe to re-run after `pyproject.toml` changes.
+- **Regression tests:** `python devtools/run_regression_with_venv.py` (uses this venv and writes `devtools/last_regression_run.txt` if you need a log file).
+- Details and optional `DATABASE_URL`: see `docs/directives/testing_strategy.md` → *Local execution*.
+- Playwright browsers cache under the user profile, for example:
+  - `C:\Users\<user>\AppData\Local\ms-playwright\chromium-*`
 
 ## Repo layout (high-level)
 
@@ -44,7 +42,7 @@ Purpose: run UI runtime tests with Playwright.
 - `rg` (ripgrep) may be blocked on this machine. Prefer PowerShell equivalents:
   - Find files: `Get-ChildItem -Recurse`
   - Search text: `Select-String`
-- When unsure whether local environment has dependencies (FastAPI, Playwright, etc.), tests may skip locally. Prefer verifying on the droplet when needed.
+- Prefer `python devtools/bootstrap_tmp_apex_env.py` and `python devtools/run_regression_with_venv.py` so FastAPI/Playwright tests do not skip for missing imports. If you run `python` without that venv, many server tests will skip or behave differently.
 - **PowerShell command chaining:** on some Windows PowerShell versions, `cmd1 && cmd2` is not valid; use `cmd1 ; cmd2` to run deploy steps sequentially in one line.
 
 ## Droplet (remote server) topology
@@ -71,10 +69,11 @@ Goal: deploy code **once**, without stale files, without a crash/restart loop, a
 
 ### Preflight (local — do this before `scp`)
 
-1. `git status` — only commit what you intend to ship (avoid blind `git add src`; see Known gotchas for `egg-info`).
-2. `git rev-parse HEAD` — copy the hash into chat / ticket (**this is what you are deploying**).
-3. `git archive --format=zip -o sentinel_patch.zip HEAD src`
-4. **Prove the zip contains new bits** (pick a path you changed in this commit):
+1. **Commit** — `git add` / `git commit` everything you intend to deploy. **`git archive` only packs committed files**; uncommitted edits never reach the zip. (Avoid blind `git add src`; see Known gotchas for `egg-info`.)
+2. `git status` — working tree clean (or you explicitly accept no further changes before archiving).
+3. `git rev-parse HEAD` — copy the hash into chat / ticket (**this is what you are deploying**).
+4. `git archive --format=zip -o sentinel_patch.zip HEAD src`
+5. **Prove the zip contains new bits** (pick a path you changed in this commit):
    - PowerShell: `python -m zipfile -l sentinel_patch.zip | Select-String "sentinel/server/persistence/queries.py"`
    - If the member is missing or looks wrong, **stop** — fix commit/archive, do not `scp` yet.
 
@@ -83,9 +82,9 @@ Goal: deploy code **once**, without stale files, without a crash/restart loop, a
 Run **one line at a time** (or a single script block where each step must succeed). Use `ssh -o BatchMode=yes` so a missing key does not hang waiting for a password.
 
 ```powershell
-# 0) From repo root — preflight already done; $env:SENTINEL_DEPLOY_TIP = (git rev-parse --short HEAD) optional
+# 0) From repo root — commit first (see Preflight step 1). Optional: $env:SENTINEL_DEPLOY_TIP = (git rev-parse --short HEAD)
 
-# 1) Archive (only committed files)
+# 1) Archive (only committed files under src/)
 git archive --format=zip -o sentinel_patch.zip HEAD src
 
 # 2) Upload

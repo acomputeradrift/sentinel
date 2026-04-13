@@ -100,6 +100,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
         from fastapi import WebSocketDisconnect
 
         from sentinel.server.api import commissioning
+        from sentinel.server.api import commissioning_project_ws
         from sentinel.server.services.repositories import InMemoryRepository
         from sentinel.server.services.ws_broker import ProjectEventBroker
 
@@ -138,15 +139,15 @@ class CommissioningWsEventsTest(unittest.TestCase):
             app = SimpleNamespace(state=SimpleNamespace(repo=repo, project_event_broker=broker))
             ws = _FakeWs(app)
 
-            old_timeout = commissioning.WS_SEND_TIMEOUT_S
-            commissioning.WS_SEND_TIMEOUT_S = 0.05
+            old_timeout = commissioning_project_ws.WS_SEND_TIMEOUT_S
+            commissioning_project_ws.WS_SEND_TIMEOUT_S = 0.05
             try:
                 stream_task = asyncio.create_task(commissioning.project_ws(ws, project.projectId))
                 await asyncio.sleep(0.02)
                 broker.publish(projectId=project.projectId, event={"type": "test_result", "projectId": project.projectId, "targetKey": "t1", "outcome": "FAIL"})
                 await asyncio.wait_for(stream_task, timeout=0.8)
             finally:
-                commissioning.WS_SEND_TIMEOUT_S = old_timeout
+                commissioning_project_ws.WS_SEND_TIMEOUT_S = old_timeout
 
             # Stream must exit, not hang forever with a dead send loop.
             self.assertTrue(ws.accepted)

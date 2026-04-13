@@ -34,6 +34,7 @@ Then proceed with the user task.
 
 When needed, append:
 
+- **Testing:** `The agent runs tests (devtools/run_regression_with_venv.py or scoped unittest); Jamie does not run test commands.`
 - Backend only: `Focus on src/sentinel/server/**`
 - UI only: `Focus on src/sentinel/ui/commissioning/** and src/sentinel/generation/render_core.py`
 - Deploy only: `Follow docs/directives/dev_environment_and_workflow.md strictly`

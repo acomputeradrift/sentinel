@@ -145,15 +145,25 @@ class InMemoryRepository:
         self._idempotency: dict[tuple[str, str], dict[str, Any]] = {}
         # First recorded outcome per (projectId, targetKey); mirrors Postgres target_first_test_outcomes.
         self._first_outcome_by_project_target: dict[tuple[str, str], str] = {}
+        # Monotonic ids for in-memory test results (matches Postgres test_result_id ordering).
+        self._next_test_result_id = 0
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
         if not items:
             return None
-        # Deterministic "latest" selection:
-        # - primary: recordedAtUtc
-        # - tie-break: testResultId (lexicographic)
-        return max(items, key=lambda r: (r.recordedAtUtc, r.testResultId))
+        # Deterministic "latest" selection (aligns with Postgres: recorded_at desc, test_result_id desc):
+        # - primary: recordedAtUtc (ISO string sorts chronologically for same offset)
+        # - tie-break: numeric testResultId when possible, else lexicographic
+        def _key(r: TestResultRecord) -> tuple:
+            tid = r.testResultId
+            try:
+                tid_sort: int | str = int(tid)
+            except ValueError:
+                tid_sort = tid
+            return (r.recordedAtUtc, tid_sort)
+
+        return max(items, key=_key)
 
     def create_client(self, *, name: str) -> Client:
         with self._lock:
@@ -277,16 +287,19 @@ class InMemoryRepository:
         failNote: str | None,
     ) -> TestResultRecord:
         tok = self.resolve_active_token(techToken=techToken)
-        rec = TestResultRecord(
-            testResultId=new_uuid(),
-            projectId=tok.projectId,
-            recordedAtUtc=utc_now(),
-            recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
-            target=target,
-            outcome=outcome,
-            failNote=failNote,
-        )
         with self._lock:
+            self._next_test_result_id += 1
+            tr_id = str(self._next_test_result_id)
+            ts = utc_now()
+            rec = TestResultRecord(
+                testResultId=tr_id,
+                projectId=tok.projectId,
+                recordedAtUtc=ts,
+                recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+                target=target,
+                outcome=outcome,
+                failNote=failNote,
+            )
             key = (tok.projectId, str(target.get("targetKey") or ""))
             self._results_by_project_target.setdefault(key, []).append(rec)
             if key not in self._first_outcome_by_project_target:

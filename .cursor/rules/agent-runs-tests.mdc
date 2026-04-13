@@ -1,0 +1,10 @@
+---
+description: Agent executes tests; do not delegate test runs to the user
+alwaysApply: true
+---
+
+# Verification
+
+- After meaningful edits under `src/` or `dev_tests/`, run regression via `python devtools/run_regression_with_venv.py` (uses `.tmp_apex_env`). For tiny, isolated changes, a targeted `python -m unittest …` is acceptable.
+- If shell stdout is empty, read `devtools/last_regression_run.txt` for the log.
+- Report pass/fail in the reply. Do not ask Jamie to run tests for verification.

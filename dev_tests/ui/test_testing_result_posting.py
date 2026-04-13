@@ -342,7 +342,7 @@ class TestingResultPostingTest(unittest.TestCase):
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click("button.section-toggle[data-target='system-events']")
-            page.click(".event-row.test-btn")
+            page.click(".btn-wrap--home-event .test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_ws_outbox(page, min_posts=1)
             self._wait_for_log_contains(logs, "[tech-ws] send")
@@ -895,7 +895,7 @@ class TestingResultPostingTest(unittest.TestCase):
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click("button.section-toggle[data-target='system-events']")
-            page.click(".event-row.test-btn")
+            page.click(".btn-wrap--home-event .test-btn")
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_ws_outbox(page, min_posts=1)
             page.evaluate(
@@ -1627,7 +1627,7 @@ class TestingResultPostingTest(unittest.TestCase):
 """
             )
             self.assertEqual(visual["btn1"]["bg"], "rgb(44, 111, 183)")
-            self.assertIn(visual["btn1"]["trim"], ("rgb(252, 176, 64)", "#fcb040"))
+            self.assertIn(visual["btn1"]["trim"], ("rgb(239, 68, 68)", "#ef4444"))
             self.assertEqual(visual["btn1"]["countText"].strip(), "1/2")
             self.assertEqual(visual["btn1"]["countDisplay"], "block")
             self.assertEqual(visual["btn1"]["countVisibility"], "visible")

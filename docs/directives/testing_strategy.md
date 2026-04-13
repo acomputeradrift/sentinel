@@ -32,3 +32,49 @@
 
 ---
 
+## Local execution (Windows + PowerShell)
+
+**Goal:** run the same dependency stack for HTTP/FastAPI tests and Playwright UI tests, without relying on “whatever `python` is on PATH” (IDE agents often use a different interpreter than your activated venv).
+
+### One-time: create `.tmp_apex_env` and install deps
+
+From the repo root:
+
+```powershell
+python devtools/bootstrap_tmp_apex_env.py
+```
+
+This creates `.tmp_apex_env` if missing, then runs `pip install -U pip`, `pip install -e ".[dev]"` (core deps + Playwright), and `playwright install chromium`. The directory is gitignored.
+
+### Regression suite (matches CI intent)
+
+```powershell
+python devtools/run_regression_with_venv.py
+```
+
+This invokes `.tmp_apex_env\Scripts\python.exe` with `PYTHONPATH=src` and discovers `dev_tests/regression`. It also writes `devtools/last_regression_run.txt` (gitignored) so tools that do not capture stdout can still read full output.
+
+GitHub Actions runs the same discovery: `python -m unittest discover -s dev_tests/regression -p "test_*.py"` after `pip install -e ".[dev]"`.
+
+### Optional: Postgres-backed tests
+
+Several regression tests require **`DATABASE_URL`** (PostgreSQL connection string) to be set in the environment. If it is unset, those tests **skip**—not fail. Set it when you need to exercise persistence locally, for example:
+
+```powershell
+$env:DATABASE_URL = "postgresql://user:pass@localhost:5432/sentinel"
+python devtools/run_regression_with_venv.py
+```
+
+### UI / Playwright tests
+
+Use the same venv Python so Chromium and imports match:
+
+```powershell
+$env:PYTHONPATH = "src"
+.\.tmp_apex_env\Scripts\python.exe -m unittest dev_tests.ui.test_testing_result_posting -v
+```
+
+Broader UI discovery is possible but slower; prefer targeted modules during development.
+
+---
+

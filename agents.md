@@ -70,6 +70,7 @@ Example expected behavior:
 
 ## Test Method Enforcement
 
+- **Jamie does not run test commands.** After substantive code changes, the AI must execute tests itself (typically `python devtools/run_regression_with_venv.py` from the repo root, or a narrower `python -m unittest …` when the scope is small), read `devtools/last_regression_run.txt` if terminal output is empty, and state pass/fail with any relevant lines. The AI must not ask Jamie to run tests for verification unless Jamie explicitly asks how to run them locally.
 - All implementation must follow test-first methodology.
 - Tests must be created before implementation changes.
 - The AI must use the test framework already present in the project.
@@ -86,6 +87,12 @@ Example expected behavior:
   - `Observed after: ...`
   - `Pass/Fail: ...`
 - Deployment is blocked unless the Intent Check Gate result is explicitly `Pass`.
+
+### When Jamie says `deploy`
+
+1. **Commit the full change set**, not only `src/`. The droplet install uses `git archive … HEAD src`, so **only `src/` is uploaded** to the server, but the repo should still record everything that belongs to the release: `src/`, `dev_tests/`, `pyproject.toml`, `docs/` (including `docs/directives/`), `devtools/` scripts that are tracked, `.gitignore`, root policy files (`AGENTS.md`, `bootstrap.md`, `agents.md`), and `.cursor/rules/` when those rules are part of project policy.
+2. **Do not commit** build artifacts under `*.egg-info/`, local venvs (e.g. `.tmp_apex_env/`), or deployment zips.
+3. Then follow preflight in `docs/directives/dev_environment_and_workflow.md` (archive → verify zip → `scp` / extract → on-disk proof → restart).
 
 ---
 

@@ -3641,4 +3641,4 @@ class LayerLockIconMarkupRegressionTest(unittest.TestCase):
 
         html = render_single_device_html(project_data, app_ui, project_stem="layer_lock_icon_test", device_index=0)
         self.assertIn("layer-lock-icon material-symbols-outlined", html)
-        self.assertIn("lock_open", html)
+        self.assertIn("lock_open_right", html)

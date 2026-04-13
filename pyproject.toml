@@ -18,6 +18,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+sentinel = ["ui/**/*.js", "ui/**/*.css", "ui/**/*.html"]
+
 [build-system]
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"

@@ -1,0 +1,10 @@
+---
+description: On "deploy", commit full change set (not only src); droplet still receives src via git archive
+alwaysApply: true
+---
+
+# Deploy
+
+- **`git archive … HEAD src`** deploys **only `src/`** to the server.
+- When Jamie says **deploy**, commit **all** intentional project changes for that release: `src/`, `dev_tests/`, `pyproject.toml`, `docs/`, tracked `devtools/`, `.gitignore`, policy files (`AGENTS.md`, `bootstrap.md`, `agents.md`), `.cursor/rules/` if shared policy — **not** `*.egg-info/`, venvs, or zips.
+- Then run deploy preflight from `docs/directives/dev_environment_and_workflow.md`.
