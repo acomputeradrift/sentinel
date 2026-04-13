@@ -256,28 +256,47 @@ Intent Check Gate (required before deploy)
 3) Deploy to droplet
    - Follow **Safe deployment workflow** above (preflight → one-shot script → pre-restart verify → restart → health → route).
    - Prefer **`git add` with paths you intend to ship** (e.g. specific packages under `src/sentinel/`), not blind `git add src`, so editable-install metadata such as `src/sentinel.egg-info/` is never committed (see Known gotchas).
+   - After deploy validation passes, run cleanup helper:
+     - Local only: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1`
+     - Local + remote `/tmp`: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1 -CleanRemote`
 
 ## Post-test cleanup workflow (required)
 
 Goal: do not leave disposable test/deploy artifacts behind after local runs.
 
-Run this cleanup step after test or perf runs:
+Run this cleanup step after test runs, perf runs, and deploy runs.
 
-1) Remove known disposable temp run folders:
+Preferred (single command):
+
+- Local only: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1`
+- Local + remote `/tmp`: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1 -CleanRemote`
+
+Manual equivalent (if helper script is unavailable):
+
+1) Remove known local disposable temp run folders:
    - `Remove-Item -Recurse -Force .tmp_perf_*`
    - `Remove-Item -Recurse -Force .tmp_run_*`
 
-2) Remove disposable deployment/test zip artifacts from repo root:
+2) Remove local disposable deployment/test artifacts from repo root:
    - `Remove-Item -Force deploy_*.zip`
    - `Remove-Item -Force sentinel_patch.zip`
+   - `Remove-Item -Force .deploy_verify.txt`
+   - `Remove-Item -Force npx_mermaid_log.txt`
+   - `Remove-Item -Force .tmp_remote_probe.py`
 
 3) Keep persistent tooling env:
    - Do not delete `.tmp_apex_env` (shared Playwright/runtime environment).
 
-4) Verify workspace is clean of disposable artifacts:
+4) Remote cleanup after deploy (droplet):
+   - `ssh -o BatchMode=yes sentinelServer "rm -f /tmp/sentinel_patch.zip /tmp/verify_deploy_hash.py /tmp/codex_remote_probe.py"`
+   - If deploy used ad-hoc temp probes/scripts, remove them from `/tmp` in the same step.
+
+5) Verify workspace is clean of disposable artifacts:
    - `git status --short`
    - `Get-ChildItem -Force -Name .tmp_*`
    - `Get-ChildItem -Force -Name *.zip`
+   - `Get-ChildItem -Force -Name *.txt`
+   - If `*.txt` is noisy for your repo, at least verify `.deploy_verify.txt` and `npx_mermaid_log.txt` are absent.
 
 Operator rule:
 - If a disposable artifact appears repeatedly from a command, either run cleanup immediately after that command or add the command to a wrapper that runs cleanup in a `finally` step.
