@@ -169,10 +169,10 @@ Known gotchas:
 
 ### Optional: `verify_deploy_hash.py` (strongest pre-restart proof)
 
-Repo root: `verify_deploy_hash.py` — compares SHA-256 of a zip member to the extracted file on disk. **Copy it to the droplet** (or `scp` to `/tmp/`), run **after extract, before restart**:
+Path: `deployment/verify_deploy_hash.py` — compares SHA-256 of a zip member to the extracted file on disk. **Copy it to the droplet** (or `scp` to `/tmp/`), run **after extract, before restart**:
 
 ```powershell
-scp verify_deploy_hash.py sentinelServer:/tmp/verify_deploy_hash.py
+scp deployment/verify_deploy_hash.py sentinelServer:/tmp/verify_deploy_hash.py
 ssh -o BatchMode=yes sentinelServer 'python3 /tmp/verify_deploy_hash.py --member src/sentinel/server/persistence/db.py --deployed /opt/sentinel/app/src/sentinel/server/persistence/db.py'
 ```
 
@@ -257,8 +257,8 @@ Intent Check Gate (required before deploy)
    - Follow **Safe deployment workflow** above (preflight → one-shot script → pre-restart verify → restart → health → route).
    - Prefer **`git add` with paths you intend to ship** (e.g. specific packages under `src/sentinel/`), not blind `git add src`, so editable-install metadata such as `src/sentinel.egg-info/` is never committed (see Known gotchas).
    - After deploy validation passes, run cleanup helper:
-     - Local only: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1`
-     - Local + remote `/tmp`: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1 -CleanRemote`
+     - Local only: `powershell -ExecutionPolicy Bypass -File deployment/cleanup_post_run.ps1`
+     - Local + remote `/tmp`: `powershell -ExecutionPolicy Bypass -File deployment/cleanup_post_run.ps1 -CleanRemote`
 
 ## Post-test cleanup workflow (required)
 
@@ -268,8 +268,8 @@ Run this cleanup step after test runs, perf runs, and deploy runs.
 
 Preferred (single command):
 
-- Local only: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1`
-- Local + remote `/tmp`: `powershell -ExecutionPolicy Bypass -File devtools/cleanup_post_run.ps1 -CleanRemote`
+- Local only: `powershell -ExecutionPolicy Bypass -File deployment/cleanup_post_run.ps1`
+- Local + remote `/tmp`: `powershell -ExecutionPolicy Bypass -File deployment/cleanup_post_run.ps1 -CleanRemote`
 
 Manual equivalent (if helper script is unavailable):
 

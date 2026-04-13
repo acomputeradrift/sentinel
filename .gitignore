@@ -4,4 +4,5 @@ Assets/
 temp/
 output/
 **/__pycache__/
+*.egg-info/
 .DS_Store

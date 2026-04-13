@@ -120,26 +120,32 @@ class WsLoggingMarkerTest(unittest.TestCase):
     def test_server_ws_contains_log_markers(self):
         testing = ROOT / "src" / "sentinel" / "server" / "api" / "testing.py"
         commissioning = ROOT / "src" / "sentinel" / "server" / "api" / "commissioning.py"
+        commissioning_project_ws = ROOT / "src" / "sentinel" / "server" / "api" / "commissioning_project_ws.py"
         broker = ROOT / "src" / "sentinel" / "server" / "services" / "ws_broker.py"
         self.assertTrue(testing.exists(), f"Missing file: {testing}")
         self.assertTrue(commissioning.exists(), f"Missing file: {commissioning}")
+        self.assertTrue(commissioning_project_ws.exists(), f"Missing file: {commissioning_project_ws}")
         self.assertTrue(broker.exists(), f"Missing file: {broker}")
-        self.assertIn("[testing-ws]", testing.read_text(encoding="utf-8"))
-        self.assertIn("publish", testing.read_text(encoding="utf-8"))
-        self.assertIn("broker_id", testing.read_text(encoding="utf-8"))
-        self.assertIn("recv:json-parse-failed", testing.read_text(encoding="utf-8"))
-        self.assertIn("unsubscribe-failed", testing.read_text(encoding="utf-8"))
-        self.assertIn("testing_snapshot", testing.read_text(encoding="utf-8"))
-        self.assertIn("snapshot-send", testing.read_text(encoding="utf-8"))
-        self.assertIn("[testing-ws] perf", testing.read_text(encoding="utf-8"))
-        self.assertIn("[commissioning-ws]", commissioning.read_text(encoding="utf-8"))
-        self.assertIn("broker_id", commissioning.read_text(encoding="utf-8"))
-        self.assertIn("send:parse-failed", commissioning.read_text(encoding="utf-8"))
-        self.assertIn("unsubscribe-failed", commissioning.read_text(encoding="utf-8"))
-        self.assertIn("[commissioning-ws] perf", commissioning.read_text(encoding="utf-8"))
-        self.assertIn("[broker]", broker.read_text(encoding="utf-8"))
-        self.assertIn("subscribe-replay-failed", broker.read_text(encoding="utf-8"))
-        self.assertIn("publish-delivery-failed", broker.read_text(encoding="utf-8"))
+        testing_text = testing.read_text(encoding="utf-8")
+        commissioning_text = commissioning.read_text(encoding="utf-8")
+        commissioning_ws_text = commissioning_project_ws.read_text(encoding="utf-8")
+        broker_text = broker.read_text(encoding="utf-8")
+        self.assertIn("[testing-ws]", testing_text)
+        self.assertIn("publish", testing_text)
+        self.assertIn("broker_id", testing_text)
+        self.assertIn("recv:json-parse-failed", testing_text)
+        self.assertIn("unsubscribe-failed", testing_text)
+        self.assertIn("testing_snapshot", testing_text)
+        self.assertIn("snapshot-send", testing_text)
+        self.assertIn("[testing-ws] perf", testing_text)
+        self.assertIn("[commissioning-ws]", commissioning_text)
+        self.assertIn("broker_id", commissioning_text)
+        self.assertIn("send:parse-failed", commissioning_ws_text)
+        self.assertIn("unsubscribe-failed", commissioning_ws_text)
+        self.assertIn("[commissioning-ws] perf", commissioning_ws_text)
+        self.assertIn("[broker]", broker_text)
+        self.assertIn("subscribe-replay-failed", broker_text)
+        self.assertIn("publish-delivery-failed", broker_text)
 
 
 if __name__ == "__main__":

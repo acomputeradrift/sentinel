@@ -3411,3 +3411,234 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
 
         run_nav("page")
         run_nav("verticalScroll")
+
+    def test_shared_layer_lock_state_propagates_across_pages_by_shared_layer_id(self):
+        from playwright.sync_api import expect
+
+        def oriented(top: int, left: int, height: int, width: int) -> dict:
+            return {
+                "fontSize": 10,
+                "orientations": {
+                    "portrait": {"visible": True, "coordinates": {"top": top, "left": left, "height": height, "width": width}},
+                    "landscape": {"visible": True, "coordinates": {"top": top, "left": left, "height": height, "width": width}},
+                },
+                "stack": {"layerOrder": 0, "buttonOrder": 0, "frameNumber": 0},
+            }
+
+        def tagged_button(tag: str, text: str, top: int, left: int, height: int, width: int) -> dict:
+            return {
+                "buttonIdentity": {"buttonTagName": tag, "text": text, "buttonType": None},
+                "buttonUI": oriented(top=top, left=left, height=height, width=width),
+                "testTargets": {
+                    "text": True,
+                    "macros": False,
+                    "macroSteps": False,
+                    "variables": {
+                        "Text": False,
+                        "Reversed": False,
+                        "Inactive": False,
+                        "Visible": False,
+                        "Value": False,
+                        "State": False,
+                        "Command": False,
+                        "Image": False,
+                        "List": False,
+                    },
+                    "graphics": {"bitmap": False, "icon": False},
+                    "pageLink": False,
+                },
+            }
+
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Shared Layer Lock Propagation)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Page A",
+                                "layers": [
+                                    {
+                                        "layerName": "Local A",
+                                        "layerOrder": 0,
+                                        "sharedLayerId": 6101,
+                                        "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "uiItems": []},
+                                        "viewports": [],
+                                    },
+                                    {
+                                        "layerName": "Shared Overlay",
+                                        "layerOrder": 1,
+                                        "sharedLayerId": 700,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "screenButtons": [tagged_button("SHARED-A", "Shared A", top=120, left=60, height=64, width=260)],
+                                            "hardButtons": [],
+                                            "uiItems": [],
+                                        },
+                                        "viewports": [],
+                                    },
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            },
+                            {
+                                "pageName": "Page B",
+                                "layers": [
+                                    {
+                                        "layerName": "Shared Overlay",
+                                        "layerOrder": 0,
+                                        "sharedLayerId": 700,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "screenButtons": [tagged_button("SHARED-B", "Shared B", top=140, left=90, height=64, width=260)],
+                                            "hardButtons": [],
+                                            "uiItems": [],
+                                        },
+                                        "viewports": [],
+                                    },
+                                    {
+                                        "layerName": "Local B",
+                                        "layerOrder": 1,
+                                        "sharedLayerId": 6102,
+                                        "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "uiItems": []},
+                                        "viewports": [],
+                                    },
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            },
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 1,
+                        "pages": [
+                            {"pageId": 1, "pageName": "Page A"},
+                            {"pageId": 2, "pageName": "Page B"},
+                        ],
+                    },
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="shared_layer_lock_prop_test", device_index=0)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel-ui-"))
+        html_path = tmp_dir / "shared_layer_lock_propagation.html"
+        html_path.write_text(html, encoding="utf-8")
+
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+
+            # Page A: hide shared layer, then lock current hidden state.
+            page.evaluate(
+                """() => {
+                  const rows=[...document.querySelectorAll('#layerList .layer-toggle')];
+                  const shared=rows.find((row)=>String(row.textContent||'').includes('Shared Overlay'));
+                  if (!shared) return;
+                  shared.click();
+                  const lock=shared.querySelector('.layer-lock-toggle');
+                  if (lock) lock.click();
+                }"""
+            )
+
+            # Switch to Page B where the same sharedLayerId should map to same persisted lock.
+            page.evaluate("setActivePage(1)")
+            expect(page.locator(".device-page.active")).to_have_attribute("data-page-index", "1")
+
+            shared_state = page.evaluate(
+                """() => {
+                  const rows=[...document.querySelectorAll('#layerList .layer-toggle')];
+                  const shared=rows.find((row)=>String(row.textContent||'').includes('Shared Overlay'));
+                  if (!shared) return null;
+                  return {
+                    pressed: shared.getAttribute('aria-pressed'),
+                    locked: shared.classList.contains('is-locked'),
+                  };
+                }"""
+            )
+            self.assertIsNotNone(shared_state)
+            self.assertEqual(shared_state["pressed"], "false")
+            self.assertTrue(bool(shared_state["locked"]))
+        finally:
+            page.close()
+
+
+class LayerLockIconMarkupRegressionTest(unittest.TestCase):
+    def test_layer_lock_toggle_uses_material_symbol_icon_markup(self):
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Layer Lock Icon)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Shared Overlay",
+                                        "layerOrder": 0,
+                                        "sharedLayerId": 700,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "screenButtons": [],
+                                            "hardButtons": [],
+                                            "uiItems": [],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        app_ui = {
+            "layout": {
+                "appCanvas": {"mode": "browser-viewport"},
+                "appUIControls": {"top": 52, "bottom": 32, "left": 240, "right": 240},
+                "rtiCanvas": {"deriveFromAppCanvas": True},
+                "rtiDeviceCanvas": {"fitMode": "contain", "allowScaleAboveOne": True, "maxScale": 10, "minScale": 0.25},
+            },
+            "header": {"enabled": True, "titleTemplate": "{deviceName} - {pageName}", "placement": "top"},
+            "appNavigation": {"enabled": True, "pageLinks": {"enabled": False}},
+            "zoomControls": {"enabled": True},
+            "viewportNavigation": {"enabled": True},
+            "testingPopup": {"enabled": True},
+            "buttonPresentation": {"fallbackFontSize": 10, "scaleRtiDerivedFontSizes": True},
+            "state": {},
+            "layerPanel": {"enabled": True},
+        }
+
+        html = render_single_device_html(project_data, app_ui, project_stem="layer_lock_icon_test", device_index=0)
+        self.assertIn("layer-lock-icon material-symbols-outlined", html)
+        self.assertIn("lock_open", html)

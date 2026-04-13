@@ -183,7 +183,7 @@ All outputs must be derived strictly from verified inputs and approved methods.
 ## Directive File Awareness
 
 - The AI must check and follow directive files located in:
-  `\\mac\Home\Desktop\Development\Sentinel\docs`
+  `\\mac\Home\Desktop\Development\Sentinel\docs\directives`
 - These files are equal to root-level directives.
 - If a directive exists in these files, it must be followed.
 - The AI must not ignore these files when making decisions.
