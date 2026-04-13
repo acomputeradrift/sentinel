@@ -8,3 +8,25 @@ alwaysApply: true
 - After meaningful edits under `src/` or `dev_tests/`, run regression via `python devtools/run_regression_with_venv.py` (uses `.tmp_apex_env`). For tiny, isolated changes, a targeted `python -m unittest …` is acceptable.
 - If shell stdout is empty, read `devtools/last_regression_run.txt` for the log.
 - Report pass/fail in the reply. Do not ask Jamie to run tests for verification.
+
+## Shell stdout (known empty capture in this environment)
+
+**Do not treat empty tool/shell stdout as success** for git, tests, or deploy steps.
+
+Mandatory pattern (Jamie does not run these commands for you):
+
+1. Run the command with **stdout and stderr redirected to a repo file**, then **Read** that file. Example (PowerShell, from repo root):
+
+   `git status -sb *> devtools/_agent_shell_capture.txt ; git log -1 --oneline *>> devtools/_agent_shell_capture.txt`
+
+   (Use `*> file` or `2>&1 | Out-File -Encoding utf8` so stderr is included.)
+
+2. **Read** `devtools/_agent_shell_capture.txt` (and `devtools/last_regression_run.txt` for regression) and base conclusions only on file contents.
+
+3. For **git commits before deploy**: never run `git archive` until the capture file shows a successful `git commit` **and** `git status` is clean (or intentionally dirty per instructions). Optionally also **Read** `.git/refs/heads/<branch>` to confirm the tip SHA.
+
+4. Prefer adding `; exit $LASTEXITCODE` (PowerShell) or checking exit code in the capture when the step must be strict.
+
+5. Remove or overwrite `devtools/_agent_shell_capture.txt` when done if it would clutter `git status` (do not commit it); it is listed in `.gitignore` if added there—otherwise delete after read.
+
+**Do not** retry the same bare inline `git`/`python` invocation hoping stdout appears; use redirect + Read (or a subagent that returns captured output) instead.
