@@ -1,0 +1,75 @@
+flowchart TB
+  subgraph App["sentinel.server.app"]
+    M["main.py — FastAPI, middleware, routers, /commissioning static"]
+  end
+
+  subgraph MW["sentinel.server.middleware"]
+    A1["CommissioningAuthMiddleware"]
+    A2["TraceIdMiddleware"]
+  end
+
+  subgraph API["sentinel.server.api"]
+    C["commissioning.py — REST"]
+    CW["commissioning_project_ws.py — WS"]
+    CS["commissioning_snapshots.py"]
+    T["testing.py — /testing, results, WS"]
+    E["events.py"]
+    SCH["schemas.py, errors.py"]
+  end
+
+  subgraph Svc["sentinel.server.services"]
+    R["repositories.py — Postgres | InMemory"]
+    WB["ws_broker.py — seq + replay"]
+    PR["progress.py"]
+    CR["commissioning_rollups.py"]
+    PL["pipeline.py — upload → extract → generate"]
+  end
+
+  subgraph Per["sentinel.server.persistence"]
+    DB["db.py — migrations"]
+    Q["queries.py"]
+    MI["migrations/*.sql"]
+  end
+
+  subgraph Gen["sentinel.generation"]
+    RC["render_core.py"]
+    GH["generate_html.py"]
+  end
+
+  subgraph Ext["sentinel.extraction"]
+    EC["extractor_core.py"]
+    EP["extract_project_data.py"]
+  end
+
+  subgraph UI["sentinel.ui.commissioning"]
+    HTML["index.html + CSS"]
+    JS["commissioning.js, commission_tab.js, diagnostics_tab.js"]
+  end
+
+  subgraph Contracts["sentinel.contracts"]
+    J["JSON contracts"]
+  end
+
+  M --> A1 --> A2
+  M --> C
+  M --> T
+  M --> E
+  C --> R
+  C --> WB
+  C --> PL
+  CW --> WB
+  T --> R
+  T --> WB
+  T --> CR
+  C --> CS
+  CS --> PR
+  CS --> CR
+  R --> DB
+  R --> Q
+  DB --> MI
+  PL --> EC
+  PL --> EP
+  PL --> RC
+  RC --> J
+  M -.->|StaticFiles| HTML
+  HTML --> JS
