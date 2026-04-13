@@ -9,6 +9,8 @@ Use this file as the first read in new chats.
 3. `docs/directives/dev_environment_and_workflow.md`
 4. `AGENTS.md`
 
+**Optional (navigation-heavy tasks):** for a file-by-file index of paths and module roles, read `codebase_map.md`. Skip it for small, localized changes where the area is already known.
+
 ## Initial Response Contract
 
 After reading, respond with exactly 8 bullets:

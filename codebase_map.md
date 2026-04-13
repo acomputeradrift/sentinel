@@ -1,245 +1,104 @@
 # codebase_map.md
 
-## Root / Workspace
+Supplement to `bootstrap.md`: file-level navigation and **what lives where**. Not part of the default “Read first” list—use when you need breadth across modules.
 
-[Workspace Root]
+## Root / workspace
 
-- `agents.md`
-  - Role: workspace operating rules.
-  - Contains: policy document.
-  - Uses: governs all work in this repo.
+- `AGENTS.md` — Workspace operating rules (scope, workflow, testing expectations).
+- `bootstrap.md` — Low-token brief: Mermaid diagrams, `docs/directives/dev_environment_and_workflow.md`, `AGENTS.md`, 8-bullet response contract, optional scope add-ons.
+- `pyproject.toml` — Package metadata; runtime deps (FastAPI, Uvicorn, Pydantic, pg8000).
+- `codebase_map.md` — This file (structural index).
 
-- `bootstrap.md`
-  - Role: compact operating brief.
-  - Contains: workflow/rules summary.
-  - Uses: fresh-thread context document.
+## Docs and diagrams
 
-## Source Package
+- `docs/directives/` — **Primary** workflow + architecture directives (e.g. `dev_environment_and_workflow.md`, `commissioning_security_model.md`, `architecture_overview.md`).
+- `docs/diagrams/` — System context and in-process architecture sources (`.mmd`); PDFs can be regenerated via `devtools/render_*.py`.
+- `docs/api_contract_v1.md`, `docs/data_contracts.md` — API and data-shape reference as applicable.
 
-[Sentinel Package]
+## Tests and CI
 
-- `src/sentinel/__init__.py`
-  - Role: package marker.
-  - Contains: docstring.
-  - Uses: Python package root.
+- `dev_tests/regression/` — Server, persistence, extraction/generation, auth, idempotency, migrations, etc.
+- `dev_tests/ui/` — Playwright/runtime UI tests.
+- `dev_tests/fixtures/` — Shared fixture notes or data.
+- `.github/workflows/ci.yml` — CI pipeline for the project.
 
-## Contracts
+## Deployment and devtools
 
-[Contract Files]
+- `deployment/verify_deploy_hash.py` — Verify deployed tree matches expected git revision (see workflow directive).
+- `deployment/cleanup_post_run.ps1` — Post-run cleanup helper.
+- `deployment/README.md` — Deploy-related notes if present.
+- `devtools/render_sentinel_system_context_pdf.py`, `devtools/render_sentinel_inprocess_pdf.py` — Render diagram PDFs from `.mmd` sources.
 
-- `src/sentinel/contracts/apex_project_structure_v4.json`
-  - Role: extracted project-data shape contract.
-  - Contains: top-level keys `source`, `events`, `devices`.
-  - Uses: extraction flow (`extract_project_data.py` -> `extractor_core.py`).
+---
 
-- `src/sentinel/contracts/app_ui_structure.json`
-  - Role: UI structure/config contract.
-  - Contains: top-level keys `appUiStructureVersion`, `layout`, `uiHierarchy`, `header`, `appNavigation`, `zoomControls`, `viewportNavigation`, `layerPanel`, `testingPopup`, `buttonPresentation`, `viewportPresentation`, `state`.
-  - Uses: generation flow (`generate_html.py` -> `render_core.py`).
+## Source package `src/sentinel/`
 
-## Extraction
+- `__init__.py` — Package marker.
 
-[Extraction Modules]
+### Contracts
 
-- `src/sentinel/extraction/__init__.py`
-  - Role: package marker.
-  - Contains: docstring.
-  - Uses: extraction package boundary.
+- `contracts/apex_project_structure_v4.json` — Extracted project-data shape (`source`, `events`, `devices`, …).
+- `contracts/app_ui_structure.json` — UI structure contract for HTML generation.
 
-- `src/sentinel/extraction/extract_project_data.py`
-  - Role: extraction CLI entrypoint.
-  - Contains: `parse_args`, `main`.
-  - Uses: `ExtractContext`, `extract_project_data`, `validate_contract_shape`, `EventLogger`.
+### Extraction
 
-- `src/sentinel/extraction/extractor_core.py`
-  - Role: extraction core implementation.
-  - Contains: `ExtractContext`, `validate_contract_shape`, `extract_project_data`, `_resolve_button`, `_resolve_viewport_frames` plus helper functions.
-  - Uses: `sqlite3`, `xml.etree.ElementTree`, regex utilities; called by `extract_project_data.py`.
+- `extraction/extract_project_data.py` — CLI entry: parse args, run extraction, validate contract shape.
+- `extraction/extractor_core.py` — Core extraction: `ExtractContext`, `extract_project_data`, validation, ElementTree/resolution helpers.
 
-## Generation
+### Generation
 
-[Generation Modules]
+- `generation/generate_html.py` — CLI entry for render pipeline.
+- `generation/render_core.py` — HTML/payload rendering: project home, per-device pages, manifest/payload builders.
 
-- `src/sentinel/generation/__init__.py`
-  - Role: package marker.
-  - Contains: docstring.
-  - Uses: generation package boundary.
+### Logging
 
-- `src/sentinel/generation/generate_html.py`
-  - Role: generation CLI entrypoint.
-  - Contains: `parse_args`, `main`.
-  - Uses: `render_core` exports (`render_project_home_html`, `render_single_device_html`, payload/filename helpers), `EventLogger`.
+- `logging/event_logger.py` — CLI-oriented `EventLogger` (info/warn/success/fail) for extraction/generation scripts.
 
-- `src/sentinel/generation/render_core.py`
-  - Role: HTML/payload rendering core.
-  - Contains: `render_project_home_html`, `render_single_device_html`, `build_device_payload`, `build_project_manifest`, many page/viewport/button helpers.
-  - Uses: loaded by `generate_html.py`; consumes project data + app UI contract.
+### Server — FastAPI app
 
-## Logging
+- `server/app/main.py` — `create_app`: `CommissioningAuthMiddleware`, `TraceIdMiddleware`, repo on `app.state`, HTTP exception handler (propagates `traceId` in JSON errors), `/health`, static mount `/commissioning`, routers for commissioning, events, testing.
 
-[Logging Utilities]
+### Server — request context and middleware
 
-- `src/sentinel/logging/event_logger.py`
-  - Role: stdout event logger.
-  - Contains: `EventLogger`, methods `info`, `warn`, `success`, `fail`.
-  - Uses: extraction and generation CLI scripts.
+- `server/request_context.py` — `contextvars` for per-request trace id (`new_trace_id`, `current_trace_id`).
+- `server/middleware/trace_middleware.py` — `TraceIdMiddleware`: sets trace id, `X-Request-Id` response header.
+- `server/middleware/commissioning_auth_middleware.py` — When `SENTINEL_COMMISSIONING_API_KEY` is set, requires matching key for `/api/v1/commissioning` (HTTP + WebSocket upgrade).
 
-## Server Package
+### Server — API routers and helpers
 
-[Server Package Markers]
+- `server/api/__init__.py` — API subpackage marker.
+- `server/api/commissioning.py` — Commissioning HTTP routes (prefix `/api/v1/commissioning`): uploads, tech links, clients/projects, regeneration, diagnostics; composes helpers; delegates project WebSocket to `commissioning_project_ws`, snapshots to `commissioning_snapshots`.
+- `server/api/commissioning_snapshots.py` — Shared snapshot/rollup helpers for commissioning (e.g. safe progress computation, fail lists, payload shapes used by HTTP + WS).
+- `server/api/commissioning_project_ws.py` — `run_commissioning_project_ws`: commissioning project WebSocket loop, broker integration, keepalive/timeouts.
+- `server/api/testing.py` — Technician-facing routes and WebSockets: HTML/file serving, `post_result` with Pydantic bodies, ready-baseline, debounced commissioning rollups for WS events, target/status endpoints.
+- `server/api/events.py` — Events router (lightweight declaration).
+- `server/api/errors.py` — `http_error`: consistent JSON error envelope for HTTPException detail.
+- `server/api/schemas.py` — Pydantic models for key POST bodies (e.g. `PostTestResultBody`, `PostReadyBaselineBody`, `TestResultTargetIn`).
 
-- `src/sentinel/server/__init__.py`
-  - Role: package marker.
-  - Contains: docstring.
-  - Uses: server package root.
+### Server — services
 
-- `src/sentinel/server/api/__init__.py`
-  - Role: API package marker.
-  - Contains: docstring.
-  - Uses: API route module package.
+The `server/services/` directory holds **modules** (e.g. `commissioning_rollups.py`, `pipeline.py`, `progress.py`, `repositories.py`, `ws_broker.py`); imports use `from sentinel.server.services import …` per package layout.
 
-- `src/sentinel/server/persistence/__init__.py`
-  - Role: persistence package marker.
-  - Contains: future import only.
-  - Uses: persistence package boundary.
+- `server/services/pipeline.py` — Upload staging, extract/generate subprocess orchestration, `regenerate_project`.
+- `server/services/progress.py` — `commissioning_progress` and target/device rollups from latest results + project data.
+- `server/services/commissioning_rollups.py` — Shared rollups/failure breakdown for commissioning HTTP snapshots and testing WS payloads (deduplicated logic vs. routers).
+- `server/services/repositories.py` — `Repository` protocol, `InMemoryRepository`, `PostgresRepository`, domain records (clients, projects, results, idempotency, fail tags, etc.).
+- `server/services/ws_broker.py` — `ProjectEventBroker`: pub/sub with replay buffer for project-scoped events.
 
-- `src/sentinel/server/services/__init__.py`
-  - Role: not present.
-  - Contains: n/a.
-  - Uses: n/a.
+### Server — persistence
 
-## Server App
+- `server/persistence/db.py` — `DATABASE_URL` parsing, `connect`, `apply_migrations` (sorted `migrations/*.sql` with statement splitting), fetch helpers.
+- `server/persistence/queries.py` — SQL functions used by `PostgresRepository` (clients/projects/uploads/tech links/test results/fail tags/idempotency/first-test outcomes, etc.).
+- `server/persistence/migrations/*.sql` — Incremental schema. Filenames sort lexically (note **two** `002_*.sql`: fail tags and idempotency keys). Includes tables for layer lock state, active upload, target first-test outcomes, etc.
 
-[FastAPI App]
+### UI (commissioning console)
 
-- `src/sentinel/server/app/main.py`
-  - Role: app factory and router wiring.
-  - Contains: `create_app`, HTTP exception handler, `health`, module-level `app`.
-  - Uses: API routers (`commissioning`, `events`, `testing`), repositories (`InMemoryRepository`, `PostgresRepository`), static mount `/commissioning`.
+- `ui/commissioning/index.html` — Shell: tabs (`manage`, `commission`, `diagnostics`) and panel hooks.
+- `ui/commissioning/commissioning.js` — Manage flows, uploads, tech links, shared wiring to `/api/v1/commissioning/...`.
+- `ui/commissioning/commission_tab.js` — Commission tab: store, WS manager, `runCommissionTab`, progress UI.
+- `ui/commissioning/diagnostics_tab.js` — Diagnostics tab, fail-tag UX, notes.
+- `ui/commissioning/sentinel_console.css`, `commission_tab.css`, `diagnostics_tab.css` — Styling for console and tabs.
 
-## Server API
+### Other
 
-[Commissioning API]
-
-- `src/sentinel/server/api/commissioning.py`
-  - Role: commissioning endpoints + websocket + snapshot/rollup helpers.
-  - Contains: helpers (`_repo`, `_broker`, `_commissioning_snapshot`, `_fails_from_latest`, etc.), HTTP routes, websocket route.
-  - Uses: `errors.http_error`, services (`pipeline`, `progress`, `ws_broker`), `Repository`.
-
-[Testing API]
-
-- `src/sentinel/server/api/testing.py`
-  - Role: technician HTML/files, test result posting, testing websocket, target status.
-  - Contains: file/HTML helpers, snapshot/event builders, HTTP and websocket handlers.
-  - Uses: `errors.http_error`, `progress`, `ws_broker`, `Repository`.
-
-[Events API]
-
-- `src/sentinel/server/api/events.py`
-  - Role: events router declaration.
-  - Contains: `router`.
-  - Uses: `APIRouter`.
-
-[API Error Helper]
-
-- `src/sentinel/server/api/errors.py`
-  - Role: standard error envelope constructor.
-  - Contains: `http_error`.
-  - Uses: `HTTPException`.
-
-## Server Services
-
-[Pipeline Service]
-
-- `src/sentinel/server/services/pipeline.py`
-  - Role: upload storage and extract/generate subprocess orchestration.
-  - Contains: path helpers, `save_upload`, `_run_subprocess_with_progress`, `regenerate_project`.
-  - Uses: extraction/generation scripts, contract files, filesystem staging.
-
-[Progress Service]
-
-- `src/sentinel/server/services/progress.py`
-  - Role: derive commissioning progress from latest project data + latest results.
-  - Contains: `commissioning_progress` and many target-derivation helpers.
-  - Uses: generated project-data files, `TestResultRecord`.
-
-[Repository Service]
-
-- `src/sentinel/server/services/repositories.py`
-  - Role: repository models/protocol and in-memory/postgres implementations.
-  - Contains: dataclasses (`Client`, `Project`, `TechLink`, etc.), `Repository` protocol, `InMemoryRepository`, `PostgresRepository`.
-  - Uses: persistence layer (`db`, `queries`) for postgres path.
-
-[WebSocket Broker Service]
-
-- `src/sentinel/server/services/ws_broker.py`
-  - Role: project event pub/sub with replay buffer.
-  - Contains: `ProjectEventBroker`, `wait_for_next`.
-  - Uses: queue + JSON delivery; consumed by commissioning/testing APIs.
-
-## Persistence
-
-[DB Adapter]
-
-- `src/sentinel/server/persistence/db.py`
-  - Role: DB URL parsing, pg connection, migrations, fetch helpers.
-  - Contains: `DbConfig`, `parse_database_url`, `connect`, `apply_migrations`, `fetch_all`, `fetch_one`.
-  - Uses: `pg8000.dbapi`, SQL migration files.
-
-[SQL Query Layer]
-
-- `src/sentinel/server/persistence/queries.py`
-  - Role: SQL operations for clients/projects/uploads/tech links/results/fail tags.
-  - Contains: query functions (`create_client`, `create_project`, `rotate_tech_link_token`, `append_test_result`, etc.) and `DuplicateClientNameError`.
-  - Uses: `persistence.db`; called by `PostgresRepository`.
-
-## UI (Commissioning Console)
-
-[UI Entry]
-
-- `src/sentinel/ui/commissioning/index.html`
-  - Role: commissioning console shell markup.
-  - Contains: sidenav tabs and panel containers (`manage`, `commission`, `diagnostics`) with IDs for JS hooks.
-  - Uses: CSS (`sentinel_console.css`, `commission_tab.css`, `diagnostics_tab.css`) and JS (`commissioning.js`, `commission_tab.js`, `diagnostics_tab.js`).
-
-[UI Core Script]
-
-- `src/sentinel/ui/commissioning/commissioning.js`
-  - Role: manage-project/client flows, upload/regenerate, tech link management, shared UI state wiring.
-  - Contains: many helpers and actions (`refreshClients`, `refreshProjects`, `uploadAndRegenerate`, `createTechLink`, `run`, etc.).
-  - Uses: `/api/v1/commissioning/...` endpoints, shared ws/store globals.
-
-[Commission Tab Script]
-
-- `src/sentinel/ui/commissioning/commission_tab.js`
-  - Role: commissioning tab rendering and shared store/ws manager ownership.
-  - Contains: pie/table renderers, store reducer, ws manager, `runCommissionTab`.
-  - Uses: DOM in `index.html`; exposes/uses `window.__sentinelProjectStore`, `window.__sentinelProjectWsManager`.
-
-[Diagnostics Tab Script]
-
-- `src/sentinel/ui/commissioning/diagnostics_tab.js`
-  - Role: diagnostics tab rendering, task list/pies, fail-tag updates, notes popup.
-  - Contains: diagnostics helpers, render/update functions, `initDiagnosticsTab`.
-  - Uses: shared store/ws manager globals; diagnostics DOM and fail-tag endpoint.
-
-[UI Base CSS]
-
-- `src/sentinel/ui/commissioning/sentinel_console.css`
-  - Role: global commissioning console styles.
-  - Contains: root variables and shared layout/component rules.
-  - Uses: classes/IDs in console HTML and tab scripts.
-
-[Commission Tab CSS]
-
-- `src/sentinel/ui/commissioning/commission_tab.css`
-  - Role: commission-tab visual/layout styles.
-  - Contains: styles for pies/KPIs/activity sections.
-  - Uses: commission panel/class hooks.
-
-[Diagnostics Tab CSS]
-
-- `src/sentinel/ui/commissioning/diagnostics_tab.css`
-  - Role: diagnostics-tab style overrides/helpers.
-  - Contains: diagnostics-specific selectors.
-  - Uses: diagnostics panel/class hooks.
+- `devtools/generation_algo_refinement_probe.py` — Ad-hoc generation/extraction probe (not production server path).
