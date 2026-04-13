@@ -814,6 +814,115 @@ def _pick_target_for_rti(targets: list[tuple[int, int]], current_rti_address: in
     return int(targets[0][0]) if targets else None
 
 
+def _macro_select_room_tags_by_room_id(cur: sqlite3.Cursor) -> dict[int, list[dict[str, Any]]]:
+    """Map RoomId -> button tags from macros that include a Type-24 (Select Room) step for that room."""
+    cur.execute("select name from sqlite_master where type='table' and name='MacroSelectRoom'")
+    if not cur.fetchone():
+        return {}
+    cur.execute(
+        """
+        select distinct msr.SelectRoomId, m.ButtonTagId, tn.ButtonTagName, ms.MacroId
+        from MacroSelectRoom msr
+        join MacroSteps ms on ms.MacroStepId = msr.MacroStepId and ms.Type = 24
+        join Macros m on m.MacroId = ms.MacroId
+        left join ButtonTagNames tn on tn.ButtonTagId = m.ButtonTagId
+        where coalesce(m.ButtonTagId, 0) > 0
+        order by msr.SelectRoomId, tn.ButtonTagName, m.ButtonTagId
+        """
+    )
+    by_room: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    seen: set[tuple[int, int, int]] = set()
+    for row in cur.fetchall():
+        rid = int(row["SelectRoomId"] or 0)
+        tid = int(row["ButtonTagId"] or 0)
+        mid = int(row["MacroId"] or 0)
+        key = (rid, tid, mid)
+        if key in seen:
+            continue
+        seen.add(key)
+        by_room[rid].append(
+            {
+                "buttonTagId": tid,
+                "buttonTagName": str(row["ButtonTagName"] or "").strip() or None,
+                "macroId": mid,
+            }
+        )
+    return dict(by_room)
+
+
+def _room_label_select_tags(tags: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Tags whose name starts with ``Room:`` (typical room-select label in RTI projects)."""
+    out: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for t in tags:
+        name = str(t.get("buttonTagName") or "").strip()
+        if not name.lower().startswith("room:"):
+            continue
+        tid = int(t.get("buttonTagId") or 0)
+        if tid in seen:
+            continue
+        seen.add(tid)
+        out.append(dict(t))
+    return out
+
+
+def _diagnostics_controller_room_list(
+    cur: sqlite3.Cursor,
+    rti_address: int,
+    *,
+    page_name_by_page_id: dict[int, str],
+    room_event_targets_by_room: dict[int, list[tuple[int, int]]],
+    macro_room_tags_by_room: dict[int, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Controller room order + MacroSelectRoom tags + roomSelectEvent page link per room (diagnostics)."""
+    cur.execute("select name from sqlite_master where type='table' and name='ControllerRoomList'")
+    if not cur.fetchone():
+        return []
+    cur.execute(
+        """
+        select cr.ControllerRoomOrder, cr.RoomId, rm.Name
+        from ControllerRoomList cr
+        join Rooms rm on rm.RoomId = cr.RoomId
+        where cr.RTIAddress = ?
+        order by cr.ControllerRoomOrder, cr.RoomId
+        """,
+        (rti_address,),
+    )
+    out: list[dict[str, Any]] = []
+    for row in cur.fetchall():
+        rid = int(row["RoomId"] or 0)
+        name = str(row["Name"] or "")
+        order = int(row["ControllerRoomOrder"] or 0)
+        all_tags = list(macro_room_tags_by_room.get(rid, []))
+        label_tags = _room_label_select_tags(all_tags)
+        targets = room_event_targets_by_room.get(rid, [])
+        picked = _pick_target_for_rti(targets, rti_address)
+        resolved: dict[str, Any] | None
+        if picked is not None:
+            resolved = {
+                "targetPageId": int(picked),
+                "targetPageName": str(page_name_by_page_id.get(int(picked)) or "").strip() or None,
+                "resolutionPath": "roomSelectEvent",
+            }
+        else:
+            resolved = {
+                "targetPageId": None,
+                "targetPageName": None,
+                "resolutionPath": None,
+            }
+        out.append(
+            {
+                "roomId": rid,
+                "roomName": name,
+                "controllerRoomOrder": order,
+                "roomSelectTagsAll": all_tags,
+                "roomSelectRoomLabelTags": label_tags,
+                "resolvedPageLink": resolved,
+            }
+        )
+    return out
+
+
 def _activity_target_page_ids(
     select_source_id: int,
     select_source_room_id: int,
@@ -1537,6 +1646,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                     room_event_targets_by_room[room_id].append(target)
     _mark_setup()
 
+    macro_room_tags_by_room_id = _macro_select_room_tags_by_room_id(cur)
+
     cur.execute("select PageLinkId, DeviceId, ButtonTagId, LinkType, PageId from PageLinks where ButtonTagId is not null")
     page_links_by_device_and_tag: dict[tuple[int, int], sqlite3.Row] = {}
     page_links_by_tag: dict[int, sqlite3.Row] = {}
@@ -1785,17 +1896,13 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             drow["ScreenWidth"] if "ScreenWidth" in drow.keys() else 0,
             drow["ScreenHeight"] if "ScreenHeight" in drow.keys() else 0,
         )
-        cur.execute(
-            """
-            select cr.RoomId, rm.Name
-            from ControllerRoomList cr
-            join Rooms rm on rm.RoomId = cr.RoomId
-            where cr.RTIAddress = ?
-            order by cr.ControllerRoomOrder, cr.RoomId
-            """,
-            (rti_address,),
+        diag_rooms = _diagnostics_controller_room_list(
+            cur,
+            rti_address,
+            page_name_by_page_id=page_name_by_page_id,
+            room_event_targets_by_room=dict(room_event_targets_by_room),
+            macro_room_tags_by_room=macro_room_tags_by_room_id,
         )
-        diag_rooms = [{"roomId": int(row["RoomId"]), "roomName": str(row["Name"] or "")} for row in cur.fetchall()]
         lowest_nonzero_device_room_id = min((int(room["roomId"]) for room in diag_rooms if int(room["roomId"]) > 0), default=None)
         cur.execute(
             """

@@ -373,7 +373,27 @@
         "rooms": [
           {
             "roomId": 0,
-            "roomName": "Global"
+            "roomName": "Global",
+            "controllerRoomOrder": 0,
+            "roomSelectTagsAll": [
+              {
+                "buttonTagId": 0,
+                "buttonTagName": null,
+                "macroId": 0
+              }
+            ],
+            "roomSelectRoomLabelTags": [
+              {
+                "buttonTagId": 0,
+                "buttonTagName": "Room: Kitchen",
+                "macroId": 0
+              }
+            ],
+            "resolvedPageLink": {
+              "targetPageId": 0,
+              "targetPageName": null,
+              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent"
+            }
           }
         ],
         "pages": [

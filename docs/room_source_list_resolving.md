@@ -14,7 +14,7 @@ This document describes how to go from the **controller room list** and **room-s
 
 **Order:** `ControllerRoomOrder`, then `RoomId`.
 
-**Output:** An ordered list of `{ roomId, roomName }` for that controller. This is the canonical **device-level** room order (see `extractor_core` diagnostics `diagnostics.rooms`).
+**Output (extraction):** `diagnostics.rooms` on each device is an ordered list of objects with **`roomId`**, **`roomName`**, **`controllerRoomOrder`**, **`roomSelectTagsAll`** (from `MacroSelectRoom` / type 24 / `Macros` / `ButtonTagNames`), **`roomSelectRoomLabelTags`** (the `Room: …` subset), and **`resolvedPageLink`** (`targetPageId`, `targetPageName`, `resolutionPath: "roomSelectEvent"` when a target exists; otherwise null fields). This is emitted by `extract_project_data` and validated against `apex_project_structure_v4.json`.
 
 Reference query pattern (same idea as extraction):
 
@@ -128,6 +128,8 @@ After extraction and resolution (sections 1–5), **generation** lays out **row 
 
 - **Most of the UI:** positions and sizes come from **actual Apex** (`RTIDeviceButtonData` and related layout).
 - **List rows:** **generated differently**—computed inside the list—but once emitted they should match whatever structure the renderer already uses for a **button** (hit targets, identity, navigation payload).
+
+**Generation (commissioning bundle):** `build_device_render_bundle` exposes the same array as **`roomListResolution`** on the testing payload and injects **`const ROOM_LIST_RESOLUTION=…`** next to `PAGE_STATE` in generated device HTML so runtime code can consume it without re-querying SQLite.
 
 **After generation: first-class buttons**
 

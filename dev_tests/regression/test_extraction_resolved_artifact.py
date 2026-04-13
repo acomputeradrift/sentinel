@@ -47,6 +47,28 @@ class ExtractionResolvedArtifactTest(unittest.TestCase):
 
             project_data = json.loads(project_data_path.read_text(encoding="utf-8"))
             self.assertNotIn("resolvedTargets", project_data)
+            for device in project_data.get("devices", []):
+                diag = device.get("diagnostics", {}) if isinstance(device, dict) else {}
+                rooms = diag.get("rooms")
+                if not isinstance(rooms, list):
+                    continue
+                for room in rooms:
+                    if not isinstance(room, dict):
+                        continue
+                    for key in (
+                        "roomId",
+                        "roomName",
+                        "controllerRoomOrder",
+                        "roomSelectTagsAll",
+                        "roomSelectRoomLabelTags",
+                        "resolvedPageLink",
+                    ):
+                        self.assertIn(key, room, msg=f"diagnostics.rooms entry missing {key}")
+                    rp = room.get("resolvedPageLink")
+                    self.assertIsInstance(rp, dict)
+                    self.assertIn("targetPageId", rp)
+                    self.assertIn("targetPageName", rp)
+                    self.assertIn("resolutionPath", rp)
             user_layers: list[dict] = []
             for device in project_data.get("devices", []):
                 user = device.get("userFacing", {}) if isinstance(device, dict) else {}

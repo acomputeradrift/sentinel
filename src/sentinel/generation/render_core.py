@@ -831,6 +831,7 @@ def _render_document(
     orientation_state_json: str,
     show_orientation_toggle: bool,
     home_href: str | None = None,
+    room_list_resolution_json: str = "[]",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -993,6 +994,7 @@ const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
 const PAGE_HTML_BY_INDEX={page_html_by_index_json};
 const PAGE_STATE={page_state_json};
+const ROOM_LIST_RESOLUTION={room_list_resolution_json};
 const ORIENTATION_STATE={orientation_state_json};
 const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
 let currentZoomPercent=ZOOM_DEFAULT;
@@ -3751,6 +3753,10 @@ def build_device_render_bundle(
                 "vpFrames": payload["vp_frames"],
             }
         )
+    diag_for_rooms = device.get("diagnostics", {}) if isinstance(device, dict) else {}
+    room_list = diag_for_rooms.get("rooms") if isinstance(diag_for_rooms, dict) else None
+    if not isinstance(room_list, list):
+        room_list = []
     first_page_inner = page_html_by_index.get("0", "")
     initial_page_markup = f"<div class='device-page active' data-page-index='0'>{first_page_inner}</div>" if pages else ""
     html = _render_document(
@@ -3765,6 +3771,7 @@ def build_device_render_bundle(
         json.dumps(orientation_state),
         show_orientation_toggle,
         home_href=project_home_filename(project_stem),
+        room_list_resolution_json=json.dumps(room_list),
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):
@@ -3790,6 +3797,7 @@ def build_device_render_bundle(
             "sizes": {"portrait": portrait_resolution, "landscape": landscape_resolution},
         },
         "pages": payload_doc_pages,
+        "roomListResolution": room_list,
     }
     return {"html": html, "payload": payload_doc}
 
