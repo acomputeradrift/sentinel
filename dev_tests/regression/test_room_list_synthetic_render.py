@@ -181,6 +181,14 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertEqual(len(rects), 2)
         self.assertEqual(rects[0][3] + 2 + rects[1][3], 30)
 
+    def test_sorted_diag_source_rows_filters_unchecked_and_respects_scope(self):
+        diag = _minimal_diag()
+        scoped = render_core._sorted_diag_source_rows(diag, 1)
+        self.assertEqual([int(r["sourceDeviceId"]) for r in scoped], [4])
+        unscoped = render_core._sorted_diag_source_rows(diag, None)
+        self.assertEqual(sorted(int(r["sourceDeviceId"]) for r in unscoped), [4, 6])
+        self.assertEqual(render_core._sorted_diag_source_rows(diag, 0), unscoped)
+
     def test_page_payload_emits_synthetic_room_buttons(self):
         p2 = {
             "pageName": "B",
@@ -367,11 +375,59 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         html = payload["page_button_rows"]
         self.assertIn("data-synthetic-source-list='1'", html)
         self.assertIn("data-synthetic-source-room-id='1'", html)
+        # Room 1 scope: checked activities only (Player 4); Family 5 is unchecked in fixture.
         self.assertIn("data-synthetic-source-device-id='4'", html)
-        self.assertIn("data-synthetic-source-device-id='5'", html)
+        self.assertNotIn("data-synthetic-source-device-id='5'", html)
         self.assertNotIn("data-synthetic-source-device-id='6'", html)
         self.assertIn('"sourceDeviceId": 4', html)
-        self.assertIn('"sourceDeviceId": 5', html)
+
+    def test_page_payload_global_source_list_emits_all_checked_rooms(self):
+        """No apex scope (or room 0): emit every checked source row; client filters by selected room."""
+        list_btn = {
+            "buttonIdentity": {"buttonTagName": "DISPLAY - Source List", "text": "", "buttonType": None},
+            "buttonUI": {
+                "fontSize": 12,
+                "orientations": {
+                    "portrait": {"visible": True, "coordinates": {"left": 40, "top": 30, "width": 220, "height": 70}},
+                    "landscape": {"visible": True, "coordinates": {"left": 140, "top": 130, "width": 260, "height": 90}},
+                },
+                "stack": {"layerOrder": 0, "buttonOrder": 7, "frameNumber": 0},
+            },
+            "testTargets": {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {k: (k == "List") for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List")},
+                "graphics": {"bitmap": False, "icon": False},
+                "pageLink": False,
+            },
+        }
+        global_page = {
+            "pageName": "Camera Overview",
+            "pageId": 3,
+            "rtiAddress": 99,
+            "layers": [
+                {
+                    "layerName": "Main",
+                    "layerOrder": 0,
+                    "sharedLayerId": 0,
+                    "buttonCategories": {"screenLabels": [], "screenButtons": [list_btn], "hardButtons": [], "uiItems": []},
+                    "viewports": [],
+                }
+            ],
+        }
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [global_page, p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        self.assertIn("data-synthetic-source-list='1'", html)
+        self.assertIn("data-synthetic-source-room-id='1'", html)
+        self.assertIn("data-synthetic-source-room-id='2'", html)
+        self.assertIn("data-synthetic-source-device-id='4'", html)
+        self.assertNotIn("data-synthetic-source-device-id='5'", html)
+        self.assertIn("data-synthetic-source-device-id='6'", html)
 
     def test_page_payload_includes_selected_room_runtime_indicator(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}

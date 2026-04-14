@@ -931,7 +931,10 @@ def _diagnostics_source_list_rows(
     room_name_by_id: dict[int, str],
     macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
 ) -> list[dict[str, Any]]:
-    """Room-scoped source-list rows from Activities with resolved page links per device RTI."""
+    """Room-scoped source-list rows from Activities with resolved page links per device RTI.
+
+    Only Activities with Checked set (non-zero) are included — matches Apex source-list visibility.
+    """
     cur.execute("select name from sqlite_master where type='table' and name='Activities'")
     if not cur.fetchone():
         return []
@@ -941,6 +944,7 @@ def _diagnostics_source_list_rows(
                d.Name as SourceName, d.DisplayName as SourceDisplayName
         from Activities a
         join Devices d on d.DeviceId = a.DeviceId
+        where ifnull(a.Checked, 0) != 0
         order by a.RoomId, a.Checked desc, a.ActivityOrder, a.ActivitiesId
         """
     )

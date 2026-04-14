@@ -169,7 +169,8 @@ body {
   position: absolute;
   inset: 0;
   background: rgba(255, 255, 255, 0.05);
-  z-index: 9000;
+  /* Above composited RTI buttons (capped at _Z_SAFE_MAX in render_core); keep in sync with _Z_VP_OVERLAY */
+  z-index: 2000000001;
   pointer-events: none;
   display: none;
 }

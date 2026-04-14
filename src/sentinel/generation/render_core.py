@@ -258,6 +258,11 @@ def _button_stack_sort_key(btn: dict[str, Any], category_rank: int) -> tuple[int
 _Z_LAYER_BAND = 1_000_000
 _Z_BASE_OFFSET = 1_000_000
 _Z_SAFE_MAX = 2_000_000_000
+# Buttons use _composite_z_index (capped at _Z_SAFE_MAX). Overlay must sit above all RTI buttons.
+_Z_VP_OVERLAY = _Z_SAFE_MAX + 1
+_Z_VP_FOCUS = _Z_SAFE_MAX + 2
+# Viewport frame hit targets must paint above same-layer buttons (see btn_cap in _composite_z_index).
+_VP_BOX_BUTTON_ORDER = _Z_LAYER_BAND - 250
 
 
 def _composite_z_index(layer_order: int, button_order: int, frame_number: int = 0, tie_breaker: int = 0) -> int:
@@ -269,6 +274,11 @@ def _composite_z_index(layer_order: int, button_order: int, frame_number: int = 
     button = min(max(0, button), btn_cap)
     z = _Z_BASE_OFFSET + (layer * _Z_LAYER_BAND) + button + (frame * 2) + (1 if int(tie_breaker) > 0 else 0)
     return min(z, _Z_SAFE_MAX)
+
+
+def _viewport_box_z_index(layer_order: int, vp_index: int) -> int:
+    """Z for dashed viewport rectangles: top of layer band so clicks beat overlapping same-layer controls."""
+    return _composite_z_index(layer_order, _VP_BOX_BUTTON_ORDER, vp_index)
 
 
 def _button_composite_z_index(
@@ -1088,12 +1098,16 @@ def _sorted_diag_source_rows(diag: dict[str, Any], room_id: int | None) -> list[
     if not isinstance(rows, list):
         return []
     out = [r for r in rows if isinstance(r, dict)]
-    if room_id is not None:
+    # Apex Activities.Checked: non-zero = source appears on the room list (checkbox on).
+    out = [r for r in out if int(r.get("checked") or 0) != 0]
+    # Room id 0 / unset = not a real room scope (e.g. global overview). Emit all rooms' rows so
+    # the client can show only the last selected room (session) via applySelectedRoomToSourceRows.
+    if room_id is not None and int(room_id) > 0:
         out = [r for r in out if int(r.get("roomId") or -1) == int(room_id)]
     return sorted(
         out,
         key=lambda r: (
-            -int(r.get("checked") or 0),
+            int(r.get("roomId") or 0),
             int(r.get("activityOrder") or 0),
             _norm_text(r.get("sourceName")).lower(),
         ),
@@ -1554,7 +1568,7 @@ def _page_payload(
     viewport_boxes = "".join(
         [
             "<div class='vp-box' style='z-index:{z};' data-vp='{vp_index}' data-nav-mode='{nav_mode}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
-                z=100 + int(c["layer_order"]),
+                z=_viewport_box_z_index(int(c["layer_order"]), int(c["vp_index"])),
                 nav_mode=escape(str((c.get("viewport_ui") or {}).get("navigationMode") or "page")),
                 orientation_attrs=_orientation_data_attrs(c["viewport_ui"]),
                 **c,
@@ -1635,9 +1649,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
- .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:9000;pointer-events:none;display:none;}}
+ .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:{_Z_VP_OVERLAY};pointer-events:none;display:none;}}
  .viewport-mode .vp-overlay{{display:block;}}
- .viewport-mode .vp-focus{{z-index:9500 !important;pointer-events:auto;}}
+ .viewport-mode .vp-focus{{z-index:{_Z_VP_FOCUS} !important;pointer-events:auto;}}
  .viewport-mode .vp-box:not(.vp-focus){{pointer-events:none;}}
 .btn-wrap{{position:absolute;z-index:2;}}
  .device-page .btn-wrap.vp-btn{{pointer-events:none;}}

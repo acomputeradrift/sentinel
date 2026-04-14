@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from sentinel.generation.render_core import render_single_device_html
+from sentinel.generation.render_core import _composite_z_index, _viewport_box_z_index, render_single_device_html
 
 
 def oriented_ui(*, font_size: int = 10, portrait: dict, landscape: dict) -> dict:
@@ -1777,13 +1777,17 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
                   return {
                     boxZ: Number(getComputedStyle(box).zIndex || 0),
                     btnZ: Number(getComputedStyle(btnWrap).zIndex || 0),
-                    ownerOrder: Number(box.dataset.ownerLayerOrder || 0)
+                    ownerOrder: Number(box.dataset.ownerLayerOrder || 0),
+                    vpIndex: Number(box.dataset.vp || 0)
                   };
                 }"""
             )
             self.assertIsNotNone(z)
-            self.assertEqual(int(z["boxZ"]), 100 + int(z["ownerOrder"]))
-            self.assertEqual(int(z["btnZ"]), 100 + int(z["ownerOrder"]))
+            lo = int(z["ownerOrder"])
+            vpi = int(z["vpIndex"])
+            self.assertEqual(int(z["boxZ"]), _viewport_box_z_index(lo, vpi))
+            # Host-layer viewport button: default stack uses layer order + buttonOrder 0 + frame 0.
+            self.assertEqual(int(z["btnZ"]), _composite_z_index(lo, 0, 0))
         finally:
             page.close()
 
