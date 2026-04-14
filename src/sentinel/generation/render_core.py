@@ -253,11 +253,22 @@ def _button_stack_sort_key(btn: dict[str, Any], category_rank: int) -> tuple[int
     return (button_order, frame_number, category_rank)
 
 
+# Within-layer buttonOrder must stay below this band so a higher layerOrder always
+# produces a higher composite z than any button on a lower layer (no "band overflow").
+_Z_LAYER_BAND = 1_000_000
+_Z_BASE_OFFSET = 1_000_000
+_Z_SAFE_MAX = 2_000_000_000
+
+
 def _composite_z_index(layer_order: int, button_order: int, frame_number: int = 0, tie_breaker: int = 0) -> int:
-    layer_band = (int(layer_order) + 10_000) * 1_000_000
-    button_band = (int(button_order) + 10_000) * 100
-    frame_band = (int(frame_number) + 100) * 2
-    return layer_band + button_band + frame_band + (1 if int(tie_breaker) > 0 else 0)
+    # layerOrder is authoritative between layers; buttonOrder only competes inside a layer.
+    layer = int(layer_order)
+    button = int(button_order)
+    frame = int(frame_number)
+    btn_cap = _Z_LAYER_BAND - 200
+    button = min(max(0, button), btn_cap)
+    z = _Z_BASE_OFFSET + (layer * _Z_LAYER_BAND) + button + (frame * 2) + (1 if int(tie_breaker) > 0 else 0)
+    return min(z, _Z_SAFE_MAX)
 
 
 def _button_composite_z_index(
@@ -808,7 +819,7 @@ def _synthetic_room_list_row_button(
             },
             "stack": {
                 "layerOrder": layer_order,
-                "buttonOrder": int(layer_max_button_order) + 1 + row_index,
+                "buttonOrder": int(layer_max_button_order) + 1,
                 "frameNumber": 0,
             },
         },
@@ -1151,7 +1162,7 @@ def _synthetic_source_list_row_button(
             },
             "stack": {
                 "layerOrder": layer_order,
-                "buttonOrder": int(layer_max_button_order) + 1 + row_index,
+                "buttonOrder": int(layer_max_button_order) + 1,
                 "frameNumber": 0,
             },
         },

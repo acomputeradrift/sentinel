@@ -2,6 +2,7 @@ Assets/
 .worktrees/
 .tmp_apex_env/
 devtools/last_regression_run.txt
+devtools/_agent_shell_capture.txt
 temp/
 output/
 **/__pycache__/

@@ -237,6 +237,18 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertIsNotNone(native)
         self.assertGreater(synthetic_z, int(native.group(1)))
 
+    def test_synthetic_room_rows_share_one_z_index(self):
+        """All rows in a synthetic room list use the same composite z (no per-row ladder)."""
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [_minimal_list_host_page(), p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        zs = [int(m.group(1)) for m in re.finditer(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-list='1'", html)]
+        self.assertGreaterEqual(len(zs), 2)
+        self.assertEqual(len(set(zs)), 1)
+
     def test_synthetic_rows_do_not_escape_host_layer_ordering(self):
         page = _minimal_list_host_page()
         page["layers"][1]["buttonCategories"]["screenButtons"] = [
@@ -272,6 +284,62 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertIsNotNone(synthetic)
         self.assertIsNotNone(top_native)
         self.assertLess(int(synthetic.group(1)), int(top_native.group(1)))
+
+    def test_higher_layer_always_beats_lower_layer_even_with_large_button_order(self):
+        page = _minimal_list_host_page()
+        page["layers"][0]["buttonCategories"]["screenButtons"].append(
+            {
+                "buttonIdentity": {"buttonTagName": "Lower Huge", "text": "Lower Huge", "buttonType": None},
+                "buttonUI": {
+                    "fontSize": 12,
+                    "orientations": {
+                        "portrait": {"visible": True, "coordinates": {"left": 30, "top": 30, "width": 120, "height": 30}},
+                        "landscape": {"visible": True, "coordinates": {"left": 30, "top": 30, "width": 120, "height": 30}},
+                    },
+                    "stack": {"layerOrder": 0, "buttonOrder": 50_000, "frameNumber": 0},
+                },
+                "testTargets": {
+                    "text": True,
+                    "macros": False,
+                    "macroSteps": False,
+                    "variables": {k: False for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List")},
+                    "graphics": {"bitmap": False, "icon": False},
+                    "pageLink": False,
+                },
+            }
+        )
+        page["layers"][1]["buttonCategories"]["screenButtons"].append(
+            {
+                "buttonIdentity": {"buttonTagName": "Upper Small", "text": "Upper Small", "buttonType": None},
+                "buttonUI": {
+                    "fontSize": 12,
+                    "orientations": {
+                        "portrait": {"visible": True, "coordinates": {"left": 40, "top": 40, "width": 120, "height": 30}},
+                        "landscape": {"visible": True, "coordinates": {"left": 40, "top": 40, "width": 120, "height": 30}},
+                    },
+                    "stack": {"layerOrder": 9, "buttonOrder": 1, "frameNumber": 0},
+                },
+                "testTargets": {
+                    "text": True,
+                    "macros": False,
+                    "macroSteps": False,
+                    "variables": {k: False for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List")},
+                    "graphics": {"bitmap": False, "icon": False},
+                    "pageLink": False,
+                },
+            }
+        )
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [page, p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        lower = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='Lower Huge'", html)
+        upper = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='Upper Small'", html)
+        self.assertIsNotNone(lower)
+        self.assertIsNotNone(upper)
+        self.assertLess(int(lower.group(1)), int(upper.group(1)))
 
     def test_synthetic_rows_carry_room_specific_scope_identity(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}

@@ -1,32 +1,33 @@
 ---
-description: Agent executes tests; do not delegate test runs to the user
+description: Agent runs tests itself; never ask the user to run tests; use capture fallbacks when stdout is empty
 alwaysApply: true
 ---
 
 # Verification
 
-- After meaningful edits under `src/` or `dev_tests/`, run regression via `python devtools/run_regression_with_venv.py` (uses `.tmp_apex_env`). For tiny, isolated changes, a targeted `python -m unittest …` is acceptable.
-- If shell stdout is empty, read `devtools/last_regression_run.txt` for the log.
-- Report pass/fail in the reply. Do not ask Jamie to run tests for verification.
+## Non-negotiable
 
-## Shell stdout (known empty capture in this environment)
+- **Never ask the user to run tests** for verification, to confirm a fix, or because the environment is awkward. The agent runs tests and reports pass/fail from captured output.
+- The only exception is when the **user explicitly asks how** to run tests locally (then answer with commands).
 
-**Do not treat empty tool/shell stdout as success** for git, tests, or deploy steps.
+After meaningful edits under `src/` or `dev_tests/`, run regression via `python devtools/run_regression_with_venv.py` (uses `.tmp_apex_env`). For tiny, isolated changes, `python -m unittest …` is acceptable.
 
-Mandatory pattern (Jamie does not run these commands for you):
+## When shell stdout from the tool is empty
 
-1. Run the command with **stdout and stderr redirected to a repo file**, then **Read** that file. Example (PowerShell, from repo root):
+**Do not** treat empty output as success. **Do not** punt to the user.
 
-   `git status -sb *> devtools/_agent_shell_capture.txt ; git log -1 --oneline *>> devtools/_agent_shell_capture.txt`
+1. Redirect **stdout and stderr** to a file under `devtools/`, then **Read** it (PowerShell from repo root):
 
-   (Use `*> file` or `2>&1 | Out-File -Encoding utf8` so stderr is included.)
+   `python devtools/run_regression_with_venv.py *> devtools/_agent_shell_capture.txt 2>&1`
 
-2. **Read** `devtools/_agent_shell_capture.txt` (and `devtools/last_regression_run.txt` for regression) and base conclusions only on file contents.
+2. Read `devtools/last_regression_run.txt` (regression runner may log there).
 
-3. For **git commits before deploy**: never run `git archive` until the capture file shows a successful `git commit` **and** `git status` is clean (or intentionally dirty per instructions). Optionally also **Read** `.git/refs/heads/<branch>` to confirm the tip SHA.
+3. If redirect to the repo path still fails (UNC, cwd, sandbox): run **Python in-process capture** — a one-liner or small script that `subprocess.run`s the same command with `cwd` set to the repo root (resolve via a known file, e.g. `Path(__file__).resolve()` from a script under `devtools/`, or locate `pyproject.toml` / `src/sentinel`), writes combined stdout/stderr to `devtools/_agent_shell_capture.txt`, exits with the child exit code, then **Read** that file.
 
-4. Prefer adding `; exit $LASTEXITCODE` (PowerShell) or checking exit code in the capture when the step must be strict.
+4. Base pass/fail only on file contents. Report relevant lines in the reply.
 
-5. Remove or overwrite `devtools/_agent_shell_capture.txt` when done if it would clutter `git status` (do not commit it); it is listed in `.gitignore` if added there—otherwise delete after read.
+5. Delete or overwrite `devtools/_agent_shell_capture.txt` after use if it would clutter `git status` (file is gitignored).
 
-**Do not** retry the same bare inline `git`/`python` invocation hoping stdout appears; use redirect + Read (or a subagent that returns captured output) instead.
+## Git / strict steps
+
+For git commits or other steps where exit codes matter, use the same redirect + Read pattern; see deploy/commit rules if applicable.
