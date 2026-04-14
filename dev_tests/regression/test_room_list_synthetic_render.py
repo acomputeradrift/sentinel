@@ -189,10 +189,17 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertEqual(rects[1][1], 22)
         self.assertEqual(rects[2][1], 44)
 
-    def test_slot_rects_falls_back_when_fixed_rows_exceed_list_height(self):
-        divide = render_core._room_list_row_slot_rects(0, 0, 100, 30, 3, 2, row_height_px=None)
-        fallback = render_core._room_list_row_slot_rects(0, 0, 100, 30, 3, 2, row_height_px=20)
-        self.assertEqual(divide, fallback)
+    def test_slot_rects_keeps_rti_height_when_it_overflows_host_box(self):
+        """RTI row height must not collapse back to divide-by-n when the stack is taller than the host."""
+        thin = render_core._room_list_row_slot_rects(0, 0, 100, 30, 3, 2, row_height_px=None)
+        self.assertTrue(all(r[3] < 20 for r in thin))
+        fixed = render_core._room_list_row_slot_rects(0, 0, 100, 30, 3, 2, row_height_px=20)
+        self.assertEqual(len(fixed), 3)
+        self.assertTrue(all(r[3] == 20 for r in fixed))
+
+    def test_list_row_height_px_triples_apex_list_item_height(self):
+        btn = {"buttonUI": {"listItemHeightPx": 10}}
+        self.assertEqual(render_core._list_row_height_px_from_host(btn), 30)
 
     def test_sorted_diag_source_rows_filters_unchecked_and_respects_scope(self):
         diag = _minimal_diag()

@@ -657,6 +657,8 @@ def _render_button_control(
 
 _ROOM_LIST_SYNTHETIC_GAP_PX = 2
 _ROOM_LIST_SYNTHETIC_Z_BOOST = 0
+# ScrollingList.ItemHeight is tuned for Integration Designer; synthetic rows need more vertical space in Sentinel.
+_LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER = 3
 
 
 def _is_room_list_host_button(btn: dict[str, Any]) -> bool:
@@ -714,7 +716,10 @@ def _room_list_primary_tag_info(room_row: dict[str, Any]) -> tuple[str, int | No
 
 
 def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
-    """Apex `ScrollingList.ItemHeight` is merged into `buttonUI.listItemHeightPx` during extraction."""
+    """Apex `ScrollingList.ItemHeight` is merged into `buttonUI.listItemHeightPx` during extraction.
+
+    The raw RTI value is multiplied by `_LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER` for on-screen list rows.
+    """
     ui = btn.get("buttonUI") if isinstance(btn, dict) else None
     if not isinstance(ui, dict):
         return None
@@ -723,7 +728,9 @@ def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
         h = int(raw) if raw is not None else 0
     except (TypeError, ValueError):
         return None
-    return h if h > 0 else None
+    if h <= 0:
+        return None
+    return int(h * _LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER)
 
 
 def _room_list_row_slot_rects(
@@ -737,16 +744,15 @@ def _room_list_row_slot_rects(
 ) -> list[tuple[int, int, int, int]]:
     if n <= 0 or list_w <= 0 or list_h <= 0:
         return []
+    # When Apex gives a row height (after display multiplier), use it for every row even if the stack
+    # extends past the host rect — divide-by-n was producing unusably thin strips.
     if row_height_px is not None and row_height_px > 0:
-        total_gap = gap * max(0, n - 1)
-        total_needed = n * row_height_px + total_gap
-        if total_needed <= list_h:
-            out: list[tuple[int, int, int, int]] = []
-            y = list_top
-            for _ in range(n):
-                out.append((list_left, y, list_w, row_height_px))
-                y += row_height_px + gap
-            return out
+        out_fixed: list[tuple[int, int, int, int]] = []
+        y = list_top
+        for _ in range(n):
+            out_fixed.append((list_left, y, list_w, row_height_px))
+            y += row_height_px + gap
+        return out_fixed
     total_gap = gap * (n - 1)
     slot_h = (list_h - total_gap) // n
     if slot_h <= 0:
