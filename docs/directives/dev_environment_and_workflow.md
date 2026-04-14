@@ -77,11 +77,11 @@ Goal: deploy code **once**, without stale files, without a crash/restart loop, a
    - PowerShell: `python -m zipfile -l sentinel_patch.zip | Select-String "sentinel/server/persistence/queries.py"`
    - If the member is missing or looks wrong, **stop** — fix commit/archive, do not `scp` yet.
 
-Reliability note (agent + PowerShell environments where command stdout can be missing):
-- Redirect command output to a temp capture file and read it back before proceeding, for example:
-  - `git status -sb *> temp/_deploy_capture.txt`
-  - `git log -1 --oneline *>> temp/_deploy_capture.txt`
-- Treat empty command output as **unknown**, not success.
+Reliability note (agent + PowerShell + **UNC/SMB workspace** where command stdout can be missing or delayed):
+- Redirect command output to a **UTF-8** file and read it back before proceeding. Avoid raw `*>>` to the same file as mixed `Out-File -Encoding utf8` writes — PowerShell can otherwise mix **UTF-16** into the log and Cursor’s Read tool may report “binary.” `deployment/deploy_from_head.ps1` sets console UTF-8 and writes step output with `Out-File -Encoding utf8` only.
+- **SMB latency:** after a heavy command or a large write to the repo path, wait briefly (e.g. 1–2s) before **Read** on a capture file so the share has flushed.
+- **Cursor `CI=1`:** if the agent shell inherits `CI`, it can interact badly with some tools; for long local commands you can clear it first (PowerShell: `$env:CI = $null`).
+- Treat empty command output from the agent terminal as **unknown**, not success — prefer reading the capture file on disk.
 
 ### One-shot deploy (PowerShell — strict order, no `&&`)
 

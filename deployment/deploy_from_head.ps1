@@ -10,6 +10,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# UTF-8 for console and for all capture writes so Cursor’s Read tool sees plain text (not UTF-16 “binary”) over UNC/SMB.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 function Ensure-DirectoryForFile {
   param([Parameter(Mandatory = $true)][string]$Path)
   $dir = Split-Path -Parent $Path
@@ -31,9 +36,11 @@ function Run-Step {
   )
   Write-Capture "=== $Name ==="
   try {
-    & $Action *>> $CapturePath
+    # Capture first, then UTF-8 Out-File — avoids *>> UTF-16 mix and keeps $LASTEXITCODE from native exes (git/ssh).
+    $stepOutput = & $Action 2>&1
     $exitCode = $LASTEXITCODE
     if ($null -eq $exitCode) { $exitCode = 0 }
+    $stepOutput | Out-File -FilePath $CapturePath -Append -Encoding utf8
     Write-Capture "EXIT:$exitCode"
     if ($exitCode -ne 0) {
       throw "Step '$Name' failed with exit code $exitCode."

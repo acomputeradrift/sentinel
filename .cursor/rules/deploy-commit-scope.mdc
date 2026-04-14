@@ -8,3 +8,18 @@ alwaysApply: true
 - **`git archive … HEAD src`** deploys **only `src/`** to the server.
 - When Jamie says **deploy**, commit **all** intentional project changes for that release: `src/`, `dev_tests/`, `pyproject.toml`, `docs/`, tracked `devtools/`, `.gitignore`, policy files (`AGENTS.md`, `bootstrap.md`, `agents.md`), `.cursor/rules/` if shared policy — **not** `*.egg-info/`, venvs, or zips.
 - Then run deploy preflight from `docs/directives/dev_environment_and_workflow.md`.
+
+## Do not reinvent deployment
+
+- **Source of truth:** `docs/directives/dev_environment_and_workflow.md` (Safe deployment workflow, Preflight, one-shot deploy).
+- **The only automated deploy entrypoint:** `deployment/deploy_from_head.ps1` — run it exactly as the doc shows (including `-RequiredRemoteMarkers` when the doc lists it). Do **not** write ad-hoc deploy scripts, one-off Python helpers, improvised `scp`/`ssh` sequences, or Task-subagent deploy pipelines unless Jamie explicitly asks for an exception.
+- **After the script:** read the transcript at `temp/_deploy_capture.txt`. Success line: `RESULT:SUCCESS`. Do not claim success without that file.
+- **Optional** stronger checks (`deployment/verify_deploy_hash.py`, manual `grep` on the droplet) are **only** when following the doc’s optional / pre-restart sections — not instead of the one-shot script.
+
+Preflight (commit, clean tree, `git rev-parse HEAD`, confirm the archive lists paths you changed) is **only** what that doc specifies — do not substitute a different checklist.
+
+## Agent terminal (UNC/SMB + Cursor)
+
+- **`temp/_deploy_capture.txt`** must be **UTF-8** for Read to work; the deploy script enforces that. If Read still fails, decode issue is likely stale mixed encoding from an older run — re-run the script.
+- **Before** relying on a capture file after a deploy or long command, allow **~1–2s** for SMB to flush (or retry Read once).
+- If the agent shell sets **`CI=1`**, clear it before long runs (PowerShell: `$env:CI = $null`) when stdout behaves oddly.
