@@ -613,7 +613,7 @@ def _render_button_control(
 
 
 _ROOM_LIST_SYNTHETIC_GAP_PX = 2
-_ROOM_LIST_SYNTHETIC_Z_BOOST = 20
+_ROOM_LIST_SYNTHETIC_Z_BOOST = 0
 
 
 def _is_room_list_host_button(btn: dict[str, Any]) -> bool:
@@ -687,6 +687,30 @@ def _room_list_row_slot_rects(
     return out
 
 
+def _max_button_order_for_page_layer(page: dict[str, Any], layer_key: str) -> int:
+    category_defs = ("screenLabels", "screenButtons", "hardButtons", "uiItems")
+    max_order = 0
+    layers = _page_layers(page)
+    if layers and layer_key.startswith("layer-"):
+        try:
+            idx = int(layer_key.split("-", 1)[1])
+        except (TypeError, ValueError):
+            idx = -1
+        if 0 <= idx < len(layers):
+            cats = layers[idx].get("buttonCategories", {})
+            for cat in category_defs:
+                for btn in (cats.get(cat, []) if isinstance(cats, dict) else []):
+                    stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+                    max_order = max(max_order, int(stack.get("buttonOrder", 0) or 0))
+            return max_order
+    cats = page.get("buttonCategories", {})
+    for cat in category_defs:
+        for btn in (cats.get(cat, []) if isinstance(cats, dict) else []):
+            stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+            max_order = max(max_order, int(stack.get("buttonOrder", 0) or 0))
+    return max_order
+
+
 def _find_room_list_host(page: dict[str, Any], orientation: str) -> tuple[str, dict[str, Any]] | None:
     for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
         if not _is_room_list_host_button(btn):
@@ -733,6 +757,7 @@ def _synthetic_room_list_row_button(
     source_device_id: Any,
     primary_tag: str,
     primary_tag_id: int | None,
+    layer_max_button_order: int,
     room_display: str,
 ) -> dict[str, Any]:
     row_left_p, row_top_p, row_w_p, row_h_p = row_rect_portrait
@@ -760,8 +785,8 @@ def _synthetic_room_list_row_button(
                 },
             },
             "stack": {
-                "layerOrder": layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST,
-                "buttonOrder": 10_000 + row_index,
+                "layerOrder": layer_order,
+                "buttonOrder": int(layer_max_button_order) + 1 + row_index,
                 "frameNumber": 0,
             },
         },
@@ -854,8 +879,8 @@ def _synthetic_controller_room_list_rows_html(
         )
         if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
             return ""
-        max_layer_order = max((int(v.get("layerOrder") or 0) for v in _page_layer_state(page)), default=0)
-        z_base = 100 + max_layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
+        layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
+        z_base = 100 + layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
         layer_display = str(layer_name_by_key.get(layer_key, "") or "")
         for i, room_row in enumerate(room_rows):
             rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
@@ -872,11 +897,13 @@ def _synthetic_controller_room_list_rows_html(
                 source_device_id=diag_device_id,
                 primary_tag=tag_name,
                 primary_tag_id=tag_id,
+                layer_max_button_order=layer_max_button_order,
                 room_display=room_display,
             )
             active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
             extra = (
                 f"data-synthetic-room-list='1' data-synthetic-room-id='{escape(rid_attr, quote=True)}' "
+                f"data-synthetic-room-tag-id='{int(tag_id) if tag_id is not None else ''}' "
                 f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
                 f"data-owner-layer-name='{escape(layer_display, quote=True)}'"
             )
@@ -924,10 +951,10 @@ def _synthetic_controller_room_list_rows_html(
     )
     if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
         return ""
-    max_layer_order = max((int(v.get("layerOrder") or 0) for v in _page_layer_state(page)), default=0)
-    z_base = 100 + max_layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
+    z_base = 100 + int(vb.get("owner_layer_order") or 0) + _ROOM_LIST_SYNTHETIC_Z_BOOST
     owner_lo = int(vb.get("owner_layer_order") or 0)
     owner_key = str(vb.get("owner_layer_key") or "")
+    layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
     layer_display = str(layer_name_by_key.get(owner_key, "") or "")
     for i, room_row in enumerate(room_rows):
         rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
@@ -944,11 +971,13 @@ def _synthetic_controller_room_list_rows_html(
             source_device_id=diag_device_id,
             primary_tag=tag_name,
             primary_tag_id=tag_id,
+            layer_max_button_order=layer_max_button_order,
             room_display=room_display,
         )
         active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
         extra = (
             f"data-synthetic-room-list='1' data-synthetic-room-id='{escape(rid_attr, quote=True)}' "
+            f"data-synthetic-room-tag-id='{int(tag_id) if tag_id is not None else ''}' "
             f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
             f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
             f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
@@ -1678,10 +1707,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
   const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
   const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
+  const syntheticRoomList = wrap && wrap.dataset ? String(wrap.dataset.syntheticRoomList || "") === "1" : false;
+  const syntheticRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomId : null;
+  const syntheticRoomTagIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomTagId : null;
+  const syntheticRoomId = syntheticRoomIdRaw == null ? null : Number(syntheticRoomIdRaw);
+  const syntheticRoomTagId = syntheticRoomTagIdRaw == null ? null : Number(syntheticRoomTagIdRaw);
   const categoryName = String(m.category || "").trim();
   const buttonName = String(m.identity || "").trim();
   const targetName = String(label || "").trim() || buttonName || categoryName;
   const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
+  const keyTokenResolved = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? `${{keyToken}}:room:${{Number(syntheticRoomId)}}`
+   : keyToken;
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -1727,18 +1764,24 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const viewportLayerSourceId = viewportLayerScope.sourceId;
    const pageLayerRoomId = pageLayerScope.roomId;
    const pageLayerSourceId = pageLayerScope.sourceId;
-   const effectiveRoomId = viewportLayerRoomId != null
+  const effectiveRoomIdBase = viewportLayerRoomId != null
     ? Number(viewportLayerRoomId)
     : (pageLayerRoomId != null ? Number(pageLayerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null));
-   const effectiveSourceId = viewportLayerSourceId != null
+  const effectiveSourceId = viewportLayerSourceId != null
     ? Number(viewportLayerSourceId)
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
-   const buttonTagId = buttonScope.buttonTagId;
+  const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? Number(syntheticRoomId)
+   : effectiveRoomIdBase;
+  const buttonTagIdBase = buttonScope.buttonTagId;
+  const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
+   ? Number(syntheticRoomTagId)
+   : buttonTagIdBase;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
-   const lowerLabel = String(keyToken || "").trim().toLowerCase();
+  const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
@@ -1761,9 +1804,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.scopeType = scopeType;
     refs.effectiveRoomId = effectiveRoomId;
     refs.effectiveSourceId = effectiveSourceId;
+  if (syntheticRoomList) {{
+   if (syntheticRoomId != null && Number.isFinite(syntheticRoomId)) refs.syntheticRoomId = Number(syntheticRoomId);
+   if (syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)) refs.syntheticRoomTagId = Number(syntheticRoomTagId);
+  }}
     refs.programRef = programRef;
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyToken}}`;
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -1779,7 +1826,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.sharedFlag = sharedFlag;
     refs.scopeLayerId = scopeLayerId;
     if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
-     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyToken}}`;
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -1791,13 +1838,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else if (vpButtonId && deviceId != null && pageId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyTokenResolved}}`;
   }} else if (deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else {{
-   targetKey = `btn:${{keyToken}}`;
+   targetKey = `btn:${{keyTokenResolved}}`;
   }}
   return {{
    targetKey,
@@ -3793,10 +3840,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
   const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
   const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
+  const syntheticRoomList = wrap && wrap.dataset ? String(wrap.dataset.syntheticRoomList || "") === "1" : false;
+  const syntheticRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomId : null;
+  const syntheticRoomTagIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomTagId : null;
+  const syntheticRoomId = syntheticRoomIdRaw == null ? null : Number(syntheticRoomIdRaw);
+  const syntheticRoomTagId = syntheticRoomTagIdRaw == null ? null : Number(syntheticRoomTagIdRaw);
   const categoryName = String(m.category || "").trim();
   const buttonName = String(m.identity || "").trim();
   const targetName = String(label || "").trim() || buttonName || categoryName;
   const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
+  const keyTokenResolved = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? `${{keyToken}}:room:${{Number(syntheticRoomId)}}`
+   : keyToken;
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -3842,18 +3897,24 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const viewportLayerSourceId = viewportLayerScope.sourceId;
    const pageLayerRoomId = pageLayerScope.roomId;
    const pageLayerSourceId = pageLayerScope.sourceId;
-   const effectiveRoomId = viewportLayerRoomId != null
+  const effectiveRoomIdBase = viewportLayerRoomId != null
     ? Number(viewportLayerRoomId)
     : (pageLayerRoomId != null ? Number(pageLayerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null));
    const effectiveSourceId = viewportLayerSourceId != null
     ? Number(viewportLayerSourceId)
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
-   const buttonTagId = buttonScope.buttonTagId;
+  const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? Number(syntheticRoomId)
+   : effectiveRoomIdBase;
+  const buttonTagIdBase = buttonScope.buttonTagId;
+  const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
+   ? Number(syntheticRoomTagId)
+   : buttonTagIdBase;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
-   const lowerLabel = String(keyToken || "").trim().toLowerCase();
+  const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
@@ -3876,9 +3937,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.scopeType = scopeType;
     refs.effectiveRoomId = effectiveRoomId;
     refs.effectiveSourceId = effectiveSourceId;
+  if (syntheticRoomList) {{
+   if (syntheticRoomId != null && Number.isFinite(syntheticRoomId)) refs.syntheticRoomId = Number(syntheticRoomId);
+   if (syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)) refs.syntheticRoomTagId = Number(syntheticRoomTagId);
+  }}
     refs.programRef = programRef;
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyToken}}`;
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -3894,7 +3959,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.sharedFlag = sharedFlag;
     refs.scopeLayerId = scopeLayerId;
     if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
-     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyToken}}`;
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -3906,13 +3971,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else if (vpButtonId && deviceId != null && pageId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyTokenResolved}}`;
   }} else if (deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else {{
-   targetKey = `btn:${{keyToken}}`;
+   targetKey = `btn:${{keyTokenResolved}}`;
   }}
   return {{
    targetKey,

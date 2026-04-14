@@ -151,7 +151,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertIn("data-p-left='10'", attrs)
         self.assertIn("data-l-left='110'", attrs)
 
-    def test_synthetic_rows_render_above_top_page_layer(self):
+    def test_synthetic_rows_use_host_layer_z_index(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
         device = {"userFacing": {"displayName": "DeviceA", "pages": [_minimal_list_host_page(), p2]}, "diagnostics": _minimal_diag()}
         project = {"devices": [device]}
@@ -160,7 +160,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         html = payload["page_button_rows"]
         m = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-id='1'", html)
         self.assertIsNotNone(m)
-        self.assertGreater(int(m.group(1)), 100 + 9)
+        self.assertEqual(int(m.group(1)), 100)
 
     def test_synthetic_rows_carry_room_specific_scope_identity(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
@@ -173,6 +173,8 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertIn('"roomId": 2', html)
         self.assertIn('"buttonTagId": 1082', html)
         self.assertIn('"buttonTagId": 1083', html)
+        self.assertIn("data-synthetic-room-tag-id='1082'", html)
+        self.assertIn("data-synthetic-room-tag-id='1083'", html)
 
 
 if __name__ == "__main__":
