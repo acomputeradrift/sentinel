@@ -87,6 +87,14 @@ Reliability note (agent + PowerShell environments where command stdout can be mi
 
 Run **one line at a time** (or a single script block where each step must succeed). Use `ssh -o BatchMode=yes` so a missing key does not hang waiting for a password.
 
+Preferred (enforced) path:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deployment/deploy_from_head.ps1 -RequiredRemoteMarkers _synthetic_controller_room_list_rows_html
+```
+
+This script enforces: clean tree gate, archive-from-`HEAD`, upload/extract, optional remote marker verification, restart, and health/route checks, with a full transcript at `temp/_deploy_capture.txt`.
+
 ```powershell
 # 0) From repo root — commit first (see Preflight step 1). Optional: $env:SENTINEL_DEPLOY_TIP = (git rev-parse --short HEAD)
 

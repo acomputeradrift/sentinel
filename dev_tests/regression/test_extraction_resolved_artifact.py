@@ -69,6 +69,18 @@ class ExtractionResolvedArtifactTest(unittest.TestCase):
                     self.assertIn("targetPageId", rp)
                     self.assertIn("targetPageName", rp)
                     self.assertIn("resolutionPath", rp)
+                source_rows = diag.get("sourceListRows")
+                self.assertIsInstance(source_rows, list)
+                for src in source_rows:
+                    if not isinstance(src, dict):
+                        continue
+                    for key in ("roomId", "roomName", "sourceDeviceId", "sourceName", "activityOrder", "checked", "resolvedPageLink"):
+                        self.assertIn(key, src, msg=f"diagnostics.sourceListRows entry missing {key}")
+                    rp = src.get("resolvedPageLink")
+                    self.assertIsInstance(rp, dict)
+                    self.assertIn("targetPageId", rp)
+                    self.assertIn("targetPageName", rp)
+                    self.assertIn("resolutionPath", rp)
             user_layers: list[dict] = []
             for device in project_data.get("devices", []):
                 user = device.get("userFacing", {}) if isinstance(device, dict) else {}

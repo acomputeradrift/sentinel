@@ -396,6 +396,21 @@
             }
           }
         ],
+        "sourceListRows": [
+          {
+            "roomId": 0,
+            "roomName": "Global",
+            "sourceDeviceId": 0,
+            "sourceName": "",
+            "activityOrder": 0,
+            "checked": 0,
+            "resolvedPageLink": {
+              "targetPageId": 0,
+              "targetPageName": null,
+              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent"
+            }
+          }
+        ],
         "pages": [
           {
             "pageId": 0,

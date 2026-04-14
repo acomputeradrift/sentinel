@@ -923,6 +923,65 @@ def _diagnostics_controller_room_list(
     return out
 
 
+def _diagnostics_source_list_rows(
+    cur: sqlite3.Cursor,
+    rti_address: int,
+    *,
+    page_name_by_page_id: dict[int, str],
+    room_name_by_id: dict[int, str],
+    macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
+) -> list[dict[str, Any]]:
+    """Room-scoped source-list rows from Activities with resolved page links per device RTI."""
+    cur.execute("select name from sqlite_master where type='table' and name='Activities'")
+    if not cur.fetchone():
+        return []
+    cur.execute(
+        """
+        select a.RoomId, a.DeviceId, a.ActivityOrder, a.Checked, a.PagelinkMacroId,
+               d.Name as SourceName, d.DisplayName as SourceDisplayName
+        from Activities a
+        join Devices d on d.DeviceId = a.DeviceId
+        order by a.RoomId, a.Checked desc, a.ActivityOrder, a.ActivitiesId
+        """
+    )
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[int, int]] = set()
+    for row in cur.fetchall():
+        room_id = int(row["RoomId"] or 0)
+        source_device_id = int(row["DeviceId"] or 0)
+        key = (room_id, source_device_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        source_name = str(row["SourceDisplayName"] or row["SourceName"] or source_device_id).strip() or str(source_device_id)
+        targets = macro_step_targets_by_macro.get(int(row["PagelinkMacroId"] or 0), [])
+        target_page_id = _pick_target_for_rti(targets, rti_address)
+        if target_page_id is not None:
+            resolved = {
+                "targetPageId": int(target_page_id),
+                "targetPageName": str(page_name_by_page_id.get(int(target_page_id)) or "").strip() or None,
+                "resolutionPath": "activityEvent",
+            }
+        else:
+            resolved = {
+                "targetPageId": None,
+                "targetPageName": None,
+                "resolutionPath": None,
+            }
+        out.append(
+            {
+                "roomId": room_id,
+                "roomName": str(room_name_by_id.get(room_id) or room_id),
+                "sourceDeviceId": source_device_id,
+                "sourceName": source_name,
+                "activityOrder": int(row["ActivityOrder"] or 0),
+                "checked": int(row["Checked"] or 0),
+                "resolvedPageLink": resolved,
+            }
+        )
+    return out
+
+
 def _activity_target_page_ids(
     select_source_id: int,
     select_source_room_id: int,
@@ -1903,6 +1962,13 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             room_event_targets_by_room=dict(room_event_targets_by_room),
             macro_room_tags_by_room=macro_room_tags_by_room_id,
         )
+        diag_source_rows = _diagnostics_source_list_rows(
+            cur,
+            rti_address,
+            page_name_by_page_id=page_name_by_page_id,
+            room_name_by_id=room_name_by_id,
+            macro_step_targets_by_macro=macro_step_targets_by_macro,
+        )
         lowest_nonzero_device_room_id = min((int(room["roomId"]) for room in diag_rooms if int(room["roomId"]) > 0), default=None)
         cur.execute(
             """
@@ -2105,6 +2171,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                     "rtiAddress": rti_address,
                     "isClonedController": False,
                     "rooms": diag_rooms,
+                    "sourceListRows": diag_source_rows,
                     "pages": diag_pages,
                 },
             }

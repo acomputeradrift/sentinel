@@ -1010,6 +1010,299 @@ def _synthetic_controller_room_list_rows_html(
     return "".join(parts)
 
 
+def _is_source_list_host_button(btn: dict[str, Any]) -> bool:
+    if not isinstance(btn, dict):
+        return False
+    t = btn.get("testTargets", {})
+    if not isinstance(t, dict):
+        return False
+    vars_t = t.get("variables", {})
+    if not isinstance(vars_t, dict) or not bool(vars_t.get("List")):
+        return False
+    tag = _norm_text(_button_tag_name(btn)).lower()
+    text = _norm_text((btn.get("buttonIdentity") or {}).get("text") or "").lower()
+    blob = f"{tag} {text}"
+    return "source" in blob and "list" in blob
+
+
+def _scope_room_source_from_button(btn: dict[str, Any]) -> tuple[int | None, int | None]:
+    scope = btn.get("apexScopeSource")
+    if not isinstance(scope, dict):
+        return None, None
+    page = scope.get("page") if isinstance(scope.get("page"), dict) else {}
+    viewport_layer = scope.get("viewportLayer")
+    if not isinstance(viewport_layer, dict):
+        viewport_layer = scope.get("layer") if isinstance(scope.get("layer"), dict) else {}
+    page_layer = scope.get("pageLayer") if isinstance(scope.get("pageLayer"), dict) else {}
+
+    room_raw = viewport_layer.get("roomId")
+    if room_raw is None:
+        room_raw = page_layer.get("roomId")
+    if room_raw is None:
+        room_raw = page.get("roomId")
+
+    source_raw = viewport_layer.get("sourceId")
+    if source_raw is None:
+        source_raw = page_layer.get("sourceId")
+    if source_raw is None:
+        source_raw = page.get("sourceDeviceId")
+
+    room_id = int(room_raw) if room_raw is not None else None
+    source_id = int(source_raw) if source_raw is not None else None
+    return room_id, source_id
+
+
+def _sorted_diag_source_rows(diag: dict[str, Any], room_id: int | None) -> list[dict[str, Any]]:
+    rows = diag.get("sourceListRows")
+    if not isinstance(rows, list):
+        return []
+    out = [r for r in rows if isinstance(r, dict)]
+    if room_id is not None:
+        out = [r for r in out if int(r.get("roomId") or -1) == int(room_id)]
+    return sorted(
+        out,
+        key=lambda r: (
+            -int(r.get("checked") or 0),
+            int(r.get("activityOrder") or 0),
+            _norm_text(r.get("sourceName")).lower(),
+        ),
+    )
+
+
+def _find_source_list_host(page: dict[str, Any], orientation: str) -> tuple[str, dict[str, Any]] | None:
+    for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
+        if not _is_source_list_host_button(btn):
+            continue
+        oriented_ui = _orientation_ui(btn["buttonUI"], orientation)
+        if not bool(oriented_ui.get("visible", True)):
+            continue
+        c = _ui_coordinates(btn["buttonUI"], orientation)
+        if int(c.get("width") or 0) <= 0 or int(c.get("height") or 0) <= 0:
+            continue
+        return (
+            "page",
+            {
+                "btn": btn,
+                "label": label,
+                "off_top": off_top,
+                "off_left": off_left,
+                "layer_key": layer_key,
+                "layer_order": layer_order,
+            },
+        )
+    for vb in _iter_viewport_buttons(page, orientation):
+        if not vb.get("visible"):
+            continue
+        btn = vb.get("btn")
+        if not isinstance(btn, dict) or not _is_source_list_host_button(btn):
+            continue
+        c = _ui_coordinates(btn["buttonUI"], orientation)
+        if int(c.get("width") or 0) <= 0 or int(c.get("height") or 0) <= 0:
+            continue
+        return ("viewport", vb)
+    return None
+
+
+def _synthetic_source_list_row_button(
+    *,
+    source_row: dict[str, Any],
+    row_rect_portrait: tuple[int, int, int, int],
+    row_rect_landscape: tuple[int, int, int, int],
+    layer_order: int,
+    row_index: int,
+    page_id: Any,
+    rti_address: Any,
+    layer_max_button_order: int,
+) -> dict[str, Any]:
+    row_left_p, row_top_p, row_w_p, row_h_p = row_rect_portrait
+    row_left_l, row_top_l, row_w_l, row_h_l = row_rect_landscape
+    source_name = _norm_text(source_row.get("sourceName")) or f"Source {row_index + 1}"
+    source_device_id = int(source_row.get("sourceDeviceId") or 0)
+    room_id = int(source_row.get("roomId") or 0)
+    resolved = source_row.get("resolvedPageLink")
+    page_link_on = isinstance(resolved, dict) and resolved.get("targetPageId") is not None
+    return {
+        "buttonIdentity": {"buttonTagName": f"Source:{source_name}", "text": source_name, "buttonType": None},
+        "buttonUI": {
+            "fontSize": 10,
+            "orientations": {
+                "portrait": {"visible": True, "coordinates": {"left": row_left_p, "top": row_top_p, "width": row_w_p, "height": row_h_p}},
+                "landscape": {"visible": True, "coordinates": {"left": row_left_l, "top": row_top_l, "width": row_w_l, "height": row_h_l}},
+            },
+            "stack": {
+                "layerOrder": layer_order,
+                "buttonOrder": int(layer_max_button_order) + 1 + row_index,
+                "frameNumber": 0,
+            },
+        },
+        "testTargets": {
+            "text": True,
+            "macros": False,
+            "macroSteps": False,
+            "variables": {
+                "Text": False,
+                "Reversed": False,
+                "Inactive": False,
+                "Visible": False,
+                "Value": False,
+                "State": False,
+                "Command": False,
+                "Image": False,
+                "List": False,
+            },
+            "graphics": {"bitmap": False, "icon": False},
+            "pageLink": {"enabled": page_link_on},
+        },
+        "resolvedPageLink": resolved if page_link_on else None,
+        "apexScopeSource": {
+            "page": {"pageId": page_id, "roomId": room_id, "sourceDeviceId": source_device_id, "rtiAddress": rti_address},
+            "viewportLayer": {"layerId": 0, "sharedLayerId": 0, "roomId": room_id, "sourceId": source_device_id},
+            "pageLayer": {"roomId": room_id, "sourceId": source_device_id},
+            "button": {"buttonId": 2_000_000 + row_index, "buttonTagId": None},
+            "bindings": {"macroIds": [], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
+        },
+    }
+
+
+def _synthetic_source_list_rows_html(
+    page: dict[str, Any],
+    orientation: str,
+    diag: dict[str, Any],
+    diag_page_id: Any,
+    diag_device_id: Any,
+    variable_label: str,
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
+    layer_name_by_key: dict[str, str],
+    page_id: Any,
+    rti_address: Any,
+) -> str:
+    host_hit = _find_source_list_host(page, orientation)
+    if not host_hit:
+        return ""
+    kind, payload = host_hit
+    host_btn = payload["btn"] if kind == "page" else payload["btn"]
+    scoped_room_id, _scoped_source_id = _scope_room_source_from_button(host_btn)
+    source_rows = _sorted_diag_source_rows(diag, scoped_room_id)
+    if not source_rows:
+        return ""
+    parts: list[str] = []
+
+    if kind == "page":
+        label = str(payload["label"] or "Screen Button")
+        off_top = int(payload["off_top"])
+        off_left = int(payload["off_left"])
+        layer_key = str(payload["layer_key"])
+        layer_order = int(payload["layer_order"])
+        p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
+        l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
+        rects_p = _room_list_row_slot_rects(int(p_c.get("left") or 0) + off_left, int(p_c.get("top") or 0) + off_top, int(p_c.get("width") or 0), int(p_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
+        rects_l = _room_list_row_slot_rects(int(l_c.get("left") or 0) + off_left, int(l_c.get("top") or 0) + off_top, int(l_c.get("width") or 0), int(l_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
+        if len(rects_p) != len(source_rows) or len(rects_l) != len(source_rows):
+            return ""
+        layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
+        z_base = 100 + layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
+        layer_display = str(layer_name_by_key.get(layer_key, "") or "")
+        for i, source_row in enumerate(source_rows):
+            syn = _synthetic_source_list_row_button(
+                source_row=source_row,
+                row_rect_portrait=rects_p[i],
+                row_rect_landscape=rects_l[i],
+                layer_order=layer_order,
+                row_index=i,
+                page_id=page_id,
+                rti_address=rti_address,
+                layer_max_button_order=layer_max_button_order,
+            )
+            active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
+            extra = (
+                f"data-synthetic-source-list='1' data-synthetic-source-room-id='{int(source_row.get('roomId') or 0)}' "
+                f"data-synthetic-source-device-id='{int(source_row.get('sourceDeviceId') or 0)}' "
+                f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
+                f"data-owner-layer-name='{escape(layer_display, quote=True)}'"
+            )
+            if diag_device_id is not None:
+                extra += f" data-diag-device-id='{int(diag_device_id)}'"
+            if diag_page_id is not None:
+                extra += f" data-diag-page-id='{int(diag_page_id)}'"
+            parts.append(
+                _render_button_control(
+                    syn,
+                    label,
+                    active_rect[0],
+                    active_rect[1],
+                    variable_label,
+                    app_ui,
+                    page_targets,
+                    page_target_indexes,
+                    extra_style=f"z-index:{z_base + i};",
+                    extra_attrs=extra,
+                    orientation=orientation,
+                )
+            )
+        return "".join(parts)
+
+    vb = payload
+    label = str(vb.get("label") or "Screen Button")
+    p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
+    l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
+    rects_p = _room_list_row_slot_rects(int(p_c.get("left") or 0) + int(vb["portrait_off_left"]), int(p_c.get("top") or 0) + int(vb["portrait_off_top"]), int(p_c.get("width") or 0), int(p_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
+    rects_l = _room_list_row_slot_rects(int(l_c.get("left") or 0) + int(vb["landscape_off_left"]), int(l_c.get("top") or 0) + int(vb["landscape_off_top"]), int(l_c.get("width") or 0), int(l_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
+    if len(rects_p) != len(source_rows) or len(rects_l) != len(source_rows):
+        return ""
+    owner_lo = int(vb.get("owner_layer_order") or 0)
+    owner_key = str(vb.get("owner_layer_key") or "")
+    z_base = 100 + owner_lo + _ROOM_LIST_SYNTHETIC_Z_BOOST
+    layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
+    layer_display = str(layer_name_by_key.get(owner_key, "") or "")
+    for i, source_row in enumerate(source_rows):
+        syn = _synthetic_source_list_row_button(
+            source_row=source_row,
+            row_rect_portrait=rects_p[i],
+            row_rect_landscape=rects_l[i],
+            layer_order=owner_lo,
+            row_index=i,
+            page_id=page_id,
+            rti_address=rti_address,
+            layer_max_button_order=layer_max_button_order,
+        )
+        active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
+        extra = (
+            f"data-synthetic-source-list='1' data-synthetic-source-room-id='{int(source_row.get('roomId') or 0)}' "
+            f"data-synthetic-source-device-id='{int(source_row.get('sourceDeviceId') or 0)}' "
+            f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+            f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
+            f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
+            f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
+            f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+            f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}' "
+            f"data-owner-layer-key='{owner_key}' data-owner-layer-order='{owner_lo}' "
+            f"data-owner-layer-name='{escape(layer_display, quote=True)}'"
+        )
+        if diag_device_id is not None:
+            extra += f" data-diag-device-id='{int(diag_device_id)}'"
+        if diag_page_id is not None:
+            extra += f" data-diag-page-id='{int(diag_page_id)}'"
+        parts.append(
+            _render_button_control(
+                syn,
+                label,
+                active_rect[0],
+                active_rect[1],
+                variable_label,
+                app_ui,
+                page_targets,
+                page_target_indexes,
+                extra_classes="vp-btn",
+                extra_style=f"z-index:{z_base + i};",
+                extra_attrs=extra,
+                orientation=orientation,
+            )
+        )
+    return "".join(parts)
+
+
 def _page_payload(
     project_data: dict[str, Any],
     app_ui: dict[str, Any],
@@ -1117,6 +1410,22 @@ def _page_payload(
 
     page_button_rows.append(
         _synthetic_controller_room_list_rows_html(
+            page,
+            orientation,
+            diag,
+            diag_page_id,
+            diag_device_id,
+            variable_label,
+            app_ui,
+            page_targets,
+            page_target_indexes,
+            layer_name_by_key,
+            page.get("pageId"),
+            page.get("rtiAddress"),
+        )
+    )
+    page_button_rows.append(
+        _synthetic_source_list_rows_html(
             page,
             orientation,
             diag,
@@ -1247,6 +1556,7 @@ def _render_document(
     show_orientation_toggle: bool,
     home_href: str | None = None,
     room_list_resolution_json: str = "[]",
+    source_list_resolution_json: str = "[]",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -1410,6 +1720,7 @@ const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
 const PAGE_HTML_BY_INDEX={page_html_by_index_json};
 const PAGE_STATE={page_state_json};
 const ROOM_LIST_RESOLUTION={room_list_resolution_json};
+const SOURCE_LIST_RESOLUTION={source_list_resolution_json};
 const ORIENTATION_STATE={orientation_state_json};
 const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
 let currentZoomPercent=ZOOM_DEFAULT;
@@ -1712,13 +2023,25 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const syntheticRoomTagIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomTagId : null;
   const syntheticRoomId = syntheticRoomIdRaw == null ? null : Number(syntheticRoomIdRaw);
   const syntheticRoomTagId = syntheticRoomTagIdRaw == null ? null : Number(syntheticRoomTagIdRaw);
+  const syntheticSourceList = wrap && wrap.dataset ? String(wrap.dataset.syntheticSourceList || "") === "1" : false;
+  const syntheticSourceRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceRoomId : null;
+  const syntheticSourceDeviceIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceDeviceId : null;
+  const syntheticSourceRoomId = syntheticSourceRoomIdRaw == null ? null : Number(syntheticSourceRoomIdRaw);
+  const syntheticSourceDeviceId = syntheticSourceDeviceIdRaw == null ? null : Number(syntheticSourceDeviceIdRaw);
+  const syntheticSourceList = wrap && wrap.dataset ? String(wrap.dataset.syntheticSourceList || "") === "1" : false;
+  const syntheticSourceRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceRoomId : null;
+  const syntheticSourceDeviceIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceDeviceId : null;
+  const syntheticSourceRoomId = syntheticSourceRoomIdRaw == null ? null : Number(syntheticSourceRoomIdRaw);
+  const syntheticSourceDeviceId = syntheticSourceDeviceIdRaw == null ? null : Number(syntheticSourceDeviceIdRaw);
   const categoryName = String(m.category || "").trim();
   const buttonName = String(m.identity || "").trim();
   const targetName = String(label || "").trim() || buttonName || categoryName;
   const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
   const keyTokenResolved = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
    ? `${{keyToken}}:room:${{Number(syntheticRoomId)}}`
-   : keyToken;
+   : (syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+      ? `${{keyToken}}:src:${{Number(syntheticSourceDeviceId)}}:${{(syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) ? `room:${{Number(syntheticSourceRoomId)}}` : "room:na"}}`
+      : keyToken);
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -1772,11 +2095,14 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
   const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
    ? Number(syntheticRoomId)
-   : effectiveRoomIdBase;
+   : (syntheticSourceList && syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase);
   const buttonTagIdBase = buttonScope.buttonTagId;
   const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
    ? Number(syntheticRoomTagId)
    : buttonTagIdBase;
+  const effectiveSourceIdResolved = syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+   ? Number(syntheticSourceDeviceId)
+   : effectiveSourceId;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
@@ -1803,14 +2129,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const scopeType = Number(effectiveRoomId || 0) === 0 ? "GLOBAL" : "ROOM";
     refs.scopeType = scopeType;
     refs.effectiveRoomId = effectiveRoomId;
-    refs.effectiveSourceId = effectiveSourceId;
+    refs.effectiveSourceId = effectiveSourceIdResolved;
   if (syntheticRoomList) {{
    if (syntheticRoomId != null && Number.isFinite(syntheticRoomId)) refs.syntheticRoomId = Number(syntheticRoomId);
    if (syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)) refs.syntheticRoomTagId = Number(syntheticRoomTagId);
   }}
+  if (syntheticSourceList) {{
+   if (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) refs.syntheticSourceRoomId = Number(syntheticSourceRoomId);
+   if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
+  }}
     refs.programRef = programRef;
-    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
+    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -3851,7 +4181,9 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
   const keyTokenResolved = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
    ? `${{keyToken}}:room:${{Number(syntheticRoomId)}}`
-   : keyToken;
+   : (syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+      ? `${{keyToken}}:src:${{Number(syntheticSourceDeviceId)}}:${{(syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) ? `room:${{Number(syntheticSourceRoomId)}}` : "room:na"}}`
+      : keyToken);
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -3905,11 +4237,14 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
   const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
    ? Number(syntheticRoomId)
-   : effectiveRoomIdBase;
+   : (syntheticSourceList && syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase);
   const buttonTagIdBase = buttonScope.buttonTagId;
   const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
    ? Number(syntheticRoomTagId)
    : buttonTagIdBase;
+  const effectiveSourceIdResolved = syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+   ? Number(syntheticSourceDeviceId)
+   : effectiveSourceId;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
@@ -3936,14 +4271,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const scopeType = Number(effectiveRoomId || 0) === 0 ? "GLOBAL" : "ROOM";
     refs.scopeType = scopeType;
     refs.effectiveRoomId = effectiveRoomId;
-    refs.effectiveSourceId = effectiveSourceId;
+    refs.effectiveSourceId = effectiveSourceIdResolved;
   if (syntheticRoomList) {{
    if (syntheticRoomId != null && Number.isFinite(syntheticRoomId)) refs.syntheticRoomId = Number(syntheticRoomId);
    if (syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)) refs.syntheticRoomTagId = Number(syntheticRoomTagId);
   }}
+  if (syntheticSourceList) {{
+   if (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) refs.syntheticSourceRoomId = Number(syntheticSourceRoomId);
+   if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
+  }}
     refs.programRef = programRef;
-    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
+    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -4208,6 +4547,9 @@ def build_device_render_bundle(
     room_list = diag_for_rooms.get("rooms") if isinstance(diag_for_rooms, dict) else None
     if not isinstance(room_list, list):
         room_list = []
+    source_list = diag_for_rooms.get("sourceListRows") if isinstance(diag_for_rooms, dict) else None
+    if not isinstance(source_list, list):
+        source_list = []
     first_page_inner = page_html_by_index.get("0", "")
     initial_page_markup = f"<div class='device-page active' data-page-index='0'>{first_page_inner}</div>" if pages else ""
     html = _render_document(
@@ -4223,6 +4565,7 @@ def build_device_render_bundle(
         show_orientation_toggle,
         home_href=project_home_filename(project_stem),
         room_list_resolution_json=json.dumps(room_list),
+        source_list_resolution_json=json.dumps(source_list),
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):
@@ -4249,6 +4592,7 @@ def build_device_render_bundle(
         },
         "pages": payload_doc_pages,
         "roomListResolution": room_list,
+        "sourceListResolution": source_list,
     }
     return {"html": html, "payload": payload_doc}
 
