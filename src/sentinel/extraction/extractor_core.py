@@ -1044,6 +1044,23 @@ def _room_off_target_page_ids(
     return []
 
 
+def _load_scrolling_list_item_heights(cur: sqlite3.Cursor) -> dict[tuple[int, int, int], int]:
+    """Map (PageId, SharedLayerId, ButtonId) -> ScrollingList.ItemHeight from Apex."""
+    cur.execute("select name from sqlite_master where type='table' and name='ScrollingList'")
+    if not cur.fetchone():
+        return {}
+    out: dict[tuple[int, int, int], int] = {}
+    cur.execute("select PageId, SharedLayerId, ButtonId, ItemHeight from ScrollingList")
+    for row in cur.fetchall():
+        pid = int(row["PageId"] or 0)
+        sid = int(row["SharedLayerId"] or 0)
+        bid = int(row["ButtonId"] or 0)
+        ih = int(row["ItemHeight"] or 0)
+        if pid > 0 and bid > 0 and ih > 0:
+            out[(pid, sid, bid)] = ih
+    return out
+
+
 def _resolve_button(
     cur: sqlite3.Cursor,
     button_row: sqlite3.Row,
@@ -1091,6 +1108,7 @@ def _resolve_button(
     landscape_supported: bool = True,
     portrait_resolution: dict[str, int] | None = None,
     landscape_resolution: dict[str, int] | None = None,
+    scrolling_list_item_height_by_key: dict[tuple[int, int, int], int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -1294,6 +1312,10 @@ def _resolve_button(
         button_order=button_order,
         frame_number=frame_number,
     )
+    sl_map = scrolling_list_item_height_by_key or {}
+    sl_h = sl_map.get((int(page_id), int(shared_layer_id), int(button_id)))
+    if sl_h is not None and sl_h > 0:
+        button_ui["listItemHeightPx"] = int(sl_h)
     page_name_resolved = str(page_name_by_page_id.get(int(page_id)) or "").strip()
     effective_room_id = (
         int(layer_room_id) if layer_room_id is not None else (int(page_layer_room_id) if page_layer_room_id is not None else int(page_room_id))
@@ -1933,6 +1955,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
         _emit_stage("setup", 100, force=True)
         _emit_work(force=True)
 
+    scrolling_list_item_height_by_key = _load_scrolling_list_item_heights(cur)
+
     for drow in device_rows:
         device_id = int(drow["DeviceId"])
         rti_address = int(drow["RTIAddress"])
@@ -2055,6 +2079,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         landscape_supported=landscape_supported,
                         portrait_resolution=portrait_resolution,
                         landscape_resolution=landscape_resolution,
+                        scrolling_list_item_height_by_key=scrolling_list_item_height_by_key,
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -2101,6 +2126,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             landscape_resolution,
                             shared_layer_buttons_cache,
                             _mark_viewport_frame_button_processed,
+                            scrolling_list_item_height_by_key,
                         )
                         layer_user["viewports"].append(
                             {
@@ -2230,6 +2256,7 @@ def _resolve_viewport_frames(
     landscape_resolution: dict[str, int] | None = None,
     shared_layer_buttons_cache: dict[int, list[sqlite3.Row]] | None = None,
     button_processed_hook: Any = None,
+    scrolling_list_item_height_by_key: dict[tuple[int, int, int], int] | None = None,
 ) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
     child_layers = cur.fetchall()
@@ -2321,6 +2348,7 @@ def _resolve_viewport_frames(
                 landscape_supported=landscape_supported,
                 portrait_resolution=portrait_resolution or {"width": 0, "height": 0},
                 landscape_resolution=landscape_resolution or {"width": 0, "height": 0},
+                scrolling_list_item_height_by_key=scrolling_list_item_height_by_key,
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(

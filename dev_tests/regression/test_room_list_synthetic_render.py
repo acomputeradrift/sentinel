@@ -181,6 +181,19 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertEqual(len(rects), 2)
         self.assertEqual(rects[0][3] + 2 + rects[1][3], 30)
 
+    def test_slot_rects_uses_apex_row_height_when_it_fits(self):
+        rects = render_core._room_list_row_slot_rects(0, 0, 100, 100, 3, 2, row_height_px=20)
+        self.assertEqual(len(rects), 3)
+        self.assertTrue(all(r[3] == 20 for r in rects))
+        self.assertEqual(rects[0][1], 0)
+        self.assertEqual(rects[1][1], 22)
+        self.assertEqual(rects[2][1], 44)
+
+    def test_slot_rects_falls_back_when_fixed_rows_exceed_list_height(self):
+        divide = render_core._room_list_row_slot_rects(0, 0, 100, 30, 3, 2, row_height_px=None)
+        fallback = render_core._room_list_row_slot_rects(0, 0, 100, 30, 3, 2, row_height_px=20)
+        self.assertEqual(divide, fallback)
+
     def test_sorted_diag_source_rows_filters_unchecked_and_respects_scope(self):
         diag = _minimal_diag()
         scoped = render_core._sorted_diag_source_rows(diag, 1)

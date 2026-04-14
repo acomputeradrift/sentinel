@@ -713,11 +713,40 @@ def _room_list_primary_tag_info(room_row: dict[str, Any]) -> tuple[str, int | No
     return "Room", None
 
 
+def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
+    """Apex `ScrollingList.ItemHeight` is merged into `buttonUI.listItemHeightPx` during extraction."""
+    ui = btn.get("buttonUI") if isinstance(btn, dict) else None
+    if not isinstance(ui, dict):
+        return None
+    raw = ui.get("listItemHeightPx")
+    try:
+        h = int(raw) if raw is not None else 0
+    except (TypeError, ValueError):
+        return None
+    return h if h > 0 else None
+
+
 def _room_list_row_slot_rects(
-    list_left: int, list_top: int, list_w: int, list_h: int, n: int, gap: int
+    list_left: int,
+    list_top: int,
+    list_w: int,
+    list_h: int,
+    n: int,
+    gap: int,
+    row_height_px: int | None = None,
 ) -> list[tuple[int, int, int, int]]:
     if n <= 0 or list_w <= 0 or list_h <= 0:
         return []
+    if row_height_px is not None and row_height_px > 0:
+        total_gap = gap * max(0, n - 1)
+        total_needed = n * row_height_px + total_gap
+        if total_needed <= list_h:
+            out: list[tuple[int, int, int, int]] = []
+            y = list_top
+            for _ in range(n):
+                out.append((list_left, y, list_w, row_height_px))
+                y += row_height_px + gap
+            return out
     total_gap = gap * (n - 1)
     slot_h = (list_h - total_gap) // n
     if slot_h <= 0:
@@ -904,6 +933,7 @@ def _synthetic_controller_room_list_rows_html(
         layer_order = int(payload["layer_order"])
         p_c = _ui_coordinates(btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(btn["buttonUI"], "landscape")
+        row_h = _list_row_height_px_from_host(btn)
         rects_p = _room_list_row_slot_rects(
             int(p_c.get("left") or 0) + off_left,
             int(p_c.get("top") or 0) + off_top,
@@ -911,6 +941,7 @@ def _synthetic_controller_room_list_rows_html(
             int(p_c.get("height") or 0),
             len(room_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
+            row_h,
         )
         rects_l = _room_list_row_slot_rects(
             int(l_c.get("left") or 0) + off_left,
@@ -919,6 +950,7 @@ def _synthetic_controller_room_list_rows_html(
             int(l_c.get("height") or 0),
             len(room_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
+            row_h,
         )
         if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
             return ""
@@ -975,6 +1007,7 @@ def _synthetic_controller_room_list_rows_html(
     label = str(vb.get("label") or "Screen Button")
     p_c = _ui_coordinates(btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(btn["buttonUI"], "landscape")
+    row_h = _list_row_height_px_from_host(btn)
     rects_p = _room_list_row_slot_rects(
         int(p_c.get("left") or 0) + int(vb["portrait_off_left"]),
         int(p_c.get("top") or 0) + int(vb["portrait_off_top"]),
@@ -982,6 +1015,7 @@ def _synthetic_controller_room_list_rows_html(
         int(p_c.get("height") or 0),
         len(room_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
+        row_h,
     )
     rects_l = _room_list_row_slot_rects(
         int(l_c.get("left") or 0) + int(vb["landscape_off_left"]),
@@ -990,6 +1024,7 @@ def _synthetic_controller_room_list_rows_html(
         int(l_c.get("height") or 0),
         len(room_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
+        row_h,
     )
     if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
         return ""
@@ -1242,8 +1277,25 @@ def _synthetic_source_list_rows_html(
         layer_order = int(payload["layer_order"])
         p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
-        rects_p = _room_list_row_slot_rects(int(p_c.get("left") or 0) + off_left, int(p_c.get("top") or 0) + off_top, int(p_c.get("width") or 0), int(p_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
-        rects_l = _room_list_row_slot_rects(int(l_c.get("left") or 0) + off_left, int(l_c.get("top") or 0) + off_top, int(l_c.get("width") or 0), int(l_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
+        src_row_h = _list_row_height_px_from_host(host_btn)
+        rects_p = _room_list_row_slot_rects(
+            int(p_c.get("left") or 0) + off_left,
+            int(p_c.get("top") or 0) + off_top,
+            int(p_c.get("width") or 0),
+            int(p_c.get("height") or 0),
+            len(source_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            src_row_h,
+        )
+        rects_l = _room_list_row_slot_rects(
+            int(l_c.get("left") or 0) + off_left,
+            int(l_c.get("top") or 0) + off_top,
+            int(l_c.get("width") or 0),
+            int(l_c.get("height") or 0),
+            len(source_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            src_row_h,
+        )
         if len(rects_p) != len(source_rows) or len(rects_l) != len(source_rows):
             return ""
         layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
@@ -1291,8 +1343,25 @@ def _synthetic_source_list_rows_html(
     label = str(vb.get("label") or "Screen Button")
     p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
-    rects_p = _room_list_row_slot_rects(int(p_c.get("left") or 0) + int(vb["portrait_off_left"]), int(p_c.get("top") or 0) + int(vb["portrait_off_top"]), int(p_c.get("width") or 0), int(p_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
-    rects_l = _room_list_row_slot_rects(int(l_c.get("left") or 0) + int(vb["landscape_off_left"]), int(l_c.get("top") or 0) + int(vb["landscape_off_top"]), int(l_c.get("width") or 0), int(l_c.get("height") or 0), len(source_rows), _ROOM_LIST_SYNTHETIC_GAP_PX)
+    src_row_h = _list_row_height_px_from_host(host_btn)
+    rects_p = _room_list_row_slot_rects(
+        int(p_c.get("left") or 0) + int(vb["portrait_off_left"]),
+        int(p_c.get("top") or 0) + int(vb["portrait_off_top"]),
+        int(p_c.get("width") or 0),
+        int(p_c.get("height") or 0),
+        len(source_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        src_row_h,
+    )
+    rects_l = _room_list_row_slot_rects(
+        int(l_c.get("left") or 0) + int(vb["landscape_off_left"]),
+        int(l_c.get("top") or 0) + int(vb["landscape_off_top"]),
+        int(l_c.get("width") or 0),
+        int(l_c.get("height") or 0),
+        len(source_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        src_row_h,
+    )
     if len(rects_p) != len(source_rows) or len(rects_l) != len(source_rows):
         return ""
     owner_lo = int(vb.get("owner_layer_order") or 0)
