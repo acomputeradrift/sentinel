@@ -232,7 +232,45 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         html = payload["page_button_rows"]
         m = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-id='1'", html)
         self.assertIsNotNone(m)
-        self.assertEqual(int(m.group(1)), 100)
+        synthetic_z = int(m.group(1))
+        native = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='DISPLAY - Room List'", html)
+        self.assertIsNotNone(native)
+        self.assertGreater(synthetic_z, int(native.group(1)))
+
+    def test_synthetic_rows_do_not_escape_host_layer_ordering(self):
+        page = _minimal_list_host_page()
+        page["layers"][1]["buttonCategories"]["screenButtons"] = [
+            {
+                "buttonIdentity": {"buttonTagName": "Top Action", "text": "Top", "buttonType": None},
+                "buttonUI": {
+                    "fontSize": 12,
+                    "orientations": {
+                        "portrait": {"visible": True, "coordinates": {"left": 8, "top": 8, "width": 88, "height": 28}},
+                        "landscape": {"visible": True, "coordinates": {"left": 8, "top": 8, "width": 88, "height": 28}},
+                    },
+                    "stack": {"layerOrder": 9, "buttonOrder": 1, "frameNumber": 0},
+                },
+                "testTargets": {
+                    "text": True,
+                    "macros": False,
+                    "macroSteps": False,
+                    "variables": {k: False for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List")},
+                    "graphics": {"bitmap": False, "icon": False},
+                    "pageLink": False,
+                },
+            }
+        ]
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [page, p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        synthetic = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-id='1'", html)
+        top_native = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='Top Action'", html)
+        self.assertIsNotNone(synthetic)
+        self.assertIsNotNone(top_native)
+        self.assertLess(int(synthetic.group(1)), int(top_native.group(1)))
 
     def test_synthetic_rows_carry_room_specific_scope_identity(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
@@ -265,6 +303,20 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertNotIn("data-synthetic-source-device-id='6'", html)
         self.assertIn('"sourceDeviceId": 4', html)
         self.assertIn('"sourceDeviceId": 5', html)
+
+    def test_page_payload_includes_selected_room_runtime_indicator(self):
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {
+            "userFacing": {"displayName": "DeviceA", "pages": [_minimal_source_list_host_page(), p2]},
+            "diagnostics": _minimal_diag(),
+        }
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_core.render_single_device_html(project, app_ui, "sample", device_index=0, resolved_targets=None)
+        self.assertIn("id='selectedRoomIndicator'", html)
+        self.assertIn("Selected Room:", html)
+        self.assertIn("function setSelectedRoom(", html)
+        self.assertIn("function applySelectedRoomToSourceRows(", html)
 
 
 if __name__ == "__main__":

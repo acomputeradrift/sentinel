@@ -253,6 +253,27 @@ def _button_stack_sort_key(btn: dict[str, Any], category_rank: int) -> tuple[int
     return (button_order, frame_number, category_rank)
 
 
+def _composite_z_index(layer_order: int, button_order: int, frame_number: int = 0, tie_breaker: int = 0) -> int:
+    layer_band = (int(layer_order) + 10_000) * 1_000_000
+    button_band = (int(button_order) + 10_000) * 100
+    frame_band = (int(frame_number) + 100) * 2
+    return layer_band + button_band + frame_band + (1 if int(tie_breaker) > 0 else 0)
+
+
+def _button_composite_z_index(
+    btn: dict[str, Any],
+    *,
+    fallback_layer_order: int = 0,
+    fallback_frame_number: int = 0,
+    tie_breaker: int = 0,
+) -> int:
+    stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+    layer_order = int(stack.get("layerOrder", fallback_layer_order) or fallback_layer_order)
+    button_order = int(stack.get("buttonOrder", 0) or 0)
+    frame_number = int(stack.get("frameNumber", fallback_frame_number) or fallback_frame_number)
+    return _composite_z_index(layer_order, button_order, frame_number, tie_breaker=tie_breaker)
+
+
 def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str, int]]:
     items: list[tuple[dict[str, Any], str, int, int, str, int]] = []
     category_defs: list[tuple[str, str]] = [
@@ -880,7 +901,6 @@ def _synthetic_controller_room_list_rows_html(
         if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
             return ""
         layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
-        z_base = 100 + layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
         layer_display = str(layer_name_by_key.get(layer_key, "") or "")
         for i, room_row in enumerate(room_rows):
             rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
@@ -921,7 +941,7 @@ def _synthetic_controller_room_list_rows_html(
                     app_ui,
                     page_targets,
                     page_target_indexes,
-                    extra_style=f"z-index:{z_base + i};",
+                    extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=layer_order, tie_breaker=1)};",
                     extra_attrs=extra,
                     orientation=orientation,
                 )
@@ -951,7 +971,6 @@ def _synthetic_controller_room_list_rows_html(
     )
     if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
         return ""
-    z_base = 100 + int(vb.get("owner_layer_order") or 0) + _ROOM_LIST_SYNTHETIC_Z_BOOST
     owner_lo = int(vb.get("owner_layer_order") or 0)
     owner_key = str(vb.get("owner_layer_key") or "")
     layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
@@ -1002,7 +1021,7 @@ def _synthetic_controller_room_list_rows_html(
                 page_targets,
                 page_target_indexes,
                 extra_classes="vp-btn",
-                extra_style=f"z-index:{z_base + i};",
+                extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get('frame_id') or 0), tie_breaker=1)};",
                 extra_attrs=extra,
                 orientation=orientation,
             )
@@ -1202,7 +1221,6 @@ def _synthetic_source_list_rows_html(
         if len(rects_p) != len(source_rows) or len(rects_l) != len(source_rows):
             return ""
         layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
-        z_base = 100 + layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
         layer_display = str(layer_name_by_key.get(layer_key, "") or "")
         for i, source_row in enumerate(source_rows):
             syn = _synthetic_source_list_row_button(
@@ -1236,7 +1254,7 @@ def _synthetic_source_list_rows_html(
                     app_ui,
                     page_targets,
                     page_target_indexes,
-                    extra_style=f"z-index:{z_base + i};",
+                    extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=layer_order, tie_breaker=1)};",
                     extra_attrs=extra,
                     orientation=orientation,
                 )
@@ -1253,7 +1271,6 @@ def _synthetic_source_list_rows_html(
         return ""
     owner_lo = int(vb.get("owner_layer_order") or 0)
     owner_key = str(vb.get("owner_layer_key") or "")
-    z_base = 100 + owner_lo + _ROOM_LIST_SYNTHETIC_Z_BOOST
     layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
     layer_display = str(layer_name_by_key.get(owner_key, "") or "")
     for i, source_row in enumerate(source_rows):
@@ -1295,7 +1312,7 @@ def _synthetic_source_list_rows_html(
                 page_targets,
                 page_target_indexes,
                 extra_classes="vp-btn",
-                extra_style=f"z-index:{z_base + i};",
+                extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get('frame_id') or 0), tie_breaker=1)};",
                 extra_attrs=extra,
                 orientation=orientation,
             )
@@ -1399,7 +1416,7 @@ def _page_payload(
                 app_ui,
                 page_targets,
                 page_target_indexes,
-                extra_style=f"z-index:{100 + layer_order};",
+                extra_style=f"z-index:{_button_composite_z_index(btn, fallback_layer_order=layer_order)};",
                 extra_attrs=(
                     f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
                     f"data-owner-layer-name='{escape(str(layer_name_by_key.get(str(layer_key), '') or ''))}'{diag_attrs}"
@@ -1445,7 +1462,9 @@ def _page_payload(
     for vb in _iter_viewport_buttons(page, orientation):
         btn = vb["btn"]
         c = _ui_coordinates(btn["buttonUI"], orientation)
-        extra = f"z-index:{100 + int(vb['owner_layer_order'])};"
+        extra = (
+            f"z-index:{_button_composite_z_index(btn, fallback_layer_order=int(vb['owner_layer_order']), fallback_frame_number=int(vb.get('frame_id') or 0))};"
+        )
         if not vb["visible"]:
             extra = "display:none;" + extra
         vp_button_id, vp_child_button_id = _diag_match_viewport_button_ids(
@@ -1588,6 +1607,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .orientation-controls{{left:0;display:flex;align-items:flex-start;justify-content:center;z-index:23;}}
 .top-controls{{padding:0 16px;box-sizing:border-box;gap:12px;justify-content:space-between;}}
 .header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;flex:1;height:100%;min-width:0;}}
+.selected-room-indicator{{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:12px;line-height:1;color:#2a455b;background:rgba(248,251,254,.92);border:1px solid #c6d2dd;border-radius:10px;padding:4px 10px;white-space:nowrap;pointer-events:none;z-index:24;}}
+.selected-room-indicator .value{{font-weight:700;}}
 .project-home-link{{display:inline-flex;align-items:center;justify-content:center;min-width:132px;height:40px;padding:0 16px;border-radius:14px;border:1px solid #a9bccd;background:#f7fbff;color:#14324b;text-decoration:none;font-size:14px;line-height:1;box-sizing:border-box;white-space:nowrap;}}
 .project-home-link:hover{{filter:brightness(0.98);}}
 .rti-canvas{{position:absolute;box-sizing:border-box;z-index:1;overflow:auto;scrollbar-width:none;scrollbar-gutter:stable overlay;}}
@@ -1692,7 +1713,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
-<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
+<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div><div class='selected-room-indicator' id='selectedRoomIndicator'>Selected Room: <span class='value' id='selectedRoomValue'>All Rooms</span></div></div>
 {f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'></div>
@@ -1731,6 +1752,8 @@ let currentDeviceTop=0;
  let activePageIndex=0;
  let currentViewportIndexes=VP_FRAMES.map(()=>0);
  let currentOrientation=ORIENTATION_STATE.current;
+const SELECTED_ROOM_SESSION_KEY=`${{PROJECT_SESSION_KEY}}:selected-room-id`;
+let selectedRoomId=null;
  const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus'),passAllBtn=document.getElementById('passAll');
  let isPosting=false;
@@ -1758,6 +1781,73 @@ let currentDeviceTop=0;
   if (deviceId != null && pageId != null && buttonId != null) return `btn:${{deviceId}}:${{pageId}}:${{buttonId}}`;
   return "";
  }}
+function normalizeRoomId(raw) {{
+ const n=Number(raw);
+ if (!Number.isFinite(n) || n<=0) return null;
+ return Number(n);
+}}
+function allResolvedRooms() {{
+ return Array.isArray(ROOM_LIST_RESOLUTION) ? ROOM_LIST_RESOLUTION : [];
+}}
+function roomNameById(roomId) {{
+ const target=normalizeRoomId(roomId);
+ if (target==null) return "";
+ for (const row of allResolvedRooms()) {{
+  const rid=normalizeRoomId(row?.roomId);
+  if (rid==null || rid!==target) continue;
+  const name=String(row?.roomName||"").trim();
+  if (name) return name;
+ }}
+ return "";
+}}
+function defaultSelectedRoomId() {{
+ for (const row of allResolvedRooms()) {{
+  const rid=normalizeRoomId(row?.roomId);
+  if (rid!=null) return rid;
+ }}
+ return null;
+}}
+function loadSelectedRoomId() {{
+ try {{
+  const raw=sessionStorage.getItem(SELECTED_ROOM_SESSION_KEY);
+  return normalizeRoomId(raw);
+ }} catch (_e) {{
+  return null;
+ }}
+}}
+function persistSelectedRoomId(roomId) {{
+ try {{
+  if (roomId==null) sessionStorage.removeItem(SELECTED_ROOM_SESSION_KEY);
+  else sessionStorage.setItem(SELECTED_ROOM_SESSION_KEY, String(roomId));
+ }} catch (_e) {{}}
+}}
+function selectedRoomLabel() {{
+ if (selectedRoomId==null) return "All Rooms";
+ const name=roomNameById(selectedRoomId);
+ return name ? name : `Room ${{selectedRoomId}}`;
+}}
+function syncSelectedRoomIndicator() {{
+ const valueEl=document.getElementById('selectedRoomValue');
+ if (!valueEl) return;
+ valueEl.textContent=selectedRoomLabel();
+}}
+function applySelectedRoomToSourceRows(pageEl) {{
+ if (!pageEl) return;
+ pageEl.querySelectorAll(".btn-wrap[data-synthetic-source-list='1']").forEach(el=>{{
+  const rowRoomId=normalizeRoomId(el.dataset.syntheticSourceRoomId);
+  const matches=selectedRoomId==null || (rowRoomId!=null && Number(rowRoomId)===Number(selectedRoomId));
+  el.dataset.selectedRoomMatch=matches ? "1" : "0";
+ }});
+}}
+function setSelectedRoom(nextRoomId, options) {{
+ const opts=(options && typeof options==="object") ? options : {{}};
+ const persist=opts.persist!==false;
+ selectedRoomId=normalizeRoomId(nextRoomId);
+ if (persist) persistSelectedRoomId(selectedRoomId);
+ syncSelectedRoomIndicator();
+ applyLayerVisibility();
+ refreshButtonVisualStates();
+}}
  function refreshButtonVisualStates() {{
   const api=globalThis.__sentinelTestStatus;
   if (!api||typeof api.refreshButtonWraps!=="function") return;
@@ -2090,7 +2180,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
   const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
    ? Number(syntheticRoomId)
-   : (syntheticSourceList && syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase);
+   : (syntheticSourceList
+      ? ((selectedRoomId != null && Number.isFinite(selectedRoomId))
+         ? Number(selectedRoomId)
+         : (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase))
+      : effectiveRoomIdBase);
   const buttonTagIdBase = buttonScope.buttonTagId;
   const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
    ? Number(syntheticRoomTagId)
@@ -2325,6 +2419,10 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    if (b.dataset.boundTestBtn) return;
    b.dataset.boundTestBtn='1';
    b.addEventListener('click',()=>{{
+    const wrap=b.closest('.btn-wrap');
+    if (wrap && String(wrap.dataset.syntheticRoomList || '') === '1') {{
+      setSelectedRoom(wrap.dataset.syntheticRoomId);
+    }}
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
@@ -3149,6 +3247,7 @@ function renderLayerPanel() {{
  function applyLayerVisibility() {{
   const pageEl=activePageEl();
   if (!pageEl) return;
+ applySelectedRoomToSourceRows(pageEl);
  pageEl.querySelectorAll('.vp-box').forEach(el=>{{
    const baseVisible=String(el.dataset.visible||'1')==='1';
    if (viewportMode.active) {{
@@ -3164,6 +3263,9 @@ function renderLayerPanel() {{
    const baseVisible=String(el.dataset.visible||'1')==='1';
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
+  if (String(el.dataset.syntheticSourceList || '') === '1' && String(el.dataset.selectedRoomMatch || '1') !== '1') {{
+    shouldShow=false;
+  }}
    if (el.classList.contains('vp-btn')) {{
      if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
       shouldShow=false;
@@ -3198,6 +3300,7 @@ function syncHeader() {{
  if (!headerEl) return;
  const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
  headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
+ syncSelectedRoomIndicator();
 }}
  function syncViewportControls() {{}}
   function applyViewportState() {{
@@ -3567,6 +3670,12 @@ function setActivePage(nextPageIndex) {{
  syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
  applyRtiLayout();
 }}
+selectedRoomId=loadSelectedRoomId();
+if (selectedRoomId == null) {{
+ selectedRoomId=defaultSelectedRoomId();
+ persistSelectedRoomId(selectedRoomId);
+}}
+syncSelectedRoomIndicator();
 window.addEventListener('resize', applyRtiLayout);
 renderOrientationToggle();
 applyOrientationState();
@@ -3581,6 +3690,10 @@ if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passiv
 	 const targetPageIndex=link.dataset.targetPageIndex;
 	 if (targetPageIndex==null || targetPageIndex==='') return;
 	 e.preventDefault();
+   const wrap=link.closest('.btn-wrap');
+   if (wrap && String(wrap.dataset.syntheticRoomList || '')==='1') {{
+    setSelectedRoom(wrap.dataset.syntheticRoomId);
+   }}
 	 if (viewportMode.active) exitViewportMode();
 	 setActivePage(targetPageIndex);
 	}});
@@ -4232,7 +4345,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
   const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
    ? Number(syntheticRoomId)
-   : (syntheticSourceList && syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase);
+   : (syntheticSourceList
+      ? ((selectedRoomId != null && Number.isFinite(selectedRoomId))
+         ? Number(selectedRoomId)
+         : (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase))
+      : effectiveRoomIdBase);
   const buttonTagIdBase = buttonScope.buttonTagId;
   const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
    ? Number(syntheticRoomTagId)
