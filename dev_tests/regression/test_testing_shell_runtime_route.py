@@ -91,6 +91,7 @@ class TestingShellRuntimeRouteTest(unittest.TestCase):
                 self.assertEqual(shell_device.headers.get("X-Sentinel-Runtime-Mode"), "shell")
                 self.assertIn("id=\"rtiDeviceContent\"", shell_device.text)
                 self.assertIn("data-shell-runtime-adapter=\"1\"", shell_device.text)
+                self.assertIn("selectedRoomIndicator", shell_device.text)
                 self.assertNotIn('["#orientationControls", "#deviceViewControlsCanvas"]', shell_device.text)
                 self.assertNotIn('data-shell-source-style="', shell_device.text)
 

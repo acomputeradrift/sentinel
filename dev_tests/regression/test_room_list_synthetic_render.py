@@ -248,7 +248,8 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
                         "portrait": {"visible": True, "coordinates": {"left": 8, "top": 8, "width": 88, "height": 28}},
                         "landscape": {"visible": True, "coordinates": {"left": 8, "top": 8, "width": 88, "height": 28}},
                     },
-                    "stack": {"layerOrder": 9, "buttonOrder": 1, "frameNumber": 0},
+                    # stack.layerOrder is intentionally wrong to verify owner layer order wins.
+                    "stack": {"layerOrder": 0, "buttonOrder": 1, "frameNumber": 0},
                 },
                 "testTargets": {
                     "text": True,

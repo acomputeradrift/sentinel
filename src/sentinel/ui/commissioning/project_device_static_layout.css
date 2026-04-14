@@ -57,6 +57,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -104,6 +105,27 @@ body {
 .top-controls-spacer {
   min-width: 132px;
   height: 40px;
+}
+
+.selected-room-indicator {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  line-height: 1;
+  color: #2a455b;
+  background: rgba(248, 251, 254, 0.92);
+  border: 1px solid #c6d2dd;
+  border-radius: 10px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 24;
+}
+
+.selected-room-indicator .value {
+  font-weight: 700;
 }
 
 .deviceLayoutStage {

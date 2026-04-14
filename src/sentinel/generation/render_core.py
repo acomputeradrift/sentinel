@@ -268,7 +268,8 @@ def _button_composite_z_index(
     tie_breaker: int = 0,
 ) -> int:
     stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
-    layer_order = int(stack.get("layerOrder", fallback_layer_order) or fallback_layer_order)
+    # Canonical page z-layering comes from owning layer context, not stack.layerOrder.
+    layer_order = int(fallback_layer_order)
     button_order = int(stack.get("buttonOrder", 0) or 0)
     frame_number = int(stack.get("frameNumber", fallback_frame_number) or fallback_frame_number)
     return _composite_z_index(layer_order, button_order, frame_number, tie_breaker=tie_breaker)

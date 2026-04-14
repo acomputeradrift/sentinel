@@ -150,6 +150,14 @@
           const slot = dst.querySelector(".header");
           if (slot) slot.outerHTML = header.outerHTML;
         }
+        const srcSelected = src.querySelector("#selectedRoomIndicator");
+        const existingSelected = dst.querySelector("#selectedRoomIndicator");
+        if (srcSelected) {
+          if (existingSelected) existingSelected.outerHTML = srcSelected.outerHTML;
+          else dst.insertAdjacentHTML("beforeend", srcSelected.outerHTML);
+        } else if (existingSelected) {
+          existingSelected.remove();
+        }
       }
 
       function mountOrientation(sourceDoc) {
