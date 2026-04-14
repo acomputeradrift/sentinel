@@ -77,6 +77,12 @@ Goal: deploy code **once**, without stale files, without a crash/restart loop, a
    - PowerShell: `python -m zipfile -l sentinel_patch.zip | Select-String "sentinel/server/persistence/queries.py"`
    - If the member is missing or looks wrong, **stop** — fix commit/archive, do not `scp` yet.
 
+Reliability note (agent + PowerShell environments where command stdout can be missing):
+- Redirect command output to a temp capture file and read it back before proceeding, for example:
+  - `git status -sb *> temp/_deploy_capture.txt`
+  - `git log -1 --oneline *>> temp/_deploy_capture.txt`
+- Treat empty command output as **unknown**, not success.
+
 ### One-shot deploy (PowerShell — strict order, no `&&`)
 
 Run **one line at a time** (or a single script block where each step must succeed). Use `ssh -o BatchMode=yes` so a missing key does not hang waiting for a password.

@@ -613,7 +613,7 @@ def _render_button_control(
 
 
 _ROOM_LIST_SYNTHETIC_GAP_PX = 2
-_ROOM_LIST_SYNTHETIC_Z_BOOST = 5
+_ROOM_LIST_SYNTHETIC_Z_BOOST = 20
 
 
 def _is_room_list_host_button(btn: dict[str, Any]) -> bool:
@@ -649,15 +649,25 @@ def _sorted_diag_room_rows(diag: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(rows, key=sort_key)
 
 
-def _room_list_primary_tag(room_row: dict[str, Any]) -> str:
+def _room_list_primary_tag_info(room_row: dict[str, Any]) -> tuple[str, int | None]:
     for key in ("roomSelectRoomLabelTags", "roomSelectTagsAll"):
         val = room_row.get(key)
         if isinstance(val, list):
             for item in val:
-                s = _norm_text(item)
-                if s:
-                    return s
-    return "Room"
+                if isinstance(item, dict):
+                    name = _norm_text(item.get("buttonTagName"))
+                    tid_raw = item.get("buttonTagId")
+                    if name:
+                        try:
+                            tid = int(tid_raw) if tid_raw is not None else None
+                        except (TypeError, ValueError):
+                            tid = None
+                        return name, tid
+                else:
+                    s = _norm_text(item)
+                    if s:
+                        return s, None
+    return "Room", None
 
 
 def _room_list_row_slot_rects(
@@ -713,27 +723,24 @@ def _find_room_list_host(page: dict[str, Any], orientation: str) -> tuple[str, d
 
 def _synthetic_room_list_row_button(
     *,
-    host_btn: dict[str, Any],
     room_row: dict[str, Any],
-    row_rect: tuple[int, int, int, int],
+    row_rect_portrait: tuple[int, int, int, int],
+    row_rect_landscape: tuple[int, int, int, int],
     layer_order: int,
     row_index: int,
     page_id: Any,
     rti_address: Any,
+    source_device_id: Any,
     primary_tag: str,
+    primary_tag_id: int | None,
     room_display: str,
 ) -> dict[str, Any]:
-    row_left, row_top, row_w, row_h = row_rect
-    host_fs = int((host_btn.get("buttonUI") or {}).get("fontSize") or 10)
-    slot_fs = max(8, int(host_fs * 0.9))
+    row_left_p, row_top_p, row_w_p, row_h_p = row_rect_portrait
+    row_left_l, row_top_l, row_w_l, row_h_l = row_rect_landscape
+    slot_fs = 10
     resolved = room_row.get("resolvedPageLink")
     page_link_on = isinstance(resolved, dict) and resolved.get("targetPageId") is not None
-    host_scope = host_btn.get("apexScopeSource")
-    tag_id: Any = None
-    if isinstance(host_scope, dict):
-        host_btn_scope = host_scope.get("button")
-        if isinstance(host_btn_scope, dict):
-            tag_id = host_btn_scope.get("buttonTagId")
+    room_id = int(room_row.get("roomId") or 0)
     return {
         "buttonIdentity": {
             "buttonTagName": primary_tag,
@@ -745,11 +752,11 @@ def _synthetic_room_list_row_button(
             "orientations": {
                 "portrait": {
                     "visible": True,
-                    "coordinates": {"left": row_left, "top": row_top, "width": row_w, "height": row_h},
+                    "coordinates": {"left": row_left_p, "top": row_top_p, "width": row_w_p, "height": row_h_p},
                 },
                 "landscape": {
                     "visible": True,
-                    "coordinates": {"left": row_left, "top": row_top, "width": row_w, "height": row_h},
+                    "coordinates": {"left": row_left_l, "top": row_top_l, "width": row_w_l, "height": row_h_l},
                 },
             },
             "stack": {
@@ -778,10 +785,10 @@ def _synthetic_room_list_row_button(
         },
         "resolvedPageLink": resolved if page_link_on else None,
         "apexScopeSource": {
-            "page": {"pageId": page_id, "roomId": 0, "sourceDeviceId": None, "rtiAddress": rti_address},
+            "page": {"pageId": page_id, "roomId": room_id, "sourceDeviceId": source_device_id, "rtiAddress": rti_address},
             "viewportLayer": {"layerId": 0, "sharedLayerId": 0, "roomId": None, "sourceId": None},
             "pageLayer": {"roomId": None, "sourceId": None},
-            "button": {"buttonId": None, "buttonTagId": tag_id},
+            "button": {"buttonId": 1_000_000 + row_index, "buttonTagId": primary_tag_id},
             "bindings": {"macroIds": [], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
         },
     }
@@ -827,32 +834,47 @@ def _synthetic_controller_room_list_rows_html(
         off_left = int(payload["off_left"])
         layer_key = str(payload["layer_key"])
         layer_order = int(payload["layer_order"])
-        c = _ui_coordinates(btn["buttonUI"], orientation)
-        list_left = int(c.get("left") or 0) + off_left
-        list_top = int(c.get("top") or 0) + off_top
-        list_w = int(c.get("width") or 0)
-        list_h = int(c.get("height") or 0)
-        rects = _room_list_row_slot_rects(
-            list_left, list_top, list_w, list_h, len(room_rows), _ROOM_LIST_SYNTHETIC_GAP_PX
+        p_c = _ui_coordinates(btn["buttonUI"], "portrait")
+        l_c = _ui_coordinates(btn["buttonUI"], "landscape")
+        rects_p = _room_list_row_slot_rects(
+            int(p_c.get("left") or 0) + off_left,
+            int(p_c.get("top") or 0) + off_top,
+            int(p_c.get("width") or 0),
+            int(p_c.get("height") or 0),
+            len(room_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
         )
-        if len(rects) != len(room_rows):
+        rects_l = _room_list_row_slot_rects(
+            int(l_c.get("left") or 0) + off_left,
+            int(l_c.get("top") or 0) + off_top,
+            int(l_c.get("width") or 0),
+            int(l_c.get("height") or 0),
+            len(room_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+        )
+        if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
             return ""
-        z_base = 100 + layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
+        max_layer_order = max((int(v.get("layerOrder") or 0) for v in _page_layer_state(page)), default=0)
+        z_base = 100 + max_layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
         layer_display = str(layer_name_by_key.get(layer_key, "") or "")
         for i, room_row in enumerate(room_rows):
             rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
             room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
+            tag_name, tag_id = _room_list_primary_tag_info(room_row)
             syn = _synthetic_room_list_row_button(
-                host_btn=btn,
                 room_row=room_row,
-                row_rect=rects[i],
+                row_rect_portrait=rects_p[i],
+                row_rect_landscape=rects_l[i],
                 layer_order=layer_order,
                 row_index=i,
                 page_id=page_id,
                 rti_address=rti_address,
-                primary_tag=_room_list_primary_tag(room_row),
+                source_device_id=diag_device_id,
+                primary_tag=tag_name,
+                primary_tag_id=tag_id,
                 room_display=room_display,
             )
+            active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
             extra = (
                 f"data-synthetic-room-list='1' data-synthetic-room-id='{escape(rid_attr, quote=True)}' "
                 f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
@@ -866,8 +888,8 @@ def _synthetic_controller_room_list_rows_html(
                 _render_button_control(
                     syn,
                     label,
-                    rects[i][0],
-                    rects[i][1],
+                    active_rect[0],
+                    active_rect[1],
                     variable_label,
                     app_ui,
                     page_targets,
@@ -882,34 +904,49 @@ def _synthetic_controller_room_list_rows_html(
     vb = payload
     btn = vb["btn"]
     label = str(vb.get("label") or "Screen Button")
-    c = _ui_coordinates(btn["buttonUI"], orientation)
-    list_left = int(c.get("left") or 0) + int(vb["off_left"])
-    list_top = int(c.get("top") or 0) + int(vb["off_top"])
-    list_w = int(c.get("width") or 0)
-    list_h = int(c.get("height") or 0)
-    rects = _room_list_row_slot_rects(
-        list_left, list_top, list_w, list_h, len(room_rows), _ROOM_LIST_SYNTHETIC_GAP_PX
+    p_c = _ui_coordinates(btn["buttonUI"], "portrait")
+    l_c = _ui_coordinates(btn["buttonUI"], "landscape")
+    rects_p = _room_list_row_slot_rects(
+        int(p_c.get("left") or 0) + int(vb["portrait_off_left"]),
+        int(p_c.get("top") or 0) + int(vb["portrait_off_top"]),
+        int(p_c.get("width") or 0),
+        int(p_c.get("height") or 0),
+        len(room_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
     )
-    if len(rects) != len(room_rows):
+    rects_l = _room_list_row_slot_rects(
+        int(l_c.get("left") or 0) + int(vb["landscape_off_left"]),
+        int(l_c.get("top") or 0) + int(vb["landscape_off_top"]),
+        int(l_c.get("width") or 0),
+        int(l_c.get("height") or 0),
+        len(room_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+    )
+    if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
         return ""
+    max_layer_order = max((int(v.get("layerOrder") or 0) for v in _page_layer_state(page)), default=0)
+    z_base = 100 + max_layer_order + _ROOM_LIST_SYNTHETIC_Z_BOOST
     owner_lo = int(vb.get("owner_layer_order") or 0)
-    z_base = 100 + owner_lo + _ROOM_LIST_SYNTHETIC_Z_BOOST
     owner_key = str(vb.get("owner_layer_key") or "")
     layer_display = str(layer_name_by_key.get(owner_key, "") or "")
     for i, room_row in enumerate(room_rows):
         rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
         room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
+        tag_name, tag_id = _room_list_primary_tag_info(room_row)
         syn = _synthetic_room_list_row_button(
-            host_btn=btn,
             room_row=room_row,
-            row_rect=rects[i],
+            row_rect_portrait=rects_p[i],
+            row_rect_landscape=rects_l[i],
             layer_order=owner_lo,
             row_index=i,
             page_id=page_id,
             rti_address=rti_address,
-            primary_tag=_room_list_primary_tag(room_row),
+            source_device_id=diag_device_id,
+            primary_tag=tag_name,
+            primary_tag_id=tag_id,
             room_display=room_display,
         )
+        active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
         extra = (
             f"data-synthetic-room-list='1' data-synthetic-room-id='{escape(rid_attr, quote=True)}' "
             f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
@@ -929,8 +966,8 @@ def _synthetic_controller_room_list_rows_html(
             _render_button_control(
                 syn,
                 label,
-                rects[i][0],
-                rects[i][1],
+                active_rect[0],
+                active_rect[1],
                 variable_label,
                 app_ui,
                 page_targets,
@@ -939,10 +976,6 @@ def _synthetic_controller_room_list_rows_html(
                 extra_style=f"z-index:{z_base + i};",
                 extra_attrs=extra,
                 orientation=orientation,
-                portrait_offset_left=int(vb["portrait_off_left"]),
-                portrait_offset_top=int(vb["portrait_off_top"]),
-                landscape_offset_left=int(vb["landscape_off_left"]),
-                landscape_offset_top=int(vb["landscape_off_top"]),
             )
         )
     return "".join(parts)

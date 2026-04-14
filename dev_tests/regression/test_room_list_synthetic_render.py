@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,7 +19,7 @@ def _minimal_list_host_page() -> dict:
             "fontSize": 12,
             "orientations": {
                 "portrait": {"visible": True, "coordinates": {"left": 10, "top": 20, "width": 200, "height": 62}},
-                "landscape": {"visible": True, "coordinates": {"left": 10, "top": 20, "width": 200, "height": 62}},
+                "landscape": {"visible": True, "coordinates": {"left": 110, "top": 120, "width": 220, "height": 70}},
             },
             "stack": {"layerOrder": 0, "buttonOrder": 1, "frameNumber": 0},
         },
@@ -50,7 +51,19 @@ def _minimal_list_host_page() -> dict:
                     "uiItems": [],
                 },
                 "viewports": [],
-            }
+            },
+            {
+                "layerName": "TopChrome",
+                "layerOrder": 9,
+                "sharedLayerId": 0,
+                "buttonCategories": {
+                    "screenLabels": [],
+                    "screenButtons": [],
+                    "hardButtons": [],
+                    "uiItems": [],
+                },
+                "viewports": [],
+            },
         ],
     }
 
@@ -68,7 +81,7 @@ def _minimal_diag() -> dict:
                 "roomName": "Kitchen",
                 "controllerRoomOrder": 0,
                 "roomSelectTagsAll": [],
-                "roomSelectRoomLabelTags": ["Room:Kitchen"],
+                "roomSelectRoomLabelTags": [{"buttonTagId": 1082, "buttonTagName": "Room: Kitchen", "macroId": 731}],
                 "resolvedPageLink": {"targetPageId": 2, "targetPageName": "B", "resolutionPath": []},
             },
             {
@@ -76,7 +89,7 @@ def _minimal_diag() -> dict:
                 "roomName": "Bedroom",
                 "controllerRoomOrder": 1,
                 "roomSelectTagsAll": [],
-                "roomSelectRoomLabelTags": [],
+                "roomSelectRoomLabelTags": [{"buttonTagId": 1083, "buttonTagName": "Room: Bedroom", "macroId": 732}],
                 "resolvedPageLink": {"targetPageId": None, "targetPageName": None, "resolutionPath": []},
             },
         ],
@@ -84,6 +97,13 @@ def _minimal_diag() -> dict:
 
 
 class RoomListSyntheticRenderingTest(unittest.TestCase):
+    def _synthetic_attrs_by_room(self, html: str, room_id: str) -> str:
+        for m in re.finditer(r"<div class='btn-wrap'([^>]*)>", html):
+            attrs = m.group(1)
+            if f"data-synthetic-room-id='{room_id}'" in attrs:
+                return attrs
+        self.fail(f"synthetic room row {room_id} not found")
+
     def test_slot_rects_splits_height_with_gaps(self):
         rects = render_core._room_list_row_slot_rects(0, 0, 100, 30, 2, 2)
         self.assertEqual(len(rects), 2)
@@ -119,6 +139,40 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertIn("Kitchen", html)
         self.assertIn("Bedroom", html)
         self.assertIn("page-link-hit", html)
+
+    def test_synthetic_rows_use_orientation_specific_coordinates(self):
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [_minimal_list_host_page(), p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        attrs = self._synthetic_attrs_by_room(html, "1")
+        self.assertIn("data-p-left='10'", attrs)
+        self.assertIn("data-l-left='110'", attrs)
+
+    def test_synthetic_rows_render_above_top_page_layer(self):
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [_minimal_list_host_page(), p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        m = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-id='1'", html)
+        self.assertIsNotNone(m)
+        self.assertGreater(int(m.group(1)), 100 + 9)
+
+    def test_synthetic_rows_carry_room_specific_scope_identity(self):
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [_minimal_list_host_page(), p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        self.assertIn('"roomId": 1', html)
+        self.assertIn('"roomId": 2', html)
+        self.assertIn('"buttonTagId": 1082', html)
+        self.assertIn('"buttonTagId": 1083', html)
 
 
 if __name__ == "__main__":
