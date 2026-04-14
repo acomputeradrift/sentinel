@@ -2028,11 +2028,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const syntheticSourceDeviceIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceDeviceId : null;
   const syntheticSourceRoomId = syntheticSourceRoomIdRaw == null ? null : Number(syntheticSourceRoomIdRaw);
   const syntheticSourceDeviceId = syntheticSourceDeviceIdRaw == null ? null : Number(syntheticSourceDeviceIdRaw);
-  const syntheticSourceList = wrap && wrap.dataset ? String(wrap.dataset.syntheticSourceList || "") === "1" : false;
-  const syntheticSourceRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceRoomId : null;
-  const syntheticSourceDeviceIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceDeviceId : null;
-  const syntheticSourceRoomId = syntheticSourceRoomIdRaw == null ? null : Number(syntheticSourceRoomIdRaw);
-  const syntheticSourceDeviceId = syntheticSourceDeviceIdRaw == null ? null : Number(syntheticSourceDeviceIdRaw);
   const categoryName = String(m.category || "").trim();
   const buttonName = String(m.identity || "").trim();
   const targetName = String(label || "").trim() || buttonName || categoryName;
