@@ -449,6 +449,63 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertNotIn("data-synthetic-source-device-id='5'", html)
         self.assertIn("data-synthetic-source-device-id='6'", html)
 
+    def test_source_list_rows_use_same_fixed_row_height_helper(self):
+        """Source list rows use the shared synthetic list row-height path as room list rows."""
+        list_btn = {
+            "buttonIdentity": {"buttonTagName": "DISPLAY - Source List", "text": "", "buttonType": None},
+            "buttonUI": {
+                "fontSize": 12,
+                "listItemHeightPx": 10,
+                "orientations": {
+                    "portrait": {"visible": True, "coordinates": {"left": 40, "top": 30, "width": 220, "height": 70}},
+                    "landscape": {"visible": True, "coordinates": {"left": 140, "top": 130, "width": 260, "height": 90}},
+                },
+                "stack": {"layerOrder": 0, "buttonOrder": 7, "frameNumber": 0},
+            },
+            "testTargets": {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {k: (k == "List") for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List")},
+                "graphics": {"bitmap": False, "icon": False},
+                "pageLink": False,
+            },
+        }
+        global_page = {
+            "pageName": "Camera Overview",
+            "pageId": 3,
+            "rtiAddress": 99,
+            "layers": [
+                {
+                    "layerName": "Main",
+                    "layerOrder": 0,
+                    "sharedLayerId": 0,
+                    "buttonCategories": {"screenLabels": [], "screenButtons": [list_btn], "hardButtons": [], "uiItems": []},
+                    "viewports": [],
+                }
+            ],
+        }
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [global_page, p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        tops: list[int] = []
+        heights: list[int] = []
+        for m in re.finditer(r"<div class='btn-wrap'([^>]*)>", html):
+            attrs = m.group(1)
+            if "data-synthetic-source-list='1'" not in attrs:
+                continue
+            top_m = re.search(r"data-p-top='(\d+)'", attrs)
+            h_m = re.search(r"data-p-height='(\d+)'", attrs)
+            if top_m and h_m:
+                tops.append(int(top_m.group(1)))
+                heights.append(int(h_m.group(1)))
+        self.assertEqual(len(tops), 2)
+        self.assertEqual(tops, [30, 62])
+        self.assertTrue(all(h == 30 for h in heights))
+
     def test_page_payload_includes_selected_room_runtime_indicator(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
         device = {

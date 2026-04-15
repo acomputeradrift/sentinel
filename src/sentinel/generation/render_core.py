@@ -716,7 +716,7 @@ def _room_list_primary_tag_info(room_row: dict[str, Any]) -> tuple[str, int | No
 
 
 def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
-    """Apex `ScrollingList.ItemHeight` is merged into `buttonUI.listItemHeightPx` during extraction.
+    """Apex list row height is merged into `buttonUI.listItemHeightPx` during extraction.
 
     The raw RTI value is multiplied by `_LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER` for on-screen list rows.
     """
@@ -733,7 +733,7 @@ def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
     return int(h * _LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER)
 
 
-def _room_list_row_slot_rects(
+def _synthetic_list_row_slot_rects(
     list_left: int,
     list_top: int,
     list_w: int,
@@ -763,6 +763,19 @@ def _room_list_row_slot_rects(
         out.append((list_left, y, list_w, slot_h))
         y += slot_h + gap
     return out
+
+
+def _room_list_row_slot_rects(
+    list_left: int,
+    list_top: int,
+    list_w: int,
+    list_h: int,
+    n: int,
+    gap: int,
+    row_height_px: int | None = None,
+) -> list[tuple[int, int, int, int]]:
+    """Backward-compatible alias; use `_synthetic_list_row_slot_rects` for new code."""
+    return _synthetic_list_row_slot_rects(list_left, list_top, list_w, list_h, n, gap, row_height_px=row_height_px)
 
 
 def _max_button_order_for_page_layer(page: dict[str, Any], layer_key: str) -> int:
@@ -940,7 +953,7 @@ def _synthetic_controller_room_list_rows_html(
         p_c = _ui_coordinates(btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(btn["buttonUI"], "landscape")
         row_h = _list_row_height_px_from_host(btn)
-        rects_p = _room_list_row_slot_rects(
+        rects_p = _synthetic_list_row_slot_rects(
             int(p_c.get("left") or 0) + off_left,
             int(p_c.get("top") or 0) + off_top,
             int(p_c.get("width") or 0),
@@ -949,7 +962,7 @@ def _synthetic_controller_room_list_rows_html(
             _ROOM_LIST_SYNTHETIC_GAP_PX,
             row_h,
         )
-        rects_l = _room_list_row_slot_rects(
+        rects_l = _synthetic_list_row_slot_rects(
             int(l_c.get("left") or 0) + off_left,
             int(l_c.get("top") or 0) + off_top,
             int(l_c.get("width") or 0),
@@ -1014,7 +1027,7 @@ def _synthetic_controller_room_list_rows_html(
     p_c = _ui_coordinates(btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(btn["buttonUI"], "landscape")
     row_h = _list_row_height_px_from_host(btn)
-    rects_p = _room_list_row_slot_rects(
+    rects_p = _synthetic_list_row_slot_rects(
         int(p_c.get("left") or 0) + int(vb["portrait_off_left"]),
         int(p_c.get("top") or 0) + int(vb["portrait_off_top"]),
         int(p_c.get("width") or 0),
@@ -1023,7 +1036,7 @@ def _synthetic_controller_room_list_rows_html(
         _ROOM_LIST_SYNTHETIC_GAP_PX,
         row_h,
     )
-    rects_l = _room_list_row_slot_rects(
+    rects_l = _synthetic_list_row_slot_rects(
         int(l_c.get("left") or 0) + int(vb["landscape_off_left"]),
         int(l_c.get("top") or 0) + int(vb["landscape_off_top"]),
         int(l_c.get("width") or 0),
@@ -1284,7 +1297,7 @@ def _synthetic_source_list_rows_html(
         p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
         src_row_h = _list_row_height_px_from_host(host_btn)
-        rects_p = _room_list_row_slot_rects(
+        rects_p = _synthetic_list_row_slot_rects(
             int(p_c.get("left") or 0) + off_left,
             int(p_c.get("top") or 0) + off_top,
             int(p_c.get("width") or 0),
@@ -1293,7 +1306,7 @@ def _synthetic_source_list_rows_html(
             _ROOM_LIST_SYNTHETIC_GAP_PX,
             src_row_h,
         )
-        rects_l = _room_list_row_slot_rects(
+        rects_l = _synthetic_list_row_slot_rects(
             int(l_c.get("left") or 0) + off_left,
             int(l_c.get("top") or 0) + off_top,
             int(l_c.get("width") or 0),
@@ -1350,7 +1363,7 @@ def _synthetic_source_list_rows_html(
     p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
     src_row_h = _list_row_height_px_from_host(host_btn)
-    rects_p = _room_list_row_slot_rects(
+    rects_p = _synthetic_list_row_slot_rects(
         int(p_c.get("left") or 0) + int(vb["portrait_off_left"]),
         int(p_c.get("top") or 0) + int(vb["portrait_off_top"]),
         int(p_c.get("width") or 0),
@@ -1359,7 +1372,7 @@ def _synthetic_source_list_rows_html(
         _ROOM_LIST_SYNTHETIC_GAP_PX,
         src_row_h,
     )
-    rects_l = _room_list_row_slot_rects(
+    rects_l = _synthetic_list_row_slot_rects(
         int(l_c.get("left") or 0) + int(vb["landscape_off_left"]),
         int(l_c.get("top") or 0) + int(vb["landscape_off_top"]),
         int(l_c.get("width") or 0),
