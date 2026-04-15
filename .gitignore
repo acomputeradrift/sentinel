@@ -3,6 +3,7 @@ Assets/
 .tmp_apex_env/
 devtools/last_regression_run.txt
 devtools/_agent_shell_capture.txt
+devtools/dash_room_list_probe.json
 temp/
 output/
 **/__pycache__/
@@ -13,3 +14,4 @@ output/
 _patch_extract/
 sentinel_patch.zip
 ssh_test.txt
+nul
