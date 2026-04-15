@@ -642,44 +642,24 @@ def _coords(top: Any, left: Any, height: Any, width: Any) -> dict[str, int]:
     }
 
 
-def _coords_fit_resolution(coords: dict[str, int], resolution: dict[str, int]) -> bool:
-    left = int(coords.get("left") or 0)
-    top = int(coords.get("top") or 0)
-    width = int(coords.get("width") or 0)
-    height = int(coords.get("height") or 0)
-    res_w = int(resolution.get("width") or 0)
-    res_h = int(resolution.get("height") or 0)
-    if width <= 0 or height <= 0 or res_w <= 0 or res_h <= 0:
-        return False
-    if left < 0 or top < 0:
-        return False
-    return (left + width) <= res_w and (top + height) <= res_h
+def _rti_portrait_button_rect(button_row: sqlite3.Row) -> dict[str, int]:
+    """Portrait rectangle from RTI `RTIDeviceButtonData`: Top, Left, Height, Width."""
+    return _coords(
+        button_row["ButtonTop"],
+        button_row["ButtonLeft"],
+        button_row["ButtonHeight"],
+        button_row["ButtonWidth"],
+    )
 
 
-def _select_orientation_coordinates(
-    *,
-    orientation: str,
-    primary: dict[str, int],
-    alt: dict[str, int],
-    portrait_supported: bool,
-    landscape_supported: bool,
-    portrait_resolution: dict[str, int],
-    landscape_resolution: dict[str, int],
-) -> dict[str, int]:
-    is_landscape = str(orientation or "").strip().lower() == "landscape"
-    resolution = landscape_resolution if is_landscape else portrait_resolution
-    if is_landscape:
-        # For landscape rendering, prefer the alternate coordinates consistently.
-        default_candidate = alt
-        fallback_candidate = primary
-    else:
-        default_candidate = primary
-        fallback_candidate = alt
-    if _coords_fit_resolution(default_candidate, resolution):
-        return default_candidate
-    if _coords_fit_resolution(fallback_candidate, resolution):
-        return fallback_candidate
-    return default_candidate
+def _rti_landscape_button_rect(button_row: sqlite3.Row) -> dict[str, int]:
+    """Landscape rectangle from RTI `RTIDeviceButtonData`: TopAlt, LeftAlt, HeightAlt, WidthAlt."""
+    return _coords(
+        button_row["ButtonTopAlt"],
+        button_row["ButtonLeftAlt"],
+        button_row["ButtonHeightAlt"],
+        button_row["ButtonWidthAlt"],
+    )
 
 
 def _orientation_visibility(mask: int) -> dict[str, bool]:
@@ -695,55 +675,28 @@ def _orientation_visibility(mask: int) -> dict[str, bool]:
 def _button_ui(
     button_row: sqlite3.Row,
     *,
-    portrait_supported: bool = True,
-    landscape_supported: bool = True,
-    portrait_resolution: dict[str, int] | None = None,
-    landscape_resolution: dict[str, int] | None = None,
     layer_order: int = 0,
     button_order: int = 0,
     frame_number: int = 0,
 ) -> dict[str, Any]:
+    """Build `buttonUI.orientations` from `RTIDeviceButtonData`.
+
+    Portrait and landscape each have their own rectangle only; there is no
+    cross-orientation fallback.
+    """
     vis = _orientation_visibility(int(button_row["VisibleOrientations"] or 0))
-    primary = _coords(
-        button_row["ButtonTop"],
-        button_row["ButtonLeft"],
-        button_row["ButtonHeight"],
-        button_row["ButtonWidth"],
-    )
-    alt = _coords(
-        button_row["ButtonTopAlt"],
-        button_row["ButtonLeftAlt"],
-        button_row["ButtonHeightAlt"],
-        button_row["ButtonWidthAlt"],
-    )
-    portrait_res = portrait_resolution or {"width": 0, "height": 0}
-    landscape_res = landscape_resolution or {"width": 0, "height": 0}
+    portrait_coords = _rti_portrait_button_rect(button_row)
+    landscape_coords = _rti_landscape_button_rect(button_row)
     return {
         "fontSize": int(button_row["TextSize"] or 0),
         "orientations": {
             "portrait": {
                 "visible": vis["portrait"],
-                "coordinates": _select_orientation_coordinates(
-                    orientation="portrait",
-                    primary=primary,
-                    alt=alt,
-                    portrait_supported=portrait_supported,
-                    landscape_supported=landscape_supported,
-                    portrait_resolution=portrait_res,
-                    landscape_resolution=landscape_res,
-                ),
+                "coordinates": portrait_coords,
             },
             "landscape": {
                 "visible": vis["landscape"],
-                "coordinates": _select_orientation_coordinates(
-                    orientation="landscape",
-                    primary=primary,
-                    alt=alt,
-                    portrait_supported=portrait_supported,
-                    landscape_supported=landscape_supported,
-                    portrait_resolution=portrait_res,
-                    landscape_resolution=landscape_res,
-                ),
+                "coordinates": landscape_coords,
             },
         },
         "stack": {
@@ -1060,6 +1013,36 @@ def _list_item_height_from_twparams_blob(blob: Any) -> int | None:
     return None
 
 
+def _load_scrolling_list_item_heights(cur: sqlite3.Cursor) -> dict[tuple[int, int, int], int]:
+    """Load optional `ScrollingList.ItemHeight` keyed by `(PageId, SharedLayerId, ButtonId)`.
+
+    Returns an empty map when the table is missing or unreadable. Skips non-positive
+    heights and rows without a usable shared layer / button id (matches RTI list hosts).
+    """
+    try:
+        cur.execute("select name from sqlite_master where type='table' and name='ScrollingList'")
+        if cur.fetchone() is None:
+            return {}
+    except Exception:
+        return {}
+    out: dict[tuple[int, int, int], int] = {}
+    try:
+        cur.execute("select PageId, SharedLayerId, ButtonId, ItemHeight from ScrollingList")
+    except Exception:
+        return {}
+    for row in cur.fetchall():
+        h = int(row["ItemHeight"] or 0)
+        if h <= 0:
+            continue
+        sid = int(row["SharedLayerId"] or 0)
+        bid = int(row["ButtonId"] or 0)
+        if sid <= 0 or bid <= 0:
+            continue
+        pid = int(row["PageId"] or 0)
+        out[(pid, sid, bid)] = h
+    return out
+
+
 def _resolve_button(
     cur: sqlite3.Cursor,
     button_row: sqlite3.Row,
@@ -1103,10 +1086,6 @@ def _resolve_button(
     button_order: int,
     frame_number: int,
     host_viewport_button_id: int | None,
-    portrait_supported: bool = True,
-    landscape_supported: bool = True,
-    portrait_resolution: dict[str, int] | None = None,
-    landscape_resolution: dict[str, int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -1302,10 +1281,6 @@ def _resolve_button(
 
     button_ui = _button_ui(
         button_row,
-        portrait_supported=portrait_supported,
-        landscape_supported=landscape_supported,
-        portrait_resolution=portrait_resolution or {"width": 0, "height": 0},
-        landscape_resolution=landscape_resolution or {"width": 0, "height": 0},
         layer_order=layer_order,
         button_order=button_order,
         frame_number=frame_number,
@@ -2070,10 +2045,6 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         button_order=int(b["ButtonOrder"] or 0),
                         frame_number=int(b["FrameNumber"] or 0),
                         host_viewport_button_id=None,
-                        portrait_supported=portrait_supported,
-                        landscape_supported=landscape_supported,
-                        portrait_resolution=portrait_resolution,
-                        landscape_resolution=landscape_resolution,
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -2114,10 +2085,6 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             lowest_nonzero_device_room_id,
                             (int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                             (int(layer["SourceId"]) if layer["SourceId"] is not None else None),
-                            portrait_supported,
-                            landscape_supported,
-                            portrait_resolution,
-                            landscape_resolution,
                             shared_layer_buttons_cache,
                             _mark_viewport_frame_button_processed,
                         )
@@ -2243,10 +2210,6 @@ def _resolve_viewport_frames(
     global_room_fallback_id: int | None,
     parent_layer_room_id: int | None,
     parent_layer_source_id: int | None,
-    portrait_supported: bool = True,
-    landscape_supported: bool = True,
-    portrait_resolution: dict[str, int] | None = None,
-    landscape_resolution: dict[str, int] | None = None,
     shared_layer_buttons_cache: dict[int, list[sqlite3.Row]] | None = None,
     button_processed_hook: Any = None,
 ) -> dict[str, Any]:
@@ -2336,10 +2299,6 @@ def _resolve_viewport_frames(
                 button_order=int(b["ButtonOrder"] or 0),
                 frame_number=int(b["FrameNumber"] or 0),
                 host_viewport_button_id=int(viewport_button_id),
-                portrait_supported=portrait_supported,
-                landscape_supported=landscape_supported,
-                portrait_resolution=portrait_resolution or {"width": 0, "height": 0},
-                landscape_resolution=landscape_resolution or {"width": 0, "height": 0},
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(

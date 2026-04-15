@@ -10,62 +10,83 @@ if str(SRC) not in sys.path:
 from sentinel.extraction import extractor_core
 
 
+def _minimal_row(
+    *,
+    portrait: tuple[int, int, int, int],
+    landscape: tuple[int, int, int, int],
+    visible_orientations: int = 3,
+) -> dict[str, object]:
+    top, left, h, w = portrait
+    at, al, ah, aw = landscape
+    return {
+        "VisibleOrientations": visible_orientations,
+        "TextSize": 10,
+        "ButtonTop": top,
+        "ButtonLeft": left,
+        "ButtonHeight": h,
+        "ButtonWidth": w,
+        "ButtonTopAlt": at,
+        "ButtonLeftAlt": al,
+        "ButtonHeightAlt": ah,
+        "ButtonWidthAlt": aw,
+    }
+
+
 class ExtractorCoordinateSelectionTest(unittest.TestCase):
-    def test_landscape_only_prefers_alt_when_alt_fits(self):
-        primary = {"top": 60, "left": 240, "height": 40, "width": 60}
-        alt = {"top": 95, "left": 500, "height": 134, "width": 200}
-        out = extractor_core._select_orientation_coordinates(
-            orientation="landscape",
-            primary=primary,
-            alt=alt,
-            portrait_supported=False,
-            landscape_supported=True,
-            portrait_resolution={"width": 0, "height": 0},
-            landscape_resolution={"width": 800, "height": 480},
+    def test_portrait_uses_only_portrait_columns(self):
+        ui = extractor_core._button_ui(
+            _minimal_row(
+                portrait=(60, 240, 40, 60),
+                landscape=(95, 500, 134, 200),
+            ),
         )
-        self.assertEqual(alt, out)
+        c = ui["orientations"]["portrait"]["coordinates"]
+        self.assertEqual(c["top"], 60)
+        self.assertEqual(c["left"], 240)
+        self.assertEqual(c["height"], 40)
+        self.assertEqual(c["width"], 60)
 
-    def test_both_orientations_keep_alt_for_landscape_when_alt_fits(self):
-        primary = {"top": 60, "left": 240, "height": 40, "width": 60}
-        alt = {"top": 95, "left": 500, "height": 134, "width": 200}
-        out = extractor_core._select_orientation_coordinates(
-            orientation="landscape",
-            primary=primary,
-            alt=alt,
-            portrait_supported=True,
-            landscape_supported=True,
-            portrait_resolution={"width": 480, "height": 854},
-            landscape_resolution={"width": 800, "height": 480},
+    def test_landscape_uses_only_landscape_columns(self):
+        ui = extractor_core._button_ui(
+            _minimal_row(
+                portrait=(60, 240, 40, 60),
+                landscape=(95, 500, 134, 200),
+            ),
         )
-        self.assertEqual(alt, out)
+        c = ui["orientations"]["landscape"]["coordinates"]
+        self.assertEqual(c["top"], 95)
+        self.assertEqual(c["left"], 500)
+        self.assertEqual(c["height"], 134)
+        self.assertEqual(c["width"], 200)
 
-    def test_both_orientations_fallback_to_primary_when_alt_invalid(self):
-        primary = {"top": 120, "left": 120, "height": 80, "width": 80}
-        alt = {"top": 820, "left": 503, "height": 82, "width": 92}
-        out = extractor_core._select_orientation_coordinates(
-            orientation="landscape",
-            primary=primary,
-            alt=alt,
-            portrait_supported=True,
-            landscape_supported=True,
-            portrait_resolution={"width": 1080, "height": 2201},
-            landscape_resolution={"width": 2264, "height": 881},
+    def test_no_cross_orientation_when_landscape_is_off_panel(self):
+        """If landscape coordinates are off-panel, portrait must not be substituted."""
+        ui = extractor_core._button_ui(
+            _minimal_row(
+                portrait=(120, 120, 80, 80),
+                landscape=(820, 503, 82, 92),
+            ),
         )
-        self.assertEqual(primary, out)
+        land = ui["orientations"]["landscape"]["coordinates"]
+        self.assertEqual(land["top"], 820)
+        self.assertEqual(land["left"], 503)
+        port = ui["orientations"]["portrait"]["coordinates"]
+        self.assertEqual(port["top"], 120)
 
-    def test_portrait_only_uses_primary_coordinates(self):
-        primary = {"top": 15, "left": 20, "height": 180, "width": 200}
-        alt = {"top": 260, "left": 300, "height": 140, "width": 190}
-        out = extractor_core._select_orientation_coordinates(
-            orientation="portrait",
-            primary=primary,
-            alt=alt,
-            portrait_supported=True,
-            landscape_supported=False,
-            portrait_resolution={"width": 480, "height": 854},
-            landscape_resolution={"width": 0, "height": 0},
+    def test_landscape_only_device_still_separates_columns(self):
+        ui = extractor_core._button_ui(
+            _minimal_row(
+                portrait=(15, 20, 180, 200),
+                landscape=(260, 300, 140, 190),
+                visible_orientations=2,
+            ),
         )
-        self.assertEqual(primary, out)
+        self.assertFalse(ui["orientations"]["portrait"]["visible"])
+        self.assertTrue(ui["orientations"]["landscape"]["visible"])
+        l = ui["orientations"]["landscape"]["coordinates"]
+        self.assertEqual(l["top"], 260)
+        p = ui["orientations"]["portrait"]["coordinates"]
+        self.assertEqual(p["top"], 15)
 
 
 if __name__ == "__main__":
