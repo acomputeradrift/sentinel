@@ -657,8 +657,6 @@ def _render_button_control(
 
 _ROOM_LIST_SYNTHETIC_GAP_PX = 2
 _ROOM_LIST_SYNTHETIC_Z_BOOST = 0
-# ScrollingList.ItemHeight is tuned for Integration Designer; synthetic rows need more vertical space in Sentinel.
-_LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER = 3
 
 
 def _is_room_list_host_button(btn: dict[str, Any]) -> bool:
@@ -716,10 +714,7 @@ def _room_list_primary_tag_info(room_row: dict[str, Any]) -> tuple[str, int | No
 
 
 def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
-    """Apex list row height is merged into `buttonUI.listItemHeightPx` during extraction.
-
-    The raw RTI value is multiplied by `_LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER` for on-screen list rows.
-    """
+    """Apex list row height merged into `buttonUI.listItemHeightPx` during extraction."""
     ui = btn.get("buttonUI") if isinstance(btn, dict) else None
     if not isinstance(ui, dict):
         return None
@@ -730,7 +725,7 @@ def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
         return None
     if h <= 0:
         return None
-    return int(h * _LIST_ITEM_RTI_HEIGHT_DISPLAY_MULTIPLIER)
+    return int(h)
 
 
 def _synthetic_list_row_slot_rects(
@@ -1952,6 +1947,16 @@ function applySelectedRoomToSourceRows(pageEl) {{
   const matches=selectedRoomId==null || (rowRoomId!=null && Number(rowRoomId)===Number(selectedRoomId));
   el.dataset.selectedRoomMatch=matches ? "1" : "0";
  }});
+}}
+function inferScopedRoomIdFromPage(pageEl) {{
+ if (!pageEl) return null;
+ const ids = new Set();
+ pageEl.querySelectorAll(".btn-wrap[data-synthetic-source-list='1']").forEach(el=>{{
+  const rid = normalizeRoomId(el.dataset.syntheticSourceRoomId);
+  if (rid != null && Number(rid) > 0) ids.add(Number(rid));
+ }});
+ if (ids.size === 1) return Number(Array.from(ids)[0]);
+ return null;
 }}
 function setSelectedRoom(nextRoomId, options) {{
  const opts=(options && typeof options==="object") ? options : {{}};
@@ -3781,6 +3786,10 @@ function setActivePage(nextPageIndex) {{
    rtiCanvas.scrollLeft=0;
    rtiCanvas.scrollTop=0;
  }}
+ const scopedRoomId = inferScopedRoomIdFromPage(activePageEl());
+ if (scopedRoomId != null) {{
+  setSelectedRoom(scopedRoomId, {{persist:true}});
+ }}
  syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
  applyRtiLayout();
 }}
@@ -4397,6 +4406,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const syntheticRoomTagIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomTagId : null;
   const syntheticRoomId = syntheticRoomIdRaw == null ? null : Number(syntheticRoomIdRaw);
   const syntheticRoomTagId = syntheticRoomTagIdRaw == null ? null : Number(syntheticRoomTagIdRaw);
+  const syntheticSourceList = wrap && wrap.dataset ? String(wrap.dataset.syntheticSourceList || "") === "1" : false;
+  const syntheticSourceRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceRoomId : null;
+  const syntheticSourceDeviceIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceDeviceId : null;
+  const syntheticSourceRoomId = syntheticSourceRoomIdRaw == null ? null : Number(syntheticSourceRoomIdRaw);
+  const syntheticSourceDeviceId = syntheticSourceDeviceIdRaw == null ? null : Number(syntheticSourceDeviceIdRaw);
   const categoryName = String(m.category || "").trim();
   const buttonName = String(m.identity || "").trim();
   const targetName = String(label || "").trim() || buttonName || categoryName;

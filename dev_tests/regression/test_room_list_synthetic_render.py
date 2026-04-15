@@ -197,9 +197,9 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertEqual(len(fixed), 3)
         self.assertTrue(all(r[3] == 20 for r in fixed))
 
-    def test_list_row_height_px_triples_apex_list_item_height(self):
+    def test_list_row_height_px_matches_extracted_apex_height(self):
         btn = {"buttonUI": {"listItemHeightPx": 10}}
-        self.assertEqual(render_core._list_row_height_px_from_host(btn), 30)
+        self.assertEqual(render_core._list_row_height_px_from_host(btn), 10)
 
     def test_sorted_diag_source_rows_filters_unchecked_and_respects_scope(self):
         diag = _minimal_diag()
@@ -503,8 +503,20 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
                 tops.append(int(top_m.group(1)))
                 heights.append(int(h_m.group(1)))
         self.assertEqual(len(tops), 2)
-        self.assertEqual(tops, [30, 62])
-        self.assertTrue(all(h == 30 for h in heights))
+        self.assertEqual(tops, [30, 42])
+        self.assertTrue(all(h == 10 for h in heights))
+
+    def test_runtime_build_target_payload_declares_synthetic_source_vars(self):
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {
+            "userFacing": {"displayName": "DeviceA", "pages": [_minimal_source_list_host_page(), p2]},
+            "diagnostics": _minimal_diag(),
+        }
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_core.render_single_device_html(project, app_ui, "sample", device_index=0, resolved_targets=None)
+        needle = "const syntheticSourceList = wrap && wrap.dataset ? String(wrap.dataset.syntheticSourceList || \"\") === \"1\" : false;"
+        self.assertGreaterEqual(html.count(needle), 1)
 
     def test_page_payload_includes_selected_room_runtime_indicator(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
