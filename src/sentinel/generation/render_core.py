@@ -683,6 +683,34 @@ def _synthetic_list_host_rect_pair(
     return portrait, landscape
 
 
+def _synthetic_list_scroll_pad_height_px(
+    n: int,
+    gap: int,
+    row_h: int | None,
+    host_h_portrait: int,
+    host_h_landscape: int,
+) -> int:
+    """Min document height (device px) so overflow:auto can scroll when rows are position:absolute."""
+
+    def stack_for_host(host_h: int) -> int:
+        if n <= 0 or host_h <= 0:
+            return 0
+        if row_h is not None and row_h > 0:
+            return n * row_h + max(0, n - 1) * gap
+        return host_h
+
+    return max(stack_for_host(host_h_portrait), stack_for_host(host_h_landscape))
+
+
+def _synthetic_list_scroll_pad_html(pad_h: int) -> str:
+    if pad_h <= 0:
+        return ""
+    return (
+        f'<div class="synthetic-list-scroll-pad" aria-hidden="true" data-pad-height="{pad_h}" '
+        f'style="width:100%;height:0;visibility:hidden;pointer-events:none;margin:0;padding:0;border:0;"></div>'
+    )
+
+
 def _synthetic_list_scroll_shell_open(
     *,
     host_btn: dict[str, Any],
@@ -721,8 +749,9 @@ def _synthetic_list_scroll_shell_open(
     w = int(oc.get("width") or 0)
     h = int(oc.get("height") or 0)
     classes = f"synthetic-list-scroll scroll-hover {extra_classes}".strip()
+    # Inline overflow so clipping cannot be lost to stylesheet ordering/specificity in embedded UIs.
     return (
-        f"<div class='{classes}' style='z-index:{z_index};' "
+        f"<div class='{classes}' style='z-index:{z_index}; overflow-x:hidden; overflow-y:auto; min-height:0;' "
         f"data-left='{left}' data-top='{top}' data-width='{w}' data-height='{h}' "
         f"data-visible='{visibility_attr}' data-font-size='10' "
         f"{_orientation_data_attrs(shell_ui)} "
@@ -1076,6 +1105,14 @@ def _synthetic_controller_room_list_rows_html(
                 orientation=orientation,
             )
         )
+        pad_h = _synthetic_list_scroll_pad_height_px(
+            len(room_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            row_h,
+            int(p_c.get("height") or 0),
+            int(l_c.get("height") or 0),
+        )
+        parts.append(_synthetic_list_scroll_pad_html(pad_h))
         for i, room_row in enumerate(room_rows):
             rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
             room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
@@ -1196,6 +1233,14 @@ def _synthetic_controller_room_list_rows_html(
             extra_attrs=vp_shell_extra,
         )
     )
+    pad_h = _synthetic_list_scroll_pad_height_px(
+        len(room_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        row_h,
+        int(p_c.get("height") or 0),
+        int(l_c.get("height") or 0),
+    )
+    parts.append(_synthetic_list_scroll_pad_html(pad_h))
     for i, room_row in enumerate(room_rows):
         rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
         room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
@@ -1491,6 +1536,14 @@ def _synthetic_source_list_rows_html(
                 orientation=orientation,
             )
         )
+        pad_h = _synthetic_list_scroll_pad_height_px(
+            len(source_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            src_row_h,
+            int(p_c.get("height") or 0),
+            int(l_c.get("height") or 0),
+        )
+        parts.append(_synthetic_list_scroll_pad_html(pad_h))
         for i, source_row in enumerate(source_rows):
             syn = _synthetic_source_list_row_button(
                 source_row=source_row,
@@ -1596,6 +1649,14 @@ def _synthetic_source_list_rows_html(
             extra_attrs=vp_shell_extra,
         )
     )
+    pad_h = _synthetic_list_scroll_pad_height_px(
+        len(source_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        src_row_h,
+        int(p_c.get("height") or 0),
+        int(l_c.get("height") or 0),
+    )
+    parts.append(_synthetic_list_scroll_pad_html(pad_h))
     for i, source_row in enumerate(source_rows):
         syn = _synthetic_source_list_row_button(
             source_row=source_row,
@@ -3972,6 +4033,10 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    el.style.width=`${{width}}px`;
    el.style.height=`${{height}}px`;
   }});
+ if (activePage) activePage.querySelectorAll('.synthetic-list-scroll .synthetic-list-scroll-pad').forEach(el=>{{
+   const ph=Number(el.dataset.padHeight||0)*totalScale;
+   el.style.height=`${{ph}}px`;
+ }});
  if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;

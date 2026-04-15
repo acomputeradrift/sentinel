@@ -270,7 +270,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
-        m = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);'", html)
+        m = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);[^']*'", html)
         self.assertIsNotNone(m)
         synthetic_z = int(m.group(1))
         native = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='DISPLAY - Room List'", html)
@@ -285,7 +285,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
-        shell_z = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);'", html)
+        shell_z = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);[^']*'", html)
         self.assertIsNotNone(shell_z)
         zs = [int(m.group(1)) for m in re.finditer(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-list='1'", html)]
         self.assertGreaterEqual(len(zs), 2)
@@ -321,7 +321,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
-        synthetic = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);'", html)
+        synthetic = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);[^']*'", html)
         top_native = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='Top Action'", html)
         self.assertIsNotNone(synthetic)
         self.assertIsNotNone(top_native)
