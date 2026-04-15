@@ -3579,9 +3579,15 @@ function applyRtiLayout() {{
  rtiCanvas.style.width=`${{rtiCanvasWidth}}px`;
  rtiCanvas.style.height=`${{rtiCanvasHeight}}px`;
 
- const sourceSize=currentOrientationSize();
- const widthScale=rtiCanvasWidth/sourceSize.width;
- const heightScale=rtiCanvasHeight/sourceSize.height;
+const sourceSize=currentOrientationSize();
+const deviceCanvasStyle=window.getComputedStyle(rtiDeviceCanvas);
+const parsePx=(value)=>Number.parseFloat(String(value||'0').replace('px',''))||0;
+const deviceInsetX=parsePx(deviceCanvasStyle.paddingLeft)+parsePx(deviceCanvasStyle.paddingRight)+parsePx(deviceCanvasStyle.borderLeftWidth)+parsePx(deviceCanvasStyle.borderRightWidth);
+const deviceInsetY=parsePx(deviceCanvasStyle.paddingTop)+parsePx(deviceCanvasStyle.paddingBottom)+parsePx(deviceCanvasStyle.borderTopWidth)+parsePx(deviceCanvasStyle.borderBottomWidth);
+const fitWidth=Math.max(rtiCanvasWidth-deviceInsetX,1);
+const fitHeight=Math.max(rtiCanvasHeight-deviceInsetY,1);
+const widthScale=fitWidth/sourceSize.width;
+const heightScale=fitHeight/sourceSize.height;
  let scale=Math.min(widthScale,heightScale);
  const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
  const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
@@ -3590,12 +3596,14 @@ function applyRtiLayout() {{
  }}
  scale=Math.min(maxScale, Math.max(minScale, scale));
  const totalScale=scale*(currentZoomPercent/100);
- const fittedWidth=sourceSize.width*totalScale;
- const fittedHeight=sourceSize.height*totalScale;
- const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
- const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
- const offsetLeft=(contentWidth-fittedWidth)/2;
- const offsetTop=(contentHeight-fittedHeight)/2;
+const fittedContentWidth=sourceSize.width*totalScale;
+const fittedContentHeight=sourceSize.height*totalScale;
+const fittedWidth=fittedContentWidth+deviceInsetX;
+const fittedHeight=fittedContentHeight+deviceInsetY;
+const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
+const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
+const offsetLeft=(contentWidth-fittedWidth)/2;
+const offsetTop=(contentHeight-fittedHeight)/2;
  rtiContent.style.width=`${{contentWidth}}px`;
  rtiContent.style.height=`${{contentHeight}}px`;
  rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
