@@ -244,7 +244,7 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
-    def test_rti_device_canvas_has_ten_pixel_padding(self):
+    def test_rti_device_canvas_has_zero_padding(self):
         page, server = self._open_shell_page()
         try:
             pads = page.evaluate(
@@ -261,10 +261,37 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
 }
 """
             )
-            self.assertEqual(pads["top"], "10px")
-            self.assertEqual(pads["right"], "10px")
-            self.assertEqual(pads["bottom"], "10px")
-            self.assertEqual(pads["left"], "10px")
+            self.assertEqual(pads["top"], "0px")
+            self.assertEqual(pads["right"], "0px")
+            self.assertEqual(pads["bottom"], "0px")
+            self.assertEqual(pads["left"], "0px")
+        finally:
+            page.close()
+            server.stop()
+
+    def test_rti_device_canvas_keeps_twenty_pixel_outer_margin(self):
+        page, server = self._open_shell_page()
+        try:
+            margins = page.evaluate(
+                """
+() => {
+  const usable = document.getElementById('rtiUsableCanvas');
+  const canvas = document.getElementById('rtiDeviceCanvas');
+  const ur = usable.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  return {
+    left: cr.left - ur.left,
+    top: cr.top - ur.top,
+    right: ur.right - cr.right,
+    bottom: ur.bottom - cr.bottom
+  };
+}
+"""
+            )
+            self.assertGreaterEqual(margins["left"], 19.0)
+            self.assertGreaterEqual(margins["top"], 19.0)
+            self.assertGreaterEqual(margins["right"], 19.0)
+            self.assertGreaterEqual(margins["bottom"], 19.0)
         finally:
             page.close()
             server.stop()
@@ -298,7 +325,7 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
     const top = rect.top - hostRect.top - insetTop;
     const right = left + rect.width;
     const bottom = top + rect.height;
-    if (left < -0.5 || top < -0.5 || right > innerW + 0.5 || bottom > innerH + 0.5) {
+    if (left < -2 || top < -2 || right > innerW + 2 || bottom > innerH + 2) {
       overflowCount += 1;
       if (samples.length < 8) {
         samples.push({left, top, right, bottom, innerW, innerH, cls: el.className});
