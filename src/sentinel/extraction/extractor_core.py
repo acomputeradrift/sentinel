@@ -668,12 +668,10 @@ def _select_orientation_coordinates(
 ) -> dict[str, int]:
     is_landscape = str(orientation or "").strip().lower() == "landscape"
     resolution = landscape_resolution if is_landscape else portrait_resolution
-    both_supported = bool(portrait_supported) and bool(landscape_supported)
-    landscape_only = bool(landscape_supported) and not bool(portrait_supported)
     if is_landscape:
-        # Preserve explicit portrait/landscape split when both are supported.
-        default_candidate = alt if both_supported else primary if landscape_only else alt
-        fallback_candidate = primary if default_candidate is alt else alt
+        # For landscape rendering, prefer the alternate coordinates consistently.
+        default_candidate = alt
+        fallback_candidate = primary
     else:
         default_candidate = primary
         fallback_candidate = alt

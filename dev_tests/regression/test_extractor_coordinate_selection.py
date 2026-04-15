@@ -11,9 +11,9 @@ from sentinel.extraction import extractor_core
 
 
 class ExtractorCoordinateSelectionTest(unittest.TestCase):
-    def test_landscape_only_prefers_primary_when_primary_fits(self):
+    def test_landscape_only_prefers_alt_when_alt_fits(self):
         primary = {"top": 60, "left": 240, "height": 40, "width": 60}
-        alt = {"top": 635, "left": 425, "height": 100, "width": 230}
+        alt = {"top": 95, "left": 500, "height": 134, "width": 200}
         out = extractor_core._select_orientation_coordinates(
             orientation="landscape",
             primary=primary,
@@ -23,7 +23,7 @@ class ExtractorCoordinateSelectionTest(unittest.TestCase):
             portrait_resolution={"width": 0, "height": 0},
             landscape_resolution={"width": 800, "height": 480},
         )
-        self.assertEqual(primary, out)
+        self.assertEqual(alt, out)
 
     def test_both_orientations_keep_alt_for_landscape_when_alt_fits(self):
         primary = {"top": 60, "left": 240, "height": 40, "width": 60}
@@ -50,6 +50,20 @@ class ExtractorCoordinateSelectionTest(unittest.TestCase):
             landscape_supported=True,
             portrait_resolution={"width": 1080, "height": 2201},
             landscape_resolution={"width": 2264, "height": 881},
+        )
+        self.assertEqual(primary, out)
+
+    def test_portrait_only_uses_primary_coordinates(self):
+        primary = {"top": 15, "left": 20, "height": 180, "width": 200}
+        alt = {"top": 260, "left": 300, "height": 140, "width": 190}
+        out = extractor_core._select_orientation_coordinates(
+            orientation="portrait",
+            primary=primary,
+            alt=alt,
+            portrait_supported=True,
+            landscape_supported=False,
+            portrait_resolution={"width": 480, "height": 854},
+            landscape_resolution={"width": 0, "height": 0},
         )
         self.assertEqual(primary, out)
 
