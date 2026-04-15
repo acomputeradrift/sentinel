@@ -659,6 +659,79 @@ _ROOM_LIST_SYNTHETIC_GAP_PX = 2
 _ROOM_LIST_SYNTHETIC_Z_BOOST = 0
 
 
+def _synthetic_list_host_rect_pair(
+    host_btn: dict[str, Any],
+    portrait_off_left: int,
+    portrait_off_top: int,
+    landscape_off_left: int,
+    landscape_off_top: int,
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+    p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
+    l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
+    portrait = (
+        int(p_c.get("left") or 0) + portrait_off_left,
+        int(p_c.get("top") or 0) + portrait_off_top,
+        int(p_c.get("width") or 0),
+        int(p_c.get("height") or 0),
+    )
+    landscape = (
+        int(l_c.get("left") or 0) + landscape_off_left,
+        int(l_c.get("top") or 0) + landscape_off_top,
+        int(l_c.get("width") or 0),
+        int(l_c.get("height") or 0),
+    )
+    return portrait, landscape
+
+
+def _synthetic_list_scroll_shell_open(
+    *,
+    host_btn: dict[str, Any],
+    portrait_off_left: int,
+    portrait_off_top: int,
+    landscape_off_left: int,
+    landscape_off_top: int,
+    z_index: int,
+    list_kind: str,
+    layer_key: str,
+    layer_order: int,
+    layer_display: str,
+    orientation: str,
+    extra_classes: str = "",
+    extra_attrs: str = "",
+) -> str:
+    (pl, pt, pw, ph), (ll, lt, lw, lh) = _synthetic_list_host_rect_pair(
+        host_btn,
+        portrait_off_left,
+        portrait_off_top,
+        landscape_off_left,
+        landscape_off_top,
+    )
+    shell_ui: dict[str, Any] = {
+        "fontSize": 10,
+        "orientations": {
+            "portrait": {"visible": True, "coordinates": {"left": pl, "top": pt, "width": pw, "height": ph}},
+            "landscape": {"visible": True, "coordinates": {"left": ll, "top": lt, "width": lw, "height": lh}},
+        },
+    }
+    oriented = _orientation_ui(shell_ui, orientation)
+    visibility_attr = "1" if bool(oriented.get("visible", True)) else "0"
+    oc = _ui_coordinates(shell_ui, orientation)
+    left = int(oc.get("left") or 0)
+    top = int(oc.get("top") or 0)
+    w = int(oc.get("width") or 0)
+    h = int(oc.get("height") or 0)
+    classes = f"synthetic-list-scroll scroll-hover {extra_classes}".strip()
+    return (
+        f"<div class='{classes}' style='z-index:{z_index};' "
+        f"data-left='{left}' data-top='{top}' data-width='{w}' data-height='{h}' "
+        f"data-visible='{visibility_attr}' data-font-size='10' "
+        f"{_orientation_data_attrs(shell_ui)} "
+        f"data-synthetic-list-scroll='1' data-synthetic-list-kind='{list_kind}' "
+        f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
+        f"data-owner-layer-name='{escape(layer_display, quote=True)}'{extra_attrs}>"
+    )
+
+
 def _is_room_list_host_button(btn: dict[str, Any]) -> bool:
     if not isinstance(btn, dict):
         return False
@@ -949,8 +1022,8 @@ def _synthetic_controller_room_list_rows_html(
         l_c = _ui_coordinates(btn["buttonUI"], "landscape")
         row_h = _list_row_height_px_from_host(btn)
         rects_p = _synthetic_list_row_slot_rects(
-            int(p_c.get("left") or 0) + off_left,
-            int(p_c.get("top") or 0) + off_top,
+            0,
+            0,
             int(p_c.get("width") or 0),
             int(p_c.get("height") or 0),
             len(room_rows),
@@ -958,8 +1031,8 @@ def _synthetic_controller_room_list_rows_html(
             row_h,
         )
         rects_l = _synthetic_list_row_slot_rects(
-            int(l_c.get("left") or 0) + off_left,
-            int(l_c.get("top") or 0) + off_top,
+            0,
+            0,
             int(l_c.get("width") or 0),
             int(l_c.get("height") or 0),
             len(room_rows),
@@ -970,6 +1043,39 @@ def _synthetic_controller_room_list_rows_html(
             return ""
         layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
         layer_display = str(layer_name_by_key.get(layer_key, "") or "")
+        rid0 = _synthetic_room_list_row_id_attr(room_rows[0], 0)
+        room_display0 = _norm_text(room_rows[0].get("roomName")) or f"Room {rid0}"
+        tag0, tag_id0 = _room_list_primary_tag_info(room_rows[0])
+        syn0 = _synthetic_room_list_row_button(
+            room_row=room_rows[0],
+            row_rect_portrait=rects_p[0],
+            row_rect_landscape=rects_l[0],
+            layer_order=layer_order,
+            row_index=0,
+            page_id=page_id,
+            rti_address=rti_address,
+            source_device_id=diag_device_id,
+            primary_tag=tag0,
+            primary_tag_id=tag_id0,
+            layer_max_button_order=layer_max_button_order,
+            room_display=room_display0,
+        )
+        list_z = _button_composite_z_index(syn0, fallback_layer_order=layer_order, tie_breaker=1)
+        parts.append(
+            _synthetic_list_scroll_shell_open(
+                host_btn=btn,
+                portrait_off_left=off_left,
+                portrait_off_top=off_top,
+                landscape_off_left=off_left,
+                landscape_off_top=off_top,
+                z_index=list_z,
+                list_kind="room",
+                layer_key=layer_key,
+                layer_order=layer_order,
+                layer_display=layer_display,
+                orientation=orientation,
+            )
+        )
         for i, room_row in enumerate(room_rows):
             rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
             room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
@@ -1009,11 +1115,12 @@ def _synthetic_controller_room_list_rows_html(
                     app_ui,
                     page_targets,
                     page_target_indexes,
-                    extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=layer_order, tie_breaker=1)};",
+                    extra_style=f"z-index:{list_z};",
                     extra_attrs=extra,
                     orientation=orientation,
                 )
             )
+        parts.append("</div>")
         return "".join(parts)
 
     vb = payload
@@ -1023,8 +1130,8 @@ def _synthetic_controller_room_list_rows_html(
     l_c = _ui_coordinates(btn["buttonUI"], "landscape")
     row_h = _list_row_height_px_from_host(btn)
     rects_p = _synthetic_list_row_slot_rects(
-        int(p_c.get("left") or 0) + int(vb["portrait_off_left"]),
-        int(p_c.get("top") or 0) + int(vb["portrait_off_top"]),
+        0,
+        0,
         int(p_c.get("width") or 0),
         int(p_c.get("height") or 0),
         len(room_rows),
@@ -1032,8 +1139,8 @@ def _synthetic_controller_room_list_rows_html(
         row_h,
     )
     rects_l = _synthetic_list_row_slot_rects(
-        int(l_c.get("left") or 0) + int(vb["landscape_off_left"]),
-        int(l_c.get("top") or 0) + int(vb["landscape_off_top"]),
+        0,
+        0,
         int(l_c.get("width") or 0),
         int(l_c.get("height") or 0),
         len(room_rows),
@@ -1046,6 +1153,49 @@ def _synthetic_controller_room_list_rows_html(
     owner_key = str(vb.get("owner_layer_key") or "")
     layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
     layer_display = str(layer_name_by_key.get(owner_key, "") or "")
+    rid0 = _synthetic_room_list_row_id_attr(room_rows[0], 0)
+    room_display0 = _norm_text(room_rows[0].get("roomName")) or f"Room {rid0}"
+    tag0, tag_id0 = _room_list_primary_tag_info(room_rows[0])
+    syn0 = _synthetic_room_list_row_button(
+        room_row=room_rows[0],
+        row_rect_portrait=rects_p[0],
+        row_rect_landscape=rects_l[0],
+        layer_order=owner_lo,
+        row_index=0,
+        page_id=page_id,
+        rti_address=rti_address,
+        source_device_id=diag_device_id,
+        primary_tag=tag0,
+        primary_tag_id=tag_id0,
+        layer_max_button_order=layer_max_button_order,
+        room_display=room_display0,
+    )
+    list_z = _button_composite_z_index(syn0, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get("frame_id") or 0), tie_breaker=1)
+    vp_shell_extra = (
+        f" data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+        f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
+        f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
+        f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
+        f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+        f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}'"
+    )
+    parts.append(
+        _synthetic_list_scroll_shell_open(
+            host_btn=btn,
+            portrait_off_left=int(vb["portrait_off_left"]),
+            portrait_off_top=int(vb["portrait_off_top"]),
+            landscape_off_left=int(vb["landscape_off_left"]),
+            landscape_off_top=int(vb["landscape_off_top"]),
+            z_index=list_z,
+            list_kind="room",
+            layer_key=owner_key,
+            layer_order=owner_lo,
+            layer_display=layer_display,
+            orientation=orientation,
+            extra_classes="vp-btn",
+            extra_attrs=vp_shell_extra,
+        )
+    )
     for i, room_row in enumerate(room_rows):
         rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
         room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
@@ -1092,11 +1242,12 @@ def _synthetic_controller_room_list_rows_html(
                 page_targets,
                 page_target_indexes,
                 extra_classes="vp-btn",
-                extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get('frame_id') or 0), tie_breaker=1)};",
+                extra_style=f"z-index:{list_z};",
                 extra_attrs=extra,
                 orientation=orientation,
             )
         )
+    parts.append("</div>")
     return "".join(parts)
 
 
@@ -1293,8 +1444,8 @@ def _synthetic_source_list_rows_html(
         l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
         src_row_h = _list_row_height_px_from_host(host_btn)
         rects_p = _synthetic_list_row_slot_rects(
-            int(p_c.get("left") or 0) + off_left,
-            int(p_c.get("top") or 0) + off_top,
+            0,
+            0,
             int(p_c.get("width") or 0),
             int(p_c.get("height") or 0),
             len(source_rows),
@@ -1302,8 +1453,8 @@ def _synthetic_source_list_rows_html(
             src_row_h,
         )
         rects_l = _synthetic_list_row_slot_rects(
-            int(l_c.get("left") or 0) + off_left,
-            int(l_c.get("top") or 0) + off_top,
+            0,
+            0,
             int(l_c.get("width") or 0),
             int(l_c.get("height") or 0),
             len(source_rows),
@@ -1314,6 +1465,32 @@ def _synthetic_source_list_rows_html(
             return ""
         layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
         layer_display = str(layer_name_by_key.get(layer_key, "") or "")
+        syn0 = _synthetic_source_list_row_button(
+            source_row=source_rows[0],
+            row_rect_portrait=rects_p[0],
+            row_rect_landscape=rects_l[0],
+            layer_order=layer_order,
+            row_index=0,
+            page_id=page_id,
+            rti_address=rti_address,
+            layer_max_button_order=layer_max_button_order,
+        )
+        list_z = _button_composite_z_index(syn0, fallback_layer_order=layer_order, tie_breaker=1)
+        parts.append(
+            _synthetic_list_scroll_shell_open(
+                host_btn=host_btn,
+                portrait_off_left=off_left,
+                portrait_off_top=off_top,
+                landscape_off_left=off_left,
+                landscape_off_top=off_top,
+                z_index=list_z,
+                list_kind="source",
+                layer_key=layer_key,
+                layer_order=layer_order,
+                layer_display=layer_display,
+                orientation=orientation,
+            )
+        )
         for i, source_row in enumerate(source_rows):
             syn = _synthetic_source_list_row_button(
                 source_row=source_row,
@@ -1346,11 +1523,12 @@ def _synthetic_source_list_rows_html(
                     app_ui,
                     page_targets,
                     page_target_indexes,
-                    extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=layer_order, tie_breaker=1)};",
+                    extra_style=f"z-index:{list_z};",
                     extra_attrs=extra,
                     orientation=orientation,
                 )
             )
+        parts.append("</div>")
         return "".join(parts)
 
     vb = payload
@@ -1359,8 +1537,8 @@ def _synthetic_source_list_rows_html(
     l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
     src_row_h = _list_row_height_px_from_host(host_btn)
     rects_p = _synthetic_list_row_slot_rects(
-        int(p_c.get("left") or 0) + int(vb["portrait_off_left"]),
-        int(p_c.get("top") or 0) + int(vb["portrait_off_top"]),
+        0,
+        0,
         int(p_c.get("width") or 0),
         int(p_c.get("height") or 0),
         len(source_rows),
@@ -1368,8 +1546,8 @@ def _synthetic_source_list_rows_html(
         src_row_h,
     )
     rects_l = _synthetic_list_row_slot_rects(
-        int(l_c.get("left") or 0) + int(vb["landscape_off_left"]),
-        int(l_c.get("top") or 0) + int(vb["landscape_off_top"]),
+        0,
+        0,
         int(l_c.get("width") or 0),
         int(l_c.get("height") or 0),
         len(source_rows),
@@ -1382,6 +1560,42 @@ def _synthetic_source_list_rows_html(
     owner_key = str(vb.get("owner_layer_key") or "")
     layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
     layer_display = str(layer_name_by_key.get(owner_key, "") or "")
+    syn0 = _synthetic_source_list_row_button(
+        source_row=source_rows[0],
+        row_rect_portrait=rects_p[0],
+        row_rect_landscape=rects_l[0],
+        layer_order=owner_lo,
+        row_index=0,
+        page_id=page_id,
+        rti_address=rti_address,
+        layer_max_button_order=layer_max_button_order,
+    )
+    list_z = _button_composite_z_index(syn0, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get("frame_id") or 0), tie_breaker=1)
+    vp_shell_extra = (
+        f" data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+        f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
+        f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
+        f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
+        f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+        f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}'"
+    )
+    parts.append(
+        _synthetic_list_scroll_shell_open(
+            host_btn=host_btn,
+            portrait_off_left=int(vb["portrait_off_left"]),
+            portrait_off_top=int(vb["portrait_off_top"]),
+            landscape_off_left=int(vb["landscape_off_left"]),
+            landscape_off_top=int(vb["landscape_off_top"]),
+            z_index=list_z,
+            list_kind="source",
+            layer_key=owner_key,
+            layer_order=owner_lo,
+            layer_display=layer_display,
+            orientation=orientation,
+            extra_classes="vp-btn",
+            extra_attrs=vp_shell_extra,
+        )
+    )
     for i, source_row in enumerate(source_rows):
         syn = _synthetic_source_list_row_button(
             source_row=source_row,
@@ -1421,11 +1635,12 @@ def _synthetic_source_list_rows_html(
                 page_targets,
                 page_target_indexes,
                 extra_classes="vp-btn",
-                extra_style=f"z-index:{_button_composite_z_index(syn, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get('frame_id') or 0), tie_breaker=1)};",
+                extra_style=f"z-index:{list_z};",
                 extra_attrs=extra,
                 orientation=orientation,
             )
         )
+    parts.append("</div>")
     return "".join(parts)
 
 
@@ -1737,8 +1952,17 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .viewport-mode .vp-focus{{z-index:{_Z_VP_FOCUS} !important;pointer-events:auto;}}
  .viewport-mode .vp-box:not(.vp-focus){{pointer-events:none;}}
 .btn-wrap{{position:absolute;z-index:2;}}
+.synthetic-list-scroll{{position:absolute;z-index:2;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;}}
+.synthetic-list-scroll.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
+.synthetic-list-scroll::-webkit-scrollbar{{width:10px;height:10px;}}
+.synthetic-list-scroll::-webkit-scrollbar-thumb{{background:transparent;}}
+.synthetic-list-scroll::-webkit-scrollbar-track{{background:transparent;}}
+.synthetic-list-scroll.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
+.synthetic-list-scroll .btn-wrap{{z-index:1;}}
  .device-page .btn-wrap.vp-btn{{pointer-events:none;}}
+ .device-page .synthetic-list-scroll.vp-btn{{pointer-events:none;}}
  .vp-popup-stage .btn-wrap.vp-btn{{pointer-events:auto;}}
+ .vp-popup-stage .synthetic-list-scroll.vp-btn{{pointer-events:auto;}}
  .viewport-mode #rtiCanvas{{pointer-events:none;overflow:hidden;}}
  .vp-popup{{position:fixed;left:0;top:0;width:0;height:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
  .viewport-mode .vp-popup{{display:flex;}}
@@ -2606,7 +2830,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   const pageEl=activePageEl();
   if (!pageEl) return;
   const vpIndex=Number(viewportMode.vpIndex||0);
-  pageEl.querySelectorAll('.vp-box, .vp-btn').forEach(el=>{{
+  pageEl.querySelectorAll('.vp-box, .vp-btn, .synthetic-list-scroll.vp-btn').forEach(el=>{{
    const match=Number(el.dataset.vp||-1)===vpIndex;
    el.classList.toggle('vp-focus', viewportMode.active && match);
   }});
@@ -2889,7 +3113,36 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
 	   }}
 	  }}
 
+  stage.querySelectorAll('.vp-popup-vcontent .synthetic-list-scroll').forEach(shell=>{{
+   const sl=Number(shell.dataset.srcLeft||0)*scale;
+   const st=Number(shell.dataset.srcTop||0)*scale;
+   const sw=Number(shell.dataset.srcWidth||0)*scale;
+   const sh=Number(shell.dataset.srcHeight||0)*scale;
+   shell.style.left=`${{sl}}px`;
+   shell.style.top=`${{st}}px`;
+   shell.style.width=`${{sw}}px`;
+   shell.style.height=`${{sh}}px`;
+   shell.querySelectorAll('.btn-wrap.vp-btn').forEach(inner=>{{
+    const il=Number(inner.dataset.srcLeft||0)*scale;
+    const it=Number(inner.dataset.srcTop||0)*scale;
+    const iw=Number(inner.dataset.srcWidth||0)*scale;
+    const ih=Number(inner.dataset.srcHeight||0)*scale;
+    inner.style.left=`${{il}}px`;
+    inner.style.top=`${{it}}px`;
+    inner.style.width=`${{iw}}px`;
+    inner.style.height=`${{ih}}px`;
+    const btn=inner.querySelector('.test-btn');
+    if (btn) {{
+     const buttonFontPx=resolveButtonFontPx(inner, scale);
+     btn.style.fontSize=`${{buttonFontPx}}px`;
+     btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+     const linkHit=inner.querySelector('.page-link-hit');
+     if (linkHit) applyLinkSizing(linkHit, buttonFontPx, scale);
+    }}
+   }});
+  }});
   stage.querySelectorAll('.btn-wrap.vp-btn[data-src-left]').forEach(el=>{{
+   if (el.closest('.synthetic-list-scroll')) return;
    const left=Number(el.dataset.srcLeft||0)*scale;
    const top=Number(el.dataset.srcTop||0)*scale;
    const width=Number(el.dataset.srcWidth||0)*scale;
@@ -2997,10 +3250,20 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
    const activeFrame=activeViewportFrameId(vpIndex);
    let contentBottom=vh;
    let contentRight=vw;
+   const shellNodes=[...pageEl.querySelectorAll(`.synthetic-list-scroll.vp-btn[data-vp="${{vpIndex}}"]`)].filter(shell=>{{
+    if (activeFrame!=null && Number(shell.dataset.frame)!==Number(activeFrame)) return false;
+    return true;
+   }});
+   const skipBtns=new Set();
+   shellNodes.forEach(shell=>{{
+    shell.querySelectorAll('.btn-wrap.vp-btn').forEach(b=>skipBtns.add(b));
+   }});
    const btnNodes=[...pageEl.querySelectorAll(`.btn-wrap.vp-btn[data-vp="${{vpIndex}}"]`)];
-   const frameFiltered=btnNodes.filter(node=>activeFrame==null || Number(node.dataset.frame)===Number(activeFrame));
-   frameFiltered.forEach(node=>{{
-    // Popup uses viewport-relative coordinates; source nodes store device-absolute coords.
+   const frameFiltered=btnNodes.filter(node=>{{
+    if (skipBtns.has(node)) return false;
+    return activeFrame==null || Number(node.dataset.frame)===Number(activeFrame);
+   }});
+   [...shellNodes, ...frameFiltered].forEach(node=>{{
     const relTop=Number(node.dataset.top||0) - vpTop;
     const relLeft=Number(node.dataset.left||0) - vpLeft;
     const b=relTop + Number(node.dataset.height||0);
@@ -3019,21 +3282,34 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   stage.appendChild(viewportWindow);
 
    viewportMode.popupScrollY=0;
-	   frameFiltered.forEach(node=>{{
+	   const roots=[];
+	   shellNodes.forEach(shell=>roots.push({{kind:'shell', node:shell}}));
+	   frameFiltered.forEach(node=>roots.push({{kind:'btn', node}}));
+	   roots.forEach(({{kind, node}})=>{{
 	     const clone=node.cloneNode(true);
 	     clone.style.display='';
-	     // Ensure popup controls remain topmost regardless of source z-index.
 	     clone.style.zIndex='1';
-	     // Cloned buttons inherit data-bound markers from the main canvas; clear so the popup can bind clicks.
 	     clone.querySelectorAll('.test-btn').forEach(tb=>{{
 	      tb.removeAttribute('data-bound-test-btn');
 	      try {{ delete tb.dataset.boundTestBtn; }} catch (_) {{}}
 	     }});
-	    // Convert from device-absolute (source) to viewport-relative (popup).
-	    clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
-	    clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
-	    clone.dataset.srcWidth=String(Number(node.dataset.width||0));
-	    clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+	    if (kind==='shell') {{
+	     clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
+	     clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
+	     clone.dataset.srcWidth=String(Number(node.dataset.width||0));
+	     clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+	     clone.querySelectorAll('.btn-wrap.vp-btn').forEach(innerClone=>{{
+	      innerClone.dataset.srcLeft=String(Number(innerClone.dataset.left||0));
+	      innerClone.dataset.srcTop=String(Number(innerClone.dataset.top||0));
+	      innerClone.dataset.srcWidth=String(Number(innerClone.dataset.width||0));
+	      innerClone.dataset.srcHeight=String(Number(innerClone.dataset.height||0));
+	     }});
+	    }} else {{
+	     clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
+	     clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
+	     clone.dataset.srcWidth=String(Number(node.dataset.width||0));
+	     clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+	    }}
      clone.dataset.pageIndex=String(activePageIndex);
     let show=true;
     if (activeFrame!=null) show = show && (Number(clone.dataset.frame)===Number(activeFrame));
@@ -3261,7 +3537,7 @@ function currentOrientationSize() {{
 function applyOrientationState() {{
  const short=currentOrientation==='landscape' ? 'l' : 'p';
  document.querySelectorAll('.orientation-btn').forEach(button=>button.classList.toggle('active', button.dataset.orientation===currentOrientation));
- document.querySelectorAll('.device-page .vp-box, .device-page .btn-wrap').forEach(el=>{{
+ document.querySelectorAll('.device-page .vp-box, .device-page .btn-wrap, .device-page .synthetic-list-scroll').forEach(el=>{{
   const visKey=`${{short}}Visible`;
   el.dataset.left=String(Number(el.dataset[`${{short}}Left`]||0));
   el.dataset.top=String(Number(el.dataset[`${{short}}Top`]||0));
@@ -3377,6 +3653,35 @@ function renderLayerPanel() {{
     el.style.display=(isLayerVisible(layerKey) && baseVisible)?'':'none';
    }}
  }});
+  pageEl.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
+   const layerKey=String(el.dataset.ownerLayerKey||'');
+   const baseVisible=String(el.dataset.visible||'1')==='1';
+   const layerVisible=isLayerVisible(layerKey);
+   let shouldShow=layerVisible && baseVisible;
+   if (el.classList.contains('vp-btn')) {{
+     if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
+      shouldShow=false;
+     }}
+     const short=currentOrientation==='landscape' ? 'l' : 'p';
+     const vpVisible=(short==='l' ? (el.dataset.vpLv||'1') : (el.dataset.vpPv||'1'))==='1';
+     if (!vpVisible) shouldShow=false;
+     if (viewportMode.active) {{
+      const vpLayerKey=String(el.dataset.vpLayerKey||'');
+      if (vpLayerKey && activeLayerVisibility()[vpLayerKey]===false) shouldShow=false;
+     }}
+     const vpIndex=Number(el.dataset.vp||0);
+     const frames=activePageState().vpFrames||[];
+     const pageFrames=frames[vpIndex]||[];
+     if (!pageFrames.length) {{
+       shouldShow=false;
+     }} else {{
+       const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+       const activeFrame=pageFrames[currentIndex];
+       shouldShow=shouldShow && Number(el.dataset.frame)===activeFrame;
+     }}
+   }}
+    el.style.display=shouldShow?'':'none';
+  }});
   pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
    const baseVisible=String(el.dataset.visible||'1')==='1';
@@ -3657,6 +3962,16 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    el.style.height=`${{height}}px`;
  }});
 
+ if (activePage) activePage.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
+   const left=Number(el.dataset.left||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
+   const width=Number(el.dataset.width||0)*totalScale;
+   const height=Number(el.dataset.height||0)*totalScale;
+   el.style.left=`${{left}}px`;
+   el.style.top=`${{top}}px`;
+   el.style.width=`${{width}}px`;
+   el.style.height=`${{height}}px`;
+  }});
  if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;

@@ -248,8 +248,20 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
         attrs = self._synthetic_attrs_by_room(html, "1")
-        self.assertIn("data-p-left='10'", attrs)
-        self.assertIn("data-l-left='110'", attrs)
+        # Rows are laid out inside the scroll shell with local coordinates (origin top-left of host list).
+        self.assertIn("data-p-left='0'", attrs)
+        self.assertIn("data-l-left='0'", attrs)
+
+    def test_synthetic_room_list_wraps_rows_in_scroll_shell(self):
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {"userFacing": {"displayName": "DeviceA", "pages": [_minimal_list_host_page(), p2]}, "diagnostics": _minimal_diag()}
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
+        html = payload["page_button_rows"]
+        self.assertIn("data-synthetic-list-scroll='1'", html)
+        self.assertIn("data-synthetic-list-kind='room'", html)
+        self.assertRegex(html, r"class='synthetic-list-scroll[^']*'[^>]*data-p-left='10'[^>]*data-p-height='62'")
 
     def test_synthetic_rows_use_host_layer_z_index(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
@@ -258,7 +270,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
-        m = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-id='1'", html)
+        m = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);'", html)
         self.assertIsNotNone(m)
         synthetic_z = int(m.group(1))
         native = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='DISPLAY - Room List'", html)
@@ -266,16 +278,18 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertGreater(synthetic_z, int(native.group(1)))
 
     def test_synthetic_room_rows_share_one_z_index(self):
-        """All rows in a synthetic room list use the same composite z (no per-row ladder)."""
+        """Scroll shell uses one composite z; inner rows do not introduce a per-row z ladder."""
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
         device = {"userFacing": {"displayName": "DeviceA", "pages": [_minimal_list_host_page(), p2]}, "diagnostics": _minimal_diag()}
         project = {"devices": [device]}
         app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
+        shell_z = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);'", html)
+        self.assertIsNotNone(shell_z)
         zs = [int(m.group(1)) for m in re.finditer(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-list='1'", html)]
         self.assertGreaterEqual(len(zs), 2)
-        self.assertEqual(len(set(zs)), 1)
+        self.assertTrue(all(z == int(shell_z.group(1)) for z in zs))
 
     def test_synthetic_rows_do_not_escape_host_layer_ordering(self):
         page = _minimal_list_host_page()
@@ -307,7 +321,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
-        synthetic = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-synthetic-room-id='1'", html)
+        synthetic = re.search(r"<div class='synthetic-list-scroll[^']*' style='z-index:(\d+);'", html)
         top_native = re.search(r"<div class='btn-wrap' style='z-index:(\d+);'[^>]*data-button-tag='Top Action'", html)
         self.assertIsNotNone(synthetic)
         self.assertIsNotNone(top_native)
@@ -394,6 +408,7 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
         self.assertIn("data-synthetic-source-list='1'", html)
+        self.assertIn("data-synthetic-list-kind='source'", html)
         self.assertIn("data-synthetic-source-room-id='1'", html)
         # Room 1 scope: checked activities only (Player 4); Family 5 is unchecked in fixture.
         self.assertIn("data-synthetic-source-device-id='4'", html)
@@ -503,7 +518,8 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
                 tops.append(int(top_m.group(1)))
                 heights.append(int(h_m.group(1)))
         self.assertEqual(len(tops), 2)
-        self.assertEqual(tops, [30, 42])
+        # Local coordinates inside the source list scroll shell (host top is 30; first row local top 0).
+        self.assertEqual(tops, [0, 12])
         self.assertTrue(all(h == 10 for h in heights))
 
     def test_runtime_build_target_payload_declares_synthetic_source_vars(self):
