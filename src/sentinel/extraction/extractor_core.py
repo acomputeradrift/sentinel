@@ -2,6 +2,7 @@
 
 import re
 import sqlite3
+import struct
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from dataclasses import dataclass
@@ -641,46 +642,24 @@ def _coords(top: Any, left: Any, height: Any, width: Any) -> dict[str, int]:
     }
 
 
-def _coords_fit_resolution(coords: dict[str, int], resolution: dict[str, int]) -> bool:
-    left = int(coords.get("left") or 0)
-    top = int(coords.get("top") or 0)
-    width = int(coords.get("width") or 0)
-    height = int(coords.get("height") or 0)
-    res_w = int(resolution.get("width") or 0)
-    res_h = int(resolution.get("height") or 0)
-    if width <= 0 or height <= 0 or res_w <= 0 or res_h <= 0:
-        return False
-    if left < 0 or top < 0:
-        return False
-    return (left + width) <= res_w and (top + height) <= res_h
+def _rti_portrait_button_rect(button_row: sqlite3.Row) -> dict[str, int]:
+    """Portrait rectangle from RTI `RTIDeviceButtonData`: Top, Left, Height, Width."""
+    return _coords(
+        button_row["ButtonTop"],
+        button_row["ButtonLeft"],
+        button_row["ButtonHeight"],
+        button_row["ButtonWidth"],
+    )
 
 
-def _select_orientation_coordinates(
-    *,
-    orientation: str,
-    primary: dict[str, int],
-    alt: dict[str, int],
-    portrait_supported: bool,
-    landscape_supported: bool,
-    portrait_resolution: dict[str, int],
-    landscape_resolution: dict[str, int],
-) -> dict[str, int]:
-    is_landscape = str(orientation or "").strip().lower() == "landscape"
-    resolution = landscape_resolution if is_landscape else portrait_resolution
-    both_supported = bool(portrait_supported) and bool(landscape_supported)
-    landscape_only = bool(landscape_supported) and not bool(portrait_supported)
-    if is_landscape:
-        # Preserve explicit portrait/landscape split when both are supported.
-        default_candidate = alt if both_supported else primary if landscape_only else alt
-        fallback_candidate = primary if default_candidate is alt else alt
-    else:
-        default_candidate = primary
-        fallback_candidate = alt
-    if _coords_fit_resolution(default_candidate, resolution):
-        return default_candidate
-    if _coords_fit_resolution(fallback_candidate, resolution):
-        return fallback_candidate
-    return default_candidate
+def _rti_landscape_button_rect(button_row: sqlite3.Row) -> dict[str, int]:
+    """Landscape rectangle from RTI `RTIDeviceButtonData`: TopAlt, LeftAlt, HeightAlt, WidthAlt."""
+    return _coords(
+        button_row["ButtonTopAlt"],
+        button_row["ButtonLeftAlt"],
+        button_row["ButtonHeightAlt"],
+        button_row["ButtonWidthAlt"],
+    )
 
 
 def _orientation_visibility(mask: int) -> dict[str, bool]:
@@ -696,55 +675,28 @@ def _orientation_visibility(mask: int) -> dict[str, bool]:
 def _button_ui(
     button_row: sqlite3.Row,
     *,
-    portrait_supported: bool = True,
-    landscape_supported: bool = True,
-    portrait_resolution: dict[str, int] | None = None,
-    landscape_resolution: dict[str, int] | None = None,
     layer_order: int = 0,
     button_order: int = 0,
     frame_number: int = 0,
 ) -> dict[str, Any]:
+    """Build `buttonUI.orientations` from `RTIDeviceButtonData`.
+
+    Portrait and landscape each have their own rectangle only; there is no
+    cross-orientation fallback.
+    """
     vis = _orientation_visibility(int(button_row["VisibleOrientations"] or 0))
-    primary = _coords(
-        button_row["ButtonTop"],
-        button_row["ButtonLeft"],
-        button_row["ButtonHeight"],
-        button_row["ButtonWidth"],
-    )
-    alt = _coords(
-        button_row["ButtonTopAlt"],
-        button_row["ButtonLeftAlt"],
-        button_row["ButtonHeightAlt"],
-        button_row["ButtonWidthAlt"],
-    )
-    portrait_res = portrait_resolution or {"width": 0, "height": 0}
-    landscape_res = landscape_resolution or {"width": 0, "height": 0}
+    portrait_coords = _rti_portrait_button_rect(button_row)
+    landscape_coords = _rti_landscape_button_rect(button_row)
     return {
         "fontSize": int(button_row["TextSize"] or 0),
         "orientations": {
             "portrait": {
                 "visible": vis["portrait"],
-                "coordinates": _select_orientation_coordinates(
-                    orientation="portrait",
-                    primary=primary,
-                    alt=alt,
-                    portrait_supported=portrait_supported,
-                    landscape_supported=landscape_supported,
-                    portrait_resolution=portrait_res,
-                    landscape_resolution=landscape_res,
-                ),
+                "coordinates": portrait_coords,
             },
             "landscape": {
                 "visible": vis["landscape"],
-                "coordinates": _select_orientation_coordinates(
-                    orientation="landscape",
-                    primary=primary,
-                    alt=alt,
-                    portrait_supported=portrait_supported,
-                    landscape_supported=landscape_supported,
-                    portrait_resolution=portrait_res,
-                    landscape_resolution=landscape_res,
-                ),
+                "coordinates": landscape_coords,
             },
         },
         "stack": {
@@ -814,6 +766,178 @@ def _pick_target_for_rti(targets: list[tuple[int, int]], current_rti_address: in
     return int(targets[0][0]) if targets else None
 
 
+def _macro_select_room_tags_by_room_id(cur: sqlite3.Cursor) -> dict[int, list[dict[str, Any]]]:
+    """Map RoomId -> button tags from macros that include a Type-24 (Select Room) step for that room."""
+    cur.execute("select name from sqlite_master where type='table' and name='MacroSelectRoom'")
+    if not cur.fetchone():
+        return {}
+    cur.execute(
+        """
+        select distinct msr.SelectRoomId, m.ButtonTagId, tn.ButtonTagName, ms.MacroId
+        from MacroSelectRoom msr
+        join MacroSteps ms on ms.MacroStepId = msr.MacroStepId and ms.Type = 24
+        join Macros m on m.MacroId = ms.MacroId
+        left join ButtonTagNames tn on tn.ButtonTagId = m.ButtonTagId
+        where coalesce(m.ButtonTagId, 0) > 0
+        order by msr.SelectRoomId, tn.ButtonTagName, m.ButtonTagId
+        """
+    )
+    by_room: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    seen: set[tuple[int, int, int]] = set()
+    for row in cur.fetchall():
+        rid = int(row["SelectRoomId"] or 0)
+        tid = int(row["ButtonTagId"] or 0)
+        mid = int(row["MacroId"] or 0)
+        key = (rid, tid, mid)
+        if key in seen:
+            continue
+        seen.add(key)
+        by_room[rid].append(
+            {
+                "buttonTagId": tid,
+                "buttonTagName": str(row["ButtonTagName"] or "").strip() or None,
+                "macroId": mid,
+            }
+        )
+    return dict(by_room)
+
+
+def _room_label_select_tags(tags: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Tags whose name starts with ``Room:`` (typical room-select label in RTI projects)."""
+    out: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for t in tags:
+        name = str(t.get("buttonTagName") or "").strip()
+        if not name.lower().startswith("room:"):
+            continue
+        tid = int(t.get("buttonTagId") or 0)
+        if tid in seen:
+            continue
+        seen.add(tid)
+        out.append(dict(t))
+    return out
+
+
+def _diagnostics_controller_room_list(
+    cur: sqlite3.Cursor,
+    rti_address: int,
+    *,
+    page_name_by_page_id: dict[int, str],
+    room_event_targets_by_room: dict[int, list[tuple[int, int]]],
+    macro_room_tags_by_room: dict[int, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Controller room order + MacroSelectRoom tags + roomSelectEvent page link per room (diagnostics)."""
+    cur.execute("select name from sqlite_master where type='table' and name='ControllerRoomList'")
+    if not cur.fetchone():
+        return []
+    cur.execute(
+        """
+        select cr.ControllerRoomOrder, cr.RoomId, rm.Name
+        from ControllerRoomList cr
+        join Rooms rm on rm.RoomId = cr.RoomId
+        where cr.RTIAddress = ?
+        order by cr.ControllerRoomOrder, cr.RoomId
+        """,
+        (rti_address,),
+    )
+    out: list[dict[str, Any]] = []
+    for row in cur.fetchall():
+        rid = int(row["RoomId"] or 0)
+        name = str(row["Name"] or "")
+        order = int(row["ControllerRoomOrder"] or 0)
+        all_tags = list(macro_room_tags_by_room.get(rid, []))
+        label_tags = _room_label_select_tags(all_tags)
+        targets = room_event_targets_by_room.get(rid, [])
+        picked = _pick_target_for_rti(targets, rti_address)
+        resolved: dict[str, Any] | None
+        if picked is not None:
+            resolved = {
+                "targetPageId": int(picked),
+                "targetPageName": str(page_name_by_page_id.get(int(picked)) or "").strip() or None,
+                "resolutionPath": "roomSelectEvent",
+            }
+        else:
+            resolved = {
+                "targetPageId": None,
+                "targetPageName": None,
+                "resolutionPath": None,
+            }
+        out.append(
+            {
+                "roomId": rid,
+                "roomName": name,
+                "controllerRoomOrder": order,
+                "roomSelectTagsAll": all_tags,
+                "roomSelectRoomLabelTags": label_tags,
+                "resolvedPageLink": resolved,
+            }
+        )
+    return out
+
+
+def _diagnostics_source_list_rows(
+    cur: sqlite3.Cursor,
+    rti_address: int,
+    *,
+    page_name_by_page_id: dict[int, str],
+    room_name_by_id: dict[int, str],
+    macro_step_targets_by_macro: dict[int, list[tuple[int, int]]],
+) -> list[dict[str, Any]]:
+    """Room-scoped source-list rows from Activities with resolved page links per device RTI.
+
+    Only Activities with Checked set (non-zero) are included — matches Apex source-list visibility.
+    """
+    cur.execute("select name from sqlite_master where type='table' and name='Activities'")
+    if not cur.fetchone():
+        return []
+    cur.execute(
+        """
+        select a.RoomId, a.DeviceId, a.ActivityOrder, a.Checked, a.PagelinkMacroId,
+               d.Name as SourceName, d.DisplayName as SourceDisplayName
+        from Activities a
+        join Devices d on d.DeviceId = a.DeviceId
+        where ifnull(a.Checked, 0) != 0
+        order by a.RoomId, a.Checked desc, a.ActivityOrder, a.ActivitiesId
+        """
+    )
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[int, int]] = set()
+    for row in cur.fetchall():
+        room_id = int(row["RoomId"] or 0)
+        source_device_id = int(row["DeviceId"] or 0)
+        key = (room_id, source_device_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        source_name = str(row["SourceDisplayName"] or row["SourceName"] or source_device_id).strip() or str(source_device_id)
+        targets = macro_step_targets_by_macro.get(int(row["PagelinkMacroId"] or 0), [])
+        target_page_id = _pick_target_for_rti(targets, rti_address)
+        if target_page_id is not None:
+            resolved = {
+                "targetPageId": int(target_page_id),
+                "targetPageName": str(page_name_by_page_id.get(int(target_page_id)) or "").strip() or None,
+                "resolutionPath": "activityEvent",
+            }
+        else:
+            resolved = {
+                "targetPageId": None,
+                "targetPageName": None,
+                "resolutionPath": None,
+            }
+        out.append(
+            {
+                "roomId": room_id,
+                "roomName": str(room_name_by_id.get(room_id) or room_id),
+                "sourceDeviceId": source_device_id,
+                "sourceName": source_name,
+                "activityOrder": int(row["ActivityOrder"] or 0),
+                "checked": int(row["Checked"] or 0),
+                "resolvedPageLink": resolved,
+            }
+        )
+    return out
+
+
 def _activity_target_page_ids(
     select_source_id: int,
     select_source_room_id: int,
@@ -872,6 +996,53 @@ def _room_off_target_page_ids(
     return []
 
 
+def _list_item_height_from_twparams_blob(blob: Any) -> int | None:
+    """Read list row height from RTIDeviceButtonData.TWParams key 502."""
+    if blob is None:
+        return None
+    try:
+        raw = bytes(blob)
+    except Exception:
+        return None
+    if not raw:
+        return None
+    for i in range(0, len(raw) - 7, 8):
+        key, value = struct.unpack("<II", raw[i : i + 8])
+        if int(key) == 502 and int(value) > 0:
+            return int(value)
+    return None
+
+
+def _load_scrolling_list_item_heights(cur: sqlite3.Cursor) -> dict[tuple[int, int, int], int]:
+    """Load optional `ScrollingList.ItemHeight` keyed by `(PageId, SharedLayerId, ButtonId)`.
+
+    Returns an empty map when the table is missing or unreadable. Skips non-positive
+    heights and rows without a usable shared layer / button id (matches RTI list hosts).
+    """
+    try:
+        cur.execute("select name from sqlite_master where type='table' and name='ScrollingList'")
+        if cur.fetchone() is None:
+            return {}
+    except Exception:
+        return {}
+    out: dict[tuple[int, int, int], int] = {}
+    try:
+        cur.execute("select PageId, SharedLayerId, ButtonId, ItemHeight from ScrollingList")
+    except Exception:
+        return {}
+    for row in cur.fetchall():
+        h = int(row["ItemHeight"] or 0)
+        if h <= 0:
+            continue
+        sid = int(row["SharedLayerId"] or 0)
+        bid = int(row["ButtonId"] or 0)
+        if sid <= 0 or bid <= 0:
+            continue
+        pid = int(row["PageId"] or 0)
+        out[(pid, sid, bid)] = h
+    return out
+
+
 def _resolve_button(
     cur: sqlite3.Cursor,
     button_row: sqlite3.Row,
@@ -915,10 +1086,6 @@ def _resolve_button(
     button_order: int,
     frame_number: int,
     host_viewport_button_id: int | None,
-    portrait_supported: bool = True,
-    landscape_supported: bool = True,
-    portrait_resolution: dict[str, int] | None = None,
-    landscape_resolution: dict[str, int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -1114,14 +1281,13 @@ def _resolve_button(
 
     button_ui = _button_ui(
         button_row,
-        portrait_supported=portrait_supported,
-        landscape_supported=landscape_supported,
-        portrait_resolution=portrait_resolution or {"width": 0, "height": 0},
-        landscape_resolution=landscape_resolution or {"width": 0, "height": 0},
         layer_order=layer_order,
         button_order=button_order,
         frame_number=frame_number,
     )
+    sl_h = _list_item_height_from_twparams_blob(button_row["TWParams"]) if "TWParams" in button_row.keys() else None
+    if sl_h is not None and sl_h > 0:
+        button_ui["listItemHeightPx"] = int(sl_h)
     page_name_resolved = str(page_name_by_page_id.get(int(page_id)) or "").strip()
     effective_room_id = (
         int(layer_room_id) if layer_room_id is not None else (int(page_layer_room_id) if page_layer_room_id is not None else int(page_room_id))
@@ -1537,6 +1703,8 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                     room_event_targets_by_room[room_id].append(target)
     _mark_setup()
 
+    macro_room_tags_by_room_id = _macro_select_room_tags_by_room_id(cur)
+
     cur.execute("select PageLinkId, DeviceId, ButtonTagId, LinkType, PageId from PageLinks where ButtonTagId is not null")
     page_links_by_device_and_tag: dict[tuple[int, int], sqlite3.Row] = {}
     page_links_by_tag: dict[int, sqlite3.Row] = {}
@@ -1785,17 +1953,20 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             drow["ScreenWidth"] if "ScreenWidth" in drow.keys() else 0,
             drow["ScreenHeight"] if "ScreenHeight" in drow.keys() else 0,
         )
-        cur.execute(
-            """
-            select cr.RoomId, rm.Name
-            from ControllerRoomList cr
-            join Rooms rm on rm.RoomId = cr.RoomId
-            where cr.RTIAddress = ?
-            order by cr.ControllerRoomOrder, cr.RoomId
-            """,
-            (rti_address,),
+        diag_rooms = _diagnostics_controller_room_list(
+            cur,
+            rti_address,
+            page_name_by_page_id=page_name_by_page_id,
+            room_event_targets_by_room=dict(room_event_targets_by_room),
+            macro_room_tags_by_room=macro_room_tags_by_room_id,
         )
-        diag_rooms = [{"roomId": int(row["RoomId"]), "roomName": str(row["Name"] or "")} for row in cur.fetchall()]
+        diag_source_rows = _diagnostics_source_list_rows(
+            cur,
+            rti_address,
+            page_name_by_page_id=page_name_by_page_id,
+            room_name_by_id=room_name_by_id,
+            macro_step_targets_by_macro=macro_step_targets_by_macro,
+        )
         lowest_nonzero_device_room_id = min((int(room["roomId"]) for room in diag_rooms if int(room["roomId"]) > 0), default=None)
         cur.execute(
             """
@@ -1874,10 +2045,6 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         button_order=int(b["ButtonOrder"] or 0),
                         frame_number=int(b["FrameNumber"] or 0),
                         host_viewport_button_id=None,
-                        portrait_supported=portrait_supported,
-                        landscape_supported=landscape_supported,
-                        portrait_resolution=portrait_resolution,
-                        landscape_resolution=landscape_resolution,
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -1918,10 +2085,6 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             lowest_nonzero_device_room_id,
                             (int(layer["RoomId"]) if layer["RoomId"] is not None else None),
                             (int(layer["SourceId"]) if layer["SourceId"] is not None else None),
-                            portrait_supported,
-                            landscape_supported,
-                            portrait_resolution,
-                            landscape_resolution,
                             shared_layer_buttons_cache,
                             _mark_viewport_frame_button_processed,
                         )
@@ -1998,6 +2161,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                     "rtiAddress": rti_address,
                     "isClonedController": False,
                     "rooms": diag_rooms,
+                    "sourceListRows": diag_source_rows,
                     "pages": diag_pages,
                 },
             }
@@ -2046,10 +2210,6 @@ def _resolve_viewport_frames(
     global_room_fallback_id: int | None,
     parent_layer_room_id: int | None,
     parent_layer_source_id: int | None,
-    portrait_supported: bool = True,
-    landscape_supported: bool = True,
-    portrait_resolution: dict[str, int] | None = None,
-    landscape_resolution: dict[str, int] | None = None,
     shared_layer_buttons_cache: dict[int, list[sqlite3.Row]] | None = None,
     button_processed_hook: Any = None,
 ) -> dict[str, Any]:
@@ -2139,10 +2299,6 @@ def _resolve_viewport_frames(
                 button_order=int(b["ButtonOrder"] or 0),
                 frame_number=int(b["FrameNumber"] or 0),
                 host_viewport_button_id=int(viewport_button_id),
-                portrait_supported=portrait_supported,
-                landscape_supported=landscape_supported,
-                portrait_resolution=portrait_resolution or {"width": 0, "height": 0},
-                landscape_resolution=landscape_resolution or {"width": 0, "height": 0},
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(

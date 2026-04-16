@@ -1,0 +1,3728 @@
+{
+  "apex": "\\\\Mac\\Home\\Desktop\\Development\\Sentinel\\Assets\\Dash OS v55.2 iPhone.apex",
+  "docsRef": "extractor_core._resolve_button roomSelectEvent + RoomEvents join (~L1059\u20131070, ~L1521\u20131538); apex_project_structure_resolution_v2.md (page link / room select)",
+  "controllerRoomLists": [
+    {
+      "RTIAddress": 1,
+      "ControllerRoomOrder": 0,
+      "RoomId": 8,
+      "RoomName": "Foyer",
+      "DeviceId": 5,
+      "DisplayName": "RTiPanel (iPhone X or newer)",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 722
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 574
+        },
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ]
+    },
+    {
+      "RTIAddress": 1,
+      "ControllerRoomOrder": 1,
+      "RoomId": 5,
+      "RoomName": "Family",
+      "DeviceId": 5,
+      "DisplayName": "RTiPanel (iPhone X or newer)",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 573
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 572
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 1,
+      "ControllerRoomOrder": 2,
+      "RoomId": 3,
+      "RoomName": "Living",
+      "DeviceId": 5,
+      "DisplayName": "RTiPanel (iPhone X or newer)",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 719
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 724
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 568
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 597
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        }
+      ]
+    },
+    {
+      "RTIAddress": 1,
+      "ControllerRoomOrder": 3,
+      "RoomId": 1,
+      "RoomName": "Kitchen",
+      "DeviceId": 5,
+      "DisplayName": "RTiPanel (iPhone X or newer)",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 720
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 725
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 542
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 567
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 596
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        }
+      ]
+    },
+    {
+      "RTIAddress": 1,
+      "ControllerRoomOrder": 4,
+      "RoomId": 6,
+      "RoomName": "Nook",
+      "DeviceId": 5,
+      "DisplayName": "RTiPanel (iPhone X or newer)",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 576
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 575
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 1,
+      "ControllerRoomOrder": 5,
+      "RoomId": 4,
+      "RoomName": "Dining",
+      "DeviceId": 5,
+      "DisplayName": "RTiPanel (iPhone X or newer)",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 721
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 726
+        },
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 570
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 571
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 598
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        }
+      ]
+    },
+    {
+      "RTIAddress": 1,
+      "ControllerRoomOrder": 6,
+      "RoomId": 9,
+      "RoomName": "Laundry",
+      "DeviceId": 5,
+      "DisplayName": "RTiPanel (iPhone X or newer)",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 577
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 723
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 0,
+      "RoomId": 1,
+      "RoomName": "Kitchen",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 720
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 725
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 542
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 567
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 596
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        }
+      ]
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 0,
+      "RoomId": 2,
+      "RoomName": "GLOBAL",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1066,
+          "buttonTagName": "BOOTUP - Start",
+          "macroId": 591
+        },
+        {
+          "buttonTagId": 724,
+          "buttonTagName": "NAVIGATION - Global Home",
+          "macroId": 613
+        },
+        {
+          "buttonTagId": 1026,
+          "buttonTagName": "POWER OFF - Whole House (AV)",
+          "macroId": 483
+        },
+        {
+          "buttonTagId": 1027,
+          "buttonTagName": "POWER OFF - Whole House (Lights)",
+          "macroId": 503
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 0,
+      "RoomId": 3,
+      "RoomName": "Living",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 719
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 724
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 568
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 597
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        }
+      ]
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 0,
+      "RoomId": 4,
+      "RoomName": "Dining",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 721
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 726
+        },
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 570
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 571
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 598
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        }
+      ]
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 1,
+      "RoomId": 5,
+      "RoomName": "Family",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 573
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 572
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 1,
+      "RoomId": 6,
+      "RoomName": "Nook",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 576
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 575
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 1,
+      "RoomId": 8,
+      "RoomName": "Foyer",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 722
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 574
+        },
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ]
+    },
+    {
+      "RTIAddress": 2,
+      "ControllerRoomOrder": 1,
+      "RoomId": 9,
+      "RoomName": "Laundry",
+      "DeviceId": 41,
+      "DisplayName": "T4x",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 577
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 723
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 3,
+      "ControllerRoomOrder": 1,
+      "RoomId": 1,
+      "RoomName": "Kitchen",
+      "DeviceId": 7,
+      "DisplayName": "KA11",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 720
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 725
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 542
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 567
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 596
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        }
+      ]
+    },
+    {
+      "RTIAddress": 3,
+      "ControllerRoomOrder": 2,
+      "RoomId": 4,
+      "RoomName": "Dining",
+      "DeviceId": 7,
+      "DisplayName": "KA11",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 721
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 726
+        },
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 570
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 571
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 598
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        }
+      ]
+    },
+    {
+      "RTIAddress": 3,
+      "ControllerRoomOrder": 2,
+      "RoomId": 5,
+      "RoomName": "Family",
+      "DeviceId": 7,
+      "DisplayName": "KA11",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 573
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 572
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 3,
+      "ControllerRoomOrder": 2,
+      "RoomId": 6,
+      "RoomName": "Nook",
+      "DeviceId": 7,
+      "DisplayName": "KA11",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 576
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 575
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 3,
+      "ControllerRoomOrder": 2,
+      "RoomId": 8,
+      "RoomName": "Foyer",
+      "DeviceId": 7,
+      "DisplayName": "KA11",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 722
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 574
+        },
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ]
+    },
+    {
+      "RTIAddress": 3,
+      "ControllerRoomOrder": 2,
+      "RoomId": 9,
+      "RoomName": "Laundry",
+      "DeviceId": 7,
+      "DisplayName": "KA11",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 577
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 723
+        }
+      ],
+      "roomSelectRoomLabelTags": []
+    },
+    {
+      "RTIAddress": 3,
+      "ControllerRoomOrder": 3,
+      "RoomId": 3,
+      "RoomName": "Living",
+      "DeviceId": 7,
+      "DisplayName": "KA11",
+      "roomSelectTagsAll": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 719
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 724
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 568
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 597
+        }
+      ],
+      "roomSelectRoomLabelTags": [
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        }
+      ]
+    }
+  ],
+  "roomIdToRoomSelectTags": {
+    "1": {
+      "all": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 720
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 725
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 542
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 567
+        },
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 596
+        }
+      ],
+      "roomLabel": [
+        {
+          "buttonTagId": 22,
+          "buttonTagName": "Room: Kitchen",
+          "macroId": 541
+        }
+      ]
+    },
+    "2": {
+      "all": [
+        {
+          "buttonTagId": 1066,
+          "buttonTagName": "BOOTUP - Start",
+          "macroId": 591
+        },
+        {
+          "buttonTagId": 724,
+          "buttonTagName": "NAVIGATION - Global Home",
+          "macroId": 613
+        },
+        {
+          "buttonTagId": 1026,
+          "buttonTagName": "POWER OFF - Whole House (AV)",
+          "macroId": 483
+        },
+        {
+          "buttonTagId": 1027,
+          "buttonTagName": "POWER OFF - Whole House (Lights)",
+          "macroId": 503
+        }
+      ],
+      "roomLabel": []
+    },
+    "3": {
+      "all": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 719
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 724
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 568
+        },
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 597
+        }
+      ],
+      "roomLabel": [
+        {
+          "buttonTagId": 23,
+          "buttonTagName": "Room: Living Room",
+          "macroId": 523
+        }
+      ]
+    },
+    "4": {
+      "all": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 721
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 726
+        },
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 570
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 571
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 598
+        }
+      ],
+      "roomLabel": [
+        {
+          "buttonTagId": 1083,
+          "buttonTagName": "Room: Dining",
+          "macroId": 732
+        },
+        {
+          "buttonTagId": 25,
+          "buttonTagName": "Room: Dining Room",
+          "macroId": 569
+        }
+      ]
+    },
+    "5": {
+      "all": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 573
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 572
+        }
+      ],
+      "roomLabel": []
+    },
+    "6": {
+      "all": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 576
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 575
+        }
+      ],
+      "roomLabel": []
+    },
+    "8": {
+      "all": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 722
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 574
+        },
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ],
+      "roomLabel": [
+        {
+          "buttonTagId": 1082,
+          "buttonTagName": "Room: Foyer",
+          "macroId": 731
+        }
+      ]
+    },
+    "9": {
+      "all": [
+        {
+          "buttonTagId": 1060,
+          "buttonTagName": "NAVIGATION - Next Room",
+          "macroId": 577
+        },
+        {
+          "buttonTagId": 1059,
+          "buttonTagName": "NAVIGATION - Previous Room",
+          "macroId": 723
+        }
+      ],
+      "roomLabel": []
+    }
+  },
+  "controllerRoomListWithRoomEventPageLinks": {
+    "1": [
+      {
+        "controllerRoomOrder": 0,
+        "roomId": 8,
+        "roomName": "Foyer",
+        "deviceId": 5,
+        "displayName": "RTiPanel (iPhone X or newer)",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 99,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 99,
+          "pickedTargetPageName": "Home (Foyer)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 1,
+        "roomId": 5,
+        "roomName": "Family",
+        "deviceId": 5,
+        "displayName": "RTiPanel (iPhone X or newer)",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 100,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 100,
+          "pickedTargetPageName": "Home (Family Room)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 2,
+        "roomId": 3,
+        "roomName": "Living",
+        "deviceId": 5,
+        "displayName": "RTiPanel (iPhone X or newer)",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 88,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 92,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 88,
+          "pickedTargetPageName": "Home (Living Room)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 3,
+        "roomId": 1,
+        "roomName": "Kitchen",
+        "deviceId": 5,
+        "displayName": "RTiPanel (iPhone X or newer)",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 83,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 69,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 83,
+          "pickedTargetPageName": "Home (Kitchen)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 4,
+        "roomId": 6,
+        "roomName": "Nook",
+        "deviceId": 5,
+        "displayName": "RTiPanel (iPhone X or newer)",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 101,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 101,
+          "pickedTargetPageName": "Home (Breakfast Nook)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 5,
+        "roomId": 4,
+        "roomName": "Dining",
+        "deviceId": 5,
+        "displayName": "RTiPanel (iPhone X or newer)",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 91,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 90,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 90,
+          "pickedTargetPageName": "Home (Dining Room)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 6,
+        "roomId": 9,
+        "roomName": "Laundry",
+        "deviceId": 5,
+        "displayName": "RTiPanel (iPhone X or newer)",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 96,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 96,
+          "pickedTargetPageName": "Home (Laundry)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      }
+    ],
+    "2": [
+      {
+        "controllerRoomOrder": 0,
+        "roomId": 1,
+        "roomName": "Kitchen",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 83,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 69,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 83,
+          "pickedTargetPageName": "Home (Kitchen)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 0,
+        "roomId": 2,
+        "roomName": "GLOBAL",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 87,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 72,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 95,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 87,
+          "pickedTargetPageName": "Home (GLOBAL)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 0,
+        "roomId": 3,
+        "roomName": "Living",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 88,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 92,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 88,
+          "pickedTargetPageName": "Home (Living Room)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 0,
+        "roomId": 4,
+        "roomName": "Dining",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 91,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 90,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 91,
+          "pickedTargetPageName": "Dining Home - Widgets",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 1,
+        "roomId": 5,
+        "roomName": "Family",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 100,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 100,
+          "pickedTargetPageName": "Home (Family Room)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 1,
+        "roomId": 6,
+        "roomName": "Nook",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 101,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 101,
+          "pickedTargetPageName": "Home (Breakfast Nook)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 1,
+        "roomId": 8,
+        "roomName": "Foyer",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 99,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 99,
+          "pickedTargetPageName": "Home (Foyer)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 1,
+        "roomId": 9,
+        "roomName": "Laundry",
+        "deviceId": 41,
+        "displayName": "T4x",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 96,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 96,
+          "pickedTargetPageName": "Home (Laundry)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      }
+    ],
+    "3": [
+      {
+        "controllerRoomOrder": 1,
+        "roomId": 1,
+        "roomName": "Kitchen",
+        "deviceId": 7,
+        "displayName": "KA11",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 83,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 69,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 69,
+          "pickedTargetPageName": "Kitchen Home - Widgets",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 2,
+        "roomId": 4,
+        "roomName": "Dining",
+        "deviceId": 7,
+        "displayName": "KA11",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 91,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 90,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 91,
+          "pickedTargetPageName": "Dining Home - Widgets",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 2,
+        "roomId": 5,
+        "roomName": "Family",
+        "deviceId": 7,
+        "displayName": "KA11",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 100,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 100,
+          "pickedTargetPageName": "Home (Family Room)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 2,
+        "roomId": 6,
+        "roomName": "Nook",
+        "deviceId": 7,
+        "displayName": "KA11",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 101,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 101,
+          "pickedTargetPageName": "Home (Breakfast Nook)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 2,
+        "roomId": 8,
+        "roomName": "Foyer",
+        "deviceId": 7,
+        "displayName": "KA11",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 99,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 99,
+          "pickedTargetPageName": "Home (Foyer)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 2,
+        "roomId": 9,
+        "roomName": "Laundry",
+        "deviceId": 7,
+        "displayName": "KA11",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 96,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 96,
+          "pickedTargetPageName": "Home (Laundry)",
+          "resolutionPath": "roomSelectEvent"
+        }
+      },
+      {
+        "controllerRoomOrder": 3,
+        "roomId": 3,
+        "roomName": "Living",
+        "deviceId": 7,
+        "displayName": "KA11",
+        "roomEventNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 88,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 92,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 92,
+          "pickedTargetPageName": "Living Home - Widgets",
+          "resolutionPath": "roomSelectEvent"
+        }
+      }
+    ]
+  },
+  "sourceListActivityNavigation": {
+    "note": "First-seen Activities row per (roomId, deviceId) maps to PagelinkMacroId step targets; extractor merges these into room_event_targets and activityEvent path (extractor_core ~L1073\u20131094).",
+    "rows": [
+      {
+        "roomId": 1,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 8,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 83,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 69,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 83,
+          "pickedTargetPageName": "Home (Kitchen)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 83,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 69,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 1,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 28,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 87,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 72,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 95,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 87,
+          "pickedTargetPageName": "Home (GLOBAL)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 2,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 36,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 88,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 92,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 88,
+          "pickedTargetPageName": "Home (Living Room)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 3,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 40,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 91,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 90,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 91,
+          "pickedTargetPageName": "Dining Home - Widgets",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 4,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 44,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 100,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 100,
+          "pickedTargetPageName": "Home (Family Room)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 5,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 45,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 101,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 101,
+          "pickedTargetPageName": "Home (Breakfast Nook)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 6,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 47,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 99,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 99,
+          "pickedTargetPageName": "Home (Foyer)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 8,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 4,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 21,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 25,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 21,
+          "pickedTargetPageName": "Weather and Date",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 10,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 4,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 93,
+              "rtiAddress": 2
+            },
+            {
+              "pageId": 8,
+              "rtiAddress": 3
+            },
+            {
+              "pageId": 16,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 18,
+              "rtiAddress": 3
+            }
+          ],
+          "pickedTargetPageId": 4,
+          "pickedTargetPageName": "Initial Load Page",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 35,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 42,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 127,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 127,
+          "pickedTargetPageName": "Audio (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 43,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 128,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 128,
+          "pickedTargetPageName": "Video (Global)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 48,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 96,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 96,
+          "pickedTargetPageName": "Home (Laundry)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 49,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [
+            {
+              "pageId": 97,
+              "rtiAddress": 1
+            },
+            {
+              "pageId": 98,
+              "rtiAddress": 1
+            }
+          ],
+          "pickedTargetPageId": 97,
+          "pickedTargetPageName": "Cameras (Overview)",
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 51,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 52,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      },
+      {
+        "roomId": 9,
+        "deviceId": 54,
+        "rtiAddress": 0,
+        "activityPagelinkNavigation": {
+          "rawTargets": [],
+          "pickedTargetPageId": null,
+          "pickedTargetPageName": null,
+          "resolutionPath": "activityPagelinkMacro"
+        }
+      }
+    ]
+  },
+  "listBrowserButtonsSql": {
+    "countStyle8": 33,
+    "withNonEmptyObjectData": 33,
+    "rows": [
+      {
+        "ButtonId": 16,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 17,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 452,
+        "ButtonTagId": 646,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Menu",
+        "objectDataBindings": [
+          {
+            "variableId": 506,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 507,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 508,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 509,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 510,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 511,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 512,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 513,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 453,
+        "ButtonTagId": 10,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 514,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 529,
+        "ButtonTagId": 646,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Menu",
+        "objectDataBindings": [
+          {
+            "variableId": 506,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 507,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 508,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 509,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 510,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 511,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 512,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 513,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 789,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 3011,
+        "ButtonTagId": 10,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 514,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 4536,
+        "ButtonTagId": 646,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Menu",
+        "objectDataBindings": [
+          {
+            "variableId": 506,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 507,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 508,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 509,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 510,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 511,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 512,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 513,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 4743,
+        "ButtonTagId": 10,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 514,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 5265,
+        "ButtonTagId": 646,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Menu",
+        "objectDataBindings": [
+          {
+            "variableId": 506,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 507,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 508,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 509,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 510,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 511,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 512,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 513,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 5472,
+        "ButtonTagId": 10,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 514,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 5994,
+        "ButtonTagId": 646,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Menu",
+        "objectDataBindings": [
+          {
+            "variableId": 506,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 507,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 508,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 509,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 510,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 511,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 512,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 513,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 6201,
+        "ButtonTagId": 10,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "System: Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 514,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 6638,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 6641,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 6951,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 6954,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 7268,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 7271,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 7583,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 7586,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 7898,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 7901,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 8213,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 8216,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 8776,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 8779,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 9210,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 9213,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 9609,
+        "ButtonTagId": 511,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Source List",
+        "objectDataBindings": [
+          {
+            "variableId": 124,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4SourceList"
+          },
+          {
+            "variableId": 204,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room0SourceList"
+          },
+          {
+            "variableId": 205,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room2SourceList"
+          },
+          {
+            "variableId": 221,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room6SourceList"
+          },
+          {
+            "variableId": 250,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room1SourceList"
+          },
+          {
+            "variableId": 251,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room3SourceList"
+          },
+          {
+            "variableId": 252,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room5SourceList"
+          },
+          {
+            "variableId": 253,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room7SourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 9612,
+        "ButtonTagId": 1031,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Room List",
+        "objectDataBindings": [
+          {
+            "variableId": 170,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@RoomList%"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 9626,
+        "ButtonTagId": 1069,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Audio List",
+        "objectDataBindings": [
+          {
+            "variableId": 235,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4AudioSourceList"
+          }
+        ],
+        "listTarget": true
+      },
+      {
+        "ButtonId": 9628,
+        "ButtonTagId": 1070,
+        "Text": "",
+        "ButtonStyle": 8,
+        "ViewPortVerticalScroll": 0,
+        "ButtonTagName": "DISPLAY - Video List",
+        "objectDataBindings": [
+          {
+            "variableId": 236,
+            "objectData": "{20186C86-446C-4FC6-89E1-1931718A169B}#61440@Room4VideoSourceList"
+          }
+        ],
+        "listTarget": true
+      }
+    ]
+  }
+}

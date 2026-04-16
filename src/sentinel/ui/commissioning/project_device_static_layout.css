@@ -57,6 +57,7 @@ body {
   left: 0;
   right: 0;
   top: 0;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -106,6 +107,27 @@ body {
   height: 40px;
 }
 
+.selected-room-indicator {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  line-height: 1;
+  color: #2a455b;
+  background: rgba(248, 251, 254, 0.92);
+  border: 1px solid #c6d2dd;
+  border-radius: 10px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 24;
+}
+
+.selected-room-indicator .value {
+  font-weight: 700;
+}
+
 .deviceLayoutStage {
   position: relative;
   overflow: hidden;
@@ -147,7 +169,8 @@ body {
   position: absolute;
   inset: 0;
   background: rgba(255, 255, 255, 0.05);
-  z-index: 9000;
+  /* Above composited RTI buttons (capped at _Z_SAFE_MAX in render_core); keep in sync with _Z_VP_OVERLAY */
+  z-index: 2000000001;
   pointer-events: none;
   display: none;
 }
@@ -402,7 +425,7 @@ body {
   overflow: hidden;
   box-sizing: border-box;
   z-index: 2;
-  padding: 10px;
+  padding: 0;
 }
 
 .page-link-hit {

@@ -1,10 +1,33 @@
 ---
-description: Agent executes tests; do not delegate test runs to the user
+description: Agent runs tests itself; never ask the user to run tests; use capture fallbacks when stdout is empty
 alwaysApply: true
 ---
 
 # Verification
 
-- After meaningful edits under `src/` or `dev_tests/`, run regression via `python devtools/run_regression_with_venv.py` (uses `.tmp_apex_env`). For tiny, isolated changes, a targeted `python -m unittest …` is acceptable.
-- If shell stdout is empty, read `devtools/last_regression_run.txt` for the log.
-- Report pass/fail in the reply. Do not ask Jamie to run tests for verification.
+## Non-negotiable
+
+- **Never ask the user to run tests** for verification, to confirm a fix, or because the environment is awkward. The agent runs tests and reports pass/fail from captured output.
+- The only exception is when the **user explicitly asks how** to run tests locally (then answer with commands).
+
+After meaningful edits under `src/` or `dev_tests/`, run regression via `python devtools/run_regression_with_venv.py` (uses `.tmp_apex_env`). For tiny, isolated changes, `python -m unittest …` is acceptable.
+
+## When shell stdout from the tool is empty
+
+**Do not** treat empty output as success. **Do not** punt to the user.
+
+1. Redirect **stdout and stderr** to a file under `devtools/`, then **Read** it (PowerShell from repo root):
+
+   `python devtools/run_regression_with_venv.py *> devtools/_agent_shell_capture.txt 2>&1`
+
+2. Read `devtools/last_regression_run.txt` (regression runner may log there).
+
+3. If redirect to the repo path still fails (UNC, cwd, sandbox): run **Python in-process capture** — a one-liner or small script that `subprocess.run`s the same command with `cwd` set to the repo root (resolve via a known file, e.g. `Path(__file__).resolve()` from a script under `devtools/`, or locate `pyproject.toml` / `src/sentinel`), writes combined stdout/stderr to `devtools/_agent_shell_capture.txt`, exits with the child exit code, then **Read** that file.
+
+4. Base pass/fail only on file contents. Report relevant lines in the reply.
+
+5. Delete or overwrite `devtools/_agent_shell_capture.txt` after use if it would clutter `git status` (file is gitignored).
+
+## Git / strict steps
+
+For git commits or other steps where exit codes matter, use the same redirect + Read pattern; see deploy/commit rules if applicable.

@@ -253,6 +253,49 @@ def _button_stack_sort_key(btn: dict[str, Any], category_rank: int) -> tuple[int
     return (button_order, frame_number, category_rank)
 
 
+# Within-layer buttonOrder must stay below this band so a higher layerOrder always
+# produces a higher composite z than any button on a lower layer (no "band overflow").
+_Z_LAYER_BAND = 1_000_000
+_Z_BASE_OFFSET = 1_000_000
+_Z_SAFE_MAX = 2_000_000_000
+# Buttons use _composite_z_index (capped at _Z_SAFE_MAX). Overlay must sit above all RTI buttons.
+_Z_VP_OVERLAY = _Z_SAFE_MAX + 1
+_Z_VP_FOCUS = _Z_SAFE_MAX + 2
+# Viewport frame hit targets must paint above same-layer buttons (see btn_cap in _composite_z_index).
+_VP_BOX_BUTTON_ORDER = _Z_LAYER_BAND - 250
+
+
+def _composite_z_index(layer_order: int, button_order: int, frame_number: int = 0, tie_breaker: int = 0) -> int:
+    # layerOrder is authoritative between layers; buttonOrder only competes inside a layer.
+    layer = int(layer_order)
+    button = int(button_order)
+    frame = int(frame_number)
+    btn_cap = _Z_LAYER_BAND - 200
+    button = min(max(0, button), btn_cap)
+    z = _Z_BASE_OFFSET + (layer * _Z_LAYER_BAND) + button + (frame * 2) + (1 if int(tie_breaker) > 0 else 0)
+    return min(z, _Z_SAFE_MAX)
+
+
+def _viewport_box_z_index(layer_order: int, vp_index: int) -> int:
+    """Z for dashed viewport rectangles: top of layer band so clicks beat overlapping same-layer controls."""
+    return _composite_z_index(layer_order, _VP_BOX_BUTTON_ORDER, vp_index)
+
+
+def _button_composite_z_index(
+    btn: dict[str, Any],
+    *,
+    fallback_layer_order: int = 0,
+    fallback_frame_number: int = 0,
+    tie_breaker: int = 0,
+) -> int:
+    stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+    # Canonical page z-layering comes from owning layer context, not stack.layerOrder.
+    layer_order = int(fallback_layer_order)
+    button_order = int(stack.get("buttonOrder", 0) or 0)
+    frame_number = int(stack.get("frameNumber", fallback_frame_number) or fallback_frame_number)
+    return _composite_z_index(layer_order, button_order, frame_number, tie_breaker=tie_breaker)
+
+
 def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str, int]]:
     items: list[tuple[dict[str, Any], str, int, int, str, int]] = []
     category_defs: list[tuple[str, str]] = [
@@ -612,6 +655,1083 @@ def _render_button_control(
     )
 
 
+_ROOM_LIST_SYNTHETIC_GAP_PX = 2
+_ROOM_LIST_SYNTHETIC_Z_BOOST = 0
+_SYNTHETIC_LIST_SIDE_INSET_PX = 10
+# Extra horizontal shrink per side (device px) so row hit targets do not span the full inner width and
+# the true list host can receive clicks in the left/right gutters (see synthetic-list pointer-events).
+_SYNTHETIC_LIST_ROW_HIT_SHRINK_PX = 8
+
+
+def _synthetic_list_host_rect_pair(
+    host_btn: dict[str, Any],
+    portrait_off_left: int,
+    portrait_off_top: int,
+    landscape_off_left: int,
+    landscape_off_top: int,
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+    p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
+    l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
+    portrait = (
+        int(p_c.get("left") or 0) + portrait_off_left,
+        int(p_c.get("top") or 0) + portrait_off_top,
+        int(p_c.get("width") or 0),
+        int(p_c.get("height") or 0),
+    )
+    landscape = (
+        int(l_c.get("left") or 0) + landscape_off_left,
+        int(l_c.get("top") or 0) + landscape_off_top,
+        int(l_c.get("width") or 0),
+        int(l_c.get("height") or 0),
+    )
+    return portrait, landscape
+
+
+def _synthetic_list_scroll_pad_height_px(
+    n: int,
+    gap: int,
+    row_h: int | None,
+    host_h_portrait: int,
+    host_h_landscape: int,
+) -> int:
+    """Min document height (device px) so overflow:auto can scroll when rows are position:absolute."""
+
+    def stack_for_host(host_h: int) -> int:
+        if n <= 0 or host_h <= 0:
+            return 0
+        if row_h is not None and row_h > 0:
+            return n * row_h + max(0, n - 1) * gap
+        return host_h
+
+    return max(stack_for_host(host_h_portrait), stack_for_host(host_h_landscape))
+
+
+def _synthetic_list_scroll_pad_html(pad_h: int) -> str:
+    if pad_h <= 0:
+        return ""
+    return (
+        f'<div class="synthetic-list-scroll-pad" aria-hidden="true" data-pad-height="{pad_h}" '
+        f'style="width:100%;height:0;visibility:hidden;pointer-events:none;margin:0;padding:0;border:0;"></div>'
+    )
+
+
+def _synthetic_list_scroll_shell_open(
+    *,
+    host_btn: dict[str, Any],
+    portrait_off_left: int,
+    portrait_off_top: int,
+    landscape_off_left: int,
+    landscape_off_top: int,
+    z_index: int,
+    list_kind: str,
+    layer_key: str,
+    layer_order: int,
+    layer_display: str,
+    orientation: str,
+    extra_classes: str = "",
+    extra_attrs: str = "",
+) -> str:
+    (pl, pt, pw, ph), (ll, lt, lw, lh) = _synthetic_list_host_rect_pair(
+        host_btn,
+        portrait_off_left,
+        portrait_off_top,
+        landscape_off_left,
+        landscape_off_top,
+    )
+    shell_ui: dict[str, Any] = {
+        "fontSize": 10,
+        "orientations": {
+            "portrait": {"visible": True, "coordinates": {"left": pl, "top": pt, "width": pw, "height": ph}},
+            "landscape": {"visible": True, "coordinates": {"left": ll, "top": lt, "width": lw, "height": lh}},
+        },
+    }
+    oriented = _orientation_ui(shell_ui, orientation)
+    visibility_attr = "1" if bool(oriented.get("visible", True)) else "0"
+    oc = _ui_coordinates(shell_ui, orientation)
+    left = int(oc.get("left") or 0)
+    top = int(oc.get("top") or 0)
+    w = int(oc.get("width") or 0)
+    h = int(oc.get("height") or 0)
+    classes = f"synthetic-list-scroll scroll-hover {extra_classes}".strip()
+    # Inline overflow so clipping cannot be lost to stylesheet ordering/specificity in embedded UIs.
+    return (
+        f"<div class='{classes}' style='z-index:{z_index}; overflow-x:hidden; overflow-y:auto; min-height:0;' "
+        f"data-left='{left}' data-top='{top}' data-width='{w}' data-height='{h}' "
+        f"data-visible='{visibility_attr}' data-font-size='10' "
+        f"{_orientation_data_attrs(shell_ui)} "
+        f"data-synthetic-list-scroll='1' data-synthetic-list-kind='{list_kind}' "
+        f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
+        f"data-owner-layer-name='{escape(layer_display, quote=True)}'{extra_attrs}>"
+    )
+
+
+def _is_room_list_host_button(btn: dict[str, Any]) -> bool:
+    if not isinstance(btn, dict):
+        return False
+    t = btn.get("testTargets", {})
+    if not isinstance(t, dict):
+        return False
+    vars_t = t.get("variables", {})
+    if not isinstance(vars_t, dict) or not bool(vars_t.get("List")):
+        return False
+    tag = _norm_text(_button_tag_name(btn)).lower()
+    text = _norm_text((btn.get("buttonIdentity") or {}).get("text") or "").lower()
+    blob = f"{tag} {text}"
+    return "room" in blob and "list" in blob
+
+
+def _sorted_diag_room_rows(diag: dict[str, Any]) -> list[dict[str, Any]]:
+    rooms = diag.get("rooms")
+    if not isinstance(rooms, list):
+        return []
+
+    def sort_key(row: dict[str, Any]) -> tuple[int, int]:
+        raw = row.get("controllerRoomOrder")
+        if raw is None:
+            return (1, 10**9)
+        try:
+            return (0, int(raw))
+        except (TypeError, ValueError):
+            return (1, 10**9)
+
+    rows = [r for r in rooms if isinstance(r, dict)]
+    return sorted(rows, key=sort_key)
+
+
+def _room_list_primary_tag_info(room_row: dict[str, Any]) -> tuple[str, int | None]:
+    for key in ("roomSelectRoomLabelTags", "roomSelectTagsAll"):
+        val = room_row.get(key)
+        if isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict):
+                    name = _norm_text(item.get("buttonTagName"))
+                    tid_raw = item.get("buttonTagId")
+                    if name:
+                        try:
+                            tid = int(tid_raw) if tid_raw is not None else None
+                        except (TypeError, ValueError):
+                            tid = None
+                        return name, tid
+                else:
+                    s = _norm_text(item)
+                    if s:
+                        return s, None
+    return "Room", None
+
+
+def _list_row_height_px_from_host(btn: dict[str, Any]) -> int | None:
+    """Apex list row height merged into `buttonUI.listItemHeightPx` during extraction."""
+    ui = btn.get("buttonUI") if isinstance(btn, dict) else None
+    if not isinstance(ui, dict):
+        return None
+    raw = ui.get("listItemHeightPx")
+    try:
+        h = int(raw) if raw is not None else 0
+    except (TypeError, ValueError):
+        return None
+    if h <= 0:
+        return None
+    return int(h)
+
+
+def _synthetic_list_row_slot_rects(
+    list_left: int,
+    list_top: int,
+    list_w: int,
+    list_h: int,
+    n: int,
+    gap: int,
+    row_height_px: int | None = None,
+) -> list[tuple[int, int, int, int]]:
+    if n <= 0 or list_w <= 0 or list_h <= 0:
+        return []
+    # When Apex gives a row height (after display multiplier), use it for every row even if the stack
+    # extends past the host rect — divide-by-n was producing unusably thin strips.
+    if row_height_px is not None and row_height_px > 0:
+        out_fixed: list[tuple[int, int, int, int]] = []
+        y = list_top
+        for _ in range(n):
+            out_fixed.append((list_left, y, list_w, row_height_px))
+            y += row_height_px + gap
+        return out_fixed
+    total_gap = gap * (n - 1)
+    slot_h = (list_h - total_gap) // n
+    if slot_h <= 0:
+        return []
+    out: list[tuple[int, int, int, int]] = []
+    y = list_top
+    for _ in range(n):
+        out.append((list_left, y, list_w, slot_h))
+        y += slot_h + gap
+    return out
+
+
+def _synthetic_list_inset_rect_args(list_w: int) -> tuple[int, int]:
+    inset = max(0, int(_SYNTHETIC_LIST_SIDE_INSET_PX))
+    inner_w = max(1, int(list_w) - (2 * inset))
+    return inset, inner_w
+
+
+def _synthetic_list_row_track_rect_args(list_w: int) -> tuple[int, int]:
+    """Row slot left + width inside the host (inner list area after side inset, then hit shrink)."""
+    base_inset, inner_w = _synthetic_list_inset_rect_args(list_w)
+    shrink = max(0, int(_SYNTHETIC_LIST_ROW_HIT_SHRINK_PX))
+    row_left = base_inset + shrink
+    row_w = max(1, inner_w - (2 * shrink))
+    return row_left, row_w
+
+
+def _room_list_row_slot_rects(
+    list_left: int,
+    list_top: int,
+    list_w: int,
+    list_h: int,
+    n: int,
+    gap: int,
+    row_height_px: int | None = None,
+) -> list[tuple[int, int, int, int]]:
+    """Backward-compatible alias; use `_synthetic_list_row_slot_rects` for new code."""
+    return _synthetic_list_row_slot_rects(list_left, list_top, list_w, list_h, n, gap, row_height_px=row_height_px)
+
+
+def _max_button_order_for_page_layer(page: dict[str, Any], layer_key: str) -> int:
+    category_defs = ("screenLabels", "screenButtons", "hardButtons", "uiItems")
+    max_order = 0
+    layers = _page_layers(page)
+    if layers and layer_key.startswith("layer-"):
+        try:
+            idx = int(layer_key.split("-", 1)[1])
+        except (TypeError, ValueError):
+            idx = -1
+        if 0 <= idx < len(layers):
+            cats = layers[idx].get("buttonCategories", {})
+            for cat in category_defs:
+                for btn in (cats.get(cat, []) if isinstance(cats, dict) else []):
+                    stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+                    max_order = max(max_order, int(stack.get("buttonOrder", 0) or 0))
+            return max_order
+    cats = page.get("buttonCategories", {})
+    for cat in category_defs:
+        for btn in (cats.get(cat, []) if isinstance(cats, dict) else []):
+            stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+            max_order = max(max_order, int(stack.get("buttonOrder", 0) or 0))
+    return max_order
+
+
+def _find_room_list_host(page: dict[str, Any], orientation: str) -> tuple[str, dict[str, Any]] | None:
+    for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
+        if not _is_room_list_host_button(btn):
+            continue
+        oriented_ui = _orientation_ui(btn["buttonUI"], orientation)
+        if not bool(oriented_ui.get("visible", True)):
+            continue
+        c = _ui_coordinates(btn["buttonUI"], orientation)
+        if int(c.get("width") or 0) <= 0 or int(c.get("height") or 0) <= 0:
+            continue
+        return (
+            "page",
+            {
+                "btn": btn,
+                "label": label,
+                "off_top": off_top,
+                "off_left": off_left,
+                "layer_key": layer_key,
+                "layer_order": layer_order,
+            },
+        )
+    for vb in _iter_viewport_buttons(page, orientation):
+        if not vb.get("visible"):
+            continue
+        btn = vb.get("btn")
+        if not isinstance(btn, dict) or not _is_room_list_host_button(btn):
+            continue
+        c = _ui_coordinates(btn["buttonUI"], orientation)
+        if int(c.get("width") or 0) <= 0 or int(c.get("height") or 0) <= 0:
+            continue
+        return ("viewport", vb)
+    return None
+
+
+def _synthetic_room_list_row_button(
+    *,
+    room_row: dict[str, Any],
+    row_rect_portrait: tuple[int, int, int, int],
+    row_rect_landscape: tuple[int, int, int, int],
+    layer_order: int,
+    row_index: int,
+    page_id: Any,
+    rti_address: Any,
+    source_device_id: Any,
+    primary_tag: str,
+    primary_tag_id: int | None,
+    layer_max_button_order: int,
+    room_display: str,
+) -> dict[str, Any]:
+    row_left_p, row_top_p, row_w_p, row_h_p = row_rect_portrait
+    row_left_l, row_top_l, row_w_l, row_h_l = row_rect_landscape
+    slot_fs = 10
+    resolved = room_row.get("resolvedPageLink")
+    page_link_on = isinstance(resolved, dict) and resolved.get("targetPageId") is not None
+    room_id = int(room_row.get("roomId") or 0)
+    return {
+        "buttonIdentity": {
+            "buttonTagName": primary_tag,
+            "text": room_display,
+            "buttonType": None,
+        },
+        "buttonUI": {
+            "fontSize": slot_fs,
+            "orientations": {
+                "portrait": {
+                    "visible": True,
+                    "coordinates": {"left": row_left_p, "top": row_top_p, "width": row_w_p, "height": row_h_p},
+                },
+                "landscape": {
+                    "visible": True,
+                    "coordinates": {"left": row_left_l, "top": row_top_l, "width": row_w_l, "height": row_h_l},
+                },
+            },
+            "stack": {
+                "layerOrder": layer_order,
+                "buttonOrder": int(layer_max_button_order) + 1,
+                "frameNumber": 0,
+            },
+        },
+        "testTargets": {
+            "text": True,
+            "macros": False,
+            "macroSteps": False,
+            "variables": {
+                "Text": False,
+                "Reversed": False,
+                "Inactive": False,
+                "Visible": False,
+                "Value": False,
+                "State": False,
+                "Command": False,
+                "Image": False,
+                "List": False,
+            },
+            "graphics": {"bitmap": False, "icon": False},
+            "pageLink": {"enabled": page_link_on},
+        },
+        "resolvedPageLink": resolved if page_link_on else None,
+        "apexScopeSource": {
+            "page": {"pageId": page_id, "roomId": room_id, "sourceDeviceId": source_device_id, "rtiAddress": rti_address},
+            "viewportLayer": {"layerId": 0, "sharedLayerId": 0, "roomId": None, "sourceId": None},
+            "pageLayer": {"roomId": None, "sourceId": None},
+            "button": {"buttonId": 1_000_000 + row_index, "buttonTagId": primary_tag_id},
+            "bindings": {"macroIds": [], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
+        },
+    }
+
+
+def _synthetic_room_list_row_id_attr(room_row: dict[str, Any], fallback_index: int) -> str:
+    rid = room_row.get("roomId")
+    if rid is None:
+        return str(fallback_index)
+    try:
+        return str(int(rid))
+    except (TypeError, ValueError):
+        return str(rid)
+
+
+def _synthetic_controller_room_list_rows_html(
+    page: dict[str, Any],
+    orientation: str,
+    diag: dict[str, Any],
+    diag_page_id: Any,
+    diag_device_id: Any,
+    variable_label: str,
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
+    layer_name_by_key: dict[str, str],
+    page_id: Any,
+    rti_address: Any,
+) -> str:
+    room_rows = _sorted_diag_room_rows(diag)
+    if not room_rows:
+        return ""
+    host_hit = _find_room_list_host(page, orientation)
+    if not host_hit:
+        return ""
+    kind, payload = host_hit
+    parts: list[str] = []
+
+    if kind == "page":
+        btn = payload["btn"]
+        label = str(payload["label"] or "Screen Button")
+        off_top = int(payload["off_top"])
+        off_left = int(payload["off_left"])
+        layer_key = str(payload["layer_key"])
+        layer_order = int(payload["layer_order"])
+        p_c = _ui_coordinates(btn["buttonUI"], "portrait")
+        l_c = _ui_coordinates(btn["buttonUI"], "landscape")
+        row_h = _list_row_height_px_from_host(btn)
+        p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+        l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
+        rects_p = _synthetic_list_row_slot_rects(
+            p_row_left,
+            0,
+            p_row_w,
+            int(p_c.get("height") or 0),
+            len(room_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            row_h,
+        )
+        rects_l = _synthetic_list_row_slot_rects(
+            l_row_left,
+            0,
+            l_row_w,
+            int(l_c.get("height") or 0),
+            len(room_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            row_h,
+        )
+        if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
+            return ""
+        layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
+        layer_display = str(layer_name_by_key.get(layer_key, "") or "")
+        rid0 = _synthetic_room_list_row_id_attr(room_rows[0], 0)
+        room_display0 = _norm_text(room_rows[0].get("roomName")) or f"Room {rid0}"
+        tag0, tag_id0 = _room_list_primary_tag_info(room_rows[0])
+        syn0 = _synthetic_room_list_row_button(
+            room_row=room_rows[0],
+            row_rect_portrait=rects_p[0],
+            row_rect_landscape=rects_l[0],
+            layer_order=layer_order,
+            row_index=0,
+            page_id=page_id,
+            rti_address=rti_address,
+            source_device_id=diag_device_id,
+            primary_tag=tag0,
+            primary_tag_id=tag_id0,
+            layer_max_button_order=layer_max_button_order,
+            room_display=room_display0,
+        )
+        list_z = _button_composite_z_index(syn0, fallback_layer_order=layer_order, tie_breaker=1)
+        parts.append(
+            _synthetic_list_scroll_shell_open(
+                host_btn=btn,
+                portrait_off_left=off_left,
+                portrait_off_top=off_top,
+                landscape_off_left=off_left,
+                landscape_off_top=off_top,
+                z_index=list_z,
+                list_kind="room",
+                layer_key=layer_key,
+                layer_order=layer_order,
+                layer_display=layer_display,
+                orientation=orientation,
+            )
+        )
+        pad_h = _synthetic_list_scroll_pad_height_px(
+            len(room_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            row_h,
+            int(p_c.get("height") or 0),
+            int(l_c.get("height") or 0),
+        )
+        parts.append(_synthetic_list_scroll_pad_html(pad_h))
+        for i, room_row in enumerate(room_rows):
+            rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
+            room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
+            tag_name, tag_id = _room_list_primary_tag_info(room_row)
+            syn = _synthetic_room_list_row_button(
+                room_row=room_row,
+                row_rect_portrait=rects_p[i],
+                row_rect_landscape=rects_l[i],
+                layer_order=layer_order,
+                row_index=i,
+                page_id=page_id,
+                rti_address=rti_address,
+                source_device_id=diag_device_id,
+                primary_tag=tag_name,
+                primary_tag_id=tag_id,
+                layer_max_button_order=layer_max_button_order,
+                room_display=room_display,
+            )
+            active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
+            extra = (
+                f"data-synthetic-room-list='1' data-synthetic-room-id='{escape(rid_attr, quote=True)}' "
+                f"data-synthetic-room-tag-id='{int(tag_id) if tag_id is not None else ''}' "
+                f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
+                f"data-owner-layer-name='{escape(layer_display, quote=True)}'"
+            )
+            if diag_device_id is not None:
+                extra += f" data-diag-device-id='{int(diag_device_id)}'"
+            if diag_page_id is not None:
+                extra += f" data-diag-page-id='{int(diag_page_id)}'"
+            parts.append(
+                _render_button_control(
+                    syn,
+                    label,
+                    active_rect[0],
+                    active_rect[1],
+                    variable_label,
+                    app_ui,
+                    page_targets,
+                    page_target_indexes,
+                    extra_style=f"z-index:{list_z};",
+                    extra_attrs=extra,
+                    orientation=orientation,
+                )
+            )
+        parts.append("</div>")
+        return "".join(parts)
+
+    vb = payload
+    btn = vb["btn"]
+    label = str(vb.get("label") or "Screen Button")
+    p_c = _ui_coordinates(btn["buttonUI"], "portrait")
+    l_c = _ui_coordinates(btn["buttonUI"], "landscape")
+    row_h = _list_row_height_px_from_host(btn)
+    p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+    l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
+    rects_p = _synthetic_list_row_slot_rects(
+        p_row_left,
+        0,
+        p_row_w,
+        int(p_c.get("height") or 0),
+        len(room_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        row_h,
+    )
+    rects_l = _synthetic_list_row_slot_rects(
+        l_row_left,
+        0,
+        l_row_w,
+        int(l_c.get("height") or 0),
+        len(room_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        row_h,
+    )
+    if len(rects_p) != len(room_rows) or len(rects_l) != len(room_rows):
+        return ""
+    owner_lo = int(vb.get("owner_layer_order") or 0)
+    owner_key = str(vb.get("owner_layer_key") or "")
+    layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
+    layer_display = str(layer_name_by_key.get(owner_key, "") or "")
+    rid0 = _synthetic_room_list_row_id_attr(room_rows[0], 0)
+    room_display0 = _norm_text(room_rows[0].get("roomName")) or f"Room {rid0}"
+    tag0, tag_id0 = _room_list_primary_tag_info(room_rows[0])
+    syn0 = _synthetic_room_list_row_button(
+        room_row=room_rows[0],
+        row_rect_portrait=rects_p[0],
+        row_rect_landscape=rects_l[0],
+        layer_order=owner_lo,
+        row_index=0,
+        page_id=page_id,
+        rti_address=rti_address,
+        source_device_id=diag_device_id,
+        primary_tag=tag0,
+        primary_tag_id=tag_id0,
+        layer_max_button_order=layer_max_button_order,
+        room_display=room_display0,
+    )
+    list_z = _button_composite_z_index(syn0, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get("frame_id") or 0), tie_breaker=1)
+    vp_shell_extra = (
+        f" data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+        f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
+        f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
+        f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
+        f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+        f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}'"
+    )
+    parts.append(
+        _synthetic_list_scroll_shell_open(
+            host_btn=btn,
+            portrait_off_left=int(vb["portrait_off_left"]),
+            portrait_off_top=int(vb["portrait_off_top"]),
+            landscape_off_left=int(vb["landscape_off_left"]),
+            landscape_off_top=int(vb["landscape_off_top"]),
+            z_index=list_z,
+            list_kind="room",
+            layer_key=owner_key,
+            layer_order=owner_lo,
+            layer_display=layer_display,
+            orientation=orientation,
+            extra_classes="vp-btn",
+            extra_attrs=vp_shell_extra,
+        )
+    )
+    pad_h = _synthetic_list_scroll_pad_height_px(
+        len(room_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        row_h,
+        int(p_c.get("height") or 0),
+        int(l_c.get("height") or 0),
+    )
+    parts.append(_synthetic_list_scroll_pad_html(pad_h))
+    for i, room_row in enumerate(room_rows):
+        rid_attr = _synthetic_room_list_row_id_attr(room_row, i)
+        room_display = _norm_text(room_row.get("roomName")) or f"Room {rid_attr}"
+        tag_name, tag_id = _room_list_primary_tag_info(room_row)
+        syn = _synthetic_room_list_row_button(
+            room_row=room_row,
+            row_rect_portrait=rects_p[i],
+            row_rect_landscape=rects_l[i],
+            layer_order=owner_lo,
+            row_index=i,
+            page_id=page_id,
+            rti_address=rti_address,
+            source_device_id=diag_device_id,
+            primary_tag=tag_name,
+            primary_tag_id=tag_id,
+            layer_max_button_order=layer_max_button_order,
+            room_display=room_display,
+        )
+        active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
+        extra = (
+            f"data-synthetic-room-list='1' data-synthetic-room-id='{escape(rid_attr, quote=True)}' "
+            f"data-synthetic-room-tag-id='{int(tag_id) if tag_id is not None else ''}' "
+            f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+            f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
+            f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
+            f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
+            f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+            f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}' "
+            f"data-owner-layer-key='{owner_key}' data-owner-layer-order='{owner_lo}' "
+            f"data-owner-layer-name='{escape(layer_display, quote=True)}'"
+        )
+        if diag_device_id is not None:
+            extra += f" data-diag-device-id='{int(diag_device_id)}'"
+        if diag_page_id is not None:
+            extra += f" data-diag-page-id='{int(diag_page_id)}'"
+        parts.append(
+            _render_button_control(
+                syn,
+                label,
+                active_rect[0],
+                active_rect[1],
+                variable_label,
+                app_ui,
+                page_targets,
+                page_target_indexes,
+                extra_classes="vp-btn",
+                extra_style=f"z-index:{list_z};",
+                extra_attrs=extra,
+                orientation=orientation,
+            )
+        )
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _is_source_list_host_button(btn: dict[str, Any]) -> bool:
+    if not isinstance(btn, dict):
+        return False
+    t = btn.get("testTargets", {})
+    if not isinstance(t, dict):
+        return False
+    vars_t = t.get("variables", {})
+    if not isinstance(vars_t, dict) or not bool(vars_t.get("List")):
+        return False
+    tag = _norm_text(_button_tag_name(btn)).lower()
+    text = _norm_text((btn.get("buttonIdentity") or {}).get("text") or "").lower()
+    blob = f"{tag} {text}"
+    return "source" in blob and "list" in blob
+
+
+def _scope_room_source_from_button(btn: dict[str, Any]) -> tuple[int | None, int | None]:
+    scope = btn.get("apexScopeSource")
+    if not isinstance(scope, dict):
+        return None, None
+    page = scope.get("page") if isinstance(scope.get("page"), dict) else {}
+    viewport_layer = scope.get("viewportLayer")
+    if not isinstance(viewport_layer, dict):
+        viewport_layer = scope.get("layer") if isinstance(scope.get("layer"), dict) else {}
+    page_layer = scope.get("pageLayer") if isinstance(scope.get("pageLayer"), dict) else {}
+
+    room_raw = viewport_layer.get("roomId")
+    if room_raw is None:
+        room_raw = page_layer.get("roomId")
+    if room_raw is None:
+        room_raw = page.get("roomId")
+
+    source_raw = viewport_layer.get("sourceId")
+    if source_raw is None:
+        source_raw = page_layer.get("sourceId")
+    if source_raw is None:
+        source_raw = page.get("sourceDeviceId")
+
+    room_id = int(room_raw) if room_raw is not None else None
+    source_id = int(source_raw) if source_raw is not None else None
+    return room_id, source_id
+
+
+def _sorted_diag_source_rows(diag: dict[str, Any], room_id: int | None) -> list[dict[str, Any]]:
+    rows = diag.get("sourceListRows")
+    if not isinstance(rows, list):
+        return []
+    out = [r for r in rows if isinstance(r, dict)]
+    # Apex Activities.Checked: non-zero = source appears on the room list (checkbox on).
+    out = [r for r in out if int(r.get("checked") or 0) != 0]
+    # Room id 0 / unset = not a real room scope (e.g. global overview). Emit all rooms' rows so
+    # the client can show only the last selected room (session) via applySelectedRoomToSourceRows.
+    if room_id is not None and int(room_id) > 0:
+        out = [r for r in out if int(r.get("roomId") or -1) == int(room_id)]
+    return sorted(
+        out,
+        key=lambda r: (
+            int(r.get("roomId") or 0),
+            int(r.get("activityOrder") or 0),
+            _norm_text(r.get("sourceName")).lower(),
+        ),
+    )
+
+
+def _find_source_list_host(page: dict[str, Any], orientation: str) -> tuple[str, dict[str, Any]] | None:
+    for btn, label, off_top, off_left, layer_key, layer_order in _iter_page_buttons(page):
+        if not _is_source_list_host_button(btn):
+            continue
+        oriented_ui = _orientation_ui(btn["buttonUI"], orientation)
+        if not bool(oriented_ui.get("visible", True)):
+            continue
+        c = _ui_coordinates(btn["buttonUI"], orientation)
+        if int(c.get("width") or 0) <= 0 or int(c.get("height") or 0) <= 0:
+            continue
+        return (
+            "page",
+            {
+                "btn": btn,
+                "label": label,
+                "off_top": off_top,
+                "off_left": off_left,
+                "layer_key": layer_key,
+                "layer_order": layer_order,
+            },
+        )
+    for vb in _iter_viewport_buttons(page, orientation):
+        if not vb.get("visible"):
+            continue
+        btn = vb.get("btn")
+        if not isinstance(btn, dict) or not _is_source_list_host_button(btn):
+            continue
+        c = _ui_coordinates(btn["buttonUI"], orientation)
+        if int(c.get("width") or 0) <= 0 or int(c.get("height") or 0) <= 0:
+            continue
+        return ("viewport", vb)
+    return None
+
+
+def _synthetic_source_list_row_button(
+    *,
+    source_row: dict[str, Any],
+    row_rect_portrait: tuple[int, int, int, int],
+    row_rect_landscape: tuple[int, int, int, int],
+    layer_order: int,
+    row_index: int,
+    page_id: Any,
+    rti_address: Any,
+    layer_max_button_order: int,
+) -> dict[str, Any]:
+    row_left_p, row_top_p, row_w_p, row_h_p = row_rect_portrait
+    row_left_l, row_top_l, row_w_l, row_h_l = row_rect_landscape
+    source_name = _norm_text(source_row.get("sourceName")) or f"Source {row_index + 1}"
+    source_device_id = int(source_row.get("sourceDeviceId") or 0)
+    room_id = int(source_row.get("roomId") or 0)
+    resolved = source_row.get("resolvedPageLink")
+    page_link_on = isinstance(resolved, dict) and resolved.get("targetPageId") is not None
+    return {
+        "buttonIdentity": {"buttonTagName": f"Source:{source_name}", "text": source_name, "buttonType": None},
+        "buttonUI": {
+            "fontSize": 10,
+            "orientations": {
+                "portrait": {"visible": True, "coordinates": {"left": row_left_p, "top": row_top_p, "width": row_w_p, "height": row_h_p}},
+                "landscape": {"visible": True, "coordinates": {"left": row_left_l, "top": row_top_l, "width": row_w_l, "height": row_h_l}},
+            },
+            "stack": {
+                "layerOrder": layer_order,
+                "buttonOrder": int(layer_max_button_order) + 1,
+                "frameNumber": 0,
+            },
+        },
+        "testTargets": {
+            "text": True,
+            "macros": False,
+            "macroSteps": False,
+            "variables": {
+                "Text": False,
+                "Reversed": False,
+                "Inactive": False,
+                "Visible": False,
+                "Value": False,
+                "State": False,
+                "Command": False,
+                "Image": False,
+                "List": False,
+            },
+            "graphics": {"bitmap": False, "icon": False},
+            "pageLink": {"enabled": page_link_on},
+        },
+        "resolvedPageLink": resolved if page_link_on else None,
+        "apexScopeSource": {
+            "page": {"pageId": page_id, "roomId": room_id, "sourceDeviceId": source_device_id, "rtiAddress": rti_address},
+            "viewportLayer": {"layerId": 0, "sharedLayerId": 0, "roomId": room_id, "sourceId": source_device_id},
+            "pageLayer": {"roomId": room_id, "sourceId": source_device_id},
+            "button": {"buttonId": 2_000_000 + row_index, "buttonTagId": None},
+            "bindings": {"macroIds": [], "variableIds": [], "macroStepIds": [], "pageLinkId": None},
+        },
+    }
+
+
+def _synthetic_source_list_rows_html(
+    page: dict[str, Any],
+    orientation: str,
+    diag: dict[str, Any],
+    diag_page_id: Any,
+    diag_device_id: Any,
+    variable_label: str,
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
+    layer_name_by_key: dict[str, str],
+    page_id: Any,
+    rti_address: Any,
+) -> str:
+    host_hit = _find_source_list_host(page, orientation)
+    if not host_hit:
+        return ""
+    kind, payload = host_hit
+    host_btn = payload["btn"] if kind == "page" else payload["btn"]
+    scoped_room_id, _scoped_source_id = _scope_room_source_from_button(host_btn)
+    source_rows = _sorted_diag_source_rows(diag, scoped_room_id)
+    if not source_rows:
+        return ""
+    parts: list[str] = []
+
+    if kind == "page":
+        label = str(payload["label"] or "Screen Button")
+        off_top = int(payload["off_top"])
+        off_left = int(payload["off_left"])
+        layer_key = str(payload["layer_key"])
+        layer_order = int(payload["layer_order"])
+        p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
+        l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
+        src_row_h = _list_row_height_px_from_host(host_btn)
+        p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+        l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
+        rects_p = _synthetic_list_row_slot_rects(
+            p_row_left,
+            0,
+            p_row_w,
+            int(p_c.get("height") or 0),
+            len(source_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            src_row_h,
+        )
+        rects_l = _synthetic_list_row_slot_rects(
+            l_row_left,
+            0,
+            l_row_w,
+            int(l_c.get("height") or 0),
+            len(source_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            src_row_h,
+        )
+        if len(rects_p) != len(source_rows) or len(rects_l) != len(source_rows):
+            return ""
+        layer_max_button_order = _max_button_order_for_page_layer(page, layer_key)
+        layer_display = str(layer_name_by_key.get(layer_key, "") or "")
+        syn0 = _synthetic_source_list_row_button(
+            source_row=source_rows[0],
+            row_rect_portrait=rects_p[0],
+            row_rect_landscape=rects_l[0],
+            layer_order=layer_order,
+            row_index=0,
+            page_id=page_id,
+            rti_address=rti_address,
+            layer_max_button_order=layer_max_button_order,
+        )
+        list_z = _button_composite_z_index(syn0, fallback_layer_order=layer_order, tie_breaker=1)
+        parts.append(
+            _synthetic_list_scroll_shell_open(
+                host_btn=host_btn,
+                portrait_off_left=off_left,
+                portrait_off_top=off_top,
+                landscape_off_left=off_left,
+                landscape_off_top=off_top,
+                z_index=list_z,
+                list_kind="source",
+                layer_key=layer_key,
+                layer_order=layer_order,
+                layer_display=layer_display,
+                orientation=orientation,
+            )
+        )
+        pad_h = _synthetic_list_scroll_pad_height_px(
+            len(source_rows),
+            _ROOM_LIST_SYNTHETIC_GAP_PX,
+            src_row_h,
+            int(p_c.get("height") or 0),
+            int(l_c.get("height") or 0),
+        )
+        parts.append(_synthetic_list_scroll_pad_html(pad_h))
+        for i, source_row in enumerate(source_rows):
+            syn = _synthetic_source_list_row_button(
+                source_row=source_row,
+                row_rect_portrait=rects_p[i],
+                row_rect_landscape=rects_l[i],
+                layer_order=layer_order,
+                row_index=i,
+                page_id=page_id,
+                rti_address=rti_address,
+                layer_max_button_order=layer_max_button_order,
+            )
+            active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
+            extra = (
+                f"data-synthetic-source-list='1' data-synthetic-source-room-id='{int(source_row.get('roomId') or 0)}' "
+                f"data-synthetic-source-device-id='{int(source_row.get('sourceDeviceId') or 0)}' "
+                f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
+                f"data-owner-layer-name='{escape(layer_display, quote=True)}'"
+            )
+            if diag_device_id is not None:
+                extra += f" data-diag-device-id='{int(diag_device_id)}'"
+            if diag_page_id is not None:
+                extra += f" data-diag-page-id='{int(diag_page_id)}'"
+            parts.append(
+                _render_button_control(
+                    syn,
+                    label,
+                    active_rect[0],
+                    active_rect[1],
+                    variable_label,
+                    app_ui,
+                    page_targets,
+                    page_target_indexes,
+                    extra_style=f"z-index:{list_z};",
+                    extra_attrs=extra,
+                    orientation=orientation,
+                )
+            )
+        parts.append("</div>")
+        return "".join(parts)
+
+    vb = payload
+    label = str(vb.get("label") or "Screen Button")
+    p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
+    l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
+    src_row_h = _list_row_height_px_from_host(host_btn)
+    p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+    l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
+    rects_p = _synthetic_list_row_slot_rects(
+        p_row_left,
+        0,
+        p_row_w,
+        int(p_c.get("height") or 0),
+        len(source_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        src_row_h,
+    )
+    rects_l = _synthetic_list_row_slot_rects(
+        l_row_left,
+        0,
+        l_row_w,
+        int(l_c.get("height") or 0),
+        len(source_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        src_row_h,
+    )
+    if len(rects_p) != len(source_rows) or len(rects_l) != len(source_rows):
+        return ""
+    owner_lo = int(vb.get("owner_layer_order") or 0)
+    owner_key = str(vb.get("owner_layer_key") or "")
+    layer_max_button_order = _max_button_order_for_page_layer(page, owner_key)
+    layer_display = str(layer_name_by_key.get(owner_key, "") or "")
+    syn0 = _synthetic_source_list_row_button(
+        source_row=source_rows[0],
+        row_rect_portrait=rects_p[0],
+        row_rect_landscape=rects_l[0],
+        layer_order=owner_lo,
+        row_index=0,
+        page_id=page_id,
+        rti_address=rti_address,
+        layer_max_button_order=layer_max_button_order,
+    )
+    list_z = _button_composite_z_index(syn0, fallback_layer_order=owner_lo, fallback_frame_number=int(vb.get("frame_id") or 0), tie_breaker=1)
+    vp_shell_extra = (
+        f" data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+        f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
+        f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
+        f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
+        f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+        f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}'"
+    )
+    parts.append(
+        _synthetic_list_scroll_shell_open(
+            host_btn=host_btn,
+            portrait_off_left=int(vb["portrait_off_left"]),
+            portrait_off_top=int(vb["portrait_off_top"]),
+            landscape_off_left=int(vb["landscape_off_left"]),
+            landscape_off_top=int(vb["landscape_off_top"]),
+            z_index=list_z,
+            list_kind="source",
+            layer_key=owner_key,
+            layer_order=owner_lo,
+            layer_display=layer_display,
+            orientation=orientation,
+            extra_classes="vp-btn",
+            extra_attrs=vp_shell_extra,
+        )
+    )
+    pad_h = _synthetic_list_scroll_pad_height_px(
+        len(source_rows),
+        _ROOM_LIST_SYNTHETIC_GAP_PX,
+        src_row_h,
+        int(p_c.get("height") or 0),
+        int(l_c.get("height") or 0),
+    )
+    parts.append(_synthetic_list_scroll_pad_html(pad_h))
+    for i, source_row in enumerate(source_rows):
+        syn = _synthetic_source_list_row_button(
+            source_row=source_row,
+            row_rect_portrait=rects_p[i],
+            row_rect_landscape=rects_l[i],
+            layer_order=owner_lo,
+            row_index=i,
+            page_id=page_id,
+            rti_address=rti_address,
+            layer_max_button_order=layer_max_button_order,
+        )
+        active_rect = rects_p[i] if orientation == "portrait" else rects_l[i]
+        extra = (
+            f"data-synthetic-source-list='1' data-synthetic-source-room-id='{int(source_row.get('roomId') or 0)}' "
+            f"data-synthetic-source-device-id='{int(source_row.get('sourceDeviceId') or 0)}' "
+            f"data-vp='{vb['vp_index']}' data-frame='{vb['frame_id']}' "
+            f"data-vp-layer-key='{escape(str(vb.get('vp_layer_key') or ''), quote=True)}' "
+            f"data-vp-layer-name='{escape(str(vb.get('vp_layer_name') or ''), quote=True)}' "
+            f"data-vp-layer-order='{int(vb.get('vp_layer_order') or 0)}' "
+            f"data-vp-pv='{'1' if bool(vb.get('vp_portrait_visible', True)) else '0'}' "
+            f"data-vp-lv='{'1' if bool(vb.get('vp_landscape_visible', True)) else '0'}' "
+            f"data-owner-layer-key='{owner_key}' data-owner-layer-order='{owner_lo}' "
+            f"data-owner-layer-name='{escape(layer_display, quote=True)}'"
+        )
+        if diag_device_id is not None:
+            extra += f" data-diag-device-id='{int(diag_device_id)}'"
+        if diag_page_id is not None:
+            extra += f" data-diag-page-id='{int(diag_page_id)}'"
+        parts.append(
+            _render_button_control(
+                syn,
+                label,
+                active_rect[0],
+                active_rect[1],
+                variable_label,
+                app_ui,
+                page_targets,
+                page_target_indexes,
+                extra_classes="vp-btn",
+                extra_style=f"z-index:{list_z};",
+                extra_attrs=extra,
+                orientation=orientation,
+            )
+        )
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def _page_payload(
     project_data: dict[str, Any],
     app_ui: dict[str, Any],
@@ -708,7 +1828,7 @@ def _page_payload(
                 app_ui,
                 page_targets,
                 page_target_indexes,
-                extra_style=f"z-index:{100 + layer_order};",
+                extra_style=f"z-index:{_button_composite_z_index(btn, fallback_layer_order=layer_order)};",
                 extra_attrs=(
                     f"data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}' "
                     f"data-owner-layer-name='{escape(str(layer_name_by_key.get(str(layer_key), '') or ''))}'{diag_attrs}"
@@ -717,11 +1837,46 @@ def _page_payload(
             )
         )
 
+    page_button_rows.append(
+        _synthetic_controller_room_list_rows_html(
+            page,
+            orientation,
+            diag,
+            diag_page_id,
+            diag_device_id,
+            variable_label,
+            app_ui,
+            page_targets,
+            page_target_indexes,
+            layer_name_by_key,
+            page.get("pageId"),
+            page.get("rtiAddress"),
+        )
+    )
+    page_button_rows.append(
+        _synthetic_source_list_rows_html(
+            page,
+            orientation,
+            diag,
+            diag_page_id,
+            diag_device_id,
+            variable_label,
+            app_ui,
+            page_targets,
+            page_target_indexes,
+            layer_name_by_key,
+            page.get("pageId"),
+            page.get("rtiAddress"),
+        )
+    )
+
     viewport_button_rows: list[str] = []
     for vb in _iter_viewport_buttons(page, orientation):
         btn = vb["btn"]
         c = _ui_coordinates(btn["buttonUI"], orientation)
-        extra = f"z-index:{100 + int(vb['owner_layer_order'])};"
+        extra = (
+            f"z-index:{_button_composite_z_index(btn, fallback_layer_order=int(vb['owner_layer_order']), fallback_frame_number=int(vb.get('frame_id') or 0))};"
+        )
         if not vb["visible"]:
             extra = "display:none;" + extra
         vp_button_id, vp_child_button_id = _diag_match_viewport_button_ids(
@@ -799,7 +1954,7 @@ def _page_payload(
     viewport_boxes = "".join(
         [
             "<div class='vp-box' style='z-index:{z};' data-vp='{vp_index}' data-nav-mode='{nav_mode}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' {orientation_attrs} data-owner-layer-key='{layer_key}' data-owner-layer-order='{layer_order}'></div>".format(
-                z=100 + int(c["layer_order"]),
+                z=_viewport_box_z_index(int(c["layer_order"]), int(c["vp_index"])),
                 nav_mode=escape(str((c.get("viewport_ui") or {}).get("navigationMode") or "page")),
                 orientation_attrs=_orientation_data_attrs(c["viewport_ui"]),
                 **c,
@@ -831,6 +1986,8 @@ def _render_document(
     orientation_state_json: str,
     show_orientation_toggle: bool,
     home_href: str | None = None,
+    room_list_resolution_json: str = "[]",
+    source_list_resolution_json: str = "[]",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -862,6 +2019,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .orientation-controls{{left:0;display:flex;align-items:flex-start;justify-content:center;z-index:23;}}
 .top-controls{{padding:0 16px;box-sizing:border-box;gap:12px;justify-content:space-between;}}
 .header{{font-weight:700;font-size:20px;text-align:center;display:flex;align-items:center;justify-content:center;flex:1;height:100%;min-width:0;}}
+.selected-room-indicator{{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:12px;line-height:1;color:#2a455b;background:rgba(248,251,254,.92);border:1px solid #c6d2dd;border-radius:10px;padding:4px 10px;white-space:nowrap;pointer-events:none;z-index:24;}}
+.selected-room-indicator .value{{font-weight:700;}}
 .project-home-link{{display:inline-flex;align-items:center;justify-content:center;min-width:132px;height:40px;padding:0 16px;border-radius:14px;border:1px solid #a9bccd;background:#f7fbff;color:#14324b;text-decoration:none;font-size:14px;line-height:1;box-sizing:border-box;white-space:nowrap;}}
 .project-home-link:hover{{filter:brightness(0.98);}}
 .rti-canvas{{position:absolute;box-sizing:border-box;z-index:1;overflow:auto;scrollbar-width:none;scrollbar-gutter:stable overlay;}}
@@ -876,13 +2035,26 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
- .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:9000;pointer-events:none;display:none;}}
+ .vp-overlay{{position:absolute;inset:0;background:rgba(255,255,255,0.05);z-index:{_Z_VP_OVERLAY};pointer-events:none;display:none;}}
  .viewport-mode .vp-overlay{{display:block;}}
- .viewport-mode .vp-focus{{z-index:9500 !important;pointer-events:auto;}}
+ .viewport-mode .vp-focus{{z-index:{_Z_VP_FOCUS} !important;pointer-events:auto;}}
  .viewport-mode .vp-box:not(.vp-focus){{pointer-events:none;}}
 .btn-wrap{{position:absolute;z-index:2;}}
+.synthetic-list-scroll{{position:absolute;z-index:2;overflow-x:hidden;overflow-y:auto;box-sizing:border-box;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;}}
+.synthetic-list-scroll.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
+.synthetic-list-scroll::-webkit-scrollbar{{width:10px;height:10px;}}
+.synthetic-list-scroll::-webkit-scrollbar-thumb{{background:transparent;}}
+.synthetic-list-scroll::-webkit-scrollbar-track{{background:transparent;}}
+.synthetic-list-scroll.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
+.synthetic-list-scroll .btn-wrap{{z-index:1;}}
+/* Let clicks reach the real list host .btn-wrap underneath; rows stay interactive. */
+.synthetic-list-scroll{{pointer-events:none;}}
+.synthetic-list-scroll > .btn-wrap{{pointer-events:auto;}}
+.synthetic-list-scroll > .synthetic-list-scroll-pad{{pointer-events:none;}}
  .device-page .btn-wrap.vp-btn{{pointer-events:none;}}
+ .device-page .synthetic-list-scroll.vp-btn{{pointer-events:none;}}
  .vp-popup-stage .btn-wrap.vp-btn{{pointer-events:auto;}}
+ .vp-popup-stage .synthetic-list-scroll.vp-btn{{pointer-events:auto;}}
  .viewport-mode #rtiCanvas{{pointer-events:none;overflow:hidden;}}
  .vp-popup{{position:fixed;left:0;top:0;width:0;height:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
  .viewport-mode .vp-popup{{display:flex;}}
@@ -966,7 +2138,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
-<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div></div>
+<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div><div class='selected-room-indicator' id='selectedRoomIndicator'>Selected Room: <span class='value' id='selectedRoomValue'>All Rooms</span></div></div>
 {f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'></div>
@@ -993,6 +2165,8 @@ const SOURCE_DEVICE_SIZE={{width:{w},height:{h}}};
 const PROJECT_SESSION_KEY={json.dumps(project_session_key)};
 const PAGE_HTML_BY_INDEX={page_html_by_index_json};
 const PAGE_STATE={page_state_json};
+const ROOM_LIST_RESOLUTION={room_list_resolution_json};
+const SOURCE_LIST_RESOLUTION={source_list_resolution_json};
 const ORIENTATION_STATE={orientation_state_json};
 const VP_FRAMES=(PAGE_STATE[0]?.vpFrames||[]);
 let currentZoomPercent=ZOOM_DEFAULT;
@@ -1003,6 +2177,8 @@ let currentDeviceTop=0;
  let activePageIndex=0;
  let currentViewportIndexes=VP_FRAMES.map(()=>0);
  let currentOrientation=ORIENTATION_STATE.current;
+const SELECTED_ROOM_SESSION_KEY=`${{PROJECT_SESSION_KEY}}:selected-room-id`;
+let selectedRoomId=null;
  const viewportMode={{active:false,vpIndex:0,preZoom:null,popupZoomPercent:ZOOM_DEFAULT,popupFitScale:1,popupBaseFitScale:null,popupBaseKey:'',popupNavMode:'page',popupScrollY:0}};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus'),passAllBtn=document.getElementById('passAll');
  let isPosting=false;
@@ -1030,6 +2206,135 @@ let currentDeviceTop=0;
   if (deviceId != null && pageId != null && buttonId != null) return `btn:${{deviceId}}:${{pageId}}:${{buttonId}}`;
   return "";
  }}
+function normalizeRoomId(raw) {{
+ const n=Number(raw);
+ if (!Number.isFinite(n) || n<=0) return null;
+ return Number(n);
+}}
+function allResolvedRooms() {{
+ return Array.isArray(ROOM_LIST_RESOLUTION) ? ROOM_LIST_RESOLUTION : [];
+}}
+function roomNameById(roomId) {{
+ const target=normalizeRoomId(roomId);
+ if (target==null) return "";
+ for (const row of allResolvedRooms()) {{
+  const rid=normalizeRoomId(row?.roomId);
+  if (rid==null || rid!==target) continue;
+  const name=String(row?.roomName||"").trim();
+  if (name) return name;
+ }}
+ return "";
+}}
+function roomIdByName(roomName) {{
+ const target=String(roomName||"").trim().toLowerCase();
+ if (!target || target==="all rooms" || target==="whole house") return null;
+ for (const row of allResolvedRooms()) {{
+  const name=String(row?.roomName||"").trim();
+  if (!name) continue;
+  if (name.toLowerCase()!==target) continue;
+  const rid=normalizeRoomId(row?.roomId);
+  if (rid!=null) return rid;
+ }}
+ return null;
+}}
+function defaultSelectedRoomId() {{
+ for (const row of allResolvedRooms()) {{
+  const rid=normalizeRoomId(row?.roomId);
+  if (rid!=null) return rid;
+ }}
+ return null;
+}}
+function loadSelectedRoomId() {{
+ try {{
+  const raw=sessionStorage.getItem(SELECTED_ROOM_SESSION_KEY);
+  return normalizeRoomId(raw);
+ }} catch (_e) {{
+  return null;
+ }}
+}}
+function persistSelectedRoomId(roomId) {{
+ try {{
+  if (roomId==null) sessionStorage.removeItem(SELECTED_ROOM_SESSION_KEY);
+  else sessionStorage.setItem(SELECTED_ROOM_SESSION_KEY, String(roomId));
+ }} catch (_e) {{}}
+}}
+function selectedRoomLabel() {{
+ if (selectedRoomId==null) return "All Rooms";
+ const name=roomNameById(selectedRoomId);
+ return name ? name : `Room ${{selectedRoomId}}`;
+}}
+function syncSelectedRoomIndicator() {{
+ const valueEl=document.getElementById('selectedRoomValue');
+ if (!valueEl) return;
+ valueEl.textContent=selectedRoomLabel();
+}}
+function applySelectedRoomToSourceRows(pageEl) {{
+ if (!pageEl) return;
+ const indicatorName=(document.getElementById('selectedRoomValue')?.textContent||'').trim();
+ const fallbackRoomId=selectedRoomId==null ? roomIdByName(indicatorName) : null;
+ const effectiveRoomId=(selectedRoomId!=null) ? selectedRoomId : fallbackRoomId;
+ const byShell=new Map();
+ pageEl.querySelectorAll(".btn-wrap[data-synthetic-source-list='1']").forEach(el=>{{
+  const shell=el.closest(".synthetic-list-scroll[data-synthetic-list-kind='source']");
+  if (!shell) return;
+  const rowRoomId=normalizeRoomId(el.dataset.syntheticSourceRoomId);
+  const matches=effectiveRoomId==null || (rowRoomId!=null && Number(rowRoomId)===Number(effectiveRoomId));
+  el.dataset.selectedRoomMatch=matches ? "1" : "0";
+  if (el.dataset.baseTop==null) el.dataset.baseTop=String(Number(el.dataset.top||0));
+  const bucket=byShell.get(shell) || [];
+  bucket.push(el);
+  byShell.set(shell, bucket);
+ }});
+ byShell.forEach((rows, shell)=>{{
+  const sorted=[...rows].sort((a,b)=>Number(a.dataset.baseTop||0)-Number(b.dataset.baseTop||0));
+  const heights=sorted.map(r=>Number(r.dataset.height||0)).filter(v=>v>0);
+  const rowH=heights.length ? heights[0] : 0;
+  let step=0;
+  for (let i=1; i<sorted.length; i+=1) {{
+   const d=Number(sorted[i].dataset.baseTop||0)-Number(sorted[i-1].dataset.baseTop||0);
+   if (d>0 && (step===0 || d<step)) step=d;
+  }}
+  const gap=Math.max(0, step>0 ? step-rowH : 2);
+  let visibleIndex=0;
+  sorted.forEach(row=>{{
+   if (String(row.dataset.selectedRoomMatch||"0")==="1") {{
+    row.dataset.activeTop=String(visibleIndex * (rowH + gap));
+    visibleIndex += 1;
+   }} else {{
+    row.dataset.activeTop=String(Number(row.dataset.baseTop||0));
+   }}
+   // Keep canonical top in sync so every layout path uses compacted rows.
+   row.dataset.top=String(Number(row.dataset.activeTop||row.dataset.baseTop||0));
+  }});
+  const pad=shell.querySelector(".synthetic-list-scroll-pad");
+  if (pad) {{
+   if (pad.dataset.basePadHeight==null) pad.dataset.basePadHeight=String(Number(pad.dataset.padHeight||0));
+   const activePad=visibleIndex>0 ? (visibleIndex*rowH)+((visibleIndex-1)*gap) : 0;
+   pad.dataset.activePadHeight=String(activePad);
+  }}
+  shell.scrollTop=0;
+ }});
+}}
+function inferScopedRoomIdFromPage(pageEl) {{
+ if (!pageEl) return null;
+ const ids = new Set();
+ pageEl.querySelectorAll(".btn-wrap[data-synthetic-source-list='1']").forEach(el=>{{
+  const rid = normalizeRoomId(el.dataset.syntheticSourceRoomId);
+  if (rid != null && Number(rid) > 0) ids.add(Number(rid));
+ }});
+ if (ids.size === 1) return Number(Array.from(ids)[0]);
+ return null;
+}}
+function setSelectedRoom(nextRoomId, options) {{
+ const opts=(options && typeof options==="object") ? options : {{}};
+ const persist=opts.persist!==false;
+ selectedRoomId=normalizeRoomId(nextRoomId);
+ if (persist) persistSelectedRoomId(selectedRoomId);
+ syncSelectedRoomIndicator();
+ applyLayerVisibility();
+ if (!viewportMode.active) applyRtiLayout();
+ refreshButtonVisualStates();
+}}
  function refreshButtonVisualStates() {{
   const api=globalThis.__sentinelTestStatus;
   if (!api||typeof api.refreshButtonWraps!=="function") return;
@@ -1290,10 +2595,25 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
   const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
   const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
+  const syntheticRoomList = wrap && wrap.dataset ? String(wrap.dataset.syntheticRoomList || "") === "1" : false;
+  const syntheticRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomId : null;
+  const syntheticRoomTagIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomTagId : null;
+  const syntheticRoomId = syntheticRoomIdRaw == null ? null : Number(syntheticRoomIdRaw);
+  const syntheticRoomTagId = syntheticRoomTagIdRaw == null ? null : Number(syntheticRoomTagIdRaw);
+  const syntheticSourceList = wrap && wrap.dataset ? String(wrap.dataset.syntheticSourceList || "") === "1" : false;
+  const syntheticSourceRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceRoomId : null;
+  const syntheticSourceDeviceIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceDeviceId : null;
+  const syntheticSourceRoomId = syntheticSourceRoomIdRaw == null ? null : Number(syntheticSourceRoomIdRaw);
+  const syntheticSourceDeviceId = syntheticSourceDeviceIdRaw == null ? null : Number(syntheticSourceDeviceIdRaw);
   const categoryName = String(m.category || "").trim();
   const buttonName = String(m.identity || "").trim();
   const targetName = String(label || "").trim() || buttonName || categoryName;
   const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
+  const keyTokenResolved = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? `${{keyToken}}:room:${{Number(syntheticRoomId)}}`
+   : (syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+      ? `${{keyToken}}:src:${{Number(syntheticSourceDeviceId)}}:${{(syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) ? `room:${{Number(syntheticSourceRoomId)}}` : "room:na"}}`
+      : keyToken);
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -1339,18 +2659,31 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const viewportLayerSourceId = viewportLayerScope.sourceId;
    const pageLayerRoomId = pageLayerScope.roomId;
    const pageLayerSourceId = pageLayerScope.sourceId;
-   const effectiveRoomId = viewportLayerRoomId != null
+  const effectiveRoomIdBase = viewportLayerRoomId != null
     ? Number(viewportLayerRoomId)
     : (pageLayerRoomId != null ? Number(pageLayerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null));
-   const effectiveSourceId = viewportLayerSourceId != null
+  const effectiveSourceId = viewportLayerSourceId != null
     ? Number(viewportLayerSourceId)
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
-   const buttonTagId = buttonScope.buttonTagId;
+  const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? Number(syntheticRoomId)
+   : (syntheticSourceList
+      ? ((selectedRoomId != null && Number.isFinite(selectedRoomId))
+         ? Number(selectedRoomId)
+         : (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase))
+      : effectiveRoomIdBase);
+  const buttonTagIdBase = buttonScope.buttonTagId;
+  const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
+   ? Number(syntheticRoomTagId)
+   : buttonTagIdBase;
+  const effectiveSourceIdResolved = syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+   ? Number(syntheticSourceDeviceId)
+   : effectiveSourceId;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
-   const lowerLabel = String(keyToken || "").trim().toLowerCase();
+  const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
@@ -1372,10 +2705,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const scopeType = Number(effectiveRoomId || 0) === 0 ? "GLOBAL" : "ROOM";
     refs.scopeType = scopeType;
     refs.effectiveRoomId = effectiveRoomId;
-    refs.effectiveSourceId = effectiveSourceId;
+    refs.effectiveSourceId = effectiveSourceIdResolved;
+  if (syntheticRoomList) {{
+   if (syntheticRoomId != null && Number.isFinite(syntheticRoomId)) refs.syntheticRoomId = Number(syntheticRoomId);
+   if (syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)) refs.syntheticRoomTagId = Number(syntheticRoomTagId);
+  }}
+  if (syntheticSourceList) {{
+   if (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) refs.syntheticSourceRoomId = Number(syntheticSourceRoomId);
+   if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
+  }}
     refs.programRef = programRef;
-    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyToken}}`;
+    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -1391,7 +2732,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.sharedFlag = sharedFlag;
     refs.scopeLayerId = scopeLayerId;
     if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
-     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyToken}}`;
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -1403,13 +2744,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else if (vpButtonId && deviceId != null && pageId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyTokenResolved}}`;
   }} else if (deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else {{
-   targetKey = `btn:${{keyToken}}`;
+   targetKey = `btn:${{keyTokenResolved}}`;
   }}
   return {{
    targetKey,
@@ -1565,6 +2906,10 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    if (b.dataset.boundTestBtn) return;
    b.dataset.boundTestBtn='1';
    b.addEventListener('click',()=>{{
+    const wrap=b.closest('.btn-wrap');
+    if (wrap && String(wrap.dataset.syntheticRoomList || '') === '1') {{
+      setSelectedRoom(wrap.dataset.syntheticRoomId);
+    }}
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
@@ -1629,7 +2974,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   const pageEl=activePageEl();
   if (!pageEl) return;
   const vpIndex=Number(viewportMode.vpIndex||0);
-  pageEl.querySelectorAll('.vp-box, .vp-btn').forEach(el=>{{
+  pageEl.querySelectorAll('.vp-box, .vp-btn, .synthetic-list-scroll.vp-btn').forEach(el=>{{
    const match=Number(el.dataset.vp||-1)===vpIndex;
    el.classList.toggle('vp-focus', viewportMode.active && match);
   }});
@@ -1912,7 +3257,36 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
 	   }}
 	  }}
 
+  stage.querySelectorAll('.vp-popup-vcontent .synthetic-list-scroll').forEach(shell=>{{
+   const sl=Number(shell.dataset.srcLeft||0)*scale;
+   const st=Number(shell.dataset.srcTop||0)*scale;
+   const sw=Number(shell.dataset.srcWidth||0)*scale;
+   const sh=Number(shell.dataset.srcHeight||0)*scale;
+   shell.style.left=`${{sl}}px`;
+   shell.style.top=`${{st}}px`;
+   shell.style.width=`${{sw}}px`;
+   shell.style.height=`${{sh}}px`;
+   shell.querySelectorAll('.btn-wrap.vp-btn').forEach(inner=>{{
+    const il=Number(inner.dataset.srcLeft||0)*scale;
+    const it=Number(inner.dataset.srcTop||0)*scale;
+    const iw=Number(inner.dataset.srcWidth||0)*scale;
+    const ih=Number(inner.dataset.srcHeight||0)*scale;
+    inner.style.left=`${{il}}px`;
+    inner.style.top=`${{it}}px`;
+    inner.style.width=`${{iw}}px`;
+    inner.style.height=`${{ih}}px`;
+    const btn=inner.querySelector('.test-btn');
+    if (btn) {{
+     const buttonFontPx=resolveButtonFontPx(inner, scale);
+     btn.style.fontSize=`${{buttonFontPx}}px`;
+     btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+     const linkHit=inner.querySelector('.page-link-hit');
+     if (linkHit) applyLinkSizing(linkHit, buttonFontPx, scale);
+    }}
+   }});
+  }});
   stage.querySelectorAll('.btn-wrap.vp-btn[data-src-left]').forEach(el=>{{
+   if (el.closest('.synthetic-list-scroll')) return;
    const left=Number(el.dataset.srcLeft||0)*scale;
    const top=Number(el.dataset.srcTop||0)*scale;
    const width=Number(el.dataset.srcWidth||0)*scale;
@@ -2020,10 +3394,20 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
    const activeFrame=activeViewportFrameId(vpIndex);
    let contentBottom=vh;
    let contentRight=vw;
+   const shellNodes=[...pageEl.querySelectorAll(`.synthetic-list-scroll.vp-btn[data-vp="${{vpIndex}}"]`)].filter(shell=>{{
+    if (activeFrame!=null && Number(shell.dataset.frame)!==Number(activeFrame)) return false;
+    return true;
+   }});
+   const skipBtns=new Set();
+   shellNodes.forEach(shell=>{{
+    shell.querySelectorAll('.btn-wrap.vp-btn').forEach(b=>skipBtns.add(b));
+   }});
    const btnNodes=[...pageEl.querySelectorAll(`.btn-wrap.vp-btn[data-vp="${{vpIndex}}"]`)];
-   const frameFiltered=btnNodes.filter(node=>activeFrame==null || Number(node.dataset.frame)===Number(activeFrame));
-   frameFiltered.forEach(node=>{{
-    // Popup uses viewport-relative coordinates; source nodes store device-absolute coords.
+   const frameFiltered=btnNodes.filter(node=>{{
+    if (skipBtns.has(node)) return false;
+    return activeFrame==null || Number(node.dataset.frame)===Number(activeFrame);
+   }});
+   [...shellNodes, ...frameFiltered].forEach(node=>{{
     const relTop=Number(node.dataset.top||0) - vpTop;
     const relLeft=Number(node.dataset.left||0) - vpLeft;
     const b=relTop + Number(node.dataset.height||0);
@@ -2042,21 +3426,34 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   stage.appendChild(viewportWindow);
 
    viewportMode.popupScrollY=0;
-	   frameFiltered.forEach(node=>{{
+	   const roots=[];
+	   shellNodes.forEach(shell=>roots.push({{kind:'shell', node:shell}}));
+	   frameFiltered.forEach(node=>roots.push({{kind:'btn', node}}));
+	   roots.forEach(({{kind, node}})=>{{
 	     const clone=node.cloneNode(true);
 	     clone.style.display='';
-	     // Ensure popup controls remain topmost regardless of source z-index.
 	     clone.style.zIndex='1';
-	     // Cloned buttons inherit data-bound markers from the main canvas; clear so the popup can bind clicks.
 	     clone.querySelectorAll('.test-btn').forEach(tb=>{{
 	      tb.removeAttribute('data-bound-test-btn');
 	      try {{ delete tb.dataset.boundTestBtn; }} catch (_) {{}}
 	     }});
-	    // Convert from device-absolute (source) to viewport-relative (popup).
-	    clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
-	    clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
-	    clone.dataset.srcWidth=String(Number(node.dataset.width||0));
-	    clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+	    if (kind==='shell') {{
+	     clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
+	     clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
+	     clone.dataset.srcWidth=String(Number(node.dataset.width||0));
+	     clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+	     clone.querySelectorAll('.btn-wrap.vp-btn').forEach(innerClone=>{{
+	      innerClone.dataset.srcLeft=String(Number(innerClone.dataset.left||0));
+	      innerClone.dataset.srcTop=String(Number(innerClone.dataset.top||0));
+	      innerClone.dataset.srcWidth=String(Number(innerClone.dataset.width||0));
+	      innerClone.dataset.srcHeight=String(Number(innerClone.dataset.height||0));
+	     }});
+	    }} else {{
+	     clone.dataset.srcLeft=String(Number(node.dataset.left||0) - vpLeft);
+	     clone.dataset.srcTop=String(Number(node.dataset.top||0) - vpTop);
+	     clone.dataset.srcWidth=String(Number(node.dataset.width||0));
+	     clone.dataset.srcHeight=String(Number(node.dataset.height||0));
+	    }}
      clone.dataset.pageIndex=String(activePageIndex);
     let show=true;
     if (activeFrame!=null) show = show && (Number(clone.dataset.frame)===Number(activeFrame));
@@ -2284,7 +3681,7 @@ function currentOrientationSize() {{
 function applyOrientationState() {{
  const short=currentOrientation==='landscape' ? 'l' : 'p';
  document.querySelectorAll('.orientation-btn').forEach(button=>button.classList.toggle('active', button.dataset.orientation===currentOrientation));
- document.querySelectorAll('.device-page .vp-box, .device-page .btn-wrap').forEach(el=>{{
+ document.querySelectorAll('.device-page .vp-box, .device-page .btn-wrap, .device-page .synthetic-list-scroll').forEach(el=>{{
   const visKey=`${{short}}Visible`;
   el.dataset.left=String(Number(el.dataset[`${{short}}Left`]||0));
   el.dataset.top=String(Number(el.dataset[`${{short}}Top`]||0));
@@ -2316,8 +3713,8 @@ function renderOrientationToggle() {{
      currentOrientation=next;
      applyOrientationState();
      focusViewportElements();
-     applyRtiLayout();
      applyLayerVisibility();
+     applyRtiLayout();
      if (viewportMode.active) renderViewportPopup();
     }});
    }}
@@ -2389,6 +3786,7 @@ function renderLayerPanel() {{
  function applyLayerVisibility() {{
   const pageEl=activePageEl();
   if (!pageEl) return;
+ applySelectedRoomToSourceRows(pageEl);
  pageEl.querySelectorAll('.vp-box').forEach(el=>{{
    const baseVisible=String(el.dataset.visible||'1')==='1';
    if (viewportMode.active) {{
@@ -2399,11 +3797,43 @@ function renderLayerPanel() {{
     el.style.display=(isLayerVisible(layerKey) && baseVisible)?'':'none';
    }}
  }});
+  pageEl.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
+   const layerKey=String(el.dataset.ownerLayerKey||'');
+   const baseVisible=String(el.dataset.visible||'1')==='1';
+   const layerVisible=isLayerVisible(layerKey);
+   let shouldShow=layerVisible && baseVisible;
+   if (el.classList.contains('vp-btn')) {{
+     if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
+      shouldShow=false;
+     }}
+     const short=currentOrientation==='landscape' ? 'l' : 'p';
+     const vpVisible=(short==='l' ? (el.dataset.vpLv||'1') : (el.dataset.vpPv||'1'))==='1';
+     if (!vpVisible) shouldShow=false;
+     if (viewportMode.active) {{
+      const vpLayerKey=String(el.dataset.vpLayerKey||'');
+      if (vpLayerKey && activeLayerVisibility()[vpLayerKey]===false) shouldShow=false;
+     }}
+     const vpIndex=Number(el.dataset.vp||0);
+     const frames=activePageState().vpFrames||[];
+     const pageFrames=frames[vpIndex]||[];
+     if (!pageFrames.length) {{
+       shouldShow=false;
+     }} else {{
+       const currentIndex=Math.max(0, Math.min(currentViewportIndexes[vpIndex] ?? 0, pageFrames.length-1));
+       const activeFrame=pageFrames[currentIndex];
+       shouldShow=shouldShow && Number(el.dataset.frame)===activeFrame;
+     }}
+   }}
+    el.style.display=shouldShow?'':'none';
+  }});
   pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
    const baseVisible=String(el.dataset.visible||'1')==='1';
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
+  if (String(el.dataset.syntheticSourceList || '') === '1' && String(el.dataset.selectedRoomMatch || '1') !== '1') {{
+    shouldShow=false;
+  }}
    if (el.classList.contains('vp-btn')) {{
      if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
       shouldShow=false;
@@ -2438,6 +3868,7 @@ function syncHeader() {{
  if (!headerEl) return;
  const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
  headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
+ syncSelectedRoomIndicator();
 }}
  function syncViewportControls() {{}}
   function applyViewportState() {{
@@ -2597,9 +4028,12 @@ function applyRtiLayout() {{
  rtiCanvas.style.width=`${{rtiCanvasWidth}}px`;
  rtiCanvas.style.height=`${{rtiCanvasHeight}}px`;
 
- const sourceSize=currentOrientationSize();
- const widthScale=rtiCanvasWidth/sourceSize.width;
- const heightScale=rtiCanvasHeight/sourceSize.height;
+const sourceSize=currentOrientationSize();
+const DEVICE_CANVAS_MARGIN=20;
+const fitWidth=Math.max(rtiCanvasWidth-(DEVICE_CANVAS_MARGIN*2),1);
+const fitHeight=Math.max(rtiCanvasHeight-(DEVICE_CANVAS_MARGIN*2),1);
+const widthScale=fitWidth/sourceSize.width;
+const heightScale=fitHeight/sourceSize.height;
  let scale=Math.min(widthScale,heightScale);
  const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
  const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
@@ -2608,12 +4042,12 @@ function applyRtiLayout() {{
  }}
  scale=Math.min(maxScale, Math.max(minScale, scale));
  const totalScale=scale*(currentZoomPercent/100);
- const fittedWidth=sourceSize.width*totalScale;
- const fittedHeight=sourceSize.height*totalScale;
- const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
- const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
- const offsetLeft=(contentWidth-fittedWidth)/2;
- const offsetTop=(contentHeight-fittedHeight)/2;
+const fittedWidth=sourceSize.width*totalScale;
+const fittedHeight=sourceSize.height*totalScale;
+const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
+const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
+const offsetLeft=(contentWidth-fittedWidth)/2;
+const offsetTop=(contentHeight-fittedHeight)/2;
  rtiContent.style.width=`${{contentWidth}}px`;
  rtiContent.style.height=`${{contentHeight}}px`;
  rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
@@ -2672,7 +4106,7 @@ function applyRtiLayout() {{
    el.style.height=`${{height}}px`;
  }});
 
- if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
+ if (activePage) activePage.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
@@ -2680,6 +4114,25 @@ function applyRtiLayout() {{
    el.style.left=`${{left}}px`;
    el.style.top=`${{top}}px`;
    el.style.width=`${{width}}px`;
+   el.style.height=`${{height}}px`;
+  }});
+ if (activePage) activePage.querySelectorAll('.synthetic-list-scroll .synthetic-list-scroll-pad').forEach(el=>{{
+   const ph=Number(el.dataset.activePadHeight!=null ? el.dataset.activePadHeight : (el.dataset.padHeight||0))*totalScale;
+   el.style.height=`${{ph}}px`;
+ }});
+ if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
+   const left=Number(el.dataset.left||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
+   const width=Number(el.dataset.width||0)*totalScale;
+   const height=Number(el.dataset.height||0)*totalScale;
+   const inSyntheticList=String(el.dataset.syntheticSourceList||'')==='1' || String(el.dataset.syntheticRoomList||'')==='1';
+   const shell=inSyntheticList ? el.closest('.synthetic-list-scroll') : null;
+   const reserveRight=(shell && inSyntheticList) ? Math.max(4, (shell.offsetWidth-shell.clientWidth)+4) : 0;
+   const adjustedWidth=Math.max(1, width-reserveRight);
+   const adjustedLeft=left + (reserveRight/2);
+   el.style.left=`${{adjustedLeft}}px`;
+   el.style.top=`${{top}}px`;
+   el.style.width=`${{adjustedWidth}}px`;
    el.style.height=`${{height}}px`;
    const button=el.querySelector('.test-btn');
     if (button) {{
@@ -2804,13 +4257,25 @@ function setActivePage(nextPageIndex) {{
    rtiCanvas.scrollLeft=0;
    rtiCanvas.scrollTop=0;
  }}
- syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+ const scopedRoomId = inferScopedRoomIdFromPage(activePageEl());
+ if (scopedRoomId != null) {{
+  setSelectedRoom(scopedRoomId, {{persist:true}});
+ }}
+ syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
  applyRtiLayout();
 }}
+selectedRoomId=loadSelectedRoomId();
+if (selectedRoomId == null) {{
+ selectedRoomId=defaultSelectedRoomId();
+ persistSelectedRoomId(selectedRoomId);
+}}
+syncSelectedRoomIndicator();
 window.addEventListener('resize', applyRtiLayout);
 renderOrientationToggle();
 applyOrientationState();
-syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+// Ensure synthetic source rows are compacted before first layout paint.
+applyLayerVisibility();
+syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
 syncTextZoomResetText();
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
@@ -2821,6 +4286,10 @@ if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passiv
 	 const targetPageIndex=link.dataset.targetPageIndex;
 	 if (targetPageIndex==null || targetPageIndex==='') return;
 	 e.preventDefault();
+   const wrap=link.closest('.btn-wrap');
+   if (wrap && String(wrap.dataset.syntheticRoomList || '')==='1') {{
+    setSelectedRoom(wrap.dataset.syntheticRoomId);
+   }}
 	 if (viewportMode.active) exitViewportMode();
 	 setActivePage(targetPageIndex);
 	}});
@@ -3405,10 +4874,25 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const vpButtonId = wrap && wrap.dataset ? wrap.dataset.diagViewportButtonId : null;
   const buttonId = wrap && wrap.dataset ? wrap.dataset.diagButtonId : null;
   const buttonTag = wrap && wrap.dataset ? wrap.dataset.buttonTag : "";
+  const syntheticRoomList = wrap && wrap.dataset ? String(wrap.dataset.syntheticRoomList || "") === "1" : false;
+  const syntheticRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomId : null;
+  const syntheticRoomTagIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticRoomTagId : null;
+  const syntheticRoomId = syntheticRoomIdRaw == null ? null : Number(syntheticRoomIdRaw);
+  const syntheticRoomTagId = syntheticRoomTagIdRaw == null ? null : Number(syntheticRoomTagIdRaw);
+  const syntheticSourceList = wrap && wrap.dataset ? String(wrap.dataset.syntheticSourceList || "") === "1" : false;
+  const syntheticSourceRoomIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceRoomId : null;
+  const syntheticSourceDeviceIdRaw = wrap && wrap.dataset ? wrap.dataset.syntheticSourceDeviceId : null;
+  const syntheticSourceRoomId = syntheticSourceRoomIdRaw == null ? null : Number(syntheticSourceRoomIdRaw);
+  const syntheticSourceDeviceId = syntheticSourceDeviceIdRaw == null ? null : Number(syntheticSourceDeviceIdRaw);
   const categoryName = String(m.category || "").trim();
   const buttonName = String(m.identity || "").trim();
   const targetName = String(label || "").trim() || buttonName || categoryName;
   const keyToken = String(label || "").trim() || categoryName || buttonName || "Button";
+  const keyTokenResolved = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? `${{keyToken}}:room:${{Number(syntheticRoomId)}}`
+   : (syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+      ? `${{keyToken}}:src:${{Number(syntheticSourceDeviceId)}}:${{(syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) ? `room:${{Number(syntheticSourceRoomId)}}` : "room:na"}}`
+      : keyToken);
   const scope = vpButtonId ? "VIEWPORT_BUTTON" : "BUTTON";
   if (deviceId != null) refs.deviceId = Number(deviceId);
   if (pageId != null) refs.pageId = pageId;
@@ -3454,18 +4938,31 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const viewportLayerSourceId = viewportLayerScope.sourceId;
    const pageLayerRoomId = pageLayerScope.roomId;
    const pageLayerSourceId = pageLayerScope.sourceId;
-   const effectiveRoomId = viewportLayerRoomId != null
+  const effectiveRoomIdBase = viewportLayerRoomId != null
     ? Number(viewportLayerRoomId)
     : (pageLayerRoomId != null ? Number(pageLayerRoomId) : (pageRoomId != null ? Number(pageRoomId) : null));
    const effectiveSourceId = viewportLayerSourceId != null
     ? Number(viewportLayerSourceId)
     : (pageLayerSourceId != null ? Number(pageLayerSourceId) : (pageSourceDeviceId != null ? Number(pageSourceDeviceId) : null));
-   const buttonTagId = buttonScope.buttonTagId;
+  const effectiveRoomId = syntheticRoomList && syntheticRoomId != null && Number.isFinite(syntheticRoomId)
+   ? Number(syntheticRoomId)
+   : (syntheticSourceList
+      ? ((selectedRoomId != null && Number.isFinite(selectedRoomId))
+         ? Number(selectedRoomId)
+         : (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId) ? Number(syntheticSourceRoomId) : effectiveRoomIdBase))
+      : effectiveRoomIdBase);
+  const buttonTagIdBase = buttonScope.buttonTagId;
+  const buttonTagId = syntheticRoomList && syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)
+   ? Number(syntheticRoomTagId)
+   : buttonTagIdBase;
+  const effectiveSourceIdResolved = syntheticSourceList && syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)
+   ? Number(syntheticSourceDeviceId)
+   : effectiveSourceId;
    const scopedButtonId = buttonScope.buttonId;
    const macroIds = Array.isArray(bindings.macroIds) ? bindings.macroIds : [];
    const variableIds = Array.isArray(bindings.variableIds) ? bindings.variableIds : [];
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
-   const lowerLabel = String(keyToken || "").trim().toLowerCase();
+  const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
@@ -3487,10 +4984,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const scopeType = Number(effectiveRoomId || 0) === 0 ? "GLOBAL" : "ROOM";
     refs.scopeType = scopeType;
     refs.effectiveRoomId = effectiveRoomId;
-    refs.effectiveSourceId = effectiveSourceId;
+    refs.effectiveSourceId = effectiveSourceIdResolved;
+  if (syntheticRoomList) {{
+   if (syntheticRoomId != null && Number.isFinite(syntheticRoomId)) refs.syntheticRoomId = Number(syntheticRoomId);
+   if (syntheticRoomTagId != null && Number.isFinite(syntheticRoomTagId)) refs.syntheticRoomTagId = Number(syntheticRoomTagId);
+  }}
+  if (syntheticSourceList) {{
+   if (syntheticSourceRoomId != null && Number.isFinite(syntheticSourceRoomId)) refs.syntheticSourceRoomId = Number(syntheticSourceRoomId);
+   if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
+  }}
     refs.programRef = programRef;
-    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceId != null) {{
-     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceId)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyToken}}`;
+    if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
+     const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -3506,7 +5011,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.sharedFlag = sharedFlag;
     refs.scopeLayerId = scopeLayerId;
     if (rtiAddress != null && scopeLayerId != null && scopedButtonId != null) {{
-     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyToken}}`;
+     const targetKey = `tt_ui:${{Number(rtiAddress)}}:${{sharedFlag}}:${{scopeLayerId}}:${{Number(scopedButtonId)}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -3518,13 +5023,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }}
   let targetKey = "";
   if (vpButtonId && deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else if (vpButtonId && deviceId != null && pageId != null) {{
-   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyToken}}`;
+   targetKey = `vpbtn:${{deviceId}}:${{pageId}}:${{vpButtonId}}:${{keyTokenResolved}}`;
   }} else if (deviceId != null && pageId != null && buttonId != null) {{
-   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyToken}}`;
+   targetKey = `btn:${{deviceId}}:${{pageId}}:${{buttonId}}:${{keyTokenResolved}}`;
   }} else {{
-   targetKey = `btn:${{keyToken}}`;
+   targetKey = `btn:${{keyTokenResolved}}`;
   }}
   return {{
    targetKey,
@@ -3751,6 +5256,13 @@ def build_device_render_bundle(
                 "vpFrames": payload["vp_frames"],
             }
         )
+    diag_for_rooms = device.get("diagnostics", {}) if isinstance(device, dict) else {}
+    room_list = diag_for_rooms.get("rooms") if isinstance(diag_for_rooms, dict) else None
+    if not isinstance(room_list, list):
+        room_list = []
+    source_list = diag_for_rooms.get("sourceListRows") if isinstance(diag_for_rooms, dict) else None
+    if not isinstance(source_list, list):
+        source_list = []
     first_page_inner = page_html_by_index.get("0", "")
     initial_page_markup = f"<div class='device-page active' data-page-index='0'>{first_page_inner}</div>" if pages else ""
     html = _render_document(
@@ -3765,6 +5277,8 @@ def build_device_render_bundle(
         json.dumps(orientation_state),
         show_orientation_toggle,
         home_href=project_home_filename(project_stem),
+        room_list_resolution_json=json.dumps(room_list),
+        source_list_resolution_json=json.dumps(source_list),
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):
@@ -3790,6 +5304,8 @@ def build_device_render_bundle(
             "sizes": {"portrait": portrait_resolution, "landscape": landscape_resolution},
         },
         "pages": payload_doc_pages,
+        "roomListResolution": room_list,
+        "sourceListResolution": source_list,
     }
     return {"html": html, "payload": payload_doc}
 

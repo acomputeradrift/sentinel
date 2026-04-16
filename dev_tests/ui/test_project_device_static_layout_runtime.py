@@ -108,6 +108,29 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
                                                         "pageLink": {"enabled": True},
                                                     },
                                                 }
+                                                ,
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "Edge Fill", "text": "Edge Fill", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 14,
+                                                        "orientations": {
+                                                            "portrait": {
+                                                                "visible": True,
+                                                                "coordinates": {"top": 0, "left": 0, "height": 854, "width": 480},
+                                                            },
+                                                            "landscape": {
+                                                                "visible": True,
+                                                                "coordinates": {"top": 0, "left": 0, "height": 480, "width": 854},
+                                                            },
+                                                        },
+                                                    },
+                                                    "testTargets": {
+                                                        "text": True,
+                                                        "macros": False,
+                                                        "macroSteps": False,
+                                                        "variables": {},
+                                                    },
+                                                }
                                             ],
                                         },
                                         "viewports": [],
@@ -221,7 +244,7 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
-    def test_rti_device_canvas_has_ten_pixel_padding(self):
+    def test_rti_device_canvas_has_zero_padding(self):
         page, server = self._open_shell_page()
         try:
             pads = page.evaluate(
@@ -238,10 +261,83 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
 }
 """
             )
-            self.assertEqual(pads["top"], "10px")
-            self.assertEqual(pads["right"], "10px")
-            self.assertEqual(pads["bottom"], "10px")
-            self.assertEqual(pads["left"], "10px")
+            self.assertEqual(pads["top"], "0px")
+            self.assertEqual(pads["right"], "0px")
+            self.assertEqual(pads["bottom"], "0px")
+            self.assertEqual(pads["left"], "0px")
+        finally:
+            page.close()
+            server.stop()
+
+    def test_rti_device_canvas_keeps_twenty_pixel_outer_margin(self):
+        page, server = self._open_shell_page()
+        try:
+            margins = page.evaluate(
+                """
+() => {
+  const usable = document.getElementById('rtiUsableCanvas');
+  const canvas = document.getElementById('rtiDeviceCanvas');
+  const ur = usable.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  return {
+    left: cr.left - ur.left,
+    top: cr.top - ur.top,
+    right: ur.right - cr.right,
+    bottom: ur.bottom - cr.bottom
+  };
+}
+"""
+            )
+            self.assertGreaterEqual(margins["left"], 19.0)
+            self.assertGreaterEqual(margins["top"], 19.0)
+            self.assertGreaterEqual(margins["right"], 19.0)
+            self.assertGreaterEqual(margins["bottom"], 19.0)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_active_elements_fit_inside_device_content_inner_box(self):
+        page, server = self._open_shell_page()
+        try:
+            overflow = page.evaluate(
+                """
+() => {
+  const host = document.getElementById('rtiDeviceContent');
+  const active = document.querySelector('#rtiDeviceContent .device-page.active');
+  if (!host || !active) return {checked: 0, overflowCount: 0, samples: []};
+  const cs = getComputedStyle(host);
+  const px = (v) => Number(String(v || '0').replace('px', '')) || 0;
+  const insetLeft = px(cs.borderLeftWidth);
+  const insetTop = px(cs.borderTopWidth);
+  const innerW = host.clientWidth;
+  const innerH = host.clientHeight;
+  const hostRect = host.getBoundingClientRect();
+  const samples = [];
+  let overflowCount = 0;
+  let checked = 0;
+  active.querySelectorAll('.btn-wrap, .vp-box').forEach((el) => {
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    checked += 1;
+    const left = rect.left - hostRect.left - insetLeft;
+    const top = rect.top - hostRect.top - insetTop;
+    const right = left + rect.width;
+    const bottom = top + rect.height;
+    if (left < -2 || top < -2 || right > innerW + 2 || bottom > innerH + 2) {
+      overflowCount += 1;
+      if (samples.length < 8) {
+        samples.push({left, top, right, bottom, innerW, innerH, cls: el.className});
+      }
+    }
+  });
+  return {checked, overflowCount, samples};
+}
+"""
+            )
+            self.assertGreater(overflow["checked"], 0)
+            self.assertEqual(overflow["overflowCount"], 0, msg=f"overflow samples: {overflow['samples']}")
         finally:
             page.close()
             server.stop()
