@@ -2209,6 +2209,18 @@ function roomNameById(roomId) {{
  }}
  return "";
 }}
+function roomIdByName(roomName) {{
+ const target=String(roomName||"").trim().toLowerCase();
+ if (!target || target==="all rooms" || target==="whole house") return null;
+ for (const row of allResolvedRooms()) {{
+  const name=String(row?.roomName||"").trim();
+  if (!name) continue;
+  if (name.toLowerCase()!==target) continue;
+  const rid=normalizeRoomId(row?.roomId);
+  if (rid!=null) return rid;
+ }}
+ return null;
+}}
 function defaultSelectedRoomId() {{
  for (const row of allResolvedRooms()) {{
   const rid=normalizeRoomId(row?.roomId);
@@ -2242,12 +2254,15 @@ function syncSelectedRoomIndicator() {{
 }}
 function applySelectedRoomToSourceRows(pageEl) {{
  if (!pageEl) return;
+ const indicatorName=(document.getElementById('selectedRoomValue')?.textContent||'').trim();
+ const fallbackRoomId=selectedRoomId==null ? roomIdByName(indicatorName) : null;
+ const effectiveRoomId=(selectedRoomId!=null) ? selectedRoomId : fallbackRoomId;
  const byShell=new Map();
  pageEl.querySelectorAll(".btn-wrap[data-synthetic-source-list='1']").forEach(el=>{{
   const shell=el.closest(".synthetic-list-scroll[data-synthetic-list-kind='source']");
   if (!shell) return;
   const rowRoomId=normalizeRoomId(el.dataset.syntheticSourceRoomId);
-  const matches=selectedRoomId==null || (rowRoomId!=null && Number(rowRoomId)===Number(selectedRoomId));
+  const matches=effectiveRoomId==null || (rowRoomId!=null && Number(rowRoomId)===Number(effectiveRoomId));
   el.dataset.selectedRoomMatch=matches ? "1" : "0";
   if (el.dataset.baseTop==null) el.dataset.baseTop=String(Number(el.dataset.top||0));
   const bucket=byShell.get(shell) || [];
@@ -2272,6 +2287,8 @@ function applySelectedRoomToSourceRows(pageEl) {{
    }} else {{
     row.dataset.activeTop=String(Number(row.dataset.baseTop||0));
    }}
+   // Keep canonical top in sync so every layout path uses compacted rows.
+   row.dataset.top=String(Number(row.dataset.activeTop||row.dataset.baseTop||0));
   }});
   const pad=shell.querySelector(".synthetic-list-scroll-pad");
   if (pad) {{
@@ -4089,13 +4106,17 @@ const offsetTop=(contentHeight-fittedHeight)/2;
  }});
  if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
-   const topKey=(String(el.dataset.syntheticSourceList||'')==='1' && String(el.dataset.selectedRoomMatch||'1')==='1' && el.dataset.activeTop!=null) ? 'activeTop' : 'top';
-   const top=Number(el.dataset[topKey]||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
    const height=Number(el.dataset.height||0)*totalScale;
-   el.style.left=`${{left}}px`;
+   const inSyntheticList=String(el.dataset.syntheticSourceList||'')==='1' || String(el.dataset.syntheticRoomList||'')==='1';
+   const shell=inSyntheticList ? el.closest('.synthetic-list-scroll') : null;
+   const reserveRight=(shell && inSyntheticList) ? Math.max(4, (shell.offsetWidth-shell.clientWidth)+4) : 0;
+   const adjustedWidth=Math.max(1, width-reserveRight);
+   const adjustedLeft=left + (reserveRight/2);
+   el.style.left=`${{adjustedLeft}}px`;
    el.style.top=`${{top}}px`;
-   el.style.width=`${{width}}px`;
+   el.style.width=`${{adjustedWidth}}px`;
    el.style.height=`${{height}}px`;
    const button=el.querySelector('.test-btn');
     if (button) {{
