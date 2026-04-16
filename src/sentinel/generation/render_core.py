@@ -658,6 +658,9 @@ def _render_button_control(
 _ROOM_LIST_SYNTHETIC_GAP_PX = 2
 _ROOM_LIST_SYNTHETIC_Z_BOOST = 0
 _SYNTHETIC_LIST_SIDE_INSET_PX = 10
+# Extra horizontal shrink per side (device px) so row hit targets do not span the full inner width and
+# the true list host can receive clicks in the left/right gutters (see synthetic-list pointer-events).
+_SYNTHETIC_LIST_ROW_HIT_SHRINK_PX = 8
 
 
 def _synthetic_list_host_rect_pair(
@@ -869,6 +872,15 @@ def _synthetic_list_inset_rect_args(list_w: int) -> tuple[int, int]:
     return inset, inner_w
 
 
+def _synthetic_list_row_track_rect_args(list_w: int) -> tuple[int, int]:
+    """Row slot left + width inside the host (inner list area after side inset, then hit shrink)."""
+    base_inset, inner_w = _synthetic_list_inset_rect_args(list_w)
+    shrink = max(0, int(_SYNTHETIC_LIST_ROW_HIT_SHRINK_PX))
+    row_left = base_inset + shrink
+    row_w = max(1, inner_w - (2 * shrink))
+    return row_left, row_w
+
+
 def _room_list_row_slot_rects(
     list_left: int,
     list_top: int,
@@ -1057,21 +1069,21 @@ def _synthetic_controller_room_list_rows_html(
         p_c = _ui_coordinates(btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(btn["buttonUI"], "landscape")
         row_h = _list_row_height_px_from_host(btn)
-        p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
-        l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
+        p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+        l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
         rects_p = _synthetic_list_row_slot_rects(
-            p_inset,
+            p_row_left,
             0,
-            p_inner_w,
+            p_row_w,
             int(p_c.get("height") or 0),
             len(room_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
             row_h,
         )
         rects_l = _synthetic_list_row_slot_rects(
-            l_inset,
+            l_row_left,
             0,
-            l_inner_w,
+            l_row_w,
             int(l_c.get("height") or 0),
             len(room_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -1175,21 +1187,21 @@ def _synthetic_controller_room_list_rows_html(
     p_c = _ui_coordinates(btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(btn["buttonUI"], "landscape")
     row_h = _list_row_height_px_from_host(btn)
-    p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
-    l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
+    p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+    l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
     rects_p = _synthetic_list_row_slot_rects(
-        p_inset,
+        p_row_left,
         0,
-        p_inner_w,
+        p_row_w,
         int(p_c.get("height") or 0),
         len(room_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
         row_h,
     )
     rects_l = _synthetic_list_row_slot_rects(
-        l_inset,
+        l_row_left,
         0,
-        l_inner_w,
+        l_row_w,
         int(l_c.get("height") or 0),
         len(room_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -1499,21 +1511,21 @@ def _synthetic_source_list_rows_html(
         p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
         src_row_h = _list_row_height_px_from_host(host_btn)
-        p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
-        l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
+        p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+        l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
         rects_p = _synthetic_list_row_slot_rects(
-            p_inset,
+            p_row_left,
             0,
-            p_inner_w,
+            p_row_w,
             int(p_c.get("height") or 0),
             len(source_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
             src_row_h,
         )
         rects_l = _synthetic_list_row_slot_rects(
-            l_inset,
+            l_row_left,
             0,
-            l_inner_w,
+            l_row_w,
             int(l_c.get("height") or 0),
             len(source_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -1602,21 +1614,21 @@ def _synthetic_source_list_rows_html(
     p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
     src_row_h = _list_row_height_px_from_host(host_btn)
-    p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
-    l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
+    p_row_left, p_row_w = _synthetic_list_row_track_rect_args(int(p_c.get("width") or 0))
+    l_row_left, l_row_w = _synthetic_list_row_track_rect_args(int(l_c.get("width") or 0))
     rects_p = _synthetic_list_row_slot_rects(
-        p_inset,
+        p_row_left,
         0,
-        p_inner_w,
+        p_row_w,
         int(p_c.get("height") or 0),
         len(source_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
         src_row_h,
     )
     rects_l = _synthetic_list_row_slot_rects(
-        l_inset,
+        l_row_left,
         0,
-        l_inner_w,
+        l_row_w,
         int(l_c.get("height") or 0),
         len(source_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -2035,6 +2047,10 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .synthetic-list-scroll::-webkit-scrollbar-track{{background:transparent;}}
 .synthetic-list-scroll.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .synthetic-list-scroll .btn-wrap{{z-index:1;}}
+/* Let clicks reach the real list host .btn-wrap underneath; rows stay interactive. */
+.synthetic-list-scroll{{pointer-events:none;}}
+.synthetic-list-scroll > .btn-wrap{{pointer-events:auto;}}
+.synthetic-list-scroll > .synthetic-list-scroll-pad{{pointer-events:none;}}
  .device-page .btn-wrap.vp-btn{{pointer-events:none;}}
  .device-page .synthetic-list-scroll.vp-btn{{pointer-events:none;}}
  .vp-popup-stage .btn-wrap.vp-btn{{pointer-events:auto;}}
