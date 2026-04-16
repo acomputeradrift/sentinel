@@ -3697,8 +3697,8 @@ function renderOrientationToggle() {{
      currentOrientation=next;
      applyOrientationState();
      focusViewportElements();
-     applyRtiLayout();
      applyLayerVisibility();
+     applyRtiLayout();
      if (viewportMode.active) renderViewportPopup();
     }});
    }}
@@ -4245,7 +4245,7 @@ function setActivePage(nextPageIndex) {{
  if (scopedRoomId != null) {{
   setSelectedRoom(scopedRoomId, {{persist:true}});
  }}
- syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+ syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
  applyRtiLayout();
 }}
 selectedRoomId=loadSelectedRoomId();
@@ -4257,7 +4257,7 @@ syncSelectedRoomIndicator();
 window.addEventListener('resize', applyRtiLayout);
 renderOrientationToggle();
 applyOrientationState();
-syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
+syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
 syncTextZoomResetText();
 applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');

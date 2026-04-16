@@ -466,6 +466,141 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
+    def test_source_list_first_load_starts_compacted_without_roundtrip(self):
+        device = {
+            "userFacing": {
+                "displayName": "SourceScroll",
+                "deviceUI": _device_ui_standard(),
+                "pages": [_global_source_list_overflow_page()],
+            },
+            "diagnostics": _two_room_checked_sources_diag(),
+        }
+        project = {"devices": [device]}
+        page, server, _tmp = self._open_page(project)
+        try:
+            page.wait_for_timeout(1200)
+            result = page.evaluate(
+                """
+() => {
+  const shell = document.querySelector('.device-page.active .synthetic-list-scroll[data-synthetic-list-kind="source"]');
+  if (!shell) return { ok: false, reason: 'missing active source shell' };
+  const rows = [...shell.querySelectorAll('.btn-wrap[data-synthetic-source-list]')];
+  const visible = rows.filter(r => r.style.display !== 'none');
+  if (!visible.length) return { ok: false, reason: 'no visible rows' };
+  const tops = visible.map(r => r.offsetTop);
+  const minTop = Math.min(...tops);
+  const roomIds = [...new Set(visible.map(r => Number(r.dataset.syntheticSourceRoomId || 0)))];
+  const head = visible.slice(0, 6).map(r => ({
+    roomId: Number(r.dataset.syntheticSourceRoomId || 0),
+    top: Number(r.dataset.top || 0),
+    activeTop: Number(r.dataset.activeTop || 0),
+    offsetTop: r.offsetTop,
+    label: (r.querySelector('.test-btn')?.textContent || '').trim(),
+  }));
+  if (minTop > 4) return { ok: false, reason: 'first-load rows not compacted at top', minTop, roomIds, head };
+  return { ok: true, minTop, roomIds, head };
+}
+"""
+            )
+            self.assertTrue(result.get("ok"), msg=str(result))
+        finally:
+            page.close()
+            server.stop()
+
+    def test_source_list_compaction_survives_layout_visibility_order(self):
+        device = {
+            "userFacing": {
+                "displayName": "SourceScroll",
+                "deviceUI": _device_ui_standard(),
+                "pages": [_global_source_list_overflow_page()],
+            },
+            "diagnostics": _two_room_checked_sources_diag(),
+        }
+        project = {"devices": [device]}
+        page, server, _tmp = self._open_page(project)
+        try:
+            result = page.evaluate(
+                """
+() => {
+  if (typeof applyRtiLayout !== 'function' || typeof applyLayerVisibility !== 'function') {
+    return { ok: false, reason: 'layout or visibility hooks unavailable' };
+  }
+  // Reproduce the problematic ordering observed on first load:
+  // layout pass first, then selected-room visibility compaction.
+  applyRtiLayout();
+  applyLayerVisibility();
+  const shell = document.querySelector('.device-page.active .synthetic-list-scroll[data-synthetic-list-kind="source"]');
+  if (!shell) return { ok: false, reason: 'missing active source shell' };
+  const rows = [...shell.querySelectorAll('.btn-wrap[data-synthetic-source-list]')];
+  const visible = rows.filter(r => r.style.display !== 'none');
+  if (!visible.length) return { ok: false, reason: 'no visible rows' };
+  const minTop = Math.min(...visible.map(r => r.offsetTop));
+  const head = visible.slice(0, 6).map(r => ({
+    roomId: Number(r.dataset.syntheticSourceRoomId || 0),
+    top: Number(r.dataset.top || 0),
+    activeTop: Number(r.dataset.activeTop || 0),
+    offsetTop: r.offsetTop,
+    label: (r.querySelector('.test-btn')?.textContent || '').trim(),
+  }));
+  if (minTop > 4) return { ok: false, reason: 'rows stale after visibility pass', minTop, head };
+  return { ok: true, minTop, head };
+}
+"""
+            )
+            self.assertTrue(result.get("ok"), msg=str(result))
+        finally:
+            page.close()
+            server.stop()
+
+    def test_source_list_compaction_survives_orientation_toggle(self):
+        device = {
+            "userFacing": {
+                "displayName": "SourceScroll",
+                "deviceUI": _device_ui_standard(),
+                "pages": [_global_source_list_overflow_page()],
+            },
+            "diagnostics": _two_room_checked_sources_diag(),
+        }
+        project = {"devices": [device]}
+        page, server, _tmp = self._open_page(project)
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const shell = document.querySelector('.device-page.active .synthetic-list-scroll[data-synthetic-list-kind="source"]');
+  if (!shell) return { ok: false, reason: 'missing active source shell' };
+  if (typeof setSelectedRoom !== 'function') return { ok: false, reason: 'setSelectedRoom unavailable' };
+  setSelectedRoom(2, { persist: false });
+  const minVisibleTop = () => {
+    const rows = [...shell.querySelectorAll('.btn-wrap[data-synthetic-source-list]')];
+    const visible = rows.filter(r => r.style.display !== 'none');
+    if (!visible.length) return { minTop: 9999, roomIds: [] };
+    return {
+      minTop: Math.min(...visible.map(r => r.offsetTop)),
+      roomIds: [...new Set(visible.map(r => Number(r.dataset.syntheticSourceRoomId || 0)))],
+    };
+  };
+  const before = minVisibleTop();
+  const land = document.querySelector('.orientation-btn[data-orientation="landscape"]');
+  const port = document.querySelector('.orientation-btn[data-orientation="portrait"]');
+  if (!land || !port) return { ok: false, reason: 'missing orientation controls', before };
+  land.click();
+  port.click();
+  const after = minVisibleTop();
+  if (before.minTop > 4) return { ok: false, reason: 'precondition failed before orientation', before, after };
+  if (after.minTop > 4) return { ok: false, reason: 'compaction lost after orientation toggle', before, after };
+  if (!(after.roomIds.length === 1 && after.roomIds[0] === 2)) {
+    return { ok: false, reason: 'wrong visible room after orientation toggle', before, after };
+  }
+  return { ok: true, before, after };
+}
+"""
+            )
+            self.assertTrue(result.get("ok"), msg=str(result))
+        finally:
+            page.close()
+            server.stop()
+
 
 if __name__ == "__main__":
     unittest.main()
