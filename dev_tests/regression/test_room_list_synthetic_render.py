@@ -248,9 +248,9 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         payload = render_core._page_payload(project, app_ui, "sample", 0, 0, "portrait", resolved_targets=None)
         html = payload["page_button_rows"]
         attrs = self._synthetic_attrs_by_room(html, "1")
-        # Rows are laid out inside the scroll shell with local coordinates (origin top-left of host list).
-        self.assertIn("data-p-left='0'", attrs)
-        self.assertIn("data-l-left='0'", attrs)
+        # Rows are laid out inside the scroll shell with a small horizontal inset for scrollbar/link clearance.
+        self.assertIn("data-p-left='10'", attrs)
+        self.assertIn("data-l-left='10'", attrs)
 
     def test_synthetic_room_list_wraps_rows_in_scroll_shell(self):
         p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
@@ -414,6 +414,8 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertIn("data-synthetic-source-device-id='4'", html)
         self.assertNotIn("data-synthetic-source-device-id='5'", html)
         self.assertNotIn("data-synthetic-source-device-id='6'", html)
+        self.assertIn("data-p-left='10'", html)
+        self.assertIn("data-l-left='10'", html)
         self.assertIn('"sourceDeviceId": 4', html)
 
     def test_page_payload_global_source_list_emits_all_checked_rooms(self):

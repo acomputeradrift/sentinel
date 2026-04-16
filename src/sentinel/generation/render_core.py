@@ -657,6 +657,7 @@ def _render_button_control(
 
 _ROOM_LIST_SYNTHETIC_GAP_PX = 2
 _ROOM_LIST_SYNTHETIC_Z_BOOST = 0
+_SYNTHETIC_LIST_SIDE_INSET_PX = 10
 
 
 def _synthetic_list_host_rect_pair(
@@ -862,6 +863,12 @@ def _synthetic_list_row_slot_rects(
     return out
 
 
+def _synthetic_list_inset_rect_args(list_w: int) -> tuple[int, int]:
+    inset = max(0, int(_SYNTHETIC_LIST_SIDE_INSET_PX))
+    inner_w = max(1, int(list_w) - (2 * inset))
+    return inset, inner_w
+
+
 def _room_list_row_slot_rects(
     list_left: int,
     list_top: int,
@@ -1050,19 +1057,21 @@ def _synthetic_controller_room_list_rows_html(
         p_c = _ui_coordinates(btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(btn["buttonUI"], "landscape")
         row_h = _list_row_height_px_from_host(btn)
+        p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
+        l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
         rects_p = _synthetic_list_row_slot_rects(
+            p_inset,
             0,
-            0,
-            int(p_c.get("width") or 0),
+            p_inner_w,
             int(p_c.get("height") or 0),
             len(room_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
             row_h,
         )
         rects_l = _synthetic_list_row_slot_rects(
+            l_inset,
             0,
-            0,
-            int(l_c.get("width") or 0),
+            l_inner_w,
             int(l_c.get("height") or 0),
             len(room_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -1166,19 +1175,21 @@ def _synthetic_controller_room_list_rows_html(
     p_c = _ui_coordinates(btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(btn["buttonUI"], "landscape")
     row_h = _list_row_height_px_from_host(btn)
+    p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
+    l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
     rects_p = _synthetic_list_row_slot_rects(
+        p_inset,
         0,
-        0,
-        int(p_c.get("width") or 0),
+        p_inner_w,
         int(p_c.get("height") or 0),
         len(room_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
         row_h,
     )
     rects_l = _synthetic_list_row_slot_rects(
+        l_inset,
         0,
-        0,
-        int(l_c.get("width") or 0),
+        l_inner_w,
         int(l_c.get("height") or 0),
         len(room_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -1488,19 +1499,21 @@ def _synthetic_source_list_rows_html(
         p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
         l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
         src_row_h = _list_row_height_px_from_host(host_btn)
+        p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
+        l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
         rects_p = _synthetic_list_row_slot_rects(
+            p_inset,
             0,
-            0,
-            int(p_c.get("width") or 0),
+            p_inner_w,
             int(p_c.get("height") or 0),
             len(source_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
             src_row_h,
         )
         rects_l = _synthetic_list_row_slot_rects(
+            l_inset,
             0,
-            0,
-            int(l_c.get("width") or 0),
+            l_inner_w,
             int(l_c.get("height") or 0),
             len(source_rows),
             _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -1589,19 +1602,21 @@ def _synthetic_source_list_rows_html(
     p_c = _ui_coordinates(host_btn["buttonUI"], "portrait")
     l_c = _ui_coordinates(host_btn["buttonUI"], "landscape")
     src_row_h = _list_row_height_px_from_host(host_btn)
+    p_inset, p_inner_w = _synthetic_list_inset_rect_args(int(p_c.get("width") or 0))
+    l_inset, l_inner_w = _synthetic_list_inset_rect_args(int(l_c.get("width") or 0))
     rects_p = _synthetic_list_row_slot_rects(
+        p_inset,
         0,
-        0,
-        int(p_c.get("width") or 0),
+        p_inner_w,
         int(p_c.get("height") or 0),
         len(source_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
         src_row_h,
     )
     rects_l = _synthetic_list_row_slot_rects(
+        l_inset,
         0,
-        0,
-        int(l_c.get("width") or 0),
+        l_inner_w,
         int(l_c.get("height") or 0),
         len(source_rows),
         _ROOM_LIST_SYNTHETIC_GAP_PX,
@@ -2227,10 +2242,44 @@ function syncSelectedRoomIndicator() {{
 }}
 function applySelectedRoomToSourceRows(pageEl) {{
  if (!pageEl) return;
+ const byShell=new Map();
  pageEl.querySelectorAll(".btn-wrap[data-synthetic-source-list='1']").forEach(el=>{{
+  const shell=el.closest(".synthetic-list-scroll[data-synthetic-list-kind='source']");
+  if (!shell) return;
   const rowRoomId=normalizeRoomId(el.dataset.syntheticSourceRoomId);
   const matches=selectedRoomId==null || (rowRoomId!=null && Number(rowRoomId)===Number(selectedRoomId));
   el.dataset.selectedRoomMatch=matches ? "1" : "0";
+  if (el.dataset.baseTop==null) el.dataset.baseTop=String(Number(el.dataset.top||0));
+  const bucket=byShell.get(shell) || [];
+  bucket.push(el);
+  byShell.set(shell, bucket);
+ }});
+ byShell.forEach((rows, shell)=>{{
+  const sorted=[...rows].sort((a,b)=>Number(a.dataset.baseTop||0)-Number(b.dataset.baseTop||0));
+  const heights=sorted.map(r=>Number(r.dataset.height||0)).filter(v=>v>0);
+  const rowH=heights.length ? heights[0] : 0;
+  let step=0;
+  for (let i=1; i<sorted.length; i+=1) {{
+   const d=Number(sorted[i].dataset.baseTop||0)-Number(sorted[i-1].dataset.baseTop||0);
+   if (d>0 && (step===0 || d<step)) step=d;
+  }}
+  const gap=Math.max(0, step>0 ? step-rowH : 2);
+  let visibleIndex=0;
+  sorted.forEach(row=>{{
+   if (String(row.dataset.selectedRoomMatch||"0")==="1") {{
+    row.dataset.activeTop=String(visibleIndex * (rowH + gap));
+    visibleIndex += 1;
+   }} else {{
+    row.dataset.activeTop=String(Number(row.dataset.baseTop||0));
+   }}
+  }});
+  const pad=shell.querySelector(".synthetic-list-scroll-pad");
+  if (pad) {{
+   if (pad.dataset.basePadHeight==null) pad.dataset.basePadHeight=String(Number(pad.dataset.padHeight||0));
+   const activePad=visibleIndex>0 ? (visibleIndex*rowH)+((visibleIndex-1)*gap) : 0;
+   pad.dataset.activePadHeight=String(activePad);
+  }}
+  shell.scrollTop=0;
  }});
 }}
 function inferScopedRoomIdFromPage(pageEl) {{
@@ -2250,6 +2299,7 @@ function setSelectedRoom(nextRoomId, options) {{
  if (persist) persistSelectedRoomId(selectedRoomId);
  syncSelectedRoomIndicator();
  applyLayerVisibility();
+ if (!viewportMode.active) applyRtiLayout();
  refreshButtonVisualStates();
 }}
  function refreshButtonVisualStates() {{
@@ -4034,12 +4084,13 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    el.style.height=`${{height}}px`;
   }});
  if (activePage) activePage.querySelectorAll('.synthetic-list-scroll .synthetic-list-scroll-pad').forEach(el=>{{
-   const ph=Number(el.dataset.padHeight||0)*totalScale;
+   const ph=Number(el.dataset.activePadHeight!=null ? el.dataset.activePadHeight : (el.dataset.padHeight||0))*totalScale;
    el.style.height=`${{ph}}px`;
  }});
  if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
    const left=Number(el.dataset.left||0)*totalScale;
-   const top=Number(el.dataset.top||0)*totalScale;
+   const topKey=(String(el.dataset.syntheticSourceList||'')==='1' && String(el.dataset.selectedRoomMatch||'1')==='1' && el.dataset.activeTop!=null) ? 'activeTop' : 'top';
+   const top=Number(el.dataset[topKey]||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
    const height=Number(el.dataset.height||0)*totalScale;
    el.style.left=`${{left}}px`;

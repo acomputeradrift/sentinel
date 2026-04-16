@@ -170,6 +170,57 @@ def _six_checked_sources_diag() -> dict:
     }
 
 
+def _two_room_checked_sources_diag() -> dict:
+    rows = []
+    for i in range(3):
+        rows.append(
+            {
+                "roomId": 1,
+                "roomName": "Kitchen",
+                "sourceDeviceId": 110 + i,
+                "sourceName": f"K-{i}",
+                "activityOrder": i,
+                "checked": 1,
+                "resolvedPageLink": {"targetPageId": None, "targetPageName": None, "resolutionPath": None},
+            }
+        )
+    for i in range(3):
+        rows.append(
+            {
+                "roomId": 2,
+                "roomName": "Office",
+                "sourceDeviceId": 210 + i,
+                "sourceName": f"O-{i}",
+                "activityOrder": i,
+                "checked": 1,
+                "resolvedPageLink": {"targetPageId": None, "targetPageName": None, "resolutionPath": None},
+            }
+        )
+    return {
+        "deviceId": 1,
+        "pages": [{"pageId": 3, "buttons": [], "viewports": []}],
+        "rooms": [
+            {
+                "roomId": 1,
+                "roomName": "Kitchen",
+                "controllerRoomOrder": 0,
+                "roomSelectTagsAll": [],
+                "roomSelectRoomLabelTags": [{"buttonTagId": 1, "buttonTagName": "K", "macroId": 1}],
+                "resolvedPageLink": {},
+            },
+            {
+                "roomId": 2,
+                "roomName": "Office",
+                "controllerRoomOrder": 1,
+                "roomSelectTagsAll": [],
+                "roomSelectRoomLabelTags": [{"buttonTagId": 2, "buttonTagName": "O", "macroId": 2}],
+                "resolvedPageLink": {},
+            },
+        ],
+        "sourceListRows": rows,
+    }
+
+
 class SyntheticListScrollRuntimeTest(unittest.TestCase):
     """Browser-level checks for .synthetic-list-scroll containment."""
 
@@ -356,6 +407,9 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
   const ch = shell.clientHeight;
   const oy = getComputedStyle(shell).overflowY;
   if (oy !== 'auto' && oy !== 'scroll') return { ok: false, reason: 'bad overflow-y on source shell', oy };
+  const first = rows[0];
+  if (!first) return { ok: false, reason: 'missing first source row' };
+  if (first.offsetLeft < 8) return { ok: false, reason: 'source row missing left/right inset', offsetLeft: first.offsetLeft };
   let maxBottom = 0;
   for (const r of rows) {
     maxBottom = Math.max(maxBottom, r.offsetTop + r.offsetHeight);
@@ -364,6 +418,46 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
     return { ok: false, reason: 'source stack fits shell without scroll', maxBottom, ch };
   }
   return { ok: true, rows: rows.length, maxBottom, ch };
+}
+"""
+            )
+            self.assertTrue(result.get("ok"), msg=str(result))
+        finally:
+            page.close()
+            server.stop()
+
+    def test_source_list_selected_room_compacts_rows_to_top(self):
+        device = {
+            "userFacing": {
+                "displayName": "SourceScroll",
+                "deviceUI": _device_ui_standard(),
+                "pages": [_global_source_list_overflow_page()],
+            },
+            "diagnostics": _two_room_checked_sources_diag(),
+        }
+        project = {"devices": [device]}
+        page, server, _tmp = self._open_page(project)
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const shell = document.querySelector('.synthetic-list-scroll[data-synthetic-list-kind="source"]');
+  if (!shell) return { ok: false, reason: 'missing source shell' };
+  if (typeof setSelectedRoom !== 'function') return { ok: false, reason: 'setSelectedRoom unavailable' };
+  setSelectedRoom(2, { persist: false });
+  const rows = [...shell.querySelectorAll('.btn-wrap[data-synthetic-source-list]')];
+  const visible = rows.filter(r => r.style.display !== 'none');
+  if (visible.length !== 3) return { ok: false, reason: 'wrong visible count for selected room', visible: visible.length };
+  const roomIds = [...new Set(visible.map(r => Number(r.dataset.syntheticSourceRoomId || 0)))];
+  if (!(roomIds.length === 1 && roomIds[0] === 2)) return { ok: false, reason: 'visible rows include wrong rooms', roomIds };
+  const tops = visible.map(r => r.offsetTop);
+  const minTop = Math.min(...tops);
+  if (minTop > 2) return { ok: false, reason: 'visible rows do not restart at shell top', tops };
+  const pad = shell.querySelector('.synthetic-list-scroll-pad');
+  if (!pad) return { ok: false, reason: 'missing scroll pad' };
+  const activePad = Number(pad.dataset.activePadHeight || 0);
+  if (activePad <= 0 || activePad > 200) return { ok: false, reason: 'active pad height not compacted', activePad };
+  return { ok: true, visible: visible.length, roomIds, tops, activePad };
 }
 """
             )
