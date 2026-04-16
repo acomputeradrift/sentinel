@@ -4257,6 +4257,8 @@ syncSelectedRoomIndicator();
 window.addEventListener('resize', applyRtiLayout);
 renderOrientationToggle();
 applyOrientationState();
+// Ensure synthetic source rows are compacted before first layout paint.
+applyLayerVisibility();
 syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
 syncTextZoomResetText();
 applyRtiLayout();

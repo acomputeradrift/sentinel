@@ -601,6 +601,45 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
+    def test_source_list_first_paint_has_no_compaction_flash(self):
+        device = {
+            "userFacing": {
+                "displayName": "SourceScroll",
+                "deviceUI": _device_ui_standard(),
+                "pages": [_global_source_list_overflow_page()],
+            },
+            "diagnostics": _two_room_checked_sources_diag(),
+        }
+        project = {"devices": [device]}
+        page, server, _tmp = self._open_page(project)
+        try:
+            result = page.evaluate(
+                """
+async () => {
+  const shell = document.querySelector('.device-page.active .synthetic-list-scroll[data-synthetic-list-kind="source"]');
+  if (!shell) return { ok: false, reason: 'missing active source shell' };
+  const samples = [];
+  for (let i = 0; i < 36; i += 1) {
+    const rows = [...shell.querySelectorAll('.btn-wrap[data-synthetic-source-list]')];
+    const visible = rows.filter(r => r.style.display !== 'none');
+    if (visible.length) {
+      const minTop = Math.min(...visible.map(r => r.offsetTop));
+      samples.push(minTop);
+    }
+    await new Promise(resolve => requestAnimationFrame(() => resolve()));
+  }
+  if (!samples.length) return { ok: false, reason: 'no visible samples captured' };
+  const maxMinTop = Math.max(...samples);
+  if (maxMinTop > 4) return { ok: false, reason: 'first-paint compaction flash detected', maxMinTop, samples };
+  return { ok: true, maxMinTop, samples };
+}
+"""
+            )
+            self.assertTrue(result.get("ok"), msg=str(result))
+        finally:
+            page.close()
+            server.stop()
+
 
 if __name__ == "__main__":
     unittest.main()
