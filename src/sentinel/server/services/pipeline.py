@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
@@ -11,6 +12,8 @@ from pathlib import Path
 import sys
 from uuid import uuid4
 from collections import deque
+
+_log = logging.getLogger("uvicorn.error")
 
 
 class PipelineNotImplementedError(RuntimeError):
@@ -56,6 +59,38 @@ def save_upload(*, projectId: str, uploadId: str, filename: str, content: bytes)
     path = upload_dir / f"{uploadId}__{safe_name}"
     path.write_bytes(content)
     return path
+
+
+def prune_project_upload_dir_to_single_file(*, projectId: str, keep_path: Path) -> None:
+    """
+    Remove every file under the project upload directory except the active upload file.
+
+    Called after a successful extract+generate so disk holds a single current .apex per project.
+    """
+    upload_dir = _project_upload_dir(projectId=projectId)
+    if not upload_dir.exists():
+        return
+    try:
+        keep_resolved = keep_path.resolve()
+    except OSError:
+        keep_resolved = keep_path
+    for child in list(upload_dir.iterdir()):
+        if not child.is_file():
+            continue
+        try:
+            if child.resolve() == keep_resolved:
+                continue
+        except OSError:
+            pass
+        try:
+            child.unlink()
+        except OSError as exc:
+            _log.warning(
+                "[pipeline] upload-prune: failed to remove %s projectId=%s err=%s",
+                child,
+                projectId,
+                exc,
+            )
 
 
 def _call_phase_hook(phase_hook, phase: str, percent: float) -> None:

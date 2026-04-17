@@ -211,6 +211,11 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         generation=generation if isinstance(generation, dict) else {},
     )
     _repo(request).set_project_active_upload(projectId=projectId, uploadId=upload_id)
+    _repo(request).prune_project_upload_retention(
+        projectId=projectId,
+        activeUploadId=str(upload_id),
+        activeStoragePath=str(path),
+    )
     active_upload = commissioning_snapshots.active_upload_payload(repo=_repo(request), projectId=projectId)
     _publish_generation_phase(
         request,
@@ -286,6 +291,11 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     )
     _repo(request).record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
     _repo(request).set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
+    _repo(request).prune_project_upload_retention(
+        projectId=projectId,
+        activeUploadId=str(upload_id),
+        activeStoragePath=str(apex_path),
+    )
     active_upload = commissioning_snapshots.active_upload_payload(repo=_repo(request), projectId=projectId)
     _publish_generation_phase(
         request,

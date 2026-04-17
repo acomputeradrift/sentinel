@@ -380,6 +380,50 @@ class CommissioningPipelineTest(unittest.TestCase):
             rendered = " ".join(str(call.args[0]) for call in log_info.call_args_list if call.args)
             self.assertIn("REGEN_BASELINE", rendered)
 
+    def test_successful_regenerate_prunes_upload_disk_and_retains_two_db_rows(self):
+        """After extract+generate, uploads dir holds one .apex; DB keeps current + previous upload."""
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.app.main import create_app
+
+            app = create_app()
+            client = TestClient(app)
+
+            c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+            p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+            project_id = p["projectId"]
+
+            apex_path = Path(td) / "sample.apex"
+            _write_test_apex(apex_path)
+
+            upload_ids: list[str] = []
+            for _ in range(3):
+                with apex_path.open("rb") as f:
+                    up = client.post(
+                        f"/api/v1/commissioning/projects/{project_id}/uploads",
+                        files={"apex": ("sample.apex", f, "application/octet-stream")},
+                    )
+                self.assertEqual(up.status_code, 200)
+                upload_ids.append(up.json()["uploadId"])
+                regen = client.post(
+                    f"/api/v1/commissioning/projects/{project_id}/regenerate",
+                    json={"uploadId": upload_ids[-1]},
+                )
+                self.assertEqual(regen.status_code, 200)
+
+            upload_dir = Path(os.environ["SENTINEL_UPLOAD_ROOT"]) / project_id
+            apex_files = list(upload_dir.glob("*.apex"))
+            self.assertEqual(len(apex_files), 1, "Strict single current upload file on disk.")
+
+            repo = app.state.repo
+            rows = repo.list_uploads_for_project(projectId=project_id)
+            self.assertEqual(len(rows), 2, "DB retains two upload records (current + previous).")
+            self.assertEqual(rows[0].uploadId, upload_ids[-1])
+
     def test_second_regenerate_replaces_old_generated_artifacts(self):
         TestClient = _require_fastapi()
 

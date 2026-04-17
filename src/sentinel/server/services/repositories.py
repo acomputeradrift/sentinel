@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import threading
+from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -96,6 +97,10 @@ class Repository(Protocol):
     def set_project_active_upload(self, *, projectId: str, uploadId: str) -> None: ...
 
     def get_project_active_upload(self, *, projectId: str) -> UploadRecord | None: ...
+
+    def list_uploads_for_project(self, *, projectId: str) -> list[UploadRecord]: ...
+
+    def prune_project_upload_retention(self, *, projectId: str, activeUploadId: str, activeStoragePath: str) -> None: ...
 
     def append_test_result(
         self,
@@ -277,6 +282,31 @@ class InMemoryRepository:
             if not upload_id:
                 return None
             return self._uploads.get(upload_id)
+
+    def list_uploads_for_project(self, *, projectId: str) -> list[UploadRecord]:
+        with self._lock:
+            items = [u for u in self._uploads.values() if u.projectId == projectId]
+            items.sort(key=lambda u: (u.uploadedAtUtc, u.uploadId), reverse=True)
+            return list(items)
+
+    def prune_project_upload_retention(self, *, projectId: str, activeUploadId: str, activeStoragePath: str) -> None:
+        from sentinel.server.services import pipeline
+
+        with self._lock:
+            items = [u for u in self._uploads.values() if u.projectId == projectId]
+            items.sort(key=lambda u: (u.uploadedAtUtc, u.uploadId), reverse=True)
+            ordered_ids = [u.uploadId for u in items]
+            keep: set[str] = set(ordered_ids[:2])
+            if str(activeUploadId) not in keep and ordered_ids:
+                keep = {ordered_ids[0], str(activeUploadId)}
+            elif str(activeUploadId) not in keep:
+                keep = {str(activeUploadId)}
+            for uid in ordered_ids:
+                if uid in keep:
+                    continue
+                self._uploads.pop(uid, None)
+        keep_path = Path(activeStoragePath).resolve()
+        pipeline.prune_project_upload_dir_to_single_file(projectId=projectId, keep_path=keep_path)
 
     def append_test_result(
         self,
@@ -548,6 +578,30 @@ class PostgresRepository:
             storagePath=str(row["storagePath"]),
             uploadedAtUtc=uploaded_at_str,
         )
+
+    def list_uploads_for_project(self, *, projectId: str) -> list[UploadRecord]:
+        rows = self._q.list_uploads_for_project(self._database_url, project_id=projectId)
+        out: list[UploadRecord] = []
+        for row in rows:
+            uploaded_at = row.get("uploadedAtUtc")
+            uploaded_at_str = uploaded_at.isoformat() if hasattr(uploaded_at, "isoformat") else str(uploaded_at)
+            out.append(
+                UploadRecord(
+                    uploadId=str(row["uploadId"]),
+                    projectId=str(row["projectId"]),
+                    originalFilename=str(row["originalFilename"]),
+                    storagePath=str(row["storagePath"]),
+                    uploadedAtUtc=uploaded_at_str,
+                )
+            )
+        return out
+
+    def prune_project_upload_retention(self, *, projectId: str, activeUploadId: str, activeStoragePath: str) -> None:
+        from sentinel.server.services import pipeline
+
+        self._q.prune_project_uploads_keep_latest_two(self._database_url, project_id=projectId)
+        keep_path = Path(activeStoragePath).resolve()
+        pipeline.prune_project_upload_dir_to_single_file(projectId=projectId, keep_path=keep_path)
 
     def append_test_result(
         self,

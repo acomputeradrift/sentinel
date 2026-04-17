@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi import HTTPException, Request
@@ -14,6 +15,22 @@ from sentinel.server.middleware.commissioning_auth_middleware import Commissioni
 from sentinel.server.middleware.trace_middleware import TraceIdMiddleware
 from sentinel.server import request_context
 from sentinel.server.services.repositories import InMemoryRepository, PostgresRepository, Repository
+
+import sentinel as _sentinel_package
+
+
+def _commissioning_ui_dir() -> Path | None:
+    """
+    Resolve packaged commissioning static files under ``sentinel/ui/commissioning``.
+
+    Uses the ``sentinel`` package location so paths stay correct under UNC shares,
+    editable installs, and typical test runners (not cwd-relative).
+    """
+    root = Path(_sentinel_package.__file__).resolve().parent
+    candidate = root / "ui" / "commissioning"
+    if candidate.is_dir():
+        return candidate
+    return None
 
 
 def create_app(repo: Repository | None = None) -> FastAPI:
@@ -46,10 +63,9 @@ def create_app(repo: Repository | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    ui_root = os.path.join(os.path.dirname(__file__), "..", "..", "ui")
-    commissioning_dir = os.path.join(ui_root, "commissioning")
-    if os.path.isdir(commissioning_dir):
-        app.mount("/commissioning", StaticFiles(directory=commissioning_dir, html=True), name="commissioning-ui")
+    commissioning_dir = _commissioning_ui_dir()
+    if commissioning_dir is not None:
+        app.mount("/commissioning", StaticFiles(directory=str(commissioning_dir), html=True), name="commissioning-ui")
 
     app.include_router(commissioning_router)
     app.include_router(events_router)

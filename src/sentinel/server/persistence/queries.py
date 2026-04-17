@@ -138,6 +138,59 @@ def get_project_active_upload(database_url: str, *, project_id: str) -> dict[str
         con.close()
 
 
+def list_uploads_for_project(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select upload_id as \"uploadId\", project_id as \"projectId\", original_filename as \"originalFilename\", "
+            "storage_path as \"storagePath\", uploaded_at_utc as \"uploadedAtUtc\" "
+            "from uploads where project_id=%s order by uploaded_at_utc desc, upload_id desc",
+            (project_id,),
+        )
+    finally:
+        con.close()
+
+
+def prune_project_uploads_keep_latest_two(database_url: str, *, project_id: str) -> list[str]:
+    """
+    Keep at most two upload rows per project: the two most recent by time, unless the active
+    upload is older — then keep the newest row plus the active row.
+
+    Returns storage_path values for deleted rows (for logging/diagnostics).
+    """
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute("select active_upload_id from projects where project_id=%s", (project_id,))
+        row = cur.fetchone()
+        active_id = str(row[0]) if row and row[0] is not None else None
+        cur.execute(
+            "select upload_id, storage_path from uploads where project_id=%s "
+            "order by uploaded_at_utc desc, upload_id desc",
+            (project_id,),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            con.commit()
+            return []
+        ordered_ids = [str(r[0]) for r in rows]
+        id_to_path = {str(r[0]): str(r[1]) if r[1] is not None else "" for r in rows}
+        keep: set[str] = set(ordered_ids[:2])
+        if active_id and active_id not in keep:
+            keep = {ordered_ids[0], active_id}
+        deleted_paths: list[str] = []
+        for uid in ordered_ids:
+            if uid in keep:
+                continue
+            cur.execute("delete from uploads where upload_id=%s and project_id=%s", (uid, project_id))
+            deleted_paths.append(id_to_path.get(uid, ""))
+        con.commit()
+        return deleted_paths
+    finally:
+        con.close()
+
+
 def create_tech_link(database_url: str, *, project_id: str, label: str | None) -> dict[str, Any]:
     tech_link_id = _new_uuid()
     created_at = _utc_now()
