@@ -131,9 +131,11 @@ class CommissioningWsEventsTest(unittest.TestCase):
                 self.closed.set()
 
         async def _scenario():
+            from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+
             repo = InMemoryRepository()
-            client = repo.create_client(name="Client A")
-            project = repo.create_project(clientId=client.clientId, name="Project A")
+            client = repo.create_client(userId=COMMISSIONING_STUB_USER_ID, name="Client A")
+            project = repo.create_project(userId=COMMISSIONING_STUB_USER_ID, clientId=client.clientId, name="Project A")
             broker = ProjectEventBroker()
 
             app = SimpleNamespace(state=SimpleNamespace(repo=repo, project_event_broker=broker))

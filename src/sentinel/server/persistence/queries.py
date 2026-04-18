@@ -26,19 +26,19 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_client(database_url: str, *, name: str) -> str:
+def create_client(database_url: str, *, user_id: str, name: str) -> str:
     client_id = _new_uuid()
     con = db.connect(database_url)
     try:
         cur = con.cursor()
         try:
             cur.execute(
-                "insert into clients (client_id, name, created_at_utc) values (%s, %s, %s)",
-                (client_id, name, _utc_now()),
+                "insert into clients (client_id, user_id, name, created_at_utc) values (%s, %s, %s, %s)",
+                (client_id, user_id, name, _utc_now()),
             )
         except Exception as e:
             msg = str(e)
-            if "clients_name_uq" in msg:
+            if "clients_user_id_name_uq" in msg or "clients_name_uq" in msg:
                 raise DuplicateClientNameError(name) from e
             raise
         con.commit()
@@ -47,13 +47,27 @@ def create_client(database_url: str, *, name: str) -> str:
         con.close()
 
 
-def list_clients(database_url: str) -> list[dict[str, Any]]:
+def list_clients_for_user(database_url: str, *, user_id: str) -> list[dict[str, Any]]:
     con = db.connect(database_url)
     try:
         return db.fetch_all(
             con,
-            "select client_id as \"clientId\", name, created_at_utc as \"createdAtUtc\" from clients order by created_at_utc desc",
-            (),
+            "select client_id as \"clientId\", user_id as \"userId\", name, created_at_utc as \"createdAtUtc\" "
+            "from clients where user_id=%s order by created_at_utc desc",
+            (user_id,),
+        )
+    finally:
+        con.close()
+
+
+def get_client(database_url: str, *, client_id: str) -> dict[str, Any] | None:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_one(
+            con,
+            "select client_id as \"clientId\", user_id as \"userId\", name, created_at_utc as \"createdAtUtc\" "
+            "from clients where client_id=%s",
+            (client_id,),
         )
     finally:
         con.close()

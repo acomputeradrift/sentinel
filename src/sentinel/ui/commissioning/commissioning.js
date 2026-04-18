@@ -86,7 +86,7 @@ function _safeStorageSetJsonObject(key, obj) {
 }
 
 function setActiveTab(tabName) {
-  const tabs = ["manage", "commission", "diagnostics"];
+  const tabs = ["commission", "diagnostics", "file", "tech-links", "reports", "clear-tests"];
   for (const t of tabs) {
     const btn = document.getElementById(`tab-${t}`);
     const panel = document.getElementById(`panel-${t}`);
@@ -121,11 +121,41 @@ function setStatus(el, msg) {
 
 function setSelectOptions(selectEl, items, getValue, getLabel) {
   selectEl.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = selectEl.id === "projectSelect" ? "Select project…" : "Select client…";
+  selectEl.appendChild(ph);
   for (const item of items) {
     const opt = document.createElement("option");
     opt.value = getValue(item);
     opt.textContent = getLabel(item);
     selectEl.appendChild(opt);
+  }
+}
+
+function parseHashRoute() {
+  try {
+    const raw = window.location.hash.replace(/^#/, "");
+    const params = new URLSearchParams(raw);
+    return {
+      clientId: String(params.get("c") || "").trim(),
+      projectId: String(params.get("p") || "").trim(),
+    };
+  } catch (_e) {
+    return { clientId: "", projectId: "" };
+  }
+}
+
+function writeHashRoute(clientId, projectId) {
+  const next = new URLSearchParams();
+  const c = String(clientId || "").trim();
+  const p = String(projectId || "").trim();
+  if (c) next.set("c", c);
+  if (p) next.set("p", p);
+  const frag = next.toString() ? `#${next.toString()}` : "";
+  const url = `${window.location.pathname}${window.location.search}${frag}`;
+  if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== url) {
+    history.replaceState(null, "", url);
   }
 }
 
@@ -141,23 +171,30 @@ function resetProjectDetailsUi() {
 function updateManageVisibility() {
   const hasClient = !!$("clientSelect").value;
   const hasProject = !!$("projectSelect").value;
-  $("manageProjectCard").hidden = !hasClient;
+  $("createProjectBtn").disabled = !hasClient;
   $("manageProjectDetails").hidden = !hasProject;
+  const techBody = document.getElementById("techLinksPanelBody");
+  if (techBody) techBody.hidden = !hasProject;
+  const fh = document.getElementById("fileHintNoProject");
+  if (fh) fh.hidden = hasProject;
+  const th = document.getElementById("techHintNoProject");
+  if (th) th.hidden = hasProject;
   if (!hasProject) resetProjectDetailsUi();
 }
 
 async function refreshClients() {
   const prevClientId = String($("clientSelect").value || "").trim();
   const rememberedClientId = _safeStorageGet(LAST_CLIENT_KEY).trim();
+  const hashRoute = parseHashRoute();
   const clients = await jsonFetch(api("/commissioning/clients"));
   setSelectOptions($("clientSelect"), clients, (c) => c.clientId, (c) => c.name);
   const clientIds = new Set((Array.isArray(clients) ? clients : []).map((c) => String(c?.clientId || "").trim()).filter(Boolean));
-  const nextClientId = clientIds.has(rememberedClientId)
-    ? rememberedClientId
-    : clientIds.has(prevClientId)
-      ? prevClientId
-      : "";
-  if (nextClientId) $("clientSelect").value = nextClientId;
+  const hashClient = String(hashRoute.clientId || "").trim();
+  let nextClientId = "";
+  if (hashClient && clientIds.has(hashClient)) nextClientId = hashClient;
+  else if (rememberedClientId && clientIds.has(rememberedClientId)) nextClientId = rememberedClientId;
+  else if (prevClientId && clientIds.has(prevClientId)) nextClientId = prevClientId;
+  $("clientSelect").value = nextClientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   updateManageVisibility();
   return clients;
@@ -169,7 +206,9 @@ async function refreshProjects() {
   if (!clientId) {
     if (requestSeq !== state.refreshProjectsRequestSeq) return [];
     setSelectOptions($("projectSelect"), [], () => "", () => "");
+    $("projectSelect").value = "";
     $("projectSelect").dispatchEvent(new Event("change"));
+    writeHashRoute("", "");
     updateManageVisibility();
     return [];
   }
@@ -177,19 +216,17 @@ async function refreshProjects() {
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
   if (requestSeq !== state.refreshProjectsRequestSeq) return projects;
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
-  const liveSelectedProjectId = String($("projectSelect").value || "").trim();
   const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
   const rememberedProjectId = String((persistedByClient && persistedByClient[clientId]) || state.selectedProjectIdByClient[clientId] || "").trim();
   const projectIds = new Set((Array.isArray(projects) ? projects : []).map((p) => String(p?.projectId || "").trim()).filter(Boolean));
-  const nextProjectId = projectIds.has(rememberedProjectId)
-    ? rememberedProjectId
-    : projectIds.has(liveSelectedProjectId)
-      ? liveSelectedProjectId
-      : projectIds.has(prevSelectedProjectId)
-      ? prevSelectedProjectId
-      : "";
-  if (nextProjectId) $("projectSelect").value = nextProjectId;
+  const hashProject = String(parseHashRoute().projectId || "").trim();
+  let nextProjectId = "";
+  if (hashProject && projectIds.has(hashProject)) nextProjectId = hashProject;
+  else if (rememberedProjectId && projectIds.has(rememberedProjectId)) nextProjectId = rememberedProjectId;
+  else if (prevSelectedProjectId && projectIds.has(prevSelectedProjectId)) nextProjectId = prevSelectedProjectId;
+  $("projectSelect").value = nextProjectId;
   $("projectSelect").dispatchEvent(new Event("change"));
+  writeHashRoute(clientId, nextProjectId);
   updateManageVisibility();
   return projects;
 }
@@ -744,6 +781,7 @@ async function run() {
     safe(async () => {
       const clientId = String($("clientSelect").value || "").trim();
       _safeStorageSet(LAST_CLIENT_KEY, clientId);
+      writeHashRoute(clientId, "");
       await refreshProjects();
       setPanelContext();
       setLastGeneratedLabel();
@@ -760,6 +798,7 @@ async function run() {
         persistedByClient[clientId] = String(projectId || "");
         _safeStorageSetJsonObject(LAST_PROJECT_BY_CLIENT_KEY, persistedByClient);
       }
+      writeHashRoute(clientId, projectId);
       if (window.__sentinelCommissioningHydrating) {
         setPanelContext();
         setLastGeneratedLabel();
@@ -781,10 +820,18 @@ async function run() {
     }, projectStatusEl)
   );
 
-  $("tab-manage").addEventListener("click", () => setActiveTab("manage"));
   $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
   $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
-  $("tab-clear-tests").addEventListener("click", () => safe(clearTestsForProject, $("uploadStatus")));
+  $("tab-file").addEventListener("click", () => setActiveTab("file"));
+  $("tab-tech-links").addEventListener("click", () => setActiveTab("tech-links"));
+  $("tab-reports").addEventListener("click", () => setActiveTab("reports"));
+  $("tab-clear-tests").addEventListener("click", () => setActiveTab("clear-tests"));
+  const clearTestsBtn = document.getElementById("clearTestsBtn");
+  if (clearTestsBtn) clearTestsBtn.addEventListener("click", () => safe(clearTestsForProject, $("uploadStatus")));
+
+  window.addEventListener("hashchange", () => {
+    void safe(refreshClients, clientStatusEl);
+  });
 
   $("createClientBtn").addEventListener("click", () => safe(createClient, clientStatusEl));
   $("createProjectBtn").addEventListener("click", () => safe(createProject, projectStatusEl));

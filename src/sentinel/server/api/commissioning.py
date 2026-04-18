@@ -18,13 +18,34 @@ from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import pipeline
 from sentinel.server.services import progress
 from sentinel.server.services import ws_broker
+from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
 from sentinel.server.services.repositories import Repository
 
 
 router = APIRouter(prefix="/api/v1/commissioning", tags=["commissioning"])
 log = logging.getLogger("uvicorn.error")
+
+
 def _repo(request: Request) -> Repository:
     return request.app.state.repo
+
+
+def _commissioning_user_id(_request: Request) -> str:
+    return COMMISSIONING_STUB_USER_ID
+
+
+def _project_owned_by_user(repo: Repository, *, user_id: str, project_id: str) -> bool:
+    proj = repo.get_project(projectId=project_id)
+    if proj is None:
+        return False
+    client = repo.get_client(clientId=proj.clientId)
+    return client is not None and str(client.userId) == str(user_id)
+
+
+def _require_project_for_user(repo: Repository, *, user_id: str, project_id: str):
+    if not _project_owned_by_user(repo, user_id=user_id, project_id=project_id):
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    return repo.get_project(projectId=project_id)
 
 
 def _broker(request: Request) -> ws_broker.ProjectEventBroker:
@@ -64,14 +85,16 @@ def _publish_generation_phase(
 
 @router.get("/clients")
 def list_clients(request: Request) -> list[dict]:
-    clients = _repo(request).list_clients()
+    uid = _commissioning_user_id(request)
+    clients = _repo(request).list_clients(userId=uid)
     return [{"clientId": c.clientId, "name": c.name, "createdAtUtc": c.createdAtUtc} for c in clients]
 
 
 @router.get("/clients/{clientId}/projects")
 def list_projects_for_client(request: Request, clientId: str) -> list[dict]:
+    uid = _commissioning_user_id(request)
     try:
-        projects = _repo(request).list_projects_for_client(clientId=clientId)
+        projects = _repo(request).list_projects_for_client(userId=uid, clientId=clientId)
     except KeyError:
         raise http_error(404, code="CLIENT_NOT_FOUND", message="Client not found.")
     return [
@@ -92,7 +115,7 @@ def create_client(request: Request, payload: dict) -> dict:
     if not name:
         raise http_error(400, code="VALIDATION_ERROR", message="Client name is required.")
     try:
-        c = _repo(request).create_client(name=name)
+        c = _repo(request).create_client(userId=_commissioning_user_id(request), name=name)
     except KeyError as e:
         if str(e) == "'CLIENT_EXISTS'" or str(e) == "CLIENT_EXISTS":
             raise http_error(409, code="CLIENT_EXISTS", message="Client name already exists.")
@@ -105,7 +128,7 @@ def create_project(request: Request, clientId: str, payload: dict) -> dict:
     name = str(payload.get("name") or "").strip()
     if not name:
         raise http_error(400, code="VALIDATION_ERROR", message="Project name is required.")
-    p = _repo(request).create_project(clientId=clientId, name=name)
+    p = _repo(request).create_project(userId=_commissioning_user_id(request), clientId=clientId, name=name)
     return {
         "projectId": p.projectId,
         "clientId": p.clientId,
@@ -118,18 +141,19 @@ def create_project(request: Request, clientId: str, payload: dict) -> dict:
 
 @router.post("/projects/{projectId}/tech-links")
 def create_tech_link(request: Request, projectId: str, payload: dict) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     label = payload.get("label")
-    link, token = _repo(request).create_tech_link(projectId=projectId, label=str(label) if label is not None else None)
+    link, token = repo.create_tech_link(projectId=projectId, label=str(label) if label is not None else None)
     return {"techLinkId": link.techLinkId, "techUrl": f"/testing/{token.techToken}"}
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/rotate")
 def rotate_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     try:
-        token = _repo(request).rotate_tech_link_token(projectId=projectId, techLinkId=techLinkId)
+        token = repo.rotate_tech_link_token(projectId=projectId, techLinkId=techLinkId)
     except KeyError:
         raise http_error(404, code="TECH_LINK_NOT_FOUND", message="Tech link not found.")
     return {"techLinkId": techLinkId, "techUrl": f"/testing/{token.techToken}"}
@@ -137,21 +161,19 @@ def rotate_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
 
 @router.get("/projects/{projectId}/tech-links")
 def list_active_tech_links(request: Request, projectId: str) -> list[dict]:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
-    links = _repo(request).list_active_tech_links(projectId=projectId)
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    links = repo.list_active_tech_links(projectId=projectId)
     # Read-only list endpoint: do not rotate/revoke tokens as a side effect.
     return [{"techLinkId": l.techLinkId, "label": l.label, "createdAtUtc": l.createdAtUtc, "techUrl": ""} for l in links]
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/revoke")
 def revoke_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     try:
-        _repo(request).revoke_tech_link(projectId=projectId, techLinkId=techLinkId)
+        repo.revoke_tech_link(projectId=projectId, techLinkId=techLinkId)
     except KeyError:
         raise http_error(404, code="TECH_LINK_NOT_FOUND", message="Tech link not found.")
     return {"projectId": projectId, "techLinkId": techLinkId, "revoked": True}
@@ -159,9 +181,8 @@ def revoke_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
 
 @router.post("/projects/{projectId}/uploads")
 async def upload_apex(request: Request, projectId: str, apex: UploadFile) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     if not apex.filename:
         raise http_error(400, code="VALIDATION_ERROR", message="Apex filename is required.")
     content = await apex.read()
@@ -169,15 +190,14 @@ async def upload_apex(request: Request, projectId: str, apex: UploadFile) -> dic
         raise http_error(400, code="VALIDATION_ERROR", message="Apex file is empty.")
     upload_id = str(uuid4())
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
-    _repo(request).record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
+    repo.record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
     return {"uploadId": upload_id, "projectId": projectId, "originalFilename": apex.filename, "storagePath": str(path)}
 
 
 @router.post("/projects/{projectId}/upload-and-regenerate")
 async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFile) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     if not apex.filename:
         raise http_error(400, code="VALIDATION_ERROR", message="Apex filename is required.")
     content = await apex.read()
@@ -186,7 +206,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
 
     upload_id = str(uuid4())
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
-    _repo(request).record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
+    repo.record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
 
     try:
         generation = await asyncio.to_thread(
@@ -210,13 +230,13 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         originalFilename=apex.filename,
         generation=generation if isinstance(generation, dict) else {},
     )
-    _repo(request).set_project_active_upload(projectId=projectId, uploadId=upload_id)
-    _repo(request).prune_project_upload_retention(
+    repo.set_project_active_upload(projectId=projectId, uploadId=upload_id)
+    repo.prune_project_upload_retention(
         projectId=projectId,
         activeUploadId=str(upload_id),
         activeStoragePath=str(path),
     )
-    active_upload = commissioning_snapshots.active_upload_payload(repo=_repo(request), projectId=projectId)
+    active_upload = commissioning_snapshots.active_upload_payload(repo=repo, projectId=projectId)
     _publish_generation_phase(
         request,
         projectId=projectId,
@@ -253,9 +273,8 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
 
 @router.post("/projects/{projectId}/regenerate")
 async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     upload_id = payload.get("uploadId")
     if upload_id is None:
         raise http_error(400, code="VALIDATION_ERROR", message="uploadId is required for MVP regenerate.")
@@ -289,14 +308,14 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         originalFilename=original_filename,
         generation=generation if isinstance(generation, dict) else {},
     )
-    _repo(request).record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
-    _repo(request).set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
-    _repo(request).prune_project_upload_retention(
+    repo.record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
+    repo.set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
+    repo.prune_project_upload_retention(
         projectId=projectId,
         activeUploadId=str(upload_id),
         activeStoragePath=str(apex_path),
     )
-    active_upload = commissioning_snapshots.active_upload_payload(repo=_repo(request), projectId=projectId)
+    active_upload = commissioning_snapshots.active_upload_payload(repo=repo, projectId=projectId)
     _publish_generation_phase(
         request,
         projectId=projectId,
@@ -324,18 +343,16 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
 
 @router.get("/projects/{projectId}/fails")
 def project_fails(request: Request, projectId: str) -> list[dict]:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
-    latest = _repo(request).get_latest_results_for_project(projectId=projectId)
-    return commissioning_snapshots.fails_from_latest(repo=_repo(request), projectId=projectId, latest_results=latest)
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    latest = repo.get_latest_results_for_project(projectId=projectId)
+    return commissioning_snapshots.fails_from_latest(repo=repo, projectId=projectId, latest_results=latest)
 
 
 @router.put("/projects/{projectId}/fail-tags")
 def put_fail_tag(request: Request, projectId: str, payload: dict) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
 
     target_key = str(payload.get("targetKey") or "").strip()
     tag = str(payload.get("tag") or "").strip().upper()
@@ -345,7 +362,7 @@ def put_fail_tag(request: Request, projectId: str, payload: dict) -> dict:
         raise http_error(400, code="VALIDATION_ERROR", message="tag must be NOT_STARTED, IN_PROGRESS, or DONE.")
 
     try:
-        _repo(request).set_fail_tag(projectId=projectId, targetKey=target_key, tag=tag)
+        repo.set_fail_tag(projectId=projectId, targetKey=target_key, tag=tag)
     except KeyError:
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
 
@@ -368,10 +385,9 @@ def put_fail_tag(request: Request, projectId: str, payload: dict) -> dict:
 
 @router.get("/projects/{projectId}/progress")
 def project_progress(request: Request, projectId: str) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
-    latest = _repo(request).get_latest_results_for_project(projectId=projectId)
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    latest = repo.get_latest_results_for_project(projectId=projectId)
     try:
         return progress.commissioning_progress(projectId=projectId, latest_results=latest)
     except FileNotFoundError:
@@ -380,11 +396,8 @@ def project_progress(request: Request, projectId: str) -> dict:
 
 @router.get("/projects/{projectId}/rollups")
 def project_rollups(request: Request, projectId: str) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
-
     repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     latest = repo.get_latest_results_for_project(projectId=projectId)
     try:
         prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
@@ -402,11 +415,10 @@ async def project_events(request: Request, projectId: str, once: bool = False):
 
 @router.post("/projects/{projectId}/clear-tests")
 def clear_project_tests(request: Request, projectId: str) -> dict:
-    proj = _repo(request).get_project(projectId=projectId)
-    if proj is None:
-        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
-    _repo(request).clear_project_testing_data(projectId=projectId)
-    snapshot = commissioning_snapshots.commissioning_snapshot(repo=_repo(request), projectId=projectId)
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    repo.clear_project_testing_data(projectId=projectId)
+    snapshot = commissioning_snapshots.commissioning_snapshot(repo=repo, projectId=projectId)
     try:
         _broker(request).publish(projectId=projectId, event=snapshot)
     except Exception:
@@ -419,7 +431,7 @@ async def project_ws(websocket: WebSocket, projectId: str):
     await websocket.accept()
 
     repo = getattr(websocket.app.state, "repo", None)
-    if repo is None or repo.get_project(projectId=projectId) is None:
+    if repo is None or not _project_owned_by_user(repo, user_id=COMMISSIONING_STUB_USER_ID, project_id=projectId):
         try:
             log.info("[commissioning-ws] project_not_found projectId=%s", projectId)
             await websocket.send_text(json.dumps({"type": "error", "code": "PROJECT_NOT_FOUND", "projectId": projectId}))

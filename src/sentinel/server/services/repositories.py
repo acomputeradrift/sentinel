@@ -23,6 +23,7 @@ def new_token() -> str:
 @dataclass(frozen=True)
 class Client:
     clientId: str
+    userId: str
     name: str
     createdAtUtc: str
 
@@ -72,13 +73,15 @@ class TestResultRecord:
 
 
 class Repository(Protocol):
-    def create_client(self, *, name: str) -> Client: ...
+    def create_client(self, *, userId: str, name: str) -> Client: ...
 
-    def create_project(self, *, clientId: str, name: str) -> Project: ...
+    def get_client(self, *, clientId: str) -> Client | None: ...
 
-    def list_clients(self) -> list[Client]: ...
+    def create_project(self, *, userId: str, clientId: str, name: str) -> Project: ...
 
-    def list_projects_for_client(self, *, clientId: str) -> list[Project]: ...
+    def list_clients(self, *, userId: str) -> list[Client]: ...
+
+    def list_projects_for_client(self, *, userId: str, clientId: str) -> list[Project]: ...
 
     def get_project(self, *, projectId: str) -> Project | None: ...
 
@@ -170,29 +173,37 @@ class InMemoryRepository:
 
         return max(items, key=_key)
 
-    def create_client(self, *, name: str) -> Client:
+    def create_client(self, *, userId: str, name: str) -> Client:
         with self._lock:
             wanted = str(name).strip().casefold()
             for existing in self._clients.values():
-                if str(existing.name).strip().casefold() == wanted:
+                if str(existing.userId) == str(userId) and str(existing.name).strip().casefold() == wanted:
                     raise KeyError("CLIENT_EXISTS")
-            client = Client(clientId=new_uuid(), name=name, createdAtUtc=utc_now())
+            client = Client(clientId=new_uuid(), userId=str(userId), name=name, createdAtUtc=utc_now())
             self._clients[client.clientId] = client
             return client
 
-    def create_project(self, *, clientId: str, name: str) -> Project:
+    def get_client(self, *, clientId: str) -> Client | None:
         with self._lock:
+            return self._clients.get(clientId)
+
+    def create_project(self, *, userId: str, clientId: str, name: str) -> Project:
+        with self._lock:
+            client = self._clients.get(clientId)
+            if client is None or str(client.userId) != str(userId):
+                raise KeyError("CLIENT_NOT_FOUND")
             project = Project(projectId=new_uuid(), clientId=clientId, name=name, createdAtUtc=utc_now(), status="EMPTY")
             self._projects[project.projectId] = project
             return project
 
-    def list_clients(self) -> list[Client]:
+    def list_clients(self, *, userId: str) -> list[Client]:
         with self._lock:
-            return list(self._clients.values())
+            return [c for c in self._clients.values() if str(c.userId) == str(userId)]
 
-    def list_projects_for_client(self, *, clientId: str) -> list[Project]:
+    def list_projects_for_client(self, *, userId: str, clientId: str) -> list[Project]:
         with self._lock:
-            if clientId not in self._clients:
+            client = self._clients.get(clientId)
+            if client is None or str(client.userId) != str(userId):
                 raise KeyError("CLIENT_NOT_FOUND")
             return [p for p in self._projects.values() if p.clientId == clientId]
 
@@ -450,34 +461,53 @@ class PostgresRepository:
         self._q = persistence_queries
         self._db.apply_migrations(database_url)
 
-    def create_client(self, *, name: str) -> Client:
+    def create_client(self, *, userId: str, name: str) -> Client:
         try:
-            client_id = self._q.create_client(self._database_url, name=name)
+            client_id = self._q.create_client(self._database_url, user_id=userId, name=name)
         except self._q.DuplicateClientNameError as e:
             raise KeyError("CLIENT_EXISTS") from e
-        return Client(clientId=client_id, name=name, createdAtUtc=utc_now())
+        return Client(clientId=client_id, userId=str(userId), name=name, createdAtUtc=utc_now())
 
-    def create_project(self, *, clientId: str, name: str) -> Project:
+    def get_client(self, *, clientId: str) -> Client | None:
+        row = self._q.get_client(self._database_url, client_id=clientId)
+        if row is None:
+            return None
+        created = row.get("createdAtUtc")
+        created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+        return Client(
+            clientId=str(row["clientId"]),
+            userId=str(row["userId"]),
+            name=str(row["name"]),
+            createdAtUtc=created_str,
+        )
+
+    def create_project(self, *, userId: str, clientId: str, name: str) -> Project:
+        owner = self.get_client(clientId=clientId)
+        if owner is None or str(owner.userId) != str(userId):
+            raise KeyError("CLIENT_NOT_FOUND")
         project_id = self._q.create_project(self._database_url, client_id=clientId, name=name)
         return Project(projectId=project_id, clientId=clientId, name=name, createdAtUtc=utc_now(), status="EMPTY")
 
-    def list_clients(self) -> list[Client]:
-        rows = self._q.list_clients(self._database_url)
+    def list_clients(self, *, userId: str) -> list[Client]:
+        rows = self._q.list_clients_for_user(self._database_url, user_id=userId)
         out: list[Client] = []
         for r in rows:
             created = r.get("createdAtUtc")
             created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
-            out.append(Client(clientId=str(r["clientId"]), name=str(r["name"]), createdAtUtc=created_str))
+            out.append(
+                Client(
+                    clientId=str(r["clientId"]),
+                    userId=str(r["userId"]),
+                    name=str(r["name"]),
+                    createdAtUtc=created_str,
+                )
+            )
         return out
 
-    def list_projects_for_client(self, *, clientId: str) -> list[Project]:
-        con = self._db.connect(self._database_url)
-        try:
-            exists = self._db.fetch_one(con, "select client_id as \"clientId\" from clients where client_id=%s", (clientId,))
-            if exists is None:
-                raise KeyError("CLIENT_NOT_FOUND")
-        finally:
-            con.close()
+    def list_projects_for_client(self, *, userId: str, clientId: str) -> list[Project]:
+        owner = self.get_client(clientId=clientId)
+        if owner is None or str(owner.userId) != str(userId):
+            raise KeyError("CLIENT_NOT_FOUND")
         rows = self._q.list_projects_for_client(self._database_url, client_id=clientId)
         out: list[Project] = []
         for r in rows:
