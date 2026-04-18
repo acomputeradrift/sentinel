@@ -11,6 +11,7 @@ output/
 .DS_Store
 
 # Local agent / scratch (do not commit)
+%TEMP%/
 _patch_extract/
 sentinel_patch.zip
 ssh_test.txt
