@@ -18,27 +18,20 @@
             <h1>Sentinel Console</h1>
           </div>
           <div class="topbar-actions" role="group" aria-label="Context and account">
-            <div class="topbar-cluster">
+            <div class="topbar-cluster topbar-cluster--compact">
               <label class="topbar-field">
                 <span class="topbar-field-label">Client</span>
                 <select id="clientSelect" aria-label="Client"></select>
               </label>
-              <input id="newClientName" type="text" class="topbar-text" placeholder="New client name" aria-label="New client name" />
-              <button class="manage-create-btn" id="createClientBtn" type="button">Create</button>
-              <span id="clientStatus" class="field-error" aria-live="polite"></span>
             </div>
-            <div class="topbar-cluster">
+            <div class="topbar-cluster topbar-cluster--compact">
               <label class="topbar-field">
                 <span class="topbar-field-label">Project</span>
                 <select id="projectSelect" aria-label="Project"></select>
               </label>
-              <input id="newProjectName" type="text" class="topbar-text" placeholder="New project name" aria-label="New project name" />
-              <button class="manage-create-btn" id="createProjectBtn" type="button">Create</button>
-              <span id="projectStatus" class="field-error" aria-live="polite"></span>
             </div>
-            <div class="user-chip" aria-label="Signed in user">
+            <div class="user-chip user-chip--icon-only" aria-label="Signed in as Jamie" title="Jamie">
               <span class="user-chip-avatar" aria-hidden="true">J</span>
-              <span class="user-chip-name">Jamie</span>
             </div>
           </div>
         </div>
@@ -388,6 +381,36 @@
         </main>
       </div>
     </div>
+
+    <dialog id="modalNewClient" class="commissioning-dialog" aria-labelledby="modalNewClientTitle">
+      <div class="commissioning-dialog-inner">
+        <h2 id="modalNewClientTitle" class="commissioning-dialog-title">New client</h2>
+        <label class="field">
+          <span>Name</span>
+          <input id="modalNewClientName" type="text" autocomplete="off" />
+        </label>
+        <p id="modalNewClientStatus" class="field-error" role="status"></p>
+        <div class="dialog-actions">
+          <button type="button" class="manage-create-btn" id="modalNewClientCancel">Cancel</button>
+          <button type="button" class="manage-create-btn" id="modalNewClientSubmit">Create</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="modalNewProject" class="commissioning-dialog" aria-labelledby="modalNewProjectTitle">
+      <div class="commissioning-dialog-inner">
+        <h2 id="modalNewProjectTitle" class="commissioning-dialog-title">New project</h2>
+        <label class="field">
+          <span>Name</span>
+          <input id="modalNewProjectName" type="text" autocomplete="off" />
+        </label>
+        <p id="modalNewProjectStatus" class="field-error" role="status"></p>
+        <div class="dialog-actions">
+          <button type="button" class="manage-create-btn" id="modalNewProjectCancel">Cancel</button>
+          <button type="button" class="manage-create-btn" id="modalNewProjectSubmit">Create</button>
+        </div>
+      </div>
+    </dialog>
 
     <script src="./commissioning.js"></script>
     <!-- commission-tab:js -->

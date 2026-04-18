@@ -52,6 +52,10 @@ window.__sentinelCommissioningHydrating = true;
 const LAST_CLIENT_KEY = "sentinel.commissioning.lastClientId";
 const LAST_PROJECT_BY_CLIENT_KEY = "sentinel.commissioning.lastProjectByClient";
 
+/** Sentinel option values (not real API ids) — open create dialogs when chosen. */
+const OPTION_NEW_CLIENT = "__new_client__";
+const OPTION_NEW_PROJECT = "__new_project__";
+
 function _safeStorageGet(key) {
   try {
     if (!window || !window.localStorage) return "";
@@ -133,6 +137,13 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
   }
 }
 
+function appendSelectNewOption(selectEl, value, label) {
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = label;
+  selectEl.appendChild(opt);
+}
+
 function parseHashRoute() {
   try {
     const raw = window.location.hash.replace(/^#/, "");
@@ -168,10 +179,15 @@ function resetProjectDetailsUi() {
   setProgressHidden($("uploadProgressRow"), true);
 }
 
+function currentClientId() {
+  const v = String($("clientSelect").value || "").trim();
+  if (!v || v === OPTION_NEW_CLIENT) return "";
+  return v;
+}
+
 function updateManageVisibility() {
-  const hasClient = !!$("clientSelect").value;
-  const hasProject = !!$("projectSelect").value;
-  $("createProjectBtn").disabled = !hasClient;
+  const hasClient = !!currentClientId();
+  const hasProject = !!currentProjectId();
   $("manageProjectDetails").hidden = !hasProject;
   const techBody = document.getElementById("techLinksPanelBody");
   if (techBody) techBody.hidden = !hasProject;
@@ -188,6 +204,7 @@ async function refreshClients() {
   const hashRoute = parseHashRoute();
   const clients = await jsonFetch(api("/commissioning/clients"));
   setSelectOptions($("clientSelect"), clients, (c) => c.clientId, (c) => c.name);
+  appendSelectNewOption($("clientSelect"), OPTION_NEW_CLIENT, "+ New client…");
   const clientIds = new Set((Array.isArray(clients) ? clients : []).map((c) => String(c?.clientId || "").trim()).filter(Boolean));
   const hashClient = String(hashRoute.clientId || "").trim();
   let nextClientId = "";
@@ -201,7 +218,7 @@ async function refreshClients() {
 }
 
 async function refreshProjects() {
-  const clientId = $("clientSelect").value;
+  const clientId = currentClientId();
   const requestSeq = ++state.refreshProjectsRequestSeq;
   if (!clientId) {
     if (requestSeq !== state.refreshProjectsRequestSeq) return [];
@@ -216,6 +233,7 @@ async function refreshProjects() {
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
   if (requestSeq !== state.refreshProjectsRequestSeq) return projects;
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
+  appendSelectNewOption($("projectSelect"), OPTION_NEW_PROJECT, "+ New project…");
   const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
   const rememberedProjectId = String((persistedByClient && persistedByClient[clientId]) || state.selectedProjectIdByClient[clientId] || "").trim();
   const projectIds = new Set((Array.isArray(projects) ? projects : []).map((p) => String(p?.projectId || "").trim()).filter(Boolean));
@@ -232,7 +250,9 @@ async function refreshProjects() {
 }
 
 function currentProjectId() {
-  return $("projectSelect").value;
+  const v = String($("projectSelect").value || "").trim();
+  if (!v || v === OPTION_NEW_PROJECT) return "";
+  return v;
 }
 
 const state = {
@@ -244,6 +264,8 @@ const state = {
   uploadInFlightByProject: {},
   uploadFinalizeTimerByProject: {},
   refreshProjectsRequestSeq: 0,
+  lastValidClientId: "",
+  lastValidProjectId: "",
 };
 
 function setProgressHidden(el, hidden) {
@@ -471,36 +493,86 @@ function _setGenerationPhaseUi(projectId, phaseRaw, percentRaw) {
   }
 }
 
+function openModalNewClient() {
+  const dlg = document.getElementById("modalNewClient");
+  const name = document.getElementById("modalNewClientName");
+  const st = document.getElementById("modalNewClientStatus");
+  if (st) st.textContent = "";
+  if (name) name.value = "";
+  if (dlg && typeof dlg.showModal === "function") {
+    dlg.showModal();
+    setTimeout(() => {
+      if (name) name.focus();
+    }, 0);
+  }
+}
+
+function openModalNewProject() {
+  const dlg = document.getElementById("modalNewProject");
+  const name = document.getElementById("modalNewProjectName");
+  const st = document.getElementById("modalNewProjectStatus");
+  if (st) st.textContent = "";
+  if (name) name.value = "";
+  if (dlg && typeof dlg.showModal === "function") {
+    dlg.showModal();
+    setTimeout(() => {
+      if (name) name.focus();
+    }, 0);
+  }
+}
+
 async function createClient() {
-  const name = $("newClientName").value.trim();
-  if (!name) return;
+  const nameEl = document.getElementById("modalNewClientName");
+  const statusEl = document.getElementById("modalNewClientStatus");
+  const dlg = document.getElementById("modalNewClient");
+  const name = nameEl ? String(nameEl.value || "").trim() : "";
+  if (!name) {
+    if (statusEl) statusEl.textContent = "Name is required.";
+    return;
+  }
+  if (statusEl) statusEl.textContent = "";
   const client = await jsonFetch(api("/commissioning/clients"), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (nameEl) nameEl.value = "";
+  if (dlg && typeof dlg.close === "function") dlg.close();
   await refreshClients();
   $("clientSelect").value = client.clientId;
+  state.lastValidClientId = client.clientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   await refreshProjects();
-  $("newClientName").value = "";
 }
 
 async function createProject() {
-  const clientId = $("clientSelect").value;
-  const name = $("newProjectName").value.trim();
-  if (!clientId || !name) return;
+  const clientId = currentClientId();
+  const nameEl = document.getElementById("modalNewProjectName");
+  const statusEl = document.getElementById("modalNewProjectStatus");
+  const dlg = document.getElementById("modalNewProject");
+  const name = nameEl ? String(nameEl.value || "").trim() : "";
+  if (!clientId) {
+    if (statusEl) statusEl.textContent = "Select a client first.";
+    return;
+  }
+  if (!name) {
+    if (statusEl) statusEl.textContent = "Name is required.";
+    return;
+  }
+  if (statusEl) statusEl.textContent = "";
   const proj = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (nameEl) nameEl.value = "";
+  if (dlg && typeof dlg.close === "function") dlg.close();
   await refreshProjects();
   $("projectSelect").value = proj.projectId;
+  state.lastValidProjectId = proj.projectId;
   $("projectSelect").dispatchEvent(new Event("change"));
   state.generationReadyByProject[proj.projectId] = false;
   updateTechLinkEnabled();
-  $("newProjectName").value = "";
 }
 
 function _xhrPostFormData(url, fd, onProgress) {
@@ -762,36 +834,52 @@ async function clearTestsForProject() {
 
 async function run() {
   window.__sentinelCommissioningHydrating = true;
-  const clientStatusEl = document.getElementById("clientStatus");
-  const projectStatusEl = document.getElementById("projectStatus");
+  const modalClientStatusEl = document.getElementById("modalNewClientStatus");
+  const modalProjectStatusEl = document.getElementById("modalNewProjectStatus");
 
   const safe = async (fn, statusEl) => {
     try {
-      setStatus(statusEl, "");
+      if (statusEl) setStatus(statusEl, "");
       await fn();
     } catch (e) {
-      setStatus(statusEl, String(e?.message || e));
+      const msg = String(e?.message || e);
+      if (statusEl) setStatus(statusEl, msg);
+      else console.error("[commissioning]", msg);
       updateTechLinkEnabled();
     }
   };
 
   ensureManageStoreSubscription();
 
-  $("clientSelect").addEventListener("change", () =>
-    safe(async () => {
-      const clientId = String($("clientSelect").value || "").trim();
+  $("clientSelect").addEventListener("change", () => {
+    const raw = String($("clientSelect").value || "").trim();
+    if (raw === OPTION_NEW_CLIENT) {
+      $("clientSelect").value = state.lastValidClientId || "";
+      openModalNewClient();
+      return;
+    }
+    state.lastValidClientId = raw;
+    void safe(async () => {
+      const clientId = currentClientId();
       _safeStorageSet(LAST_CLIENT_KEY, clientId);
       writeHashRoute(clientId, "");
       await refreshProjects();
       setPanelContext();
       setLastGeneratedLabel();
       updateManageVisibility();
-    }, projectStatusEl)
-  );
-  $("projectSelect").addEventListener("change", () =>
-    safe(async () => {
+    }, null);
+  });
+  $("projectSelect").addEventListener("change", () => {
+    const raw = String($("projectSelect").value || "").trim();
+    if (raw === OPTION_NEW_PROJECT) {
+      $("projectSelect").value = state.lastValidProjectId || "";
+      openModalNewProject();
+      return;
+    }
+    state.lastValidProjectId = raw;
+    void safe(async () => {
       const projectId = currentProjectId();
-      const clientId = String($("clientSelect").value || "").trim();
+      const clientId = currentClientId();
       if (clientId) {
         state.selectedProjectIdByClient[clientId] = projectId;
         const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
@@ -817,8 +905,8 @@ async function run() {
       startManageWs(projectId);
       syncManageFromStore(projectId);
       await loadTechLinks();
-    }, projectStatusEl)
-  );
+    }, null);
+  });
 
   $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
   $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
@@ -830,15 +918,51 @@ async function run() {
   if (clearTestsBtn) clearTestsBtn.addEventListener("click", () => safe(clearTestsForProject, $("uploadStatus")));
 
   window.addEventListener("hashchange", () => {
-    void safe(refreshClients, clientStatusEl);
+    void safe(refreshClients, null);
   });
 
-  $("createClientBtn").addEventListener("click", () => safe(createClient, clientStatusEl));
-  $("createProjectBtn").addEventListener("click", () => safe(createProject, projectStatusEl));
+  const modalNewClientCancel = document.getElementById("modalNewClientCancel");
+  const modalNewClientSubmit = document.getElementById("modalNewClientSubmit");
+  const modalNewProjectCancel = document.getElementById("modalNewProjectCancel");
+  const modalNewProjectSubmit = document.getElementById("modalNewProjectSubmit");
+  const modalNewClientEl = document.getElementById("modalNewClient");
+  const modalNewProjectEl = document.getElementById("modalNewProject");
+  if (modalNewClientCancel && modalNewClientEl) {
+    modalNewClientCancel.addEventListener("click", () => {
+      modalNewClientEl.close();
+    });
+  }
+  if (modalNewProjectCancel && modalNewProjectEl) {
+    modalNewProjectCancel.addEventListener("click", () => {
+      modalNewProjectEl.close();
+    });
+  }
+  if (modalNewClientSubmit) modalNewClientSubmit.addEventListener("click", () => safe(createClient, modalClientStatusEl));
+  if (modalNewProjectSubmit) modalNewProjectSubmit.addEventListener("click", () => safe(createProject, modalProjectStatusEl));
+  const modalNewClientNameEl = document.getElementById("modalNewClientName");
+  const modalNewProjectNameEl = document.getElementById("modalNewProjectName");
+  if (modalNewClientNameEl && modalNewClientSubmit) {
+    modalNewClientNameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        modalNewClientSubmit.click();
+      }
+    });
+  }
+  if (modalNewProjectNameEl && modalNewProjectSubmit) {
+    modalNewProjectNameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        modalNewProjectSubmit.click();
+      }
+    });
+  }
   $("uploadBtn").addEventListener("click", () => safe(uploadAndRegenerate, $("uploadStatus")));
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
 
-  await safe(refreshClients, clientStatusEl);
+  await safe(refreshClients, null);
+  state.lastValidClientId = currentClientId();
+  state.lastValidProjectId = currentProjectId();
   setProgressHidden($("uploadProgressRow"), true);
   updateTechLinkEnabled();
   renderTechLinks();
