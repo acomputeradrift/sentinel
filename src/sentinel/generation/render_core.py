@@ -4562,6 +4562,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
     system_content = "".join(system_rows) if system_rows else "<div class='home-empty'>No system events in project.</div>"
     driver_content = "".join(driver_rows) if driver_rows else "<div class='home-empty'>No driver events in project.</div>"
     device_content = "".join(device_rows) if device_rows else "<div class='home-empty'>No testable devices in project.</div>"
+    device_title = f"Devices | {_count_label(len(device_rows), 'device')}"
 
     app_json = json.dumps(app_ui)
     _ts_embed = _sentinel_test_status_embed_js()
@@ -4576,8 +4577,10 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-title{{margin:0;font-size:32px;line-height:1.05;}}
 .home-source{{margin-top:10px;font-size:14px;color:#4d6678;word-break:break-word;}}
 .home-section{{margin-top:28px;padding:22px 24px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
-.section-toggle{{display:inline-flex;align-items:center;gap:10px;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
+.section-toggle{{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;box-sizing:border-box;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
+.section-toggle-main{{display:inline-flex;align-items:center;gap:10px;min-width:0;}}
 .section-toggle-label{{font-size:22px;line-height:1.1;font-weight:700;}}
+.section-pct{{flex-shrink:0;font-size:18px;line-height:1.1;font-weight:700;color:#5a7387;}}
 .section-chevron{{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;color:#5a7387;}}
 .section-chevron svg{{display:block;width:14px;height:14px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;}}
 .home-subtitle{{margin:18px 0 10px;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5a7387;}}
@@ -4631,16 +4634,16 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <div class='home-source'>{source_file}</div>
 </section>
 <section class='home-section'>
-<button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-system'>0%</span></button>
 <div class='home-list' id='system-events' hidden>{system_content}</div>
 </section>
 <section class='home-section'>
-<button class='section-toggle' type='button' data-target='driver-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{driver_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<button class='section-toggle' type='button' data-target='driver-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{driver_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-driver'>0%</span></button>
 <div class='home-list' id='driver-events' hidden>{driver_content}</div>
 </section>
 <section class='home-section'>
-<h2>Devices</h2>
-<div class='home-list'>{device_content}</div>
+<button class='section-toggle' type='button' data-target='devices' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{device_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-devices'>0%</span></button>
+<div class='home-list' id='devices' hidden>{device_content}</div>
 </section>
 </main>
 <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
@@ -4659,6 +4662,35 @@ const APP_UI={app_json};
  let passAllContext=null;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
+ function homePctDisplay(pass, total) {{
+  const p = Number(pass || 0);
+  const t = Number(total || 0);
+  if (t <= 0) return "0%";
+  return `${{Math.round((p / t) * 100)}}%`;
+ }}
+ function updateHomeSectionPercents(progress) {{
+  if (!progress || typeof progress !== "object") return;
+  const sys = progress.eventSections && progress.eventSections.system ? progress.eventSections.system.counts : null;
+  const drv = progress.eventSections && progress.eventSections.driver ? progress.eventSections.driver.counts : null;
+  const elS = document.getElementById("home-pct-system");
+  const elD = document.getElementById("home-pct-driver");
+  const elV = document.getElementById("home-pct-devices");
+  if (elS && sys) elS.textContent = homePctDisplay(sys.pass, sys.totalTargets);
+  if (elD && drv) elD.textContent = homePctDisplay(drv.pass, drv.totalTargets);
+  if (elV && Array.isArray(progress.devices)) {{
+   let pass = 0, total = 0;
+   for (let i = 0; i < progress.devices.length; i++) {{
+    const d = progress.devices[i];
+    const c = d && d.counts ? d.counts : null;
+    if (!c) continue;
+    const t = Number(c.totalTargets || 0);
+    if (t <= 0) continue;
+    total += t;
+    pass += Number(c.pass || 0);
+   }}
+   elV.textContent = homePctDisplay(pass, total);
+  }}
+ }}
  function refreshHomeEventVisualStates() {{
   const api=globalThis.__sentinelTestStatus;
   if (!api||typeof api.refreshButtonWraps!=="function") return;
@@ -4749,7 +4781,10 @@ const APP_UI={app_json};
     refreshHomeEventVisualStates();
     return;
    }}
-   if (t === "commissioning_rollups") return;
+   if (t === "commissioning_rollups") {{
+    updateHomeSectionPercents(payload?.progress);
+    return;
+   }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;

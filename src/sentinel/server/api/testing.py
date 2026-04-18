@@ -536,6 +536,28 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     except Exception:
         log.exception("[testing-ws] snapshot-send-failed projectId=%s techToken=%s", project_id, techToken)
 
+    try:
+        prog, roll = commissioning_rollups.compute_progress_and_testing_rollups(repo=repo, projectId=project_id)
+        if prog is not None:
+            roll_msg = json.dumps(
+                {
+                    "type": "commissioning_rollups",
+                    "projectId": project_id,
+                    "progress": prog,
+                    "rollups": roll,
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+            await _send_text_or_fail(
+                websocket=websocket,
+                text=roll_msg,
+                project_id=project_id,
+                tech_token=techToken,
+            )
+    except Exception:
+        log.exception("[testing-ws] commissioning-rollups-initial-send-failed projectId=%s", project_id)
+
     async def send_loop():
         while True:
             msg = await ws_broker.wait_for_next(q, timeout_s=WS_KEEPALIVE_TIMEOUT_S)
