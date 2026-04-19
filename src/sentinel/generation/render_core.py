@@ -159,9 +159,9 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     if t.get("text"):
         out.append("Text")
     if t.get("macros"):
-        out.append("Macro")
+        out.append("System Macro")
     if t.get("macroSteps"):
-        out.append("MacroStep")
+        out.append("Macro Step")
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(variable_label_template.replace("{variableType}", name))
@@ -170,7 +170,7 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     if graphics_t.get("icon"):
         out.append("Icon")
     if _page_link_enabled(t):
-        out.append("PageLink")
+        out.append("Page Link")
     return out
 
 
@@ -2552,11 +2552,20 @@ function setSelectedRoom(nextRoomId, options) {{
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
-  const lines = [];
-  if (times.PASS) lines.push(`Passed: ${{times.PASS}}`);
-  if (times.FAIL) lines.push(`Failed: ${{times.FAIL}}`);
-  if (times.UNTESTED) lines.push(`Reverted: ${{times.UNTESTED}}`);
-  rowUi.lastTestEl.textContent = lines.join(" ");
+  const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
+  if (outcome === "PASS" && times.PASS) {{
+    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    return;
+  }}
+  if (outcome === "FAIL" && times.FAIL) {{
+    rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
+    return;
+  }}
+  if (outcome === "UNTESTED" && times.UNTESTED) {{
+    rowUi.lastTestEl.textContent = `Reverted: ${{times.UNTESTED}}`;
+    return;
+  }}
+  rowUi.lastTestEl.textContent = "";
  }}
  function setRowStatus(rowUi, outcome, recordedAtUtc) {{
   if (!rowUi) return;
@@ -2587,7 +2596,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (kind === "EVENT") {{
    const eventId = refs.eventId;
    if (eventId == null) return null;
-   const targetKey = `event:${{eventId}}:${{label || "Trigger"}}`;
+  const targetKey = `event:${{eventId}}:${{label || "Event Trigger"}}`;
    return {{
     targetKey,
     kind: "EVENT",
@@ -2700,9 +2709,9 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
     const firstMacroStepId = macroStepIds.length ? Number(macroStepIds[0]) : null;
-    if (lowerLabel === "macro" || lowerLabel === "macros") {{
+    if (lowerLabel === "macro" || lowerLabel === "macros" || lowerLabel === "system macro" || lowerLabel === "system macros") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
-    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
+    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps" || lowerLabel === "macro step" || lowerLabel === "macro steps") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) {{
       if (firstMacroStepId != null && Number.isFinite(firstMacroStepId)) {{
        programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
@@ -4434,14 +4443,14 @@ def _driver_resolved_actions(user: dict[str, Any]) -> tuple[list[str], list[dict
 
 def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> str:
     if macro_names and not command_names:
-        noun = "macro" if len(macro_names) == 1 else "macros"
+        noun = "System Macro" if len(macro_names) == 1 else "System Macros"
         return f"run {noun}: {'; '.join(macro_names)}"
     if command_names and not macro_names:
         noun = "command" if len(command_names) == 1 else "commands"
         return f"run {noun}: {'; '.join(command_names)}"
     if macro_names and command_names:
         parts = [
-            f"{'macro' if len(macro_names) == 1 else 'macros'} {'; '.join(macro_names)}",
+            f"{'System Macro' if len(macro_names) == 1 else 'System Macros'} {'; '.join(macro_names)}",
             f"{'command' if len(command_names) == 1 else 'commands'} {'; '.join(command_names)}",
         ]
         return f"run actions: {'; '.join(parts)}"
@@ -4450,7 +4459,7 @@ def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> st
 
 def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
     user = item.get("userFacing", {}) if isinstance(item, dict) else {}
-    trigger = str(user.get("resolvedTrigger") or "No trigger").strip()
+    trigger = str(user.get("resolvedTrigger") or "No Event Trigger").strip()
     if event_kind == "driver":
         driver_category = str(user.get("driverCategory") or "").strip()
         trigger_text = f"{driver_category} / {trigger}" if driver_category else trigger
@@ -4463,18 +4472,18 @@ def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
             else:
                 first_action_name = next((str(step.get("name") or "").strip() for step in macro_steps if str(step.get("name") or "").strip()), "")
         if macro_names and not macro_steps:
-            noun = "macro" if len(macro_names) == 1 else "macros"
+            noun = "System Macro" if len(macro_names) == 1 else "System Macros"
             remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
             return f"When {trigger_text} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
         if macro_steps and not macro_names:
             undefined_count = int(user.get("macroStepCount") or len(macro_steps) or 0)
             if macro_steps and all(str(step.get("type") or "") == "undefined" for step in macro_steps):
-                noun = "macro step" if undefined_count == 1 else "macro steps"
+                noun = "Macro Step" if undefined_count == 1 else "Macro Steps"
                 return f"When {trigger_text} happens, run {undefined_count} undefined {noun}"
             if len(macro_steps) == 1 and str(macro_steps[0].get("type") or "") == "command":
-                return f"When {trigger_text} happens, run macro step (Command): {first_action_name or 'Unknown'}"
+                return f"When {trigger_text} happens, run Macro Step (Command): {first_action_name or 'Unknown'}"
             remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
-            noun = "macro step" if total_actions == 1 else "macro steps"
+            noun = "Macro Step" if total_actions == 1 else "Macro Steps"
             return f"When {trigger_text} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
         if macro_names and macro_steps:
             remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
@@ -4501,11 +4510,18 @@ def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
     targets: list[str] = []
     test_targets = user.get("testTargets", {})
     if isinstance(test_targets, dict):
-        for label in ("Trigger", "Macro", "Macros", "MacroStep", "MacroSteps", "Command", "Commands"):
-            if test_targets.get(label):
-                targets.append(label)
+        canonical_map = (
+            ("Event Trigger", ("Event Trigger", "Trigger")),
+            ("System Macro", ("System Macro", "System Macros", "Macro", "Macros")),
+            ("Macro Step", ("Macro Step", "Macro Steps", "MacroStep", "MacroSteps")),
+            ("Command", ("Command", "Commands")),
+        )
+        for canonical, aliases in canonical_map:
+            if any(test_targets.get(alias) for alias in aliases):
+                targets.append(canonical)
 
     refs: dict[str, Any] = {"eventId": int(event_id) if event_id is not None else None}
+    refs["eventKind"] = "DRIVER" if event_kind == "driver" else "SYSTEM"
     if isinstance(diag, dict):
         if diag.get("scope") is not None:
             refs["scope"] = diag.get("scope")
@@ -4881,11 +4897,20 @@ const APP_UI={app_json};
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
-  const lines = [];
-  if (times.PASS) lines.push(`Passed: ${{times.PASS}}`);
-  if (times.FAIL) lines.push(`Failed: ${{times.FAIL}}`);
-  if (times.UNTESTED) lines.push(`Reverted: ${{times.UNTESTED}}`);
-  rowUi.lastTestEl.textContent = lines.join(" ");
+  const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
+  if (outcome === "PASS" && times.PASS) {{
+    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    return;
+  }}
+  if (outcome === "FAIL" && times.FAIL) {{
+    rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
+    return;
+  }}
+  if (outcome === "UNTESTED" && times.UNTESTED) {{
+    rowUi.lastTestEl.textContent = `Reverted: ${{times.UNTESTED}}`;
+    return;
+  }}
+  rowUi.lastTestEl.textContent = "";
  }}
  function setRowStatus(rowUi, outcome, recordedAtUtc) {{
   if (!rowUi) return;
@@ -4916,7 +4941,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (kind === "EVENT") {{
    const eventId = refs.eventId;
    if (eventId == null) return null;
-   const targetKey = `event:${{eventId}}:${{label || "Trigger"}}`;
+  const targetKey = `event:${{eventId}}:${{label || "Event Trigger"}}`;
    return {{
     targetKey,
     kind: "EVENT",
@@ -5029,9 +5054,9 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
     const firstMacroStepId = macroStepIds.length ? Number(macroStepIds[0]) : null;
-    if (lowerLabel === "macro" || lowerLabel === "macros") {{
+    if (lowerLabel === "macro" || lowerLabel === "macros" || lowerLabel === "system macro" || lowerLabel === "system macros") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
-    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
+    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps" || lowerLabel === "macro step" || lowerLabel === "macro steps") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) {{
       if (firstMacroStepId != null && Number.isFinite(firstMacroStepId)) {{
        programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;

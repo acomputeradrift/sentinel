@@ -204,11 +204,55 @@ function normalizeTargetLabel(targetName) {
   return lower;
 }
 
+function formatTargetLabelForTaskList(targetName) {
+  const normalized = normalizeTargetLabel(targetName);
+  if (!normalized) return "";
+  if (normalized === "system macros") return "System Macro";
+  if (normalized === "macro steps") return "Macro Step";
+  if (normalized === "pageLinks") return "Page Link";
+  if (normalized === "event triggers") return "Event Trigger";
+  if (normalized === "text") return "Text";
+  if (normalized === "command") return "Command";
+  if (normalized === "graphics") return "Graphic";
+  if (normalized === "icon") return "Icon";
+  if (normalized === "bitmap") return "Bitmap";
+  if (normalized.startsWith("variable - ")) {
+    const tail = String(normalized.slice("variable - ".length) || "").trim();
+    return tail ? `Variable - ${tail.charAt(0).toUpperCase()}${tail.slice(1)}` : "Variable";
+  }
+  return normalized
+    .replace(/_/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatFailureTypeLabelPlural(targetName) {
+  const normalized = normalizeTargetLabel(targetName);
+  if (normalized === "system macros") return "System Macros";
+  if (normalized === "macro steps") return "Macro Steps";
+  if (normalized === "pageLinks") return "Page Links";
+  if (normalized === "event triggers") return "Event Triggers";
+  if (normalized === "text") return "Text";
+  if (normalized === "variables") return "Variables";
+  if (normalized === "graphics") return "Graphics";
+  return formatTargetLabelForTaskList(normalized);
+}
+
+function _eventDeviceLabel(taskLike) {
+  const task = taskLike && typeof taskLike === "object" ? taskLike : {};
+  const targetKey = String(task?.targetKey || "");
+  if (!targetKey.startsWith("event:")) return "";
+  const eventKind = String(task?.eventKind || task?.targetKind || task?.kind || "").trim().toUpperCase();
+  return eventKind === "DRIVER" ? "Driver Event" : "System Event";
+}
+
 function _isTruePageLinkTarget(targetName, targetKey) {
   const name = normalizeTargetLabel(targetName);
   if (name === "pageLinks") return true;
   const raw = String(targetKey || "").trim();
-  return raw.endsWith(":PageLink");
+  return raw.endsWith(":PageLink") || raw.endsWith(":Page Link");
 }
 
 function _scopeLookupMaps(rows) {
@@ -672,7 +716,7 @@ function renderTaskList(projectId, fails) {
     tdAt.textContent = at || "";
 
     const tdDevice = document.createElement("td");
-    tdDevice.textContent = String(rec?.deviceName || (ident.device ? `d${ident.device}` : ""));
+    tdDevice.textContent = _eventDeviceLabel(rec) || String(rec?.deviceName || (ident.device ? `d${ident.device}` : ""));
 
     const tdPage = document.createElement("td");
     tdPage.textContent = String(rec?.pageName || (ident.page ? `p${ident.page}` : ""));
@@ -691,7 +735,7 @@ function renderTaskList(projectId, fails) {
     tdButton.textContent = String(rec?.buttonName || (ident.button ? `b${ident.button}` : ""));
 
     const tdTarget = document.createElement("td");
-    tdTarget.textContent = normalizeTargetLabel(rec?.targetName || ident.testTarget || "");
+    tdTarget.textContent = formatTargetLabelForTaskList(rec?.targetName || ident.testTarget || "");
 
     const tdScope = document.createElement("td");
     tdScope.textContent = String(rec?.effectiveScopeNames || formatEffectiveScope({
@@ -736,6 +780,9 @@ function renderTaskList(projectId, fails) {
       frameIndexRti: rec?.frameIndexRti,
       buttonName: String(rec?.buttonName || ""),
       targetName: String(rec?.targetName || ""),
+      kind: String(rec?.kind || ""),
+      targetKind: String(rec?.targetKind || ""),
+      eventKind: String(rec?.eventKind || ""),
       scope: String(rec?.scope || ""),
       scopeType: rec?.scopeType,
       effectiveRoomId: rec?.effectiveRoomId,
@@ -881,13 +928,13 @@ function updateFailureTypesPie() {
   const count = pie.failureTypes.card.querySelector(".piecard-count");
   if (count) count.textContent = "";
   const slices = [
-    { label: "text", value: counts.text, color: "var(--brand-orange)" },
-    { label: "system macros", value: counts.systemMacros, color: "var(--brand-dark-gray)" },
-    { label: "macro steps", value: counts.macroSteps, color: "var(--brand-light-gray)" },
-    { label: "variables", value: counts.variables, color: "var(--brand-green)" },
-    { label: "graphics", value: counts.graphics, color: "var(--brand-black)" },
-    { label: "pageLinks", value: counts.pageLinks, color: "#177bb5" },
-    { label: "event triggers", value: counts.eventTriggers, color: "#8b5cf6" },
+    { label: formatFailureTypeLabelPlural("text"), value: counts.text, color: "var(--brand-orange)" },
+    { label: formatFailureTypeLabelPlural("system macros"), value: counts.systemMacros, color: "var(--brand-dark-gray)" },
+    { label: formatFailureTypeLabelPlural("macro steps"), value: counts.macroSteps, color: "var(--brand-light-gray)" },
+    { label: formatFailureTypeLabelPlural("variables"), value: counts.variables, color: "var(--brand-green)" },
+    { label: formatFailureTypeLabelPlural("graphics"), value: counts.graphics, color: "var(--brand-black)" },
+    { label: formatFailureTypeLabelPlural("pageLinks"), value: counts.pageLinks, color: "#177bb5" },
+    { label: formatFailureTypeLabelPlural("event triggers"), value: counts.eventTriggers, color: "#8b5cf6" },
   ];
   renderPie(pie.failureTypes.pie, pie.failureTypes.legend, slices, "");
 }
@@ -963,13 +1010,13 @@ function _makeTaskRow(projectId, task) {
   const tdResolved = document.createElement("td");
   tdResolved.className = "diag-muted";
 
-  tdDevice.textContent = String(task?.deviceName || (ident.device ? `d${ident.device}` : ""));
+  tdDevice.textContent = _eventDeviceLabel(task) || String(task?.deviceName || (ident.device ? `d${ident.device}` : ""));
   tdPage.textContent = String(task?.pageName || (ident.page ? `p${ident.page}` : ""));
   tdLayer.textContent = String(task?.layerName || "");
   tdViewport.textContent = formatViewport(task);
   tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
   tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
-  tdTarget.textContent = normalizeTargetLabel(task?.targetName || ident.testTarget || "");
+  tdTarget.textContent = formatTargetLabelForTaskList(task?.targetName || ident.testTarget || "");
   const noteBtn = document.createElement("button");
   noteBtn.type = "button";
   noteBtn.className = "tech-notes-btn";
@@ -994,13 +1041,13 @@ function _makeTaskRow(projectId, task) {
 function _updateTaskRowDom(row, task) {
   if (!row) return;
   row.tdAt.textContent = formatUtcTimestamp(task?.lastTestedAtUtc) || "";
-  row.tdDevice.textContent = String(task?.deviceName || "");
+  row.tdDevice.textContent = _eventDeviceLabel(task) || String(task?.deviceName || "");
   row.tdPage.textContent = String(task?.pageName || "");
   row.tdLayer.textContent = String(task?.layerName || "");
   row.tdViewport.textContent = formatViewport(task);
   row.tdButton.textContent = String(task?.buttonName || "");
   row.tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
-  row.tdTarget.textContent = normalizeTargetLabel(task?.targetName || "");
+  row.tdTarget.textContent = formatTargetLabelForTaskList(task?.targetName || "");
   row.tdResolved.innerHTML = "";
   const noteBtn = document.createElement("button");
   noteBtn.type = "button";

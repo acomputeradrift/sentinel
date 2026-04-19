@@ -161,7 +161,7 @@ class GenerationMacroStepFallbackTest(unittest.TestCase):
         }
 
         html = render_single_device_html(project_data, _app_ui(), project_stem="sample_project_data", device_index=0)
-        self.assertIn('"targets": ["MacroStep"]', html)
+        self.assertIn('"targets": ["Macro Step"]', html)
         self.assertIn("mstepmacro:${firstMacroId}", html)
 
 

@@ -110,9 +110,9 @@ def _scope_program_ref(*, label: str, bindings: dict[str, Any]) -> str:
     macro_id = int(macro_ids[0]) if isinstance(macro_ids, list) and macro_ids else None
     variable_id = int(variable_ids[0]) if isinstance(variable_ids, list) and variable_ids else None
     macro_step_id = int(macro_step_ids[0]) if isinstance(macro_step_ids, list) and macro_step_ids else None
-    if lower in {"macro", "macros"} and macro_id is not None:
+    if lower in {"macro", "macros", "system macro", "system macros"} and macro_id is not None:
         return f"macro:{macro_id}"
-    if lower in {"macrostep", "macrosteps"} and macro_id is not None:
+    if lower in {"macrostep", "macrosteps", "macro step", "macro steps"} and macro_id is not None:
         if macro_step_id is not None:
             return f"mstep:{macro_id}:{macro_step_id}"
         return f"mstepmacro:{macro_id}"
@@ -183,9 +183,15 @@ def _event_target_labels(item: dict[str, Any]) -> list[str]:
     if not isinstance(test_targets, dict):
         return []
     out: list[str] = []
-    for label in ("Trigger", "Macro", "Macros", "MacroStep", "MacroSteps", "Command", "Commands"):
-        if test_targets.get(label):
-            out.append(label)
+    canonical_map = (
+        ("Event Trigger", ("Event Trigger", "Trigger")),
+        ("System Macro", ("System Macro", "System Macros", "Macro", "Macros")),
+        ("Macro Step", ("Macro Step", "Macro Steps", "MacroStep", "MacroSteps")),
+        ("Command", ("Command", "Commands")),
+    )
+    for canonical, aliases in canonical_map:
+        if any(test_targets.get(alias) for alias in aliases):
+            out.append(canonical)
     return out
 
 
@@ -227,9 +233,9 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
     if t.get("text"):
         out.append("Text")
     if t.get("macros"):
-        out.append("Macro")
+        out.append("System Macro")
     if t.get("macroSteps"):
-        out.append("MacroStep")
+        out.append("Macro Step")
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(f"Variable - {name}")
@@ -238,7 +244,7 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
     if graphics_t.get("icon"):
         out.append("Icon")
     if t.get("pageLink"):
-        out.append("PageLink")
+        out.append("Page Link")
     return out
 
 

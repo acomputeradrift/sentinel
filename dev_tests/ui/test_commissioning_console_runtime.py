@@ -1016,18 +1016,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Frame 2")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("No")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("SOURCE - Set To CABLE MUSIC")
-        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("icon")
-        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("wrong icon")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Icon")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Wrong Icon")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Living Room -> Main AVR")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> Lighting Processor")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show")).to_be_visible()
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_class(re.compile(r"status-template-select"))
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("system macros")
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLinks")
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("event triggers")
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("text")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("System Macros")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Page Links")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Event Triggers")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Text")
         page.evaluate(
             """
 () => {
@@ -1046,7 +1046,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 }
 """
         )
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("graphics (2")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Graphics (2")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Fail (")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Pass (")
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("")
@@ -1212,7 +1212,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 page.get_by_role("button", name="Commissioning").click()
                 expect(page.locator("#commissionActivityBody")).to_contain_text("Live Smoke Target", timeout=30000)
                 page.get_by_role("button", name="Diagnostics").click()
-                expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("live smoke target", timeout=30000)
+                expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Live Smoke Target", timeout=30000)
 
                 self.assertFalse(
                     any("[project-ws] close unexpected" in line for line in console_logs),

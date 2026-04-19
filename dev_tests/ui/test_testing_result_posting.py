@@ -350,7 +350,7 @@ class TestingResultPostingTest(unittest.TestCase):
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
             self.assertEqual(sent["target"]["kind"], "EVENT")
-            self.assertEqual(sent["target"]["targetKey"], "event:126:Trigger")
+            self.assertEqual(sent["target"]["targetKey"], "event:126:Event Trigger")
             self.assertEqual(sent["target"]["refs"]["scope"], expected_scope)
             self.assertEqual(sent["target"]["refs"]["resolvedData"], expected_resolved)
             page.evaluate(
@@ -465,7 +465,7 @@ class TestingResultPostingTest(unittest.TestCase):
                         "recordedAtUtc": "2026-03-25T10:00:00Z",
                     },
                     {
-                        "targetKey": "btn:81:513:48551:PageLink",
+                        "targetKey": "btn:81:513:48551:Page Link",
                         "outcome": "FAIL",
                         "recordedAtUtc": "2026-03-25T10:00:01Z",
                         "failNote": "Page link broken",
@@ -557,7 +557,7 @@ class TestingResultPostingTest(unittest.TestCase):
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
             self.assertEqual(sent["target"]["kind"], "BUTTON")
-            self.assertEqual(sent["target"]["targetKey"], "btn:81:513:48551:Macro")
+            self.assertEqual(sent["target"]["targetKey"], "btn:81:513:48551:System Macro")
             page.evaluate(
                 """
 (payload) => window.__emitWs({
@@ -1007,7 +1007,7 @@ class TestingResultPostingTest(unittest.TestCase):
             self._wait_for_ws_outbox(page, min_posts=1)
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
-            self.assertEqual(sent["target"]["targetKey"], "tt2:2:ROOM:23:74:20:macro:3122:Macro")
+            self.assertEqual(sent["target"]["targetKey"], "tt2:2:ROOM:23:74:20:macro:3122:System Macro")
         finally:
             server.stop()
 
@@ -1604,8 +1604,8 @@ class TestingResultPostingTest(unittest.TestCase):
             snapshot_payload = {
                 "type": "testing_snapshot",
                 "results": [
-                    {"targetKey": "btn:81:513:48551:Macro", "outcome": "PASS", "recordedAtUtc": "2026-03-30T01:02:03Z"},
-                    {"targetKey": "btn:81:513:48551:PageLink", "outcome": "FAIL", "recordedAtUtc": "2026-03-30T01:02:04Z"},
+                    {"targetKey": "btn:81:513:48551:System Macro", "outcome": "PASS", "recordedAtUtc": "2026-03-30T01:02:03Z"},
+                    {"targetKey": "btn:81:513:48551:Page Link", "outcome": "FAIL", "recordedAtUtc": "2026-03-30T01:02:04Z"},
                     {"targetKey": "btn:81:513:48552:Text", "outcome": "FAIL", "recordedAtUtc": "2026-03-30T01:02:05Z"},
                 ],
             }

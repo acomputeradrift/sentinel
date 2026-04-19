@@ -94,7 +94,7 @@ class ScopeTargetKeyDerivationTest(unittest.TestCase):
         devices = progress._derive_device_targets(project_data)
         self.assertEqual(len(devices), 1)
         expected = set(devices[0]["expected"])
-        self.assertIn("tt2:2:ROOM:23:74:20:macro:3122:Macro", expected)
+        self.assertIn("tt2:2:ROOM:23:74:20:macro:3122:System Macro", expected)
         self.assertIn("tt_ui:2:SHARED:700:48552:Text", expected)
 
     def test_viewport_target_uses_viewport_then_page_layer_then_page_scope(self):
@@ -217,8 +217,8 @@ class ScopeTargetKeyDerivationTest(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         expected = set(devices[0]["expected"])
         # viewportLayer room/source are null, so fallback must use pageLayer (2/88), not page (23/74)
-        self.assertIn("tt2:2:ROOM:2:88:20:macro:3122:Macro", expected)
-        self.assertNotIn("tt2:2:ROOM:23:74:20:macro:3122:Macro", expected)
+        self.assertIn("tt2:2:ROOM:2:88:20:macro:3122:System Macro", expected)
+        self.assertNotIn("tt2:2:ROOM:23:74:20:macro:3122:System Macro", expected)
 
     def test_macrostep_scope_key_falls_back_to_macro_id_when_macrostep_ids_absent(self):
         button = {
@@ -231,8 +231,8 @@ class ScopeTargetKeyDerivationTest(unittest.TestCase):
             },
         }
 
-        scoped = progress._scoped_target_key_from_button(button=button, label="MacroStep")
-        self.assertEqual(scoped, "tt2:2:ROOM:23:74:20:mstepmacro:3122:MacroStep")
+        scoped = progress._scoped_target_key_from_button(button=button, label="Macro Step")
+        self.assertEqual(scoped, "tt2:2:ROOM:23:74:20:mstepmacro:3122:Macro Step")
 
 
 if __name__ == "__main__":
