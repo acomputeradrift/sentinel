@@ -370,7 +370,7 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self._wait_for_status_hidden(page)
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-21 00:00:00Z")
             self._wait_for_row_button_state(page, 0, pass_active=True, fail_active=False)
         finally:
             server.stop()
@@ -476,9 +476,9 @@ class TestingResultPostingTest(unittest.TestCase):
             page.reload()
             page.click(".btn-wrap .test-btn")
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-25 10:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-25 10:00:00Z")
             self._wait_for_row_status_contains(page, 1, "FAIL")
-            self._wait_for_row_last_test_exact(page, 1, "Last Test: 2026-03-25 10:00:01Z")
+            self._wait_for_row_last_test_exact(page, 1, "Failed: 2026-03-25 10:00:01Z")
         finally:
             server.stop()
 
@@ -551,6 +551,7 @@ class TestingResultPostingTest(unittest.TestCase):
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click(".btn-wrap .test-btn")
+            self.assertEqual(page.locator("#passAll:visible").count(), 0)
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_ws_outbox(page, min_posts=1)
             sent = self._ws_payload(page)
@@ -574,7 +575,7 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self._wait_for_status_hidden(page)
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-21 00:00:00Z")
         finally:
             server.stop()
 
@@ -767,7 +768,7 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self._wait_for_status_hidden(page)
             self._wait_for_row_status_contains(page, 0, "FAIL")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Failed: 2026-03-21 00:00:00Z")
             self._wait_for_row_button_state(page, 0, pass_active=False, fail_active=True)
         finally:
             server.stop()
@@ -863,7 +864,28 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click("#close")
             page.click(".btn-wrap .test-btn")
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-21 00:00:00Z")
+            page.click("#rows .row .actions button")
+            self._wait_for_ws_outbox(page, min_posts=2)
+            sent_revert = self._ws_payload(page, 1)
+            self.assertEqual(sent_revert["outcome"], "UNTESTED")
+            self.assertEqual(sent_revert["target"]["refs"].get("revertedFrom"), "PASS")
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-21T00:00:10Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent_revert,
+            )
+            self._wait_for_row_last_test_contains(page, 0, "Reverted: 2026-03-21 00:00:10Z")
         finally:
             server.stop()
 
@@ -1087,25 +1109,15 @@ class TestingResultPostingTest(unittest.TestCase):
 """,
                 sent0,
             )
+            self.assertEqual(sent0["outcome"], "PASS")
             self._wait_for_ws_outbox(page, min_posts=2)
             sent1 = self._ws_payload(page, 1)
-            self.assertEqual(sent0["outcome"], "PASS")
             self.assertEqual(sent1["outcome"], "PASS")
             self.assertNotEqual(sent0["target"]["targetKey"], sent1["target"]["targetKey"])
 
             page.evaluate(
                 """
 ([a,b]) => {
-  window.__emitWs({
-    type: "test_result",
-    projectId: "proj-1",
-    recordedAtUtc: "2026-03-30T01:02:03Z",
-    targetKey: a.target.targetKey,
-    outcome: a.outcome,
-    targetName: a.target.targetName,
-    kind: a.target.kind,
-    refs: a.target.refs
-  });
   window.__emitWs({
     type: "test_result",
     projectId: "proj-1",
@@ -1116,15 +1128,25 @@ class TestingResultPostingTest(unittest.TestCase):
     kind: b.target.kind,
     refs: b.target.refs
   });
+  window.__emitWs({
+    type: "test_result",
+    projectId: "proj-1",
+    recordedAtUtc: "2026-03-30T01:02:03Z",
+    targetKey: a.target.targetKey,
+    outcome: a.outcome,
+    targetName: a.target.targetName,
+    kind: a.target.kind,
+    refs: a.target.refs
+  });
 }
 """,
                 [sent0, sent1],
             )
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-30 01:02:03Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-30 01:02:03Z")
             self._wait_for_row_button_state(page, 0, pass_active=True, fail_active=False)
             self._wait_for_row_status_contains(page, 1, "PASS")
-            self._wait_for_row_last_test_exact(page, 1, "Last Test: 2026-03-30 01:02:04Z")
+            self._wait_for_row_last_test_exact(page, 1, "Passed: 2026-03-30 01:02:04Z")
             self._wait_for_row_button_state(page, 1, pass_active=True, fail_active=False)
         finally:
             server.stop()
@@ -1628,18 +1650,18 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self.assertEqual(visual["btn1"]["bg"], "rgb(44, 111, 183)")
             self.assertIn(visual["btn1"]["trim"], ("rgb(239, 68, 68)", "#ef4444"))
-            self.assertEqual(visual["btn1"]["countText"].strip(), "1/2")
-            self.assertEqual(visual["btn1"]["countDisplay"], "block")
-            self.assertEqual(visual["btn1"]["countVisibility"], "visible")
+            self.assertEqual(visual["btn1"]["countText"].strip(), "")
+            self.assertIn(visual["btn1"]["countDisplay"], ("", "none"))
+            self.assertIn(visual["btn1"]["countVisibility"], ("", "hidden"))
             self.assertEqual(visual["btn1"]["linkOpacity"], "1")
             self.assertEqual(visual["btn1"]["linkPointerEvents"], "auto")
             self.assertEqual(visual["btn1"]["btnText"].strip(), "Button One")
 
             self.assertEqual(visual["lbl1"]["bg"], "rgb(88, 88, 90)")
             self.assertIn(visual["lbl1"]["trim"], ("rgb(239, 68, 68)", "#ef4444"))
-            self.assertEqual(visual["lbl1"]["countText"].strip(), "0/1")
-            self.assertIn(visual["lbl1"]["countDisplay"], ("none", "block"))
-            self.assertEqual(visual["lbl1"]["countVisibility"], "hidden")
+            self.assertEqual(visual["lbl1"]["countText"].strip(), "")
+            self.assertIn(visual["lbl1"]["countDisplay"], ("", "none"))
+            self.assertIn(visual["lbl1"]["countVisibility"], ("", "hidden"))
             self.assertEqual(visual["lbl1"]["btnText"].strip(), "Label One")
 
             self.assertEqual(visual["ui1"]["bg"], "rgb(167, 169, 172)")

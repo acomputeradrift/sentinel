@@ -193,9 +193,10 @@ function normalizeTargetLabel(targetName) {
   const raw = String(targetName || "").trim();
   if (!raw) return "";
   const lower = raw.toLowerCase();
-  if (lower === "macro") return "macro";
-  if (lower === "macrosteps" || lower === "macrostep" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro step";
-  if (lower === "pagelink" || lower === "page link") return "pageLink";
+  if (lower === "macro" || lower === "macros" || lower === "system macro" || lower === "system macros") return "system macros";
+  if (lower === "macrosteps" || lower === "macrostep" || lower === "macro steps" || lower === "macro step" || lower === "macro-step") return "macro steps";
+  if (lower === "pagelink" || lower === "page link" || lower === "pagelinks" || lower === "page links") return "pageLinks";
+  if (lower === "trigger" || lower === "triggers" || lower === "event trigger" || lower === "event triggers") return "event triggers";
   if (lower === "text" || lower === "texts") return "text";
   if (lower === "command" || lower === "commands") return "command";
   if (lower.startsWith("variable - ")) return `variable - ${lower.slice("variable - ".length)}`;
@@ -205,9 +206,24 @@ function normalizeTargetLabel(targetName) {
 
 function _isTruePageLinkTarget(targetName, targetKey) {
   const name = normalizeTargetLabel(targetName);
-  if (name === "pagelink" || name === "pageLink") return true;
+  if (name === "pageLinks") return true;
   const raw = String(targetKey || "").trim();
   return raw.endsWith(":PageLink");
+}
+
+function _scopeLookupMaps(rows) {
+  const roomNames = new Map();
+  const sourceNames = new Map();
+  const list = Array.isArray(rows) ? rows : [];
+  for (const rec of list) {
+    const roomId = Number(rec?.effectiveRoomId);
+    const sourceId = Number(rec?.effectiveSourceId);
+    const roomName = String(rec?.effectiveRoomName || "").trim();
+    const sourceName = String(rec?.effectiveSourceName || "").trim();
+    if (Number.isFinite(roomId) && roomName) roomNames.set(roomId, roomName);
+    if (Number.isFinite(sourceId) && sourceName) sourceNames.set(sourceId, sourceName);
+  }
+  return { roomNames, sourceNames };
 }
 
 function _scopePartsFromTt2TargetKey(targetKey) {
@@ -243,8 +259,13 @@ function formatEffectiveScope(taskLike) {
   }
 
   if (scopeType !== "GLOBAL" && scopeType !== "ROOM") return String(task.scope || "");
-  const roomLabel = scopeType === "GLOBAL" ? "Global" : (roomName || `Room ${roomId}`);
-  if (sourceName) return `${roomLabel} -> ${sourceName}`;
+  const roomIdNum = Number(roomId);
+  const sourceIdNum = Number(sourceId);
+  const roomLookup = diagRt.scopeLookup && diagRt.scopeLookup.roomNames ? diagRt.scopeLookup.roomNames : null;
+  const sourceLookup = diagRt.scopeLookup && diagRt.scopeLookup.sourceNames ? diagRt.scopeLookup.sourceNames : null;
+  const roomLabel = scopeType === "GLOBAL" ? "Global" : (roomName || (roomLookup && Number.isFinite(roomIdNum) ? roomLookup.get(roomIdNum) : "") || `Room ${roomId}`);
+  const sourceLabel = sourceName || (sourceLookup && Number.isFinite(sourceIdNum) ? sourceLookup.get(sourceIdNum) : "");
+  if (sourceLabel) return `${roomLabel} -> ${sourceLabel}`;
   if (sourceId == null || Number.isNaN(Number(sourceId))) return roomLabel;
   return `${roomLabel} -> ${Number(sourceId)}`;
 }
@@ -606,6 +627,7 @@ function renderTaskList(projectId, fails) {
   diagRt.tasksByKey.clear();
   diagRt.rowByKey.clear();
   const rows = _diagSortTasks(Array.isArray(fails) ? fails : []);
+  diagRt.scopeLookup = _scopeLookupMaps(rows);
 
   for (const rec of rows) {
     const targetKey = String(rec?.targetKey || "");
@@ -811,12 +833,11 @@ function updateFailureRatePie() {
   const pie = _ensureDiagPiesCached();
   if (!pie) return;
   const testedTargets = Number(diagRt?.progress?.counts?.testedTargets || 0);
-  const totalTargets = Number(diagRt?.progress?.counts?.totalTargets || 0);
   const firstTimeFailTargets = firstTimeFailTargetsFromRollups(diagRt.rollups);
   const okTargets = Math.max(0, testedTargets - firstTimeFailTargets);
   const failPct = testedTargets ? Math.round((firstTimeFailTargets / testedTargets) * 1000) / 10 : 0;
   const count = pie.failureRate.card.querySelector(".piecard-count");
-  if (count) count.textContent = `${testedTargets}/${totalTargets}`;
+  if (count) count.textContent = `${firstTimeFailTargets}/${testedTargets}`;
   renderPie(
     pie.failureRate.pie,
     pie.failureRate.legend,
@@ -831,9 +852,10 @@ function updateFailureRatePie() {
 
 function _failCategoryFromTask(task) {
   const label = normalizeTargetLabel(task?.targetName || _targetNameFromTargetKey(task?.targetKey || ""));
-  if (label === "macro") return "macros";
-  if (label === "macro step") return "macroSteps";
-  if (label === "pageLink") return "pageLink";
+  if (label === "system macros") return "systemMacros";
+  if (label === "macro steps") return "macroSteps";
+  if (label === "pageLinks") return "pageLinks";
+  if (label === "event triggers" || String(task?.targetKey || "").startsWith("event:")) return "eventTriggers";
   if (label.startsWith("variable")) return "variables";
   if (label.includes("icon") || label.includes("bitmap") || label.includes("graphic")) return "graphics";
   return "text";
@@ -844,28 +866,28 @@ function updateFailureTypesPie() {
   if (!pie) return;
   const counts = {
     text: 0,
-    macros: 0,
+    systemMacros: 0,
     macroSteps: 0,
     variables: 0,
     graphics: 0,
-    pageLink: 0,
+    pageLinks: 0,
+    eventTriggers: 0,
   };
   for (const task of diagRt.tasksByKey.values()) {
     const key = _failCategoryFromTask(task);
     if (!Object.prototype.hasOwnProperty.call(counts, key)) continue;
     counts[key] += 1;
   }
-  const testedTargets = Number(diagRt?.progress?.counts?.testedTargets || 0);
-  const failCount = Array.from(diagRt.tasksByKey.values()).length;
   const count = pie.failureTypes.card.querySelector(".piecard-count");
   if (count) count.textContent = "";
   const slices = [
     { label: "text", value: counts.text, color: "var(--brand-orange)" },
-    { label: "macros", value: counts.macros, color: "var(--brand-dark-gray)" },
-    { label: "macro step", value: counts.macroSteps, color: "var(--brand-light-gray)" },
+    { label: "system macros", value: counts.systemMacros, color: "var(--brand-dark-gray)" },
+    { label: "macro steps", value: counts.macroSteps, color: "var(--brand-light-gray)" },
     { label: "variables", value: counts.variables, color: "var(--brand-green)" },
     { label: "graphics", value: counts.graphics, color: "var(--brand-black)" },
-    { label: "pageLink", value: counts.pageLink, color: "#177bb5" },
+    { label: "pageLinks", value: counts.pageLinks, color: "#177bb5" },
+    { label: "event triggers", value: counts.eventTriggers, color: "#8b5cf6" },
   ];
   renderPie(pie.failureTypes.pie, pie.failureTypes.legend, slices, "");
 }

@@ -70,11 +70,14 @@ def _counts_from_expected(expected: set[str], latest: dict[str, TestResultRecord
         rec = latest.get(key)
         if rec is None:
             continue
-        tested += 1
-        last_ts = _max_ts(last_ts, rec.recordedAtUtc)
-        if rec.outcome == "PASS":
+        outcome = str(rec.outcome or "").strip().upper()
+        if outcome == "PASS":
+            tested += 1
+            last_ts = _max_ts(last_ts, rec.recordedAtUtc)
             passed += 1
-        elif rec.outcome == "FAIL":
+        elif outcome == "FAIL":
+            tested += 1
+            last_ts = _max_ts(last_ts, rec.recordedAtUtc)
             failed += 1
     untested = total - tested
     pct = (tested / total) if total else 0.0

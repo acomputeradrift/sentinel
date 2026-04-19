@@ -640,10 +640,10 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 target = payload.get("target") or {}
                 outcome = str(payload.get("outcome") or "").strip().upper()
                 fail_note = payload.get("failNote")
-                if outcome not in ("PASS", "FAIL"):
+                if outcome not in ("PASS", "FAIL", "UNTESTED"):
                     await _send_text_or_fail(
                         websocket=websocket,
-                        text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS or FAIL."}),
+                        text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS, FAIL, or UNTESTED."}),
                         project_id=project_id,
                         tech_token=techToken,
                     )

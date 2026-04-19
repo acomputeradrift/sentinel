@@ -952,7 +952,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .pie")).to_have_attribute("data-center", "50%")
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .pie")).to_have_attribute("data-center", "")
         expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .pie")).to_have_attribute("data-center", "0%")
-        expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .piecard-count")).to_have_text("6/12")
+        expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .piecard-count")).to_have_text("3/6")
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("")
         expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .piecard-count")).to_have_text("0/4")
         self.assertEqual(
@@ -1024,8 +1024,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show")).to_be_visible()
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_class(re.compile(r"status-template-select"))
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("macros")
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLink")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("system macros")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLinks")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("event triggers")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("text")
         page.evaluate(
             """

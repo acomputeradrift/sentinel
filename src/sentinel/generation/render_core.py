@@ -650,7 +650,6 @@ def _render_button_control(
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-button-category='{escape(category_key, quote=True)}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
         f"<button class='test-btn' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
-        f"<div class='btn-pass-total' aria-hidden='true'></div>"
         f"{link_html}</div>"
     )
 
@@ -2080,7 +2079,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
 .btn-wrap{{--btn-fill-color:#2c6fb7;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
 .test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:var(--btn-fill-color);box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
-.btn-pass-total{{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:none;visibility:hidden;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.22);color:#fff;font-size:11px;line-height:1.1;font-weight:700;white-space:nowrap;pointer-events:none;}}
+.btn-pass-total{{display:none !important;visibility:hidden !important;}}
 .page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;font-size:inherit;}}
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;font-size:1em;line-height:1;background:transparent;border-radius:0;}}
 .page-link-icon .material-symbols-outlined{{font-size:1em;line-height:1;}}
@@ -2550,13 +2549,25 @@ function setSelectedRoom(nextRoomId, options) {{
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function _renderRowStatusTimes(rowUi) {{
+  if (!rowUi || !rowUi.lastTestEl) return;
+  const times = rowUi.statusTimes || {{}};
+  const lines = [];
+  if (times.PASS) lines.push(`Passed: ${{times.PASS}}`);
+  if (times.FAIL) lines.push(`Failed: ${{times.FAIL}}`);
+  if (times.UNTESTED) lines.push(`Reverted: ${{times.UNTESTED}}`);
+  rowUi.lastTestEl.textContent = lines.join(" ");
+ }}
  function setRowStatus(rowUi, outcome, recordedAtUtc) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
   if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
-  if (rowUi.lastTestEl) rowUi.lastTestEl.textContent = at ? `Last Test: ${{at}}` : "";
+  rowUi.currentOutcome = o;
+  if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
   if (!rowUi) return;
@@ -2827,7 +2838,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
 
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -2851,7 +2862,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
 
   const payload={{
     type:"test_result.submit",
-    target:{{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName}},
+    target:{{targetKey:target.targetKey,kind:target.kind,refs:{{...(target.refs||{{}}), ...(isRevert ? {{ revertedFrom: "PASS" }} : {{}})}},targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
   }};
@@ -2896,7 +2907,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     rowStatusByTargetKey.set(target.targetKey, rowUi);
     applyCachedStatus(rowUi, target.targetKey);
    }}
-   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'PASS', null, rowUi);}});
+   passBtn.addEventListener('click', e=>{{e.stopPropagation(); const nextOutcome = rowUi.currentOutcome === 'PASS' ? 'UNTESTED' : 'PASS'; postResultWs(ctxBtn, meta, label, nextOutcome, null, rowUi, nextOutcome === 'UNTESTED');}});
    failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
@@ -2917,8 +2928,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
      clearPassAllQueue();
      setPostStatus('','');
      if (passAllBtn) {{
-      passAllBtn.disabled = !(Array.isArray(m.targets) && m.targets.length);
-      passAllBtn.onclick = () => queuePassAll(b, m);
+      const targets = Array.isArray(m.targets) ? m.targets : [];
+      const showPassAll = targets.length > 1;
+      passAllBtn.hidden = !showPassAll;
+      passAllBtn.disabled = !showPassAll;
+      passAllBtn.onclick = showPassAll ? (() => queuePassAll(b, m)) : null;
      }}
      ov.classList.add('open');
      bindResultRows(b, m);
@@ -4528,7 +4542,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
         system_rows.append(
             f"<div class='btn-wrap btn-wrap--home-event'>"
             f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'system')}</button>"
-            f"<div class='btn-pass-total' aria-hidden='true'></div></div>"
+            f"</div>"
         )
 
     driver_rows = []
@@ -4544,7 +4558,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
             driver_rows.append(
                 f"<div class='btn-wrap btn-wrap--home-event'>"
                 f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'driver')}</button>"
-                f"<div class='btn-pass-total' aria-hidden='true'></div></div>"
+                f"</div>"
             )
 
     device_rows = []
@@ -4591,7 +4605,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .btn-wrap.btn-wrap--home-event{{width:100%;position:relative;border-radius:16px;--btn-fill-color:#1e5f86;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
 .btn-wrap--home-event .test-btn{{width:100%;margin:0;font:inherit;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:0;background:var(--btn-fill-color);color:#fff;box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);font-size:15px;line-height:1.35;text-align:left;cursor:pointer;white-space:normal;}}
 .btn-wrap--home-event:hover .test-btn{{filter:brightness(1.05);}}
-.btn-wrap--home-event .btn-pass-total{{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:none;visibility:hidden;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.22);color:#fff;font-size:11px;line-height:1.1;font-weight:700;white-space:nowrap;pointer-events:none;}}
+.btn-wrap--home-event .btn-pass-total{{display:none !important;visibility:hidden !important;}}
 .device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px;z-index:10000;}}
@@ -4864,13 +4878,25 @@ const APP_UI={app_json};
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function _renderRowStatusTimes(rowUi) {{
+  if (!rowUi || !rowUi.lastTestEl) return;
+  const times = rowUi.statusTimes || {{}};
+  const lines = [];
+  if (times.PASS) lines.push(`Passed: ${{times.PASS}}`);
+  if (times.FAIL) lines.push(`Failed: ${{times.FAIL}}`);
+  if (times.UNTESTED) lines.push(`Reverted: ${{times.UNTESTED}}`);
+  rowUi.lastTestEl.textContent = lines.join(" ");
+ }}
  function setRowStatus(rowUi, outcome, recordedAtUtc) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
   if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
-  if (rowUi.lastTestEl) rowUi.lastTestEl.textContent = at ? `Last Test: ${{at}}` : "";
+  rowUi.currentOutcome = o;
+  if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
   if (!rowUi) return;
@@ -5148,7 +5174,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   else section.setAttribute("hidden", "hidden");
   btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
  }}
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -5172,7 +5198,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
 
   const payload={{
     type:"test_result.submit",
-    target:{{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName}},
+    target:{{targetKey:target.targetKey,kind:target.kind,refs:{{...(target.refs||{{}}), ...(isRevert ? {{ revertedFrom: "PASS" }} : {{}})}},targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
   }};
@@ -5205,7 +5231,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     rowStatusByTargetKey.set(target.targetKey, rowUi);
     applyCachedStatus(rowUi, target.targetKey);
    }}
-   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'PASS', null, rowUi);}});
+  passBtn.addEventListener('click', function(e){{e.stopPropagation(); const nextOutcome = rowUi.currentOutcome === 'PASS' ? 'UNTESTED' : 'PASS'; postResultWs(null, meta, label, nextOutcome, null, rowUi, nextOutcome === 'UNTESTED');}});
    failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
@@ -5221,8 +5247,10 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     clearPassAllQueue();
     setPostStatus('','');
     if (passAllBtn) {{
-     passAllBtn.disabled = !targets.length;
-     passAllBtn.onclick = function(){{ queuePassAll(null, m); }};
+     const showPassAll = targets.length > 1;
+     passAllBtn.hidden = !showPassAll;
+     passAllBtn.disabled = !showPassAll;
+     passAllBtn.onclick = showPassAll ? function(){{ queuePassAll(null, m); }} : null;
     }}
     ov.classList.add('open');
    bindResultRows(m);
