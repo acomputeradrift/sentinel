@@ -1151,6 +1151,129 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_pass_all_then_pass_toggle_on_first_row_posts_untested(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "BTN-1", "text": "Button 1", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 10,
+                                                        "orientations": {
+                                                            "portrait": {"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}}
+                                                        },
+                                                    },
+                                                    "testTargets": {
+                                                        "text": True,
+                                                        "macros": False,
+                                                        "macroSteps": False,
+                                                        "variables": {},
+                                                        "pageLink": {"enabled": True, "targetPageId": 514},
+                                                    },
+                                                    "resolvedPageLink": {"targetPageId": 514},
+                                                }
+                                            ],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}],
+                                "buttons": [{"buttonId": 48551, "buttonTagName": "BTN-1", "identifiers": {"text": "Button 1"}, "testTargets": {}}],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
+
+        token = "techTokenPassAllRevert"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click(".btn-wrap .test-btn")
+            page.click("#passAll")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent0 = self._ws_payload(page, 0)
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-30T01:02:03Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent0,
+            )
+            self._wait_for_ws_outbox(page, min_posts=2)
+            sent1 = self._ws_payload(page, 1)
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-30T01:02:04Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent1,
+            )
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-30 01:02:03Z")
+            self._wait_for_row_last_test_exact(page, 1, "Passed: 2026-03-30 01:02:04Z")
+            self._wait_for_status_hidden(page)
+            page.locator("#rows .row").first.locator(".actions button").first.click()
+            self._wait_for_ws_outbox(page, min_posts=3)
+            sent2 = self._ws_payload(page, 2)
+            self.assertEqual(sent2["outcome"], "UNTESTED")
+            self.assertEqual(sent2["target"]["refs"].get("revertedFrom"), "PASS")
+        finally:
+            server.stop()
+
     def test_testing_popup_uses_stable_hidden_until_hover_scroll_contract(self):
         from sentinel.generation.render_core import render_single_device_html, load_json
 

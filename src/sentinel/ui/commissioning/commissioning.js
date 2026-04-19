@@ -174,8 +174,9 @@ function resetProjectDetailsUi() {
   setStatus($("uploadStatus"), "");
   setStatus($("uploadProgressLabel"), "");
   setStatus($("techLinkStatus"), "");
-  $("techUrl").textContent = "";
   $("techLabel").value = "";
+  const fin = $("apexFile");
+  if (fin) fin.value = "";
   setProgressHidden($("uploadProgressRow"), true);
 }
 
@@ -306,11 +307,29 @@ function setLastGeneratedLabel() {
   const projectId = currentProjectId();
   if (!projectId) {
     el.textContent = "None";
+    setFileUploadedAtLabel();
     return;
   }
   const activeUpload = state.activeUploadByProject[projectId] || null;
   const name = activeUpload && activeUpload.originalFilename ? String(activeUpload.originalFilename).trim() : "";
   el.textContent = name || "None";
+  setFileUploadedAtLabel();
+}
+
+function setFileUploadedAtLabel() {
+  const el = document.getElementById("fileUploadedAt");
+  if (!el) return;
+  const projectId = currentProjectId();
+  const activeUpload = projectId ? state.activeUploadByProject[projectId] : null;
+  const raw = activeUpload && activeUpload.uploadedAtUtc ? String(activeUpload.uploadedAtUtc).trim() : "";
+  if (!raw) {
+    el.textContent = "";
+    el.hidden = true;
+    return;
+  }
+  const formatted = formatUtc(raw);
+  el.textContent = formatted ? `Uploaded: ${formatted}` : "";
+  el.hidden = !formatted;
 }
 
 function setPanelContext() {
@@ -365,6 +384,13 @@ function renderTechLinks() {
     const tdLabel = document.createElement("td");
     tdLabel.textContent = link.label || "(no label)";
 
+    const tdLink = document.createElement("td");
+    tdLink.className = "mono tech-link-url-cell";
+    tdLink.setAttribute("data-testid", "tech-url");
+    const linkText = String(link.techUrl || "").trim();
+    tdLink.textContent = linkText;
+    tdLink.title = linkText;
+
     const tdCreated = document.createElement("td");
     tdCreated.textContent = formatUtc(link.createdAtUtc || "");
 
@@ -408,6 +434,7 @@ function renderTechLinks() {
     tdActions.appendChild(revoke);
 
     tr.appendChild(tdLabel);
+    tr.appendChild(tdLink);
     tr.appendChild(tdCreated);
     tr.appendChild(tdActions);
     body.appendChild(tr);
@@ -679,16 +706,29 @@ async function uploadAndRegenerate() {
     const nextName = String((uploadObj?.originalFilename || file.name) || "");
 
     setProgress($("uploadProgress"), 100);
-    let msg = uploadId ? `Uploaded: ${uploadId} (${nextName})` : `Uploaded: ${nextName}`;
+    const activeFromApi = combined?.activeUpload && typeof combined.activeUpload === "object" ? combined.activeUpload : null;
+    const uploadedAtUtc =
+      String(activeFromApi?.uploadedAtUtc || "").trim() || new Date().toISOString();
+    state.activeUploadByProject[projectId] = {
+      uploadId: uploadId || null,
+      originalFilename: nextName,
+      storagePath: String(activeFromApi?.storagePath || uploadObj?.storagePath || ""),
+      uploadedAtUtc,
+    };
+    setLastGeneratedLabel();
+    let msg = "";
     if (prevName && nextName) {
       const sim = _baseSimilarity(prevName, nextName);
       if (sim < 0.6) {
-        msg += `\nWARNING: This upload name looks different than the previous file for this project.\nPrevious: ${prevName}\nNew: ${nextName}`;
+        msg = `WARNING: This upload name looks different than the previous file for this project.\nPrevious: ${prevName}\nNew: ${nextName}`;
       }
     }
-    setStatus($("uploadStatus"), msg);
+    const statusLine = msg || (uploadId ? String(uploadId) : "");
+    setStatus($("uploadStatus"), statusLine);
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
+    const fin = $("apexFile");
+    if (fin) fin.value = "";
   } finally {
     const finalizeUi = () => {
       state.uploadInFlightByProject[projectId] = false;
@@ -808,14 +848,13 @@ async function createTechLink() {
     body: JSON.stringify({ label }),
   });
   const payloadTechUrl = buildPayloadTechUrl(out.techUrl || "");
-  $("techUrl").textContent = payloadTechUrl || "";
   const createdAtUtc = new Date().toISOString();
   state.techLinksByProject[projectId] = [
     { techLinkId: out.techLinkId, label: label, createdAtUtc, techUrl: payloadTechUrl },
     ...techLinksForProject(projectId),
   ];
   renderTechLinks();
-  if (statusEl) statusEl.textContent = "Created tech link.";
+  if (statusEl) statusEl.textContent = "";
 }
 
 async function clearTestsForProject() {

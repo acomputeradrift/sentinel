@@ -57,6 +57,7 @@
                   <h3>Current File</h3>
                   <div class="status">
                     <div id="lastGeneratedLabel">None</div>
+                    <div id="fileUploadedAt" class="sub" data-testid="file-uploaded-at" hidden></div>
                   </div>
                 </div>
 
@@ -83,25 +84,23 @@
               <p class="sub" id="techHintNoProject">Select a client and project in the header.</p>
               <div id="techLinksPanelBody" hidden>
                 <div class="manage-section">
-                  <div class="row">
+                  <div class="row tech-links-create-row">
                     <label class="field grow">
                       <span>Tech label</span>
                       <input id="techLabel" type="text" placeholder="e.g. Onsite Tech" />
                     </label>
                     <button id="createTechLinkBtn" type="button" disabled>Create tech link</button>
-                  </div>
-                  <div class="status">
-                    <div class="mono" data-testid="tech-url" id="techUrl"></div>
-                    <div id="techLinkStatus"></div>
+                    <span id="techLinkStatus" class="tech-link-inline-status" role="status"></span>
                   </div>
 
                   <div class="table-wrap">
                     <table class="mini-table" aria-label="Active tech links">
                       <thead>
                         <tr>
-                          <th style="width: 220px">Label</th>
+                          <th style="width: 140px">Label</th>
+                          <th>Link</th>
                           <th style="width: 190px">Created (UTC)</th>
-                          <th style="width: 110px"></th>
+                          <th style="width: 140px"></th>
                         </tr>
                       </thead>
                       <tbody id="techLinksBody"></tbody>

@@ -823,3 +823,35 @@ button.danger {
   height: 8px;
 }
 
+.tech-links-create-row {
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tech-link-inline-status {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 13px;
+  color: #8f1f1f;
+}
+
+.tech-link-url-cell {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#techLinksBody td.tech-link-actions {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#fileUploadedAt {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #4d6678;
+}
+

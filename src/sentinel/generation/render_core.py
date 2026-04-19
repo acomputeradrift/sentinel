@@ -2058,7 +2058,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup{{position:fixed;left:0;top:0;width:0;height:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
  .viewport-mode .vp-popup{{display:flex;}}
  .vp-popup[hidden]{{display:none;}}
- .vp-popup-panel{{position:relative;width:min(920px,calc(100% - 56px));height:min(720px,calc(100% - 56px));background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;isolation:isolate;}}
+ .vp-popup-panel{{position:relative;width:calc(100% - 24px);height:calc(100% - 24px);max-width:none;max-height:none;background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;isolation:isolate;}}
  .vp-popup-scroller{{position:absolute;inset:0;overflow:hidden;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;z-index:1;}}
  .vp-popup-scroller.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
  .vp-popup-scroller::-webkit-scrollbar{{width:10px;height:10px;}}
@@ -2814,19 +2814,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
  }}
  function queuePassAll(ctxBtn, meta) {{
   clearPassAllQueue();
+  const m = (meta && typeof meta === "object") ? meta : {{}};
   rows.querySelectorAll('.row').forEach(row=>{{
    const label = String(row.querySelector('.n')?.textContent || '').trim();
-   const buttons = row.querySelectorAll('.actions button');
-   const rowUi = {{
-    passBtn: buttons.length >= 1 ? buttons[0] : null,
-    failBtn: buttons.length >= 2 ? buttons[1] : null,
-    lastTestEl: row.querySelector('.row-last-test'),
-   }};
    if (!label) return;
+   const target = buildTargetPayload(ctxBtn, m, label);
+   if (!target?.targetKey) return;
+   const rowUi = rowStatusByTargetKey.get(target.targetKey);
+   if (!rowUi) return;
    passAllQueue.push({{ label, rowUi }});
   }});
   if (!passAllQueue.length) return;
-  passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m }};
   drainPassAllQueue();
  }}
 
@@ -3515,6 +3514,14 @@ function enterViewportMode(vpIndex) {{
   syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   applyLayerVisibility();
+  requestAnimationFrame(() => {{
+   requestAnimationFrame(() => {{
+    if (!viewportMode.active) return;
+    syncViewportPopupBounds();
+    applyViewportPopupLayout();
+    positionPopupIndicator();
+   }});
+  }});
 }}
 function exitViewportMode() {{
   const overlay=document.getElementById('vpOverlay');
@@ -5159,19 +5166,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
  }}
  function queuePassAll(ctxBtn, meta) {{
   clearPassAllQueue();
+  const m = (meta && typeof meta === "object") ? meta : {{}};
   rows.querySelectorAll('.row').forEach(function(row){{
-   const label = String((row.querySelector('.n')||{{}}).textContent || '').trim();
-   const buttons = row.querySelectorAll('.actions button');
-   const rowUi = {{
-    passBtn: buttons.length >= 1 ? buttons[0] : null,
-    failBtn: buttons.length >= 2 ? buttons[1] : null,
-    lastTestEl: row.querySelector('.row-last-test'),
-   }};
+   var label = String((row.querySelector('.n')||{{}}).textContent || '').trim();
    if (!label) return;
-   passAllQueue.push({{ label, rowUi }});
+   var target = buildTargetPayload(ctxBtn || null, m, label);
+   if (!target || !target.targetKey) return;
+   var rowUi = rowStatusByTargetKey.get(target.targetKey);
+   if (!rowUi) return;
+   passAllQueue.push({{ label: label, rowUi: rowUi }});
   }});
   if (!passAllQueue.length) return;
-  passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m }};
   drainPassAllQueue();
  }}
  function setPosting(on) {{
