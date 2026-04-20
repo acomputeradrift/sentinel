@@ -824,7 +824,7 @@ button.danger {
 }
 
 .tech-links-create-row {
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: 10px;
 }
@@ -834,7 +834,7 @@ button.danger {
   min-width: 0;
   font-size: 13px;
   color: #8f1f1f;
-  align-self: center;
+  align-self: flex-end;
 }
 
 .tech-link-url-cell {
@@ -857,16 +857,21 @@ button.danger {
 }
 
 .file-upload-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  flex-wrap: nowrap;
+  column-gap: 12px;
+  row-gap: 8px;
 }
 
 .file-upload-row .field {
+  display: flex;
+  align-items: center;
   min-width: 0;
 }
 
 .file-upload-row input[type="file"] {
-  height: 40px;
+  height: 34px;
   display: block;
   width: 100%;
 }

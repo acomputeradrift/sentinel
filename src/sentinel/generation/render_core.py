@@ -3560,8 +3560,7 @@ function enterViewportMode(vpIndex) {{
   viewportMode.vpIndex=Number(vpIndex||0);
   viewportMode.preZoom=currentZoomPercent;
    syncViewportPopupBounds();
-   overlay.removeAttribute('hidden');
-   popup.removeAttribute('hidden');
+  overlay.removeAttribute('hidden');
   viewportRoot.classList.add('viewport-mode');
   focusViewportElements();
   renderViewportPopup();
@@ -3570,6 +3569,7 @@ function enterViewportMode(vpIndex) {{
    syncViewportPopupBounds();
    applyViewportPopupLayout();
    positionPopupIndicator();
+   popup.removeAttribute('hidden');
   }};
   waitForStableViewportBounds(finalizeViewportOpen);
   syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
