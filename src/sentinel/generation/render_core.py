@@ -3202,8 +3202,9 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   }}
 	  function applyViewportPopupLayout() {{
 	    if (!viewportMode.active) return;
-	    syncViewportPopupBounds();
 	    const els=popupElements();
+	    if (!els.popup) return;
+	    syncViewportPopupBounds();
 	    const stage=els.stage;
 	    const scroller=els.scroller;
 	    const scrollpad=els.scrollpad;
@@ -3562,6 +3563,7 @@ function enterViewportMode(vpIndex) {{
    syncViewportPopupBounds();
   overlay.removeAttribute('hidden');
   viewportRoot.classList.add('viewport-mode');
+  popup.removeAttribute('hidden');
   focusViewportElements();
   renderViewportPopup();
   const finalizeViewportOpen=() => {{
@@ -3569,7 +3571,6 @@ function enterViewportMode(vpIndex) {{
    syncViewportPopupBounds();
    applyViewportPopupLayout();
    positionPopupIndicator();
-   popup.removeAttribute('hidden');
   }};
   waitForStableViewportBounds(finalizeViewportOpen);
   syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
