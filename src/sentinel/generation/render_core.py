@@ -2058,7 +2058,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup{{position:fixed;left:0;top:0;width:0;height:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
  .viewport-mode .vp-popup{{display:flex;}}
  .vp-popup[hidden]{{display:none;}}
- .vp-popup-panel{{position:relative;width:calc(100% - 24px);height:calc(100% - 24px);max-width:none;max-height:none;background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;isolation:isolate;}}
+.vp-popup-panel{{position:relative;width:100%;height:100%;max-width:none;max-height:none;background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;isolation:isolate;}}
  .vp-popup-scroller{{position:absolute;inset:0;overflow:hidden;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;z-index:1;}}
  .vp-popup-scroller.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
  .vp-popup-scroller::-webkit-scrollbar{{width:10px;height:10px;}}
@@ -3048,15 +3048,69 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
     indicator: document.getElementById('vpPopupIndicator')
    }};
   }}
+  function computeViewportPopupBounds() {{
+   const usable=document.getElementById('rtiUsableCanvas') || document.getElementById('rtiCanvas');
+   if (!usable) return null;
+   const ur=usable.getBoundingClientRect();
+   let left=ur.left;
+   let right=ur.right;
+   const leftPanel=document.getElementById('deviceViewControlsCanvas');
+   const rightPanel=document.getElementById('deviceLayerControlsCanvas') || document.getElementById('layerControls');
+   if (leftPanel) {{
+    const lr=leftPanel.getBoundingClientRect();
+    if (Number.isFinite(lr.right)) left=Math.max(left, lr.right);
+   }}
+   if (rightPanel) {{
+    const rr=rightPanel.getBoundingClientRect();
+    if (Number.isFinite(rr.left)) right=Math.min(right, rr.left);
+   }}
+   if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left + 1) {{
+    left=ur.left;
+    right=ur.right;
+   }}
+   return {{
+    left,
+    top: ur.top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, ur.height),
+   }};
+  }}
   function syncViewportPopupBounds() {{
-   const rtiCanvas=document.getElementById('rtiCanvas');
    const popup=document.getElementById('vpPopup');
-   if (!rtiCanvas || !popup) return;
-   const rr=rtiCanvas.getBoundingClientRect();
-   popup.style.left=`${{rr.left}}px`;
-   popup.style.top=`${{rr.top}}px`;
-   popup.style.width=`${{rr.width}}px`;
-   popup.style.height=`${{rr.height}}px`;
+   if (!popup) return;
+   const bounds=computeViewportPopupBounds();
+   if (!bounds) return;
+   popup.style.left=`${{bounds.left}}px`;
+   popup.style.top=`${{bounds.top}}px`;
+   popup.style.width=`${{bounds.width}}px`;
+   popup.style.height=`${{bounds.height}}px`;
+  }}
+  function waitForStableViewportBounds(onStable) {{
+   let prev=null;
+   let stableFrames=0;
+   let ticks=0;
+   const MAX_TICKS=10;
+   const EPS=0.75;
+   const step=() => {{
+    if (!viewportMode.active) return;
+    const cur=computeViewportPopupBounds();
+    if (cur && prev) {{
+     const stable=
+      Math.abs(cur.left - prev.left) <= EPS &&
+      Math.abs(cur.top - prev.top) <= EPS &&
+      Math.abs(cur.width - prev.width) <= EPS &&
+      Math.abs(cur.height - prev.height) <= EPS;
+     stableFrames = stable ? (stableFrames + 1) : 0;
+    }}
+    prev=cur;
+    ticks += 1;
+    if (stableFrames >= 1 || ticks >= MAX_TICKS) {{
+     onStable();
+     return;
+    }}
+    requestAnimationFrame(step);
+   }};
+   requestAnimationFrame(step);
   }}
  function activeViewportFrameId(vpIndex) {{
   const frames=activePageState().vpFrames||[];
@@ -3511,17 +3565,16 @@ function enterViewportMode(vpIndex) {{
   viewportRoot.classList.add('viewport-mode');
   focusViewportElements();
   renderViewportPopup();
+  const finalizeViewportOpen=() => {{
+   if (!viewportMode.active) return;
+   syncViewportPopupBounds();
+   applyViewportPopupLayout();
+   positionPopupIndicator();
+  }};
+  waitForStableViewportBounds(finalizeViewportOpen);
   syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   applyLayerVisibility();
-  requestAnimationFrame(() => {{
-   requestAnimationFrame(() => {{
-    if (!viewportMode.active) return;
-    syncViewportPopupBounds();
-    applyViewportPopupLayout();
-    positionPopupIndicator();
-   }});
-  }});
 }}
 function exitViewportMode() {{
   const overlay=document.getElementById('vpOverlay');

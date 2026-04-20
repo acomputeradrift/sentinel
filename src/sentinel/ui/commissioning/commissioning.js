@@ -427,7 +427,7 @@ function renderTechLinks() {
         .then(() => {
           state.techLinksByProject[projectIdNow] = techLinksForProject(projectIdNow).filter((x) => x.techLinkId !== link.techLinkId);
           renderTechLinks();
-          set("Revoked.");
+          set("");
         })
         .catch((e) => set(String(e?.message || e)));
     });
@@ -723,8 +723,8 @@ async function uploadAndRegenerate() {
         msg = `WARNING: This upload name looks different than the previous file for this project.\nPrevious: ${prevName}\nNew: ${nextName}`;
       }
     }
-    const statusLine = msg || (uploadId ? String(uploadId) : "");
-    setStatus($("uploadStatus"), statusLine);
+    // Keep upload status for warnings only; do not inject upload ids on success.
+    setStatus($("uploadStatus"), msg || "");
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
     const fin = $("apexFile");

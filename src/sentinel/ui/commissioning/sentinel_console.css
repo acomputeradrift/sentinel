@@ -824,7 +824,7 @@ button.danger {
 }
 
 .tech-links-create-row {
-  align-items: flex-end;
+  align-items: center;
   flex-wrap: wrap;
   gap: 10px;
 }
@@ -834,6 +834,7 @@ button.danger {
   min-width: 0;
   font-size: 13px;
   color: #8f1f1f;
+  align-self: center;
 }
 
 .tech-link-url-cell {
@@ -853,5 +854,24 @@ button.danger {
   margin-top: 6px;
   font-size: 13px;
   color: #4d6678;
+}
+
+.file-upload-row {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+.file-upload-row .field {
+  min-width: 0;
+}
+
+.file-upload-row input[type="file"] {
+  height: 40px;
+  display: block;
+  width: 100%;
+}
+
+#techLinksBody td {
+  vertical-align: middle;
 }
 
