@@ -652,9 +652,36 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         try:
             page.add_init_script("window.__sentinelShellBootDelayMs = 450;")
             page.goto(f"{server.base_url}/{shell_path.name}", wait_until="domcontentloaded")
+            expect(page.locator("#topControlsStatic .header")).to_be_visible(timeout=1500)
             expect(page.locator("#shellBootOverlay")).to_be_visible(timeout=1500)
+            pending_state = page.evaluate(
+                """() => {
+                  const app = document.getElementById('appCanvas');
+                  const rti = document.getElementById('rtiUsableCanvas');
+                  const overlay = document.getElementById('shellBootOverlay');
+                  return {
+                    appVisible: !!(app && getComputedStyle(app).visibility !== 'hidden'),
+                    rtiPending: !!(rti && rti.classList.contains('shell-rti-pending')),
+                    overlayVisible: !!(overlay && !overlay.hasAttribute('hidden')),
+                  };
+                }"""
+            )
+            self.assertTrue(bool(pending_state["appVisible"]))
+            self.assertTrue(bool(pending_state["rtiPending"]))
+            self.assertTrue(bool(pending_state["overlayVisible"]))
             expect(page.locator("#shellBootOverlay")).to_contain_text("Preparing device layout")
             expect(page.locator("#shellBootOverlay")).to_be_hidden(timeout=5000)
+            done_state = page.evaluate(
+                """() => {
+                  const rti = document.getElementById('rtiUsableCanvas');
+                  return {
+                    runtimeReady: !!window.__sentinelRuntimeReady,
+                    rtiPending: !!(rti && rti.classList.contains('shell-rti-pending')),
+                  };
+                }"""
+            )
+            self.assertTrue(bool(done_state["runtimeReady"]))
+            self.assertFalse(bool(done_state["rtiPending"]))
         finally:
             page.close()
             server.stop()

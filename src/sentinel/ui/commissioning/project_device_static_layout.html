@@ -9,9 +9,6 @@
 <body>
   <input class="panel-toggle" type="checkbox" id="left-panel-toggle" checked>
   <input class="panel-toggle" type="checkbox" id="right-panel-toggle" checked>
-  <div id="shellBootOverlay" class="shellBootOverlay" hidden>
-    <div class="shellBootOverlayPanel" role="status" aria-live="polite">Preparing device layout...</div>
-  </div>
 
   <div id="appCanvas" class="projectDeviceStaticLayout" aria-label="Project Device Static Layout">
     <header id="deviceHeaderCanvas" class="deviceHeaderCanvas">
@@ -23,7 +20,10 @@
     </header>
 
     <main class="deviceLayoutStage">
-      <section id="rtiUsableCanvas" class="rtiUsableCanvas">
+      <section id="rtiUsableCanvas" class="rtiUsableCanvas shell-rti-pending">
+        <div id="shellBootOverlay" class="shellBootOverlay" hidden>
+          <div class="shellBootOverlayPanel" role="status" aria-live="polite">Preparing device layout...</div>
+        </div>
         <div id="vpOverlay" class="vp-overlay" hidden></div>
         <div id="rtiDeviceCanvas" class="rtiDeviceCanvas">
           <div id="rtiDeviceContent" class="rtiDeviceContent"></div>
@@ -102,7 +102,7 @@
   <script data-shell-runtime-adapter="1">
     (function () {
       function createBootController() {
-        const body = document.body;
+        const rti = document.getElementById("rtiUsableCanvas");
         const overlay = document.getElementById("shellBootOverlay");
         const SHOW_DELAY_MS = 180;
         let showTimer = 0;
@@ -115,12 +115,12 @@
             showTimer = 0;
           }
           if (overlay) overlay.setAttribute("hidden", "hidden");
-          if (body) body.classList.remove("shell-runtime-pending");
+          if (rti) rti.classList.remove("shell-rti-pending");
         }
         function syncFromRuntime() {
           if (window.__sentinelRuntimeReady) finish();
         }
-        if (body) body.classList.add("shell-runtime-pending");
+        if (rti) rti.classList.add("shell-rti-pending");
         showTimer = setTimeout(function () {
           if (done) return;
           if (overlay) overlay.removeAttribute("hidden");

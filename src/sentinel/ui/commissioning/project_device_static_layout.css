@@ -26,18 +26,14 @@ body {
   overflow: hidden;
 }
 
-body.shell-runtime-pending #appCanvas {
-  visibility: hidden;
-  pointer-events: none;
-}
-
 .shellBootOverlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 200000;
+  z-index: 12000;
   display: grid;
   place-items: center;
-  background: rgba(248, 251, 255, 0.82);
+  background: rgba(248, 251, 255, 0.78);
+  pointer-events: none;
 }
 
 .shellBootOverlay[hidden] {
@@ -53,6 +49,10 @@ body.shell-runtime-pending #appCanvas {
   font-size: 14px;
   line-height: 1.2;
   box-shadow: 0 10px 24px rgba(20, 50, 75, 0.12);
+}
+
+.rtiUsableCanvas.shell-rti-pending {
+  pointer-events: none;
 }
 
 .panel-toggle {
