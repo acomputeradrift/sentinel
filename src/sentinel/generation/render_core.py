@@ -3560,19 +3560,19 @@ function enterViewportMode(vpIndex) {{
   viewportMode.active=true;
   viewportMode.vpIndex=Number(vpIndex||0);
   viewportMode.preZoom=currentZoomPercent;
-   syncViewportPopupBounds();
   overlay.removeAttribute('hidden');
   viewportRoot.classList.add('viewport-mode');
-  popup.removeAttribute('hidden');
   focusViewportElements();
-  renderViewportPopup();
-  const finalizeViewportOpen=() => {{
+  // Wait until shell/side-panel geometry stops moving, then size the popup once and render.
+  // Doing layout before this (or re-layout in a second pass) makes the viewer jump when bounds settle.
+  const openViewportWhenStable=() => {{
    if (!viewportMode.active) return;
    syncViewportPopupBounds();
-   applyViewportPopupLayout();
+   popup.removeAttribute('hidden');
+   renderViewportPopup();
    positionPopupIndicator();
   }};
-  waitForStableViewportBounds(finalizeViewportOpen);
+  waitForStableViewportBounds(openViewportWhenStable);
   syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   applyLayerVisibility();
