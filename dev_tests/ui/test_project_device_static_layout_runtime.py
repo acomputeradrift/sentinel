@@ -642,6 +642,23 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
+    def test_shell_shows_loading_overlay_until_runtime_ready(self):
+        from playwright.sync_api import expect
+
+        shell_path, root_dir = self._write_fixture_html()
+        server = self._StaticServer(root_dir)
+        server.start()
+        page = self._browser.new_page()
+        try:
+            page.add_init_script("window.__sentinelShellBootDelayMs = 450;")
+            page.goto(f"{server.base_url}/{shell_path.name}", wait_until="domcontentloaded")
+            expect(page.locator("#shellBootOverlay")).to_be_visible(timeout=1500)
+            expect(page.locator("#shellBootOverlay")).to_contain_text("Preparing device layout")
+            expect(page.locator("#shellBootOverlay")).to_be_hidden(timeout=5000)
+        finally:
+            page.close()
+            server.stop()
+
 
 if __name__ == "__main__":
     unittest.main()

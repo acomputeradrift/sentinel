@@ -3052,27 +3052,34 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
    const usable=document.getElementById('rtiUsableCanvas') || document.getElementById('rtiCanvas');
    if (!usable) return null;
    const ur=usable.getBoundingClientRect();
-   let left=ur.left;
-   let right=ur.right;
-   const leftPanel=document.getElementById('deviceViewControlsCanvas');
-   const rightPanel=document.getElementById('deviceLayerControlsCanvas') || document.getElementById('layerControls');
-   if (leftPanel) {{
-    const lr=leftPanel.getBoundingClientRect();
-    if (Number.isFinite(lr.right)) left=Math.max(left, lr.right);
-   }}
-   if (rightPanel) {{
-    const rr=rightPanel.getBoundingClientRect();
-    if (Number.isFinite(rr.left)) right=Math.min(right, rr.left);
-   }}
-   if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left + 1) {{
+   const controls={{
+    top:Number(APP_UI_CONTROLS.top||0),
+    bottom:Number(APP_UI_CONTROLS.bottom||0),
+    left:Number(APP_UI_CONTROLS.left||0),
+    right:Number(APP_UI_CONTROLS.right||0),
+   }};
+   let expandedContractWidth=NaN;
+   try {{
+    const rootStyle=getComputedStyle(document.documentElement);
+    expandedContractWidth=Number.parseFloat(String(rootStyle.getPropertyValue('--controls-expanded-w')||'').replace('px','').trim());
+   }} catch (_e) {{}}
+   const effectiveLeft=Number.isFinite(expandedContractWidth) ? Math.max(0, expandedContractWidth) : controls.left;
+   const effectiveRight=Number.isFinite(expandedContractWidth) ? Math.max(0, expandedContractWidth) : controls.right;
+   let left=effectiveLeft;
+   let top=controls.top;
+   let width=Math.max(1, window.innerWidth - effectiveLeft - effectiveRight);
+   let height=Math.max(1, window.innerHeight - controls.top - controls.bottom);
+   if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(width) || !Number.isFinite(height) || width <= 1 || height <= 1) {{
     left=ur.left;
-    right=ur.right;
+    top=ur.top;
+    width=Math.max(1, ur.width);
+    height=Math.max(1, ur.height);
    }}
    return {{
     left,
-    top: ur.top,
-    width: Math.max(1, right - left),
-    height: Math.max(1, ur.height),
+    top,
+    width,
+    height,
    }};
   }}
   function syncViewportPopupBounds() {{
@@ -4261,6 +4268,50 @@ function scheduleRtiLayout(reason) {{
 }}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
 let _readyBaselineSent=false;
+window.__sentinelRuntimeReady=false;
+let _runtimeReadySignaled=false;
+const _shellBootDelayMs=Math.max(0, Number(window.__sentinelShellBootDelayMs||0));
+function markRuntimeReady() {{
+ if (_runtimeReadySignaled) return;
+ _runtimeReadySignaled=true;
+ window.__sentinelRuntimeReady=true;
+ try {{
+  if (document.body) document.body.setAttribute('data-sentinel-runtime-ready','1');
+  document.dispatchEvent(new CustomEvent('sentinel:runtime-ready', {{ detail: {{ ready:true }} }}));
+ }} catch (_e) {{}}
+}}
+function waitForStableRtiGeometry(onStable) {{
+ let prev=null;
+ let stableFrames=0;
+ let ticks=0;
+ const MAX_TICKS=24;
+ const EPS=0.75;
+ const step=() => {{
+  const canvas=document.getElementById('rtiCanvas');
+  if (!canvas) {{
+   onStable();
+   return;
+  }}
+  const r=canvas.getBoundingClientRect();
+  const cur={{left:r.left, top:r.top, width:r.width, height:r.height}};
+  if (prev) {{
+   const stable=
+    Math.abs(cur.left-prev.left)<=EPS &&
+    Math.abs(cur.top-prev.top)<=EPS &&
+    Math.abs(cur.width-prev.width)<=EPS &&
+    Math.abs(cur.height-prev.height)<=EPS;
+   stableFrames=stable ? (stableFrames+1) : 0;
+  }}
+  prev=cur;
+  ticks += 1;
+  if (stableFrames>=2 || ticks>=MAX_TICKS) {{
+   onStable();
+   return;
+  }}
+  requestAnimationFrame(step);
+ }};
+ requestAnimationFrame(step);
+}}
 function maybeReportReadyBaseline() {{
  if (_readyBaselineSent) return;
  const canvas=document.getElementById('rtiCanvas');
@@ -4359,11 +4410,20 @@ renderOrientationToggle();
 applyOrientationState();
 // Ensure synthetic source rows are compacted before first layout paint.
 applyLayerVisibility();
-syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
 syncTextZoomResetText();
-applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
+const _finalizeRuntimeBoot=() => {{
+ waitForStableRtiGeometry(() => {{
+  if (_shellBootDelayMs > 0) {{
+   setTimeout(markRuntimeReady, _shellBootDelayMs);
+  }} else {{
+   markRuntimeReady();
+  }}
+ }});
+}};
+applyRtiLayout();
+syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); _finalizeRuntimeBoot(); }});
 	document.addEventListener('click', e=>{{
 	 const link=e.target.closest('.page-link-hit');
 	 if (!link) return;
