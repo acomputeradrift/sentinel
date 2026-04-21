@@ -19,6 +19,10 @@ def _sentinel_test_status_embed_js() -> str:
     return (_SENTINEL_UI_DIR / "testing" / "sentinel_test_status_embed.js").read_text(encoding="utf-8")
 
 
+def _sentinel_device_theme_css() -> str:
+    return (_SENTINEL_UI_DIR / "testing" / "sentinel_device_theme.css").read_text(encoding="utf-8")
+
+
 def _resolution_or_default(resolution: dict[str, Any] | None, default_width: int, default_height: int) -> dict[str, int]:
     raw = resolution or {}
     width = int(raw.get("width") or 0)
@@ -2002,10 +2006,12 @@ def _render_document(
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
     _ts_embed = _sentinel_test_status_embed_js()
+    device_theme_css = _sentinel_device_theme_css()
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
+{device_theme_css}
 html,body{{margin:0;width:100%;height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;overflow:hidden;}}
 .app-canvas{{position:relative;width:100vw;height:100vh;overflow:hidden;}}
@@ -2077,9 +2083,6 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup-indicator.is-vertical{{flex-direction:column;}}
  .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
-.btn-wrap{{--btn-fill-color:#2c6fb7;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
-.test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:var(--btn-fill-color);box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
-.btn-pass-total{{display:none !important;visibility:hidden !important;}}
 .page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;font-size:inherit;}}
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;font-size:1em;line-height:1;background:transparent;border-radius:0;}}
 .page-link-icon .material-symbols-outlined{{font-size:1em;line-height:1;}}
@@ -2346,7 +2349,16 @@ function setSelectedRoom(nextRoomId, options) {{
    statusByTargetKey: statusByTargetKey,
    buildTargetPayload: buildTargetPayload,
   }});
+}}
+function deviceButtonRadiusBase() {{
+ try {{
+  const raw=String(getComputedStyle(document.documentElement).getPropertyValue('--sentinel-device-button-radius-base')||'').trim();
+  const n=Number.parseFloat(raw);
+  return Number.isFinite(n) && n>0 ? n : 10;
+ }} catch (_e) {{
+  return 10;
  }}
+}}
  const _perfNow=()=>((typeof performance!=="undefined"&&performance.now)?performance.now():Date.now());
  const techPerf={{layoutCalls:0,layoutTotalMs:0,wsCalls:0,wsTotalMs:0,lastConsoleAt:0}};
  function _emitTechPerf(reason, lastMs) {{
@@ -4236,7 +4248,7 @@ const offsetTop=(contentHeight-fittedHeight)/2;
     if (button) {{
       const buttonFontPx=resolveButtonFontPx(el, totalScale);
       button.style.fontSize=`${{buttonFontPx}}px`;
-      button.style.borderRadius=`${{Math.max(2, 10*totalScale)}}px`;
+      button.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*totalScale)}}px`;
       const linkHit=el.querySelector('.page-link-hit');
       if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
     }}

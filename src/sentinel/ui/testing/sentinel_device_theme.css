@@ -1,0 +1,44 @@
+:root {
+  --sentinel-fill-screen-label: #58585a;
+  --sentinel-fill-screen-button: #2c6fb7;
+  --sentinel-fill-hard-button: #2c6fb7;
+  --sentinel-fill-ui-item: #a7a9ac;
+  --sentinel-fill-empty-tag: #ef4444;
+  --sentinel-fill-system-event: #58585a;
+  --sentinel-fill-driver-event: #2c6fb7;
+  --sentinel-trim-pass: #39b54a;
+  --sentinel-trim-partial: #fcb040;
+  --sentinel-trim-fail: #ef4444;
+  --sentinel-trim-untested: transparent;
+  --sentinel-device-button-radius-base: 10;
+  --sentinel-device-button-radius: 10px;
+  --sentinel-device-button-border-color: #154665;
+}
+
+.btn-wrap {
+  --btn-fill-color: var(--sentinel-fill-screen-button);
+  --btn-state-trim-color: var(--sentinel-trim-untested);
+  --btn-state-trim-width: 0px;
+}
+
+.test-btn {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--sentinel-device-button-radius);
+  background: var(--btn-fill-color);
+  box-shadow: inset 0 0 0 1px var(--sentinel-device-button-border-color),
+    inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);
+  color: #fff;
+  line-height: 1.1;
+  white-space: pre-line;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+}
+
+.btn-pass-total {
+  display: none !important;
+  visibility: hidden !important;
+}
