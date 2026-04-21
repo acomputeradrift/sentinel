@@ -2185,12 +2185,15 @@ let selectedRoomId=null;
  let techWsToken=null;
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
- let pendingTargetKey=null;
- let techLastAppliedSeq=0;
- let passAllQueue=[];
- let passAllContext=null;
- const rowStatusByTargetKey=new Map();
- const statusByTargetKey=new Map();
+let pendingTargetKey=null;
+let techLastAppliedSeq=0;
+let passAllQueue=[];
+let passAllContext=null;
+const rowStatusByTargetKey=new Map();
+const statusByTargetKey=new Map();
+const persistedLayerLocksByScope=new Map();
+const sessionUnlockedLayerLocks=new Set();
+const pendingLayerLockWsByKey=new Map();
  function _buttonTargetPrefix(wrap) {{
   if (!wrap || !wrap.dataset) return "";
   const deviceId=wrap.dataset.diagDeviceId;
@@ -2414,18 +2417,22 @@ function setSelectedRoom(nextRoomId, options) {{
    _logTechWs("sync.request", Number(techLastAppliedSeq||0));
   }} catch (_e) {{}}
  }}
- function _applyTechPayload(payload) {{
-   const _wsT0=_perfNow();
-   const t = String(payload?.type || "").trim();
-   try {{
-    _logTechWs("recv", t || "(unknown)");
-    if (t === "error") {{
+function _applyTechPayload(payload) {{
+  const _wsT0=_perfNow();
+  const t = String(payload?.type || "").trim();
+  try {{
+   _logTechWs("recv", t || "(unknown)");
+   if (t === "error") {{
      const code = payload?.code;
      const message = payload?.message;
      const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-     setPosting(false);
-     setPostStatus(`Error: ${{msg}}`, "error");
-     drainPassAllQueue();
+     if (pendingTargetKey || isPosting) {{
+      setPosting(false);
+      setPostStatus(`Error: ${{msg}}`, "error");
+      drainPassAllQueue();
+     }} else {{
+      _logTechWs("error-msg", msg);
+     }}
      return;
     }}
     if (t === "replay.batch") {{
@@ -2445,6 +2452,7 @@ function setSelectedRoom(nextRoomId, options) {{
     }}
     if (t === "testing_snapshot") {{
      const results = Array.isArray(payload?.results) ? payload.results : [];
+     const layerLocks = Array.isArray(payload?.layerLocks) ? payload.layerLocks : [];
      let applied = 0;
      for (const rec of results) {{
       const targetKey = String(rec?.targetKey || "");
@@ -2458,8 +2466,19 @@ function setSelectedRoom(nextRoomId, options) {{
        applied += 1;
       }}
      }}
-     _logTechWs("snapshot:applied", {{ total: results.length, applied }});
+     _syncPersistedLayerLocksFromRows(layerLocks, true);
+     renderLayerPanel();
+     applyLayerVisibility();
+     applyRtiLayout();
+     _logTechWs("snapshot:applied", {{ total: results.length, applied, layerLocks: layerLocks.length }});
      refreshButtonVisualStates();
+     return;
+    }}
+    if (t === "layer_lock_state") {{
+     _syncPersistedLayerLocksFromRows([payload], false);
+     renderLayerPanel();
+     applyLayerVisibility();
+     applyRtiLayout();
      return;
     }}
     if (t === "commissioning_rollups") return;
@@ -2497,7 +2516,7 @@ function setSelectedRoom(nextRoomId, options) {{
    _logTechWs("recv:parse-failed");
   }}
  }}
- function _connectTechWs() {{
+function _connectTechWs() {{
   const techToken = techTokenFromLocation();
   if (!techToken) return;
   if (techWs && techWsToken === techToken) return;
@@ -2509,7 +2528,7 @@ function setSelectedRoom(nextRoomId, options) {{
   _logTechWs("connect", techToken);
   const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
   techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); }};
+ ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); _flushLayerLockWsQueue(); }};
   ws.onclose = () => {{
    techWs = null;
    _logTechWs("close");
@@ -3610,9 +3629,48 @@ function exitViewportMode() {{
   syncViewportControls();
   applyLayerVisibility();
 }}
-const persistedLayerLocksByScope=new Map();
-const sessionUnlockedLayerLocks=new Set();
-const loadedLayerLockScopes=new Set();
+function _syncPersistedLayerLocksFromRows(rows, replaceAll) {{
+ const list = Array.isArray(rows) ? rows : [];
+ if (replaceAll) persistedLayerLocksByScope.clear();
+ list.forEach((row) => {{
+  const rowScope=String(row?.scopeKey||'').trim();
+  const layerKey=String(row?.layerKey||'').trim();
+  if (!rowScope || !layerKey) return;
+  const lockKey=layerLockCompositeKey(rowScope, layerKey);
+  if (Boolean(row?.locked)) {{
+   persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(row?.visible), locked:true}});
+  }} else {{
+   persistedLayerLocksByScope.delete(lockKey);
+  }}
+ }});
+}}
+function _flushLayerLockWsQueue() {{
+ if (!techWs || techWs.readyState !== 1) return;
+ const items=Array.from(pendingLayerLockWsByKey.entries());
+ items.forEach(([key, payload]) => {{
+  try {{
+   techWs.send(JSON.stringify(payload));
+   pendingLayerLockWsByKey.delete(key);
+   _logTechWs("send", payload?.type || "");
+  }} catch (_e) {{}}
+ }});
+}}
+function _queueLayerLockStateForWs(scopeKey, layerKey, visible, locked) {{
+ const scope=String(scopeKey||'').trim();
+ const layer=String(layerKey||'').trim();
+ if (!scope || !layer) return;
+ const payload={{
+  type:"layer_lock.set",
+  scopeKey:scope,
+  layerKey:layer,
+  visible:Boolean(visible),
+  locked:Boolean(locked),
+ }};
+ const key=layerLockCompositeKey(scope, layer);
+ pendingLayerLockWsByKey.set(key, payload);
+ _flushLayerLockWsQueue();
+ if (pendingLayerLockWsByKey.has(key)) _connectTechWs();
+}}
 function layerScopeKey(state) {{
  return [PROJECT_SESSION_KEY, state?.deviceName||'', state?.pageName||''].join('::');
 }}
@@ -3645,51 +3703,8 @@ function layerPersistenceLockKey(layer, defaultScopeKey) {{
  const layerKey=layerPersistenceLayerKey(layer);
  return layerLockCompositeKey(scopeKey, layerKey);
 }}
-function layerLocksApiUrl() {{
- const techToken=techTokenFromLocation();
- if (!techToken) return '';
- return `/api/v1/testing/${{encodeURIComponent(techToken)}}/layer-locks`;
-}}
-function syncLayerLocksForScope(scopeKey, force) {{
- const scope=String(scopeKey||'').trim();
- if (!scope) return Promise.resolve();
- if (!force && loadedLayerLockScopes.has(scope)) return Promise.resolve();
- const url=layerLocksApiUrl();
- if (!url) return Promise.resolve();
- return fetch(`${{url}}?scopeKey=${{encodeURIComponent(scope)}}`, {{credentials:'same-origin'}})
-  .then((res) => {{
-   if (!res.ok) return null;
-   return res.json();
-  }})
-  .then((payload) => {{
-   if (!payload) return;
-   const locks=Array.isArray(payload?.locks) ? payload.locks : [];
-   locks.forEach((row)=>{{
-    const rowScope=String(row?.scopeKey||'').trim();
-    const layerKey=String(row?.layerKey||'').trim();
-    if (!rowScope || !layerKey) return;
-    const lockKey=layerLockCompositeKey(rowScope, layerKey);
-    if (Boolean(row?.locked)) {{
-     persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(row?.visible), locked:true}});
-    }} else {{
-     persistedLayerLocksByScope.delete(lockKey);
-    }}
-   }});
-   loadedLayerLockScopes.add(scope);
-  }})
-  .catch(() => {{}});
-}}
-function syncLayerLocksForActiveLayers(force) {{
- const baseScope=activeLayerScopeKey();
- const scopes=new Set();
- const addScope=(value)=>{{
-  const scope=String(value||'').trim();
-  if (scope) scopes.add(scope);
- }};
- addScope(baseScope);
- (activeLayerList()||[]).forEach(layer=>{{ addScope(layerPersistenceScopeKey(layer, baseScope)); }});
- const scopeList=Array.from(scopes);
- return scopeList.reduce((p, scope) => p.then(() => syncLayerLocksForScope(scope, force)), Promise.resolve());
+function syncLayerLocksForActiveLayers(_force) {{
+ return Promise.resolve();
 }}
 function loadLayerVisibility(scopeKey) {{
  try {{
@@ -3853,15 +3868,7 @@ function renderLayerPanel() {{
       sessionUnlockedLayerLocks.delete(lockKey);
       const lockedVisible=visibility[key] !== false;
       persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(lockedVisible), locked:true}});
-      const url=layerLocksApiUrl();
-      if (url) {{
-        fetch(url, {{
-          method:'POST',
-          headers:{{'content-type':'application/json'}},
-          credentials:'same-origin',
-          body:JSON.stringify({{scopeKey:lockScopeKey, layerKey:lockLayerKey, visible:Boolean(lockedVisible), locked:true}})
-        }}).catch(()=>{{}});
-      }}
+      _queueLayerLockStateForWs(lockScopeKey, lockLayerKey, Boolean(lockedVisible), true);
       renderLayerPanel();
       applyLayerVisibility();
       return;

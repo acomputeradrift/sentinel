@@ -1,7 +1,9 @@
+import json
 import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -42,14 +44,16 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
             cls._pw.stop()
 
     class _StaticServer:
-        def __init__(self, directory: Path):
+        def __init__(self, directory: Path, route_handler=None):
             self._directory = directory
+            self._route_handler = route_handler
             self._httpd: ThreadingHTTPServer | None = None
             self._thread: threading.Thread | None = None
             self.base_url: str | None = None
 
         def start(self) -> None:
             directory = self._directory
+            route_handler = self._route_handler
 
             class Handler(SimpleHTTPRequestHandler):
                 def __init__(self, *args, **kwargs):
@@ -57,6 +61,33 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
 
                 def log_message(self, fmt: str, *args) -> None:
                     return
+
+                def _maybe_handle_route(self) -> bool:
+                    if not callable(route_handler):
+                        return False
+                    result = route_handler(str(self.command or "GET"), str(self.path or ""))
+                    if result is None:
+                        return False
+                    status, headers, body = result
+                    self.send_response(int(status))
+                    hdrs = headers if isinstance(headers, dict) else {}
+                    for key, value in hdrs.items():
+                        self.send_header(str(key), str(value))
+                    payload = body if isinstance(body, (bytes, bytearray)) else str(body or "").encode("utf-8")
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return True
+
+                def do_GET(self):
+                    if self._maybe_handle_route():
+                        return
+                    super().do_GET()
+
+                def do_POST(self):
+                    if self._maybe_handle_route():
+                        return
+                    super().do_POST()
 
             sock = socket.socket()
             sock.bind(("127.0.0.1", 0))
@@ -682,6 +713,47 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
             )
             self.assertTrue(bool(done_state["runtimeReady"]))
             self.assertFalse(bool(done_state["rtiPending"]))
+        finally:
+            page.close()
+            server.stop()
+
+    def test_shell_runtime_ready_is_not_blocked_by_layer_lock_fetch_latency(self):
+        from playwright.sync_api import expect
+
+        shell_path, root_dir = self._write_fixture_html()
+        tech_token = "slow-lock-token"
+        delayed_ms = 2200
+
+        def route_handler(method: str, path: str):
+            path_only = str(path or "").split("?", 1)[0]
+            if method == "GET" and path_only == f"/testing/{tech_token}":
+                body = shell_path.read_text(encoding="utf-8")
+                return 200, {"Content-Type": "text/html; charset=utf-8"}, body
+            if method == "GET" and path_only == f"/api/v1/testing/{tech_token}/layer-locks":
+                time.sleep(float(delayed_ms) / 1000.0)
+                payload = {"projectId": "probe-project", "scopeKey": None, "locks": []}
+                return 200, {"Content-Type": "application/json"}, json.dumps(payload)
+            if method == "POST" and path_only == f"/api/v1/testing/{tech_token}/ready":
+                return 200, {"Content-Type": "application/json"}, "{}"
+            return None
+
+        server = self._StaticServer(root_dir, route_handler=route_handler)
+        server.start()
+        page = self._browser.new_page()
+        try:
+            page.add_init_script("window.__sentinelShellBootDelayMs = 220;")
+            page.goto(f"{server.base_url}/testing/{tech_token}", wait_until="domcontentloaded")
+            expect(page.locator("#rtiDeviceContent .device-page.active .test-btn").first).to_be_visible(timeout=1500)
+            expect(page.locator("#shellBootOverlay")).to_be_visible(timeout=1500)
+            expect(page.locator("#shellBootOverlay")).to_be_hidden(timeout=1000)
+            state = page.evaluate(
+                """() => ({
+                    runtimeReady: !!window.__sentinelRuntimeReady,
+                    pending: !!document.getElementById('rtiUsableCanvas')?.classList.contains('shell-rti-pending')
+                })"""
+            )
+            self.assertTrue(bool(state["runtimeReady"]))
+            self.assertFalse(bool(state["pending"]))
         finally:
             page.close()
             server.stop()

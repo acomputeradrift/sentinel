@@ -368,6 +368,54 @@ class CommissioningWsEventsTest(unittest.TestCase):
             self.assertIn("rollups", roll)
             self.assertIsInstance(roll.get("seq"), int)
 
+    def test_testing_ws_snapshot_includes_layer_locks_and_lock_updates(self):
+        TestClient = _require_fastapi()
+
+        from sentinel.server.app.main import create_app
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        app = create_app(repo=InMemoryRepository())
+        client = TestClient(app)
+
+        c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
+        p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
+        project_id = p["projectId"]
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech_token = str(tech.get("techUrl") or "").split("/")[-1]
+        self.assertTrue(tech_token, "Expected tech token from techUrl.")
+
+        with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as ws:
+            snapshot = _recv_until(ws, lambda m: m.get("type") == "testing_snapshot")
+            self.assertEqual(snapshot.get("projectId"), project_id)
+            self.assertEqual(snapshot.get("layerLocks"), [])
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "layer_lock.set",
+                        "scopeKey": "project::device::page",
+                        "layerKey": "layer-1",
+                        "visible": False,
+                        "locked": True,
+                    }
+                )
+            )
+            event = _recv_until(ws, lambda m: m.get("type") == "layer_lock_state")
+            self.assertEqual(event.get("projectId"), project_id)
+            self.assertEqual(event.get("scopeKey"), "project::device::page")
+            self.assertEqual(event.get("layerKey"), "layer-1")
+            self.assertEqual(event.get("visible"), False)
+            self.assertEqual(event.get("locked"), True)
+            self.assertIsInstance(event.get("seq"), int)
+
+        with client.websocket_connect(f"/api/v1/testing/{tech_token}/ws") as ws2:
+            snapshot2 = _recv_until(ws2, lambda m: m.get("type") == "testing_snapshot")
+            locks = list(snapshot2.get("layerLocks") or [])
+            self.assertEqual(len(locks), 1)
+            self.assertEqual(locks[0].get("scopeKey"), "project::device::page")
+            self.assertEqual(locks[0].get("layerKey"), "layer-1")
+            self.assertEqual(locks[0].get("visible"), False)
+            self.assertEqual(locks[0].get("locked"), True)
+
     def test_testing_ws_submits_and_receives_progress_rollups(self):
         TestClient = _require_fastapi()
 
