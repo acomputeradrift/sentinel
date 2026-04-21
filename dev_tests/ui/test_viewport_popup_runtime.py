@@ -3538,6 +3538,87 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
+    def test_viewport_frame_button_visibility_matches_outside_and_inside(self):
+        from playwright.sync_api import expect
+
+        html_path = self._write_fixture_html()
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            page.wait_for_selector(".device-page .btn-wrap.vp-btn")
+
+            page.evaluate(
+                """() => {
+                  if (!Array.isArray(currentViewportIndexes) || !currentViewportIndexes.length) return;
+                  currentViewportIndexes[0] = 1;
+                  if (typeof applyLayerVisibility === 'function') applyLayerVisibility();
+                }"""
+            )
+            page.wait_for_timeout(120)
+
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+
+            page.locator(".vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+        finally:
+            page.close()
+
+    def test_shell_viewport_frame_button_visibility_matches_outside_and_inside(self):
+        from playwright.sync_api import expect
+
+        source_html = self._write_fixture_html()
+        shell_html = self._write_shell_fixture_html(source_html=source_html)
+        server = self._StaticServer(shell_html.parent)
+        server.start()
+        page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+        try:
+            page.goto(f"{server.base_url}/{shell_html.name}?runtime=shell", wait_until="domcontentloaded")
+            page.wait_for_selector(".device-page .btn-wrap.vp-btn")
+            page.evaluate(
+                """() => {
+                  if (!Array.isArray(currentViewportIndexes) || !currentViewportIndexes.length) return;
+                  currentViewportIndexes[0] = 1;
+                  if (typeof applyLayerVisibility === 'function') applyLayerVisibility();
+                }"""
+            )
+            page.wait_for_timeout(120)
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+
+            page.locator(".vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+        finally:
+            page.close()
+            server.stop()
+
+    def test_viewport_outside_visibility_does_not_depend_on_stale_data_visible_for_vp_buttons(self):
+        from playwright.sync_api import expect
+
+        html_path = self._write_fixture_html()
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            page.wait_for_selector(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")
+
+            page.evaluate(
+                """() => {
+                  const btn = document.querySelector(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']");
+                  if (!btn) return;
+                  btn.dataset.visible = "0";
+                  if (typeof applyLayerVisibility === 'function') applyLayerVisibility();
+                }"""
+            )
+            page.wait_for_timeout(120)
+
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_visible()
+        finally:
+            page.close()
+
     def test_shared_layer_lock_state_propagates_across_pages_by_shared_layer_id(self):
         from playwright.sync_api import expect
 

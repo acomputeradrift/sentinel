@@ -758,6 +758,66 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
+    def test_shell_layer_controls_keep_symmetric_safe_vertical_padding(self):
+        page, server = self._open_shell_page()
+        try:
+            paddings = page.evaluate(
+                """
+() => {
+  const el = document.querySelector('.deviceLayerControlsContent');
+  if (!el) return null;
+  const cs = getComputedStyle(el);
+  const px = (v) => Number.parseFloat(String(v || '0').replace('px', '')) || 0;
+  return {
+    justify: String(cs.justifyContent || ''),
+    padTop: px(cs.paddingTop),
+    padBottom: px(cs.paddingBottom)
+  };
+}
+"""
+            )
+            self.assertIsNotNone(paddings)
+            self.assertEqual(paddings["justify"], "center")
+            self.assertAlmostEqual(float(paddings["padTop"]), float(paddings["padBottom"]), delta=0.5)
+            self.assertGreaterEqual(float(paddings["padTop"]), 60.0)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_shell_device_button_box_shadow_and_status_trim_are_rendered(self):
+        page, server = self._open_shell_page()
+        try:
+            shadow_before = page.evaluate(
+                """
+() => {
+  const btn = document.querySelector('#rtiDeviceContent .device-page.active .test-btn');
+  if (!btn) return null;
+  return String(getComputedStyle(btn).boxShadow || '');
+}
+"""
+            )
+            self.assertIsNotNone(shadow_before)
+            self.assertNotEqual(str(shadow_before).strip().lower(), "none")
+            self.assertIn("rgb(21, 70, 101)", str(shadow_before))
+
+            shadow_after = page.evaluate(
+                """
+() => {
+  const wrap = document.querySelector('#rtiDeviceContent .device-page.active .btn-wrap');
+  const btn = wrap ? wrap.querySelector('.test-btn') : null;
+  if (!wrap || !btn) return null;
+  wrap.style.setProperty('--btn-state-trim-width', '4px');
+  wrap.style.setProperty('--btn-state-trim-color', '#ef4444');
+  return String(getComputedStyle(btn).boxShadow || '');
+}
+"""
+            )
+            self.assertIsNotNone(shadow_after)
+            self.assertIn("rgb(239, 68, 68)", str(shadow_after))
+        finally:
+            page.close()
+            server.stop()
+
 
 if __name__ == "__main__":
     unittest.main()

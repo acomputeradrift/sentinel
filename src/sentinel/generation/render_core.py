@@ -3390,11 +3390,11 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
     inner.style.top=`${{it}}px`;
     inner.style.width=`${{iw}}px`;
     inner.style.height=`${{ih}}px`;
-    const btn=inner.querySelector('.test-btn');
+   const btn=inner.querySelector('.test-btn');
     if (btn) {{
      const buttonFontPx=resolveButtonFontPx(inner, scale);
      btn.style.fontSize=`${{buttonFontPx}}px`;
-     btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+     btn.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*scale)}}px`;
      const linkHit=inner.querySelector('.page-link-hit');
      if (linkHit) applyLinkSizing(linkHit, buttonFontPx, scale);
     }}
@@ -3414,7 +3414,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
    if (btn) {{
     const buttonFontPx=resolveButtonFontPx(el, scale);
     btn.style.fontSize=`${{buttonFontPx}}px`;
-    btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+    btn.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*scale)}}px`;
     const linkHit=el.querySelector('.page-link-hit');
     if (linkHit) applyLinkSizing(linkHit, buttonFontPx, scale);
    }}
@@ -3909,10 +3909,13 @@ function renderLayerPanel() {{
  }});
   pageEl.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
-   const baseVisible=String(el.dataset.visible||'1')==='1';
+   let baseVisible=String(el.dataset.visible||'1')==='1';
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
    if (el.classList.contains('vp-btn')) {{
+     // Viewport children should be gated by viewport orientation/frame/layer state, not stale data-visible.
+     baseVisible=true;
+     shouldShow=layerVisible && baseVisible;
      if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
       shouldShow=false;
      }}
@@ -3938,13 +3941,16 @@ function renderLayerPanel() {{
   }});
   pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
-   const baseVisible=String(el.dataset.visible||'1')==='1';
+   let baseVisible=String(el.dataset.visible||'1')==='1';
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
   if (String(el.dataset.syntheticSourceList || '') === '1' && String(el.dataset.selectedRoomMatch || '1') !== '1') {{
     shouldShow=false;
   }}
    if (el.classList.contains('vp-btn')) {{
+     // Viewport children should be gated by viewport orientation/frame/layer state, not stale data-visible.
+     baseVisible=true;
+     shouldShow=layerVisible && baseVisible;
      if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
       shouldShow=false;
      }}

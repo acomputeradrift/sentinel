@@ -357,6 +357,7 @@
         function allowSelector(sel) {
           const s = String(sel || "");
           if (!s) return false;
+          if (s.indexOf(":root") >= 0) return true;
           if (s.indexOf(".viewport-mode #rtiCanvas") >= 0) return true;
           if (s.indexOf("#") >= 0) return false;
           for (let i = 0; i < blockTokens.length; i += 1) {
