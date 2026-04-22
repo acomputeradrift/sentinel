@@ -857,12 +857,14 @@ def _diagnostics_controller_room_list(
                 "targetPageId": int(picked),
                 "targetPageName": str(page_name_by_page_id.get(int(picked)) or "").strip() or None,
                 "resolutionPath": "roomSelectEvent",
+                "resolvedRoomId": int(rid) if int(rid or 0) > 0 else None,
             }
         else:
             resolved = {
                 "targetPageId": None,
                 "targetPageName": None,
                 "resolutionPath": None,
+                "resolvedRoomId": int(rid) if int(rid or 0) > 0 else None,
             }
         out.append(
             {
@@ -919,12 +921,14 @@ def _diagnostics_source_list_rows(
                 "targetPageId": int(target_page_id),
                 "targetPageName": str(page_name_by_page_id.get(int(target_page_id)) or "").strip() or None,
                 "resolutionPath": "activityEvent",
+                "resolvedRoomId": int(room_id) if int(room_id or 0) > 0 else None,
             }
         else:
             resolved = {
                 "targetPageId": None,
                 "targetPageName": None,
                 "resolutionPath": None,
+                "resolvedRoomId": int(room_id) if int(room_id or 0) > 0 else None,
             }
         out.append(
             {
