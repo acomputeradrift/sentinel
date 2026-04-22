@@ -300,6 +300,31 @@ def _button_composite_z_index(
     return _composite_z_index(layer_order, button_order, frame_number, tie_breaker=tie_breaker)
 
 
+def _viewport_child_composite_z_index(
+    *,
+    owner_layer_order: int,
+    vp_layer_order: int,
+    button_order: int,
+    frame_number: int,
+) -> int:
+    """Viewport child z that preserves layer bands and keeps vp-box on top.
+
+    Viewport children must never leap outside their owning page layer band, and must
+    remain below the viewport hit/surface cap so `.vp-box` keeps click capture/signifier
+    behavior in normal mode.
+    """
+    layer = int(owner_layer_order)
+    vp_layer = max(0, int(vp_layer_order))
+    btn = max(0, int(button_order))
+    frame = int(frame_number)
+
+    # Pack viewport layer + button order into the within-layer lane, then clamp below
+    # the viewport box cap to preserve `.vp-box` precedence.
+    packed_within_layer = (vp_layer * 10_000) + min(btn, 9_999)
+    packed_within_layer = min(packed_within_layer, max(0, _VP_BOX_BUTTON_ORDER - 2))
+    return _composite_z_index(layer, packed_within_layer, frame, tie_breaker=1)
+
+
 def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str, int]]:
     items: list[tuple[dict[str, Any], str, int, int, str, int]] = []
     category_defs: list[tuple[str, str]] = [
@@ -1877,8 +1902,15 @@ def _page_payload(
     for vb in _iter_viewport_buttons(page, orientation):
         btn = vb["btn"]
         c = _ui_coordinates(btn["buttonUI"], orientation)
+        stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+        z = _viewport_child_composite_z_index(
+            owner_layer_order=int(vb["owner_layer_order"]),
+            vp_layer_order=int(vb.get("vp_layer_order") or 0),
+            button_order=int(stack.get("buttonOrder", 0) or 0),
+            frame_number=int(stack.get("frameNumber", vb.get("frame_id") or 0) or 0),
+        )
         extra = (
-            f"z-index:{_button_composite_z_index(btn, fallback_layer_order=int(vb['owner_layer_order']), fallback_frame_number=int(vb.get('frame_id') or 0))};"
+            f"z-index:{z};"
         )
         if not vb["visible"]:
             extra = "display:none;" + extra
