@@ -2362,6 +2362,31 @@ function inferScopedRoomIdFromPage(pageEl) {{
  if (ids.size === 1) return Number(Array.from(ids)[0]);
  return null;
 }}
+function scopedRoomIdFromApexScope(apexScopeSource) {{
+ const src=(apexScopeSource && typeof apexScopeSource==="object") ? apexScopeSource : null;
+ if (!src) return null;
+ const page=(src.page && typeof src.page==="object") ? src.page : {{}};
+ const viewportLayer=(src.viewportLayer && typeof src.viewportLayer==="object")
+  ? src.viewportLayer
+  : ((src.layer && typeof src.layer==="object") ? src.layer : {{}});
+ const pageLayer=(src.pageLayer && typeof src.pageLayer==="object") ? src.pageLayer : {{}};
+ const roomRaw=(viewportLayer.roomId!=null)
+  ? viewportLayer.roomId
+  : ((pageLayer.roomId!=null) ? pageLayer.roomId : page.roomId);
+ return normalizeRoomId(roomRaw);
+}}
+function scopedRoomIdFromWrap(wrap) {{
+ if (!wrap) return null;
+ const btn=wrap.querySelector(".test-btn");
+ if (!btn || !btn.dataset) return null;
+ let meta={{}};
+ try {{
+  meta=JSON.parse(btn.dataset.meta||"{{}}");
+ }} catch (_e) {{
+  meta={{}};
+ }}
+ return scopedRoomIdFromApexScope(meta && typeof meta==="object" ? meta.apexScopeSource : null);
+}}
 function setSelectedRoom(nextRoomId, options) {{
  const opts=(options && typeof options==="object") ? options : {{}};
  const persist=opts.persist!==false;
@@ -4494,6 +4519,11 @@ syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLay
    const wrap=link.closest('.btn-wrap');
    if (wrap && String(wrap.dataset.syntheticRoomList || '')==='1') {{
     setSelectedRoom(wrap.dataset.syntheticRoomId);
+   }} else if (wrap && String(wrap.dataset.syntheticSourceList || '')==='1') {{
+    /* source-list rows intentionally do not set selected room */
+   }} else {{
+    const scopedRoomId=scopedRoomIdFromWrap(wrap);
+    if (scopedRoomId != null) setSelectedRoom(scopedRoomId);
    }}
 	 if (viewportMode.active) exitViewportMode();
 	 setActivePage(targetPageIndex);
