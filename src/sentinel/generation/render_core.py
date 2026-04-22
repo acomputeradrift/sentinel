@@ -93,6 +93,20 @@ def _page_link_target_id(btn: dict[str, Any]) -> int | None:
     return None
 
 
+def _page_link_resolved_room_id(btn: dict[str, Any]) -> int | None:
+    resolved = btn.get("resolvedPageLink")
+    if isinstance(resolved, dict):
+        raw = resolved.get("resolvedRoomId")
+        if raw is not None:
+            try:
+                rid = int(raw)
+                if rid > 0:
+                    return rid
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def _button_tag_name(btn: dict[str, Any]) -> str:
     return str(btn.get("buttonIdentity", {}).get("buttonTagName") or "").strip()
 
@@ -661,6 +675,7 @@ def _render_button_control(
     tag_name = _button_tag_name(btn)
     if link_cfg.get("enabled") and _page_link_enabled(targets):
         target_page_id = _page_link_target_id(btn)
+        resolved_room_id = _page_link_resolved_room_id(btn)
         target_href = page_targets.get(target_page_id) if target_page_id is not None else None
         if target_href:
             nav_width = int(link_cfg.get("hoverActivationArea", {}).get("width") or 28)
@@ -670,9 +685,10 @@ def _render_button_control(
             page_index_attr = ""
             if target_page_id is not None and page_target_indexes and target_page_id in page_target_indexes:
                 page_index_attr = f" data-target-page-index='{page_target_indexes[target_page_id]}'"
+            resolved_room_attr = f" data-resolved-room-id='{int(resolved_room_id)}'" if resolved_room_id is not None else ""
             link_html = (
                 f"<a class='page-link-hit' href='{target_href}' aria-label='Open linked page' "
-                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}>"
+                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}{resolved_room_attr}>"
                 f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
@@ -4516,11 +4532,14 @@ syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLay
 	 const targetPageIndex=link.dataset.targetPageIndex;
 	 if (targetPageIndex==null || targetPageIndex==='') return;
 	 e.preventDefault();
+   const resolvedRoomId=normalizeRoomId(link?.dataset?.resolvedRoomId);
    const wrap=link.closest('.btn-wrap');
    if (wrap && String(wrap.dataset.syntheticRoomList || '')==='1') {{
     setSelectedRoom(wrap.dataset.syntheticRoomId);
    }} else if (wrap && String(wrap.dataset.syntheticSourceList || '')==='1') {{
     /* source-list rows intentionally do not set selected room */
+   }} else if (resolvedRoomId != null) {{
+    setSelectedRoom(resolvedRoomId);
    }} else {{
     const scopedRoomId=scopedRoomIdFromWrap(wrap);
     if (scopedRoomId != null) setSelectedRoom(scopedRoomId);

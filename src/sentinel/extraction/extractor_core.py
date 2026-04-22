@@ -733,6 +733,7 @@ def _append_resolved_page_link(
     target_page_id: int | None,
     target_page_name: str | None,
     resolution_path: str,
+    resolved_room_id: int | None = None,
 ) -> None:
     if target_page_id is None:
         return
@@ -745,6 +746,7 @@ def _append_resolved_page_link(
             "targetPageId": int(target_page_id),
             "targetPageName": str(target_page_name or "").strip() or None,
             "resolutionPath": resolution_path,
+            "resolvedRoomId": (int(resolved_room_id) if resolved_room_id is not None and int(resolved_room_id) > 0 else None),
         }
     )
 
@@ -1192,6 +1194,7 @@ def _resolve_button(
             "targetPageId": int(target_page_id),
             "targetPageName": str(page_name_by_page_id.get(target_page_id) or "").strip() or None,
             "resolutionPath": "directPageLink",
+            "resolvedRoomId": (int(page_room_id) if int(page_room_id or 0) > 0 else None),
         }
 
     candidate_macro_ids: list[int] = explicit_macro_ids[:]
@@ -1220,6 +1223,7 @@ def _resolve_button(
                     "targetPageId": macro_target_page_id,
                     "targetPageName": str(page_name_by_page_id.get(macro_target_page_id) or "").strip() or None,
                     "resolutionPath": "macroStep",
+                    "resolvedRoomId": (int(page_room_id) if int(page_room_id or 0) > 0 else None),
                 }
                 break
 
@@ -1232,6 +1236,7 @@ def _resolve_button(
                         "targetPageId": room_target_page_id,
                         "targetPageName": str(page_name_by_page_id.get(room_target_page_id) or "").strip() or None,
                         "resolutionPath": "roomSelectEvent",
+                        "resolvedRoomId": int(select_room_id),
                     }
                     break
             if resolved_page_link is not None:
@@ -1255,6 +1260,11 @@ def _resolve_button(
                         "targetPageId": activity_target_page_id,
                         "targetPageName": str(page_name_by_page_id.get(activity_target_page_id) or "").strip() or None,
                         "resolutionPath": "activityEvent",
+                        "resolvedRoomId": (
+                            int(select_source_room_id)
+                            if int(select_source_room_id or 0) > 0
+                            else (int(page_room_id) if int(page_room_id or 0) > 0 else None)
+                        ),
                     }
                     break
             if resolved_page_link is not None:
@@ -1272,6 +1282,11 @@ def _resolve_button(
                         "targetPageId": room_off_target_page_id,
                         "targetPageName": str(page_name_by_page_id.get(room_off_target_page_id) or "").strip() or None,
                         "resolutionPath": "roomOffEvent",
+                        "resolvedRoomId": (
+                            int(page_room_id)
+                            if int(room_off_id or 0) == -1 and int(page_room_id or 0) > 0
+                            else (int(room_off_id) if int(room_off_id or 0) > 0 else None)
+                        ),
                     }
                     break
             if resolved_page_link is not None:

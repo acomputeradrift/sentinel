@@ -559,8 +559,9 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         project = {"devices": [device]}
         app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
         html = render_core.render_single_device_html(project, app_ui, "sample", device_index=0, resolved_targets=None)
-        self.assertIn("const scopedRoomId=scopedRoomIdFromWrap(wrap);", html)
-        self.assertIn("if (scopedRoomId != null) setSelectedRoom(scopedRoomId);", html)
+        self.assertIn("const resolvedRoomId=normalizeRoomId(link?.dataset?.resolvedRoomId);", html)
+        self.assertIn("else if (resolvedRoomId != null) {", html)
+        self.assertIn("setSelectedRoom(resolvedRoomId);", html)
         self.assertIn("if (wrap && String(wrap.dataset.syntheticSourceList || '')==='1')", html)
         self.assertIn("/* source-list rows intentionally do not set selected room */", html)
 
