@@ -20,3 +20,11 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         self.assertIn("def _sentinel_device_theme_css()", text)
         self.assertIn("sentinel_device_theme.css", text)
         self.assertIn("{device_theme_css}", text)
+
+    def test_runtime_radius_reads_both_base_and_px_theme_vars(self):
+        root = Path(__file__).resolve().parents[2]
+        render_core = root / "src" / "sentinel" / "generation" / "render_core.py"
+        self.assertTrue(render_core.exists(), f"Missing file: {render_core}")
+        text = render_core.read_text(encoding="utf-8")
+        self.assertIn("--sentinel-device-button-radius-base", text)
+        self.assertIn("--sentinel-device-button-radius", text)

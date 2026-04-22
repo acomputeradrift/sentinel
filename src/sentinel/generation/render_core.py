@@ -2384,9 +2384,13 @@ function setSelectedRoom(nextRoomId, options) {{
 }}
 function deviceButtonRadiusBase() {{
  try {{
-  const raw=String(getComputedStyle(document.documentElement).getPropertyValue('--sentinel-device-button-radius-base')||'').trim();
-  const n=Number.parseFloat(raw);
-  return Number.isFinite(n) && n>0 ? n : 10;
+  const rootStyle=getComputedStyle(document.documentElement);
+  const rawBase=String(rootStyle.getPropertyValue('--sentinel-device-button-radius-base')||'').trim();
+  const nBase=Number.parseFloat(rawBase);
+  if (Number.isFinite(nBase) && nBase>0) return nBase;
+  const rawRadius=String(rootStyle.getPropertyValue('--sentinel-device-button-radius')||'').trim();
+  const nRadius=Number.parseFloat(rawRadius);
+  return Number.isFinite(nRadius) && nRadius>0 ? nRadius : 10;
  }} catch (_e) {{
   return 10;
  }}
