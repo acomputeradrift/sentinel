@@ -448,9 +448,11 @@ body {
 
 .rtiDeviceContent {
   position: absolute;
-  border: 1px solid #c6d2dd;
-  border-radius: 10px;
-  background: #f8fbfe;
+  border: 0;
+  border-radius: var(--sentinel-device-frame-radius-other, 0px);
+  background: var(--sentinel-device-frame-bg, #f8fbfe);
+  box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width, 3px)
+    var(--sentinel-device-frame-ring-color, #000);
   overflow: hidden;
   box-sizing: border-box;
   z-index: 2;

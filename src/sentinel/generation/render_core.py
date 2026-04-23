@@ -2039,6 +2039,7 @@ def _render_document(
     home_href: str | None = None,
     room_list_resolution_json: str = "[]",
     source_list_resolution_json: str = "[]",
+    device_profile_class: str = "",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -2084,7 +2085,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
-.rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas{{position:absolute;border:0;box-shadow:0 0 0 var(--sentinel-device-frame-ring-width, 3px) var(--sentinel-device-frame-ring-color, #000);border-radius:var(--sentinel-device-frame-radius-other, 0px);background:var(--sentinel-device-frame-bg, #f8fbfe);overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
@@ -4469,7 +4470,7 @@ function ensurePageMaterialized(pageIndex) {{
  const inner=PAGE_HTML_BY_INDEX[String(normalized)];
  if (typeof inner !== 'string') return null;
  pageEl=document.createElement('div');
- pageEl.className='device-page';
+ pageEl.className='device-page {device_profile_class}';
  pageEl.dataset.pageIndex=String(normalized);
  pageEl.innerHTML=inner;
  rtiDeviceCanvas.appendChild(pageEl);
@@ -5551,6 +5552,13 @@ def build_device_render_bundle(
         },
     }
     pages = uf.get("pages", [])
+    device_display_name = str(uf.get("displayName", "") or "")
+    profile_name = device_display_name.lower()
+    device_profile_class = (
+        "sentinel-device-profile-iphone-ipad"
+        if ("iphone" in profile_name or "ipad" in profile_name)
+        else "sentinel-device-profile-other"
+    )
     title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
     header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
@@ -5582,7 +5590,11 @@ def build_device_render_bundle(
     if not isinstance(source_list, list):
         source_list = []
     first_page_inner = page_html_by_index.get("0", "")
-    initial_page_markup = f"<div class='device-page active' data-page-index='0'>{first_page_inner}</div>" if pages else ""
+    initial_page_markup = (
+        f"<div class='device-page active {device_profile_class}' data-page-index='0'>{first_page_inner}</div>"
+        if pages
+        else ""
+    )
     html = _render_document(
         app_ui,
         header,
@@ -5597,6 +5609,7 @@ def build_device_render_bundle(
         home_href=project_home_filename(project_stem),
         room_list_resolution_json=json.dumps(room_list),
         source_list_resolution_json=json.dumps(source_list),
+        device_profile_class=device_profile_class,
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):

@@ -10,9 +10,31 @@
   --sentinel-trim-partial: #fcb040;
   --sentinel-trim-fail: #ef4444;
   --sentinel-trim-untested: transparent;
-  --sentinel-device-button-radius-base: 10;
-  --sentinel-device-button-radius: 10px;
+  --sentinel-device-frame-bg: #eaecec;
+  --sentinel-device-frame-ring-width: 3px;
+  --sentinel-device-frame-ring-color: #000000;
+  --sentinel-device-frame-radius-iphone-ipad: 32px;
+  --sentinel-device-frame-radius-other: 0px;
+  /* DEVICE button radius only (button corners, not device frame). */
+  --sentinel-device-button-radius-base: 32;
+  --sentinel-device-button-radius: 32px;
   --sentinel-device-button-border-color: #154665;
+}
+
+/* Device frame shell: ring-only border (no dimension impact). */
+.rti-device-canvas,
+.rtiDeviceContent {
+  border: 0 !important;
+  background: var(--sentinel-device-frame-bg) !important;
+  box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width)
+    var(--sentinel-device-frame-ring-color) !important;
+  border-radius: var(--sentinel-device-frame-radius-other) !important;
+}
+
+/* iPhone/iPad profile: rounded frame corners. */
+.rti-device-canvas:has(.device-page.sentinel-device-profile-iphone-ipad),
+.rtiDeviceContent:has(.device-page.sentinel-device-profile-iphone-ipad) {
+  border-radius: var(--sentinel-device-frame-radius-iphone-ipad) !important;
 }
 
 .btn-wrap {
