@@ -7,6 +7,7 @@ Builds output/playwright/{hk_device.html,shell.html,css}, serves them, drives Ch
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -192,14 +193,20 @@ def main() -> int:
             print("run-code failed:", r1.stdout, r1.stderr, file=sys.stderr)
             return r1.returncode or 1
 
+        # These checks existed because earlier passes only asserted stylesheet/layout presence.
+        # Shell mount must copy data-hk-* onto #rtiDeviceContent or applyRtiLayout sees designW=0 and
+        # never sets px --frame-w on .hk-split-right (real commissioning bug).
         eval_js = (
             "() => JSON.stringify({"
             "hkStyleBlocks: document.querySelectorAll('style[data-shell-source-style-hard-keys]').length,"
             "hasFrame: !!document.querySelector('.hk-split-right .frame'),"
             "rightWidth: (() => { const r = document.querySelector('.hk-split-right'); "
             "return r ? r.getBoundingClientRect().width : 0; })(),"
-            "frameVarPx: (() => { const r = document.querySelector('.hk-split-right'); "
-            "if (!r) return ''; return String(getComputedStyle(r).getPropertyValue('--frame-w') || '').trim(); })()"
+            "mountDataHkDesignW: document.querySelector('#rtiDeviceContent')?.getAttribute('data-hk-design-w') ?? null,"
+            "mountDataHkModel: document.querySelector('#rtiDeviceContent')?.getAttribute('data-hk-model') ?? null,"
+            "mountHasHkClass: !!(document.querySelector('#rtiDeviceContent')?.classList?.contains('rti-device-canvas-hk')),"
+            "splitInlineFrameW: (() => { const z = document.querySelector('.hk-split-right'); "
+            "return z ? String(z.style.getPropertyValue('--frame-w') || '').trim() : ''; })()"
             "})"
         )
         r2 = _pw_cli(["eval", eval_js, "--raw"])
@@ -223,17 +230,32 @@ def main() -> int:
         _pw_cli(["close"])
 
         print(json.dumps({"playwrightEval": out, "screenshot": str(shot)}, indent=2))
-        frame_var = str(out.get("frameVarPx") or "")
+
+        split_inline = str(out.get("splitInlineFrameW") or "")
+        px_ok = bool(re.match(r"^\d+(\.\d+)?px$", split_inline))
+        design_w = out.get("mountDataHkDesignW")
+        model = out.get("mountDataHkModel")
         ok = (
             int(out.get("hkStyleBlocks") or 0) >= 1
             and bool(out.get("hasFrame"))
             and float(out.get("rightWidth") or 0) > 10
-            and ("px" in frame_var or "vw" in frame_var)
+            and bool(out.get("mountHasHkClass"))
+            and design_w == "608"
+            and model == "t4x"
+            and px_ok
         )
         if not ok:
-            print("FAIL: layout assertions:", out, file=sys.stderr)
+            print(
+                "FAIL: shell hard-key assertions (mount must copy data-hk-* to #rtiDeviceContent; "
+                "applyRtiLayout must set .hk-split-right inline --frame-w in px). Got:",
+                out,
+                file=sys.stderr,
+            )
             return 1
-        print("PASS: shell mounted hard-key strip (--frame-w set, .frame visible, bypass style present).")
+        print(
+            "PASS: shell mount carries data-hk-design-w; split zone has px --frame-w after layout; "
+            "bypass stylesheet present."
+        )
         return 0
     finally:
         httpd.shutdown()

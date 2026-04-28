@@ -255,6 +255,23 @@
         const dst = document.getElementById("rtiDeviceContent");
         if (!src || !dst) return;
         dst.innerHTML = src.innerHTML || "";
+        // Source canvas wrapper carries hard-key split sizing (data-hk-design-w/h) and layout
+        // classes; innerHTML alone drops that node — runtime maps getElementById("rtiDeviceCanvas")
+        // to #rtiDeviceContent, so mirror attributes/classes onto the mount target.
+        ["data-hk-model", "data-hk-design-w", "data-hk-design-h"].forEach(function (name) {
+          if (src.hasAttribute(name)) {
+            dst.setAttribute(name, src.getAttribute(name) || "");
+          } else {
+            dst.removeAttribute(name);
+          }
+        });
+        dst.classList.remove("rti-device-canvas", "rti-device-canvas-hk");
+        if (src.classList.contains("rti-device-canvas")) {
+          dst.classList.add("rti-device-canvas");
+        }
+        if (src.classList.contains("rti-device-canvas-hk")) {
+          dst.classList.add("rti-device-canvas-hk");
+        }
       }
 
       function mountPopups(sourceDoc) {
