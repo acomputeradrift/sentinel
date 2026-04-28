@@ -10,18 +10,23 @@ Locked rules from `hard_keys.md` (Phase 0 lock-in):
   `FrameNumber = 252` (gestures: Rotate Clockwise, Rotate Counterclockwise, Shake) are
   recorded but not rendered on the hard-key strip.
 
-`slot_dom_order` lists `ButtonLeft` values in the order their template slots appear in
-the corresponding `*_hard_keys.html` document tree. The renderer pairs each Apex
-hard-key row to a template slot via this order.
+Canonical button layout (HTML/CSS) lives only under ``src/sentinel/ui/testing/hard_keys/``
+(``t4x_hard_keys.html``, ``isr2_hard_keys.html``, ``isr4_hard_keys.html``). Those files are
+the shipped source of truth for proportions and box placement; they are kept identical to
+the approved reference HTML in ``Assets/Hard Keys/`` (T4x / ISR-2 / ISR-4 ``*.html``).
+The generator does not read ``Assets/`` at runtime.
+
+`slot_dom_order` lists `ButtonLeft` values in the order empty ``.box`` slots appear in that
+template's ``<body>`` (same order ``render_core._augment_template_with_slots`` walks the DOM).
+The renderer pairs each Apex hard-key row to a template slot via this order.
 
 Confidence:
 
-* T4x slot order is tag-name verified against the Dash OS apex
-  (`devtools/probe_hk_layer_detail.run.txt`).
-* ISR-2 / ISR-4 slot order is provisional ("natural sequential reading"); the
-  authoritative `Hard Key IDs.png` slot maps from `Assets/Hard Keys/` should be applied
-  in a follow-up to lock these in. Test target wiring and split layout work regardless
-  of the specific mapping; only on-screen position is affected.
+* T4x: ``slot_dom_order`` matches probe-verified ``ButtonLeft`` ↔ layout (non-sequential
+  d-pad / rows); template DOM matches approved ``T4x Hard Keys.html``.
+* ISR-2 / ISR-4: ``slot_dom_order`` is ``128..hi`` in DOM order (sequential). If Apex
+  ``ButtonLeft`` order ever diverges from physical box order in the approved HTML, replace
+  those tuples with an explicit permutation (same length as empty ``.box`` count).
 """
 from __future__ import annotations
 

@@ -51,7 +51,10 @@ class ResilienceAcceptanceLiveTest(unittest.TestCase):
         try:
             from playwright.sync_api import sync_playwright
         except Exception as e:  # pragma: no cover
-            raise unittest.SkipTest("playwright is not installed") from e
+            raise unittest.SkipTest(
+                f"playwright import failed ({type(e).__name__}: {e!s}); "
+                "install with devtools/bootstrap_tmp_apex_env.py or set SENTINEL_VENV_PYTHON"
+            ) from e
 
         cls._pw = sync_playwright().start()
         cls._browser = cls._pw.chromium.launch(headless=True)

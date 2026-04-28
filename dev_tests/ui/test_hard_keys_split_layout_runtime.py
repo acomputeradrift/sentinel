@@ -103,7 +103,10 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         try:
             from playwright.sync_api import sync_playwright
         except Exception as exc:  # pragma: no cover
-            raise unittest.SkipTest("playwright is not installed") from exc
+            raise unittest.SkipTest(
+                f"playwright import failed ({type(exc).__name__}: {exc!s}); "
+                "install with devtools/bootstrap_tmp_apex_env.py or set SENTINEL_VENV_PYTHON"
+            ) from exc
         cls._pw = sync_playwright().start()
         cls._browser = cls._pw.chromium.launch(headless=True)
 

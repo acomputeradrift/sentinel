@@ -25,6 +25,7 @@ Purpose: single local venv for **Sentinel package deps, FastAPI stack, and Playw
 - Details and optional `DATABASE_URL`: see `docs/directives/testing_strategy.md` → *Local execution*.
 - Playwright browsers cache under the user profile, for example:
   - `C:\Users\<user>\AppData\Local\ms-playwright\chromium-*`
+- **UNC / agent shells:** `cmd.exe` cannot keep a UNC path as the process current directory (`UNC paths are not supported`). `devtools/run_regression_with_venv.py` and `devtools/bootstrap_tmp_apex_env.py` run subprocess children with a local `cwd` (typically `%TEMP%`) when the repo lives on `\\server\...`, while passing **absolute** paths in argv. If automation cannot see your working tree, set **`SENTINEL_REPO_ROOT`** (folder that contains `pyproject.toml`) and/or **`SENTINEL_VENV_PYTHON`** (full path to `.tmp_apex_env\Scripts\python.exe`). See `devtools/repo_paths.py`.
 
 ## Repo layout (high-level)
 
