@@ -195,6 +195,21 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertNotIn("class='hk-split-left'", html)
         self.assertNotIn("class='hk-split-right'", html)
         self.assertNotIn("data-hk-model=", html)
+        self.assertNotIn("data-sentinel-hard-key-template", html)
+
+    def test_hard_key_template_css_in_separate_style_for_shell_copy(self) -> None:
+        """Commissioning shell copies this block whole; see project_device_static_layout copyFilteredStyles."""
+        slot_lefts = list(range(128, 148))
+        html = render_single_device_html(
+            project_data=_project_data_with_hard_keys("t4x", slot_lefts),
+            app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
+            project_stem="render_test",
+        )
+        self.assertIn('data-sentinel-hard-key-template="1"', html)
+        marker = html.find('data-sentinel-hard-key-template="1"')
+        self.assertGreaterEqual(marker, 0)
+        tail = html[marker : marker + 12000]
+        self.assertIn(".frame", tail)
 
     def test_hard_key_buttons_carry_data_meta_for_target_wiring(self) -> None:
         slot_lefts = list(range(128, 148))

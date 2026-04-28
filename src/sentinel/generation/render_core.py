@@ -2196,6 +2196,10 @@ def _render_document(
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
     _ts_embed = _sentinel_test_status_embed_js()
+    _hk_css_stripped = (hard_key_style_css or "").strip()
+    _hard_key_template_style_tag = (
+        '<style data-sentinel-hard-key-template="1">\n' + _hk_css_stripped + "\n</style>" if _hk_css_stripped else ""
+    )
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
@@ -2339,8 +2343,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .hk-split-right .hk-slot.hk-empty{{opacity:0.35;}}
  .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;}}
  .hk-btn-wrap .hk-test-btn{{flex:1;width:100%;height:100%;border:0;background:transparent;color:transparent;cursor:pointer;font-size:0;padding:0;}}
-{hard_key_style_css}
-</style></head>
+</style>{_hard_key_template_style_tag}</head>
 <body><div class='app-canvas' id='appCanvas'>
 <div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div><div class='selected-room-indicator' id='selectedRoomIndicator'>Selected Room: <span class='value' id='selectedRoomValue'>All Rooms</span></div></div>
 {f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}

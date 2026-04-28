@@ -336,6 +336,15 @@
 
         const styles = sourceDoc.querySelectorAll("style");
         styles.forEach(function (node, idx) {
+          if (node.getAttribute && node.getAttribute("data-sentinel-hard-key-template") === "1") {
+            const raw = String(node.textContent || "");
+            if (!raw.trim()) return;
+            const style = document.createElement("style");
+            style.setAttribute("data-shell-source-style-hard-keys", "1");
+            style.textContent = remapText(raw);
+            document.head.appendChild(style);
+            return;
+          }
           const raw = String(node.textContent || "");
           if (!raw.trim()) return;
           const blocks = raw.split("}");
