@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ISR-4 Red Box Layout - Flexbox v2</title>
+  <style>
+    :root {
+      --design-w: 602;
+      --design-h: 734;
+
+      --frame-w: min(94vw, 602px);
+      --frame-h: calc(var(--frame-w) * var(--design-h) / var(--design-w));
+
+      --red: #ff3b1f;
+      --stroke: 3px;
+      --radius: calc(var(--frame-w) * 16 / var(--design-w));
+
+      --outer-x: calc(var(--frame-w) * 32 / var(--design-w));
+      --col-gap: calc(var(--frame-w) * 10 / var(--design-w));
+      --col-w: calc((var(--frame-w) - (2 * var(--outer-x)) - (2 * var(--col-gap))) / 3);
+
+      --top-w: calc(var(--frame-w) * 176 / var(--design-w));
+      --top-h: calc(var(--frame-h) * 68 / var(--design-h));
+
+      --side-w: calc(var(--frame-w) * 132 / var(--design-w));
+      --side-h: calc(var(--frame-h) * 91 / var(--design-h));
+
+      --small-w: calc(var(--frame-w) * 89 / var(--design-w));
+      --small-h: calc(var(--frame-h) * 52 / var(--design-h));
+
+      --main-h: calc(var(--frame-h) * 68 / var(--design-h));
+
+      --dpad-size: calc(var(--frame-w) * 79 / var(--design-w));
+      --dpad-gap: calc(var(--frame-w) * 4 / var(--design-w));
+
+      --pad-top: calc(var(--frame-h) * 14 / var(--design-h));
+
+      --gap-top-to-middle: calc(var(--frame-h) * 69 / var(--design-h));
+      --gap-r1-r2: calc(var(--frame-h) * 19 / var(--design-h));
+      --gap-r2-r3: calc(var(--frame-h) * 24 / var(--design-h));
+      --gap-middle-main: calc(var(--frame-h) * 25 / var(--design-h));
+
+      --gap-main: calc(var(--frame-h) * 14 / var(--design-h));
+
+      --dpad-ok-y: calc(var(--frame-h) * 283 / var(--design-h));
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .frame {
+      position: relative;
+      width: var(--frame-w);
+      height: var(--frame-h);
+      display: flex;
+      flex-direction: column;
+      padding-top: var(--pad-top);
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .box {
+      flex: 0 0 auto;
+      border: var(--stroke) solid var(--red);
+      border-radius: var(--radius);
+      background: transparent;
+    }
+
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 var(--outer-x);
+    }
+
+    .top-box {
+      width: var(--top-w);
+      height: var(--top-h);
+    }
+
+    .middle-row {
+      display: flex;
+      align-items: center;
+      padding: 0 var(--outer-x);
+      column-gap: var(--col-gap);
+    }
+
+    .middle-col {
+      width: var(--col-w);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .middle-col.left {
+      align-items: flex-start;
+    }
+
+    .middle-col.right {
+      align-items: flex-end;
+    }
+
+    .side-box {
+      width: var(--side-w);
+      height: var(--side-h);
+    }
+
+    .small-box {
+      width: var(--small-w);
+      height: var(--small-h);
+    }
+
+    .main-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 var(--outer-x);
+    }
+
+    .main-box {
+      width: var(--col-w);
+      height: var(--main-h);
+    }
+
+    .dpad-box {
+      position: absolute;
+      width: var(--dpad-size);
+      height: var(--dpad-size);
+    }
+
+    .dpad-ok {
+      left: 50%;
+      top: var(--dpad-ok-y);
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-up {
+      left: 50%;
+      top: calc(var(--dpad-ok-y) - var(--dpad-size) - var(--dpad-gap));
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-down {
+      left: 50%;
+      top: calc(var(--dpad-ok-y) + var(--dpad-size) + var(--dpad-gap));
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-left {
+      left: calc(50% - var(--dpad-size) - var(--dpad-gap));
+      top: var(--dpad-ok-y);
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-right {
+      left: calc(50% + var(--dpad-size) + var(--dpad-gap));
+      top: var(--dpad-ok-y);
+      transform: translate(-50%, -50%);
+    }
+
+    .spacer-top-middle { height: var(--gap-top-to-middle); }
+    .spacer-r1-r2 { height: var(--gap-r1-r2); }
+    .spacer-r2-r3 { height: var(--gap-r2-r3); }
+    .spacer-middle-main { height: var(--gap-middle-main); }
+    .spacer-main { height: var(--gap-main); }
+  </style>
+</head>
+<body>
+  <div class="frame" aria-label="ISR-4 red box layout using flexbox v2">
+    <div class="top-row">
+      <div class="box top-box" data-label="c1 r1"></div>
+      <div class="box top-box" data-label="c3 r1"></div>
+    </div>
+
+    <div class="spacer-top-middle"></div>
+
+    <div class="middle-row">
+      <div class="middle-col left">
+        <div class="box side-box" data-label="c1 r2"></div>
+        <div class="spacer-r1-r2"></div>
+        <div class="box small-box" data-label="c1 r3"></div>
+        <div class="spacer-r2-r3"></div>
+        <div class="box side-box" data-label="c1 r4"></div>
+      </div>
+
+      <div class="middle-col"></div>
+
+      <div class="middle-col right">
+        <div class="box side-box" data-label="c3 r2"></div>
+        <div class="spacer-r1-r2"></div>
+        <div class="box small-box" data-label="c3 r3"></div>
+        <div class="spacer-r2-r3"></div>
+        <div class="box side-box" data-label="c3 r4"></div>
+      </div>
+    </div>
+
+    <div class="spacer-middle-main"></div>
+
+    <div class="main-row">
+      <div class="box main-box" data-label="c1 r5"></div>
+      <div class="box main-box" data-label="c2 r5"></div>
+      <div class="box main-box" data-label="c3 r5"></div>
+    </div>
+
+    <div class="spacer-main"></div>
+
+    <div class="main-row">
+      <div class="box main-box" data-label="c1 r6"></div>
+      <div class="box main-box" data-label="c2 r6"></div>
+      <div class="box main-box" data-label="c3 r6"></div>
+    </div>
+
+    <div class="spacer-main"></div>
+
+    <div class="main-row">
+      <div class="box main-box" data-label="c1 r7"></div>
+      <div class="box main-box" data-label="c2 r7"></div>
+      <div class="box main-box" data-label="c3 r7"></div>
+    </div>
+
+    <div class="box dpad-box dpad-up" data-label="dpad up"></div>
+    <div class="box dpad-box dpad-left" data-label="dpad left"></div>
+    <div class="box dpad-box dpad-ok" data-label="dpad ok"></div>
+    <div class="box dpad-box dpad-right" data-label="dpad right"></div>
+    <div class="box dpad-box dpad-down" data-label="dpad down"></div>
+  </div>
+</body>
+</html>

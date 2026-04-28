@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from sentinel.generation.hard_keys import registry as hard_keys_registry
+
 
 _STYLE_TO_TYPE = {5: "Slider", 6: "Image", 9: "Slider", 7: "Toggle", 10: "Toggle", 11: "LevelIndicatorBar", 14: "Image"}
 _TOKEN_ONLY_RE = re.compile(r"^\s*(?:\$%(?:TAG|VARIABLE)!.*?%\$\s*)+$", re.IGNORECASE | re.DOTALL)
@@ -710,6 +712,89 @@ def _button_ui(
 def _is_hard_button(button_ui: dict[str, Any]) -> bool:
     portrait = button_ui["orientations"]["portrait"]["coordinates"]
     return int(portrait["height"] or 0) == 0 and int(portrait["width"] or 0) == 0
+
+
+def _row_value(row: Any, key: str, default: Any = None) -> Any:
+    """Read `key` from a sqlite3.Row, dict, or SimpleNamespace-like row uniformly."""
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return getattr(row, key, default)
+
+
+def _resolve_product_model(rti_device_row: Any) -> str | None:
+    """Resolve hard-key productModel from RTIDeviceData.ProductId per Phase 0 lock-in.
+
+    Returns one of {"t4x", "isr2", "isr4"} or None when ProductId is missing or unmapped.
+    """
+    return hard_keys_registry.product_model_for_product_id(_row_value(rti_device_row, "ProductId"))
+
+
+_HARD_KEY_PHYSICAL_FRAME = 254
+_HARD_KEY_GESTURE_FRAME = 252
+_HARD_KEY_SLOT_MIN = 128
+
+
+def _classify_hard_key_rows(rows: Any, *, product_model: str | None) -> dict[str, Any] | None:
+    """Categorize raw `RTIDeviceButtonData` rows into slots / gestures / unmapped per locked rules.
+
+    * Physical slots: `ButtonWidth=0 AND ButtonHeight=0 AND FrameNumber=254 AND ButtonLeft >= 128`
+      AND `ButtonLeft` falls inside the registry slot range for `product_model`.
+    * Unmapped slots: same physical filter, but `ButtonLeft` is outside the registry range
+      (e.g. ISR-4 dock 150..152). Tagged with `reason = "outsideTemplateRange"`.
+    * Gestures: `FrameNumber=252` rows (e.g. Rotate Clockwise, Rotate Counterclockwise, Shake).
+    Sort within each bucket: `FrameNumber, ButtonTop, ButtonLeft, ButtonOrder`.
+    Returns None when `product_model` is unknown.
+    """
+    model = hard_keys_registry.model_for_key(product_model)
+    if model is None:
+        return None
+
+    lo, hi = model.slot_range
+    slots: list[dict[str, Any]] = []
+    gestures: list[dict[str, Any]] = []
+    unmapped: list[dict[str, Any]] = []
+
+    def _key(row: Any) -> tuple[int, int, int, int]:
+        return (
+            int(_row_value(row, "FrameNumber") or 0),
+            int(_row_value(row, "ButtonTop") or 0),
+            int(_row_value(row, "ButtonLeft") or 0),
+            int(_row_value(row, "ButtonOrder") or 0),
+        )
+
+    for row in sorted(list(rows or []), key=_key):
+        frame = int(_row_value(row, "FrameNumber") or 0)
+        width = int(_row_value(row, "ButtonWidth") or 0)
+        height = int(_row_value(row, "ButtonHeight") or 0)
+        left = int(_row_value(row, "ButtonLeft") or 0)
+        record = {
+            "buttonId": int(_row_value(row, "ButtonId") or 0),
+            "buttonTagId": int(_row_value(row, "ButtonTagId") or 0),
+            "frameNumber": frame,
+            "buttonOrder": int(_row_value(row, "ButtonOrder") or 0),
+            "buttonTop": int(_row_value(row, "ButtonTop") or 0),
+            "buttonLeft": left,
+        }
+        if frame == _HARD_KEY_GESTURE_FRAME and width == 0 and height == 0:
+            gestures.append({**record, "slotKey": left})
+            continue
+        if width != 0 or height != 0:
+            continue
+        if frame != _HARD_KEY_PHYSICAL_FRAME:
+            continue
+        if left < _HARD_KEY_SLOT_MIN:
+            continue
+        if lo <= left <= hi:
+            slots.append({**record, "slotKey": left})
+        else:
+            unmapped.append({**record, "slotKey": left, "reason": "outsideTemplateRange"})
+
+    return {"slots": slots, "gestures": gestures, "unmappedSlots": unmapped}
 
 
 def _csv_ints(value: Any, *, dedupe: bool = True) -> list[int]:
@@ -1872,13 +1957,22 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
         """
         select rd.RTIAddress, rd.DeviceId, rd.CloneRTIAddress, rd.ScreenPortraitWidth, rd.ScreenPortraitHeight,
                rd.ScreenLandscapeWidth, rd.ScreenLandscapeHeight, rd.SupportedOrientations,
-               rd.ScreenWidth, rd.ScreenHeight, d.DisplayName, d.Name
+               rd.ScreenWidth, rd.ScreenHeight, rd.ProductId, d.DisplayName, d.Name
         from RTIDeviceData rd join Devices d on d.DeviceId = rd.DeviceId
         where coalesce(rd.CloneRTIAddress, 0) <= 0
         order by d.DisplayOrder, rd.RTIAddress
         """
     )
     device_rows = cur.fetchall()
+
+    hard_key_shared_layer_ids: set[int] = set()
+    try:
+        cur.execute(
+            "select SharedLayerId from SharedLayers where IsKeypadLayer = 1 and Name = 'Hard Keys'"
+        )
+        hard_key_shared_layer_ids = {int(r["SharedLayerId"]) for r in cur.fetchall()}
+    except sqlite3.OperationalError:
+        hard_key_shared_layer_ids = set()
 
     if progress_enabled:
         rti_addresses = [int(row["RTIAddress"] or 0) for row in device_rows]
@@ -1953,6 +2047,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             drow["ScreenWidth"] if "ScreenWidth" in drow.keys() else 0,
             drow["ScreenHeight"] if "ScreenHeight" in drow.keys() else 0,
         )
+        product_model = _resolve_product_model(drow)
         diag_rooms = _diagnostics_controller_room_list(
             cur,
             rti_address,
@@ -1993,10 +2088,22 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             diag_viewports: list[dict[str, Any]] = []
 
             for layer in [l for l in page_layers if l["ViewPortButtonId"] is None]:
+                shared_layer_id_int = int(layer["SharedLayerId"])
+                is_keypad_layer = shared_layer_id_int in hard_key_shared_layer_ids
+                hard_key_block: dict[str, Any] = {"slots": [], "gestures": [], "unmappedSlots": []}
+                if is_keypad_layer and product_model is not None:
+                    hk_classified = _classify_hard_key_rows(
+                        _shared_layer_buttons(cur, shared_layer_id_int, shared_layer_buttons_cache),
+                        product_model=product_model,
+                    )
+                    if hk_classified is not None:
+                        hard_key_block = hk_classified
                 layer_user = {
-                    "layerName": shared_layer_name_by_id.get(int(layer["SharedLayerId"]), ""),
-                    "sharedLayerId": int(layer["SharedLayerId"]),
+                    "layerName": shared_layer_name_by_id.get(shared_layer_id_int, ""),
+                    "sharedLayerId": shared_layer_id_int,
                     "layerOrder": int(layer["LayerOrder"] or 0),
+                    "isKeypadLayer": is_keypad_layer,
+                    "hardKeyLayer": hard_key_block,
                     "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "emptyTag": [], "uiItems": []},
                     "viewports": [],
                 }
@@ -2142,6 +2249,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             {
                 "userFacing": {
                     "displayName": drow["DisplayName"] or drow["Name"] or f"Device {device_id}",
+                    "productModel": product_model,
                     "deviceUI": {
                         "portrait": {
                             "supported": portrait_supported,

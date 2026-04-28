@@ -100,6 +100,7 @@
     {
       "userFacing": {
         "displayName": "iPhone",
+        "productModel": "t4x | isr2 | isr4 | null",
         "deviceUI": {
           "portrait": {
             "supported": true,
@@ -124,6 +125,43 @@
                 "layerName": "DISPLAY - Now Playing",
                 "sharedLayerId": 0,
                 "layerOrder": 0,
+                "isKeypadLayer": false,
+                "hardKeyLayer": {
+                  "slots": [
+                    {
+                      "slotKey": 128,
+                      "buttonId": 0,
+                      "buttonTagId": 0,
+                      "frameNumber": 254,
+                      "buttonOrder": 0,
+                      "buttonTop": 0,
+                      "buttonLeft": 128
+                    }
+                  ],
+                  "gestures": [
+                    {
+                      "slotKey": 0,
+                      "buttonId": 0,
+                      "buttonTagId": 0,
+                      "frameNumber": 252,
+                      "buttonOrder": 0,
+                      "buttonTop": 0,
+                      "buttonLeft": 0
+                    }
+                  ],
+                  "unmappedSlots": [
+                    {
+                      "slotKey": 150,
+                      "buttonId": 0,
+                      "buttonTagId": 0,
+                      "frameNumber": 254,
+                      "buttonOrder": 0,
+                      "buttonTop": 0,
+                      "buttonLeft": 150,
+                      "reason": "outsideTemplateRange"
+                    }
+                  ]
+                },
                 "buttonCategories": {
                   "screenLabels": [
                     {

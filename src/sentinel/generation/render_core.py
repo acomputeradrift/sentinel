@@ -581,6 +581,166 @@ def _page_target_indexes(
     return out
 
 
+_HARD_KEY_TEMPLATE_CACHE: dict[str, tuple[str, str]] = {}
+
+
+def _hard_key_model_key(device: dict[str, Any]) -> str | None:
+    uf = device.get("userFacing") if isinstance(device, dict) else None
+    if not isinstance(uf, dict):
+        return None
+    raw = uf.get("productModel")
+    if raw is None:
+        return None
+    key = str(raw).strip().lower()
+    return key or None
+
+
+def _load_hard_key_template(model_key: str) -> tuple[str, str]:
+    """Return `(scoped_style_css, body_inner_html)` for a hard-key template, cached.
+
+    The template's `:root` is rewritten to the right-zone selector so its CSS variables
+    do not leak. The template's `body { ... }` rule is dropped (it would conflict with
+    the host document's body). All other selectors keep their original names; `.frame`,
+    `.box`, and `.row*` classes do not collide with anything else in the codebase.
+    """
+    cached = _HARD_KEY_TEMPLATE_CACHE.get(model_key)
+    if cached is not None:
+        return cached
+    from sentinel.generation.hard_keys import registry as _hk_registry
+
+    model = _hk_registry.MODELS.get(model_key)
+    if model is None:
+        return ("", "")
+    text = model.template_html_path.read_text(encoding="utf-8")
+    style_match = re.search(r"<style[^>]*>(.*?)</style>", text, re.DOTALL | re.IGNORECASE)
+    body_match = re.search(r"<body[^>]*>(.*?)</body>", text, re.DOTALL | re.IGNORECASE)
+    style = style_match.group(1) if style_match else ""
+    body = body_match.group(1) if body_match else ""
+    style = re.sub(r"\bbody\s*\{[^{}]*\}", "", style, flags=re.DOTALL)
+    style = re.sub(r":root\s*\{", f".hk-split-right[data-hk-model=\"{model_key}\"] {{", style)
+    _HARD_KEY_TEMPLATE_CACHE[model_key] = (style, body)
+    return (style, body)
+
+
+def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict[str, Any]) -> str:
+    identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
+    identity_label = _button_identity_label(btn) if isinstance(btn, dict) else ""
+    label = "hardButtons"
+    category_key = _category_key_from_label(label)
+    meta: dict[str, Any] = {
+        "category": label,
+        "categoryKey": category_key,
+        "identity": identity_label,
+        "buttonType": identity.get("buttonType") or "",
+        "targets": _targets(btn, variable_label) if isinstance(btn, dict) else {},
+    }
+    if isinstance(btn, dict) and isinstance(btn.get("apexScopeSource"), dict):
+        meta["apexScopeSource"] = btn.get("apexScopeSource")
+    return json.dumps(meta).replace("'", "&apos;")
+
+
+def _render_hard_key_button(btn: dict[str, Any], *, slot: int, variable_label: str, app_ui: dict[str, Any]) -> str:
+    """Render a hard-key `.btn-wrap` that fills its template slot and reuses target wiring."""
+    if not isinstance(btn, dict):
+        return ""
+    identity_label = _button_identity_label(btn)
+    tag_name = _button_tag_name(btn)
+    category_key = _category_key_from_label("hardButtons")
+    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui)
+    return (
+        f"<div class='btn-wrap hk-btn-wrap' "
+        f"style='position:absolute;inset:0;width:auto;height:auto;display:flex;'"
+        f" data-hard-key-slot='{int(slot)}'"
+        f" data-button-category='{escape(category_key, quote=True)}'"
+        f" data-button-tag='{escape(tag_name, quote=True)}'>"
+        f"<button class='test-btn hk-test-btn' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
+        f"<div class='btn-pass-total' aria-hidden='true'></div>"
+        f"</div>"
+    )
+
+
+def _augment_template_with_slots(
+    body_html: str,
+    *,
+    model_key: str,
+    slot_buttons_by_left: dict[int, dict[str, Any]],
+    variable_label: str,
+    app_ui: dict[str, Any],
+) -> str:
+    from sentinel.generation.hard_keys import registry as _hk_registry
+
+    model = _hk_registry.MODELS.get(model_key)
+    if model is None:
+        return body_html
+    iter_slots = iter(model.slot_dom_order)
+    box_re = re.compile(
+        r'<div\s+class="([^"]*\bbox\b[^"]*)"([^>]*?)>\s*</div>',
+        re.DOTALL,
+    )
+
+    def _replace(match: re.Match[str]) -> str:
+        try:
+            slot = next(iter_slots)
+        except StopIteration:
+            return match.group(0)
+        classes = match.group(1)
+        attrs = match.group(2) or ""
+        button = slot_buttons_by_left.get(int(slot))
+        slot_attr = f' data-hard-key-slot="{int(slot)}"'
+        if button is None:
+            return f'<div class="{classes} hk-slot hk-empty" {attrs}{slot_attr}></div>'
+        btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
+        return f'<div class="{classes} hk-slot" {attrs}{slot_attr}>{btn_html}</div>'
+
+    return box_re.sub(_replace, body_html)
+
+
+def _render_hard_key_strip(
+    *,
+    model_key: str,
+    hard_key_layer: dict[str, Any],
+    layer_hard_buttons: list[dict[str, Any]],
+    variable_label: str,
+    app_ui: dict[str, Any],
+) -> str:
+    """Build the right-zone HTML for one page using the registry template + layer rows."""
+    _, body = _load_hard_key_template(model_key)
+    if not body:
+        return ""
+    button_by_id: dict[int, dict[str, Any]] = {}
+    for ub in layer_hard_buttons or []:
+        if not isinstance(ub, dict):
+            continue
+        scope = ub.get("apexScopeSource") if isinstance(ub.get("apexScopeSource"), dict) else {}
+        bid_obj = scope.get("button") if isinstance(scope.get("button"), dict) else {}
+        bid = bid_obj.get("buttonId")
+        if bid is None:
+            continue
+        button_by_id[int(bid)] = ub
+
+    slot_buttons_by_left: dict[int, dict[str, Any]] = {}
+    for slot in (hard_key_layer or {}).get("slots", []) or []:
+        if not isinstance(slot, dict):
+            continue
+        bid = slot.get("buttonId")
+        if bid is None:
+            continue
+        button = button_by_id.get(int(bid))
+        if button is None:
+            continue
+        slot_key = int(slot.get("slotKey") or slot.get("buttonLeft") or 0)
+        slot_buttons_by_left[slot_key] = button
+
+    augmented = _augment_template_with_slots(
+        body,
+        model_key=model_key,
+        slot_buttons_by_left=slot_buttons_by_left,
+        variable_label=variable_label,
+        app_ui=app_ui,
+    )
+    return augmented
+
+
 def _render_button_control(
     btn: dict[str, Any],
     label: str,
@@ -1962,6 +2122,31 @@ def _page_payload(
             for c in _iter_viewport_boxes(page, orientation)
         ]
     )
+    hard_key_strip_html = ""
+    model_key = _hard_key_model_key(device)
+    if model_key is not None:
+        for layer in _page_layers(page) or []:
+            if not isinstance(layer, dict):
+                continue
+            if not layer.get("isKeypadLayer"):
+                continue
+            hk_layer = layer.get("hardKeyLayer") if isinstance(layer.get("hardKeyLayer"), dict) else {}
+            if not (hk_layer.get("slots") or hk_layer.get("gestures") or hk_layer.get("unmappedSlots")):
+                continue
+            hard_buttons = []
+            categories = layer.get("buttonCategories") if isinstance(layer.get("buttonCategories"), dict) else {}
+            if isinstance(categories.get("hardButtons"), list):
+                hard_buttons = categories.get("hardButtons")
+            hard_key_strip_html = _render_hard_key_strip(
+                model_key=model_key,
+                hard_key_layer=hk_layer,
+                layer_hard_buttons=hard_buttons,
+                variable_label=variable_label,
+                app_ui=app_ui,
+            )
+            if hard_key_strip_html:
+                break
+
     return {
         "page_name": str(page.get("pageName", "")),
         "page_index": page_index,
@@ -1970,6 +2155,8 @@ def _page_payload(
         "viewport_boxes": viewport_boxes,
         "page_button_rows": "".join(page_button_rows),
         "viewport_button_rows": "".join(viewport_button_rows),
+        "hard_key_strip_html": hard_key_strip_html,
+        "product_model": model_key,
     }
 
 
@@ -1988,6 +2175,10 @@ def _render_document(
     home_href: str | None = None,
     room_list_resolution_json: str = "[]",
     source_list_resolution_json: str = "[]",
+    hard_key_model_key: str | None = None,
+    hard_key_style_css: str = "",
+    hard_key_design_w: int = 0,
+    hard_key_design_h: int = 0,
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -2136,6 +2327,14 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
+ .rti-device-canvas-hk{{background:#ffffff;}}
+ .device-page .hk-split-left{{position:absolute;left:0;top:0;bottom:0;}}
+ .device-page .hk-split-right{{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border-radius:14px;box-shadow:0 0 0 4px #14324b inset;background:#ffffff;}}
+ .hk-split-right .hk-slot{{position:relative;}}
+ .hk-split-right .hk-slot.hk-empty{{opacity:0.35;}}
+ .hk-btn-wrap{{position:absolute;}}
+ .hk-btn-wrap .hk-test-btn{{flex:1;width:100%;height:100%;border:0;background:transparent;color:transparent;cursor:pointer;font-size:0;padding:0;}}
+{hard_key_style_css}
 </style></head>
 <body><div class='app-canvas' id='appCanvas'>
 <div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div><div class='selected-room-indicator' id='selectedRoomIndicator'>Selected Room: <span class='value' id='selectedRoomValue'>All Rooms</span></div></div>
@@ -2143,7 +2342,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'></div>
 <div class='zoom-controls' id='zoomControls'><button class='zoom-btn zoom-dec' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("decrease", "-")}</button><button class='zoom-btn zoom-reset' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("reset", "100%")}</button><button class='zoom-btn zoom-inc' type='button'>{app_ui.get("zoomControls", {}).get("buttons", {}).get("increase", "+")}</button></div>
- <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas' id='rtiDeviceCanvas'>{body_markup}</div></div></div></div>
+ <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas{(" rti-device-canvas-hk" if hard_key_model_key else "")}' id='rtiDeviceCanvas'{(f" data-hk-model='{hard_key_model_key}' data-hk-design-w='{int(hard_key_design_w)}' data-hk-design-h='{int(hard_key_design_h)}'" if hard_key_model_key else "")}>{body_markup}</div></div></div></div>
  <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
  <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
@@ -5238,6 +5437,7 @@ def build_device_render_bundle(
     header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
+    product_model_key = _hard_key_model_key(device)
     page_html_by_index: dict[str, str] = {}
     page_state: list[dict[str, Any]] = []
     page_payloads: list[dict[str, Any]] = []
@@ -5246,7 +5446,15 @@ def build_device_render_bundle(
         page_payloads.append(payload)
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
         # Keep viewport box click-targets above same-layer button rows while preserving layer z-order.
-        page_html_by_index[str(page_index)] = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
+        page_inner_main = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
+        if product_model_key is not None:
+            strip_html = payload.get("hard_key_strip_html") or ""
+            page_html_by_index[str(page_index)] = (
+                f"<div class='hk-split-left'>{page_inner_main}</div>"
+                f"<div class='hk-split-right' data-hk-model=\"{product_model_key}\">{strip_html}</div>"
+            )
+        else:
+            page_html_by_index[str(page_index)] = page_inner_main
         page_state.append(
             {
                 "deviceName": uf.get("displayName", ""),
@@ -5265,6 +5473,17 @@ def build_device_render_bundle(
         source_list = []
     first_page_inner = page_html_by_index.get("0", "")
     initial_page_markup = f"<div class='device-page active' data-page-index='0'>{first_page_inner}</div>" if pages else ""
+    hard_key_style_css = ""
+    hard_key_design_w = 0
+    hard_key_design_h = 0
+    if product_model_key is not None:
+        from sentinel.generation.hard_keys import registry as _hk_registry
+
+        scoped_style, _ = _load_hard_key_template(product_model_key)
+        hard_key_style_css = scoped_style or ""
+        model = _hk_registry.MODELS.get(product_model_key)
+        if model is not None:
+            hard_key_design_w, hard_key_design_h = model.design_size
     html = _render_document(
         app_ui,
         header,
@@ -5279,6 +5498,10 @@ def build_device_render_bundle(
         home_href=project_home_filename(project_stem),
         room_list_resolution_json=json.dumps(room_list),
         source_list_resolution_json=json.dumps(source_list),
+        hard_key_model_key=product_model_key,
+        hard_key_style_css=hard_key_style_css,
+        hard_key_design_w=hard_key_design_w,
+        hard_key_design_h=hard_key_design_h,
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):
