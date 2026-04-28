@@ -24,16 +24,16 @@ def _identity(name: str) -> dict:
     return {"buttonIdentity": {"buttonTagName": name, "text": name, "buttonType": None}}
 
 
-def _hard_button(name: str, slot_key: int) -> dict:
+def _hard_button(name: str, slot_key: int, button_id: int) -> dict:
     return {
         **_identity(name),
-        "buttonUI": _coords(top=0, left=slot_key, height=0, width=0, font_size=12),
+        "apexScopeSource": {"button": {"buttonId": button_id}},
         "testTargets": {"text": False, "macros": False, "macroSteps": False, "variables": {}},
     }
 
 
 def _project_data_with_hard_keys(model: str, slot_lefts: list[int]) -> dict:
-    hard_buttons = [_hard_button(f"HK_{i}", left) for i, left in enumerate(slot_lefts)]
+    hard_buttons = [_hard_button(f"HK_{i}", left, button_id=i + 1) for i, left in enumerate(slot_lefts)]
     return {
         "devices": [
             {

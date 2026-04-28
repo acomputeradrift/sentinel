@@ -307,6 +307,8 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
     layers = _page_layers(page)
     if layers:
         for layer_index, layer in enumerate(layers):
+            if layer.get("isKeypadLayer"):
+                continue
             layer_key = _layer_key(layer_index)
             layer_order = int(layer.get("layerOrder", 0) or 0)
             cats = layer.get("buttonCategories", {})
@@ -2327,12 +2329,15 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
- .rti-device-canvas-hk{{background:#ffffff;}}
- .device-page .hk-split-left{{position:absolute;left:0;top:0;bottom:0;}}
- .device-page .hk-split-right{{position:absolute;top:0;bottom:0;right:0;display:flex;align-items:center;justify-content:center;box-sizing:border-box;border-radius:14px;box-shadow:0 0 0 4px #14324b inset;background:#ffffff;}}
+ .rti-device-canvas-hk{{background:#ffffff;padding:0;}}
+ .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
+ .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;}}
+ .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;left:0;top:0;height:100%;overflow:hidden;}}
+ .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;right:0;top:0;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:#ffffff;}}
+ .hk-split-right .frame{{margin:0 auto;}}
  .hk-split-right .hk-slot{{position:relative;}}
  .hk-split-right .hk-slot.hk-empty{{opacity:0.35;}}
- .hk-btn-wrap{{position:absolute;}}
+ .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;}}
  .hk-btn-wrap .hk-test-btn{{flex:1;width:100%;height:100%;border:0;background:transparent;color:transparent;cursor:pointer;font-size:0;padding:0;}}
 {hard_key_style_css}
 </style></head>
@@ -4320,6 +4325,7 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    el.style.height=`${{ph}}px`;
  }});
  if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
+   if (el.classList.contains('hk-btn-wrap')) return;
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
@@ -4342,6 +4348,19 @@ const offsetTop=(contentHeight-fittedHeight)/2;
       if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
     }}
   }});
+ if (activePage) activePage.querySelectorAll('.hk-split-right').forEach(zone=>{{
+   const designW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
+   const designH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
+   const zoneW=zone.clientWidth;
+   const zoneH=zone.clientHeight;
+   if (designW>0 && designH>0 && zoneW>0 && zoneH>0) {{
+     const fitScale=Math.min(zoneW/designW, zoneH/designH);
+     const frameW=designW*fitScale;
+     const frameH=designH*fitScale;
+     zone.style.setProperty('--frame-w', `${{frameW}}px`);
+     zone.style.setProperty('--frame-h', `${{frameH}}px`);
+   }}
+ }});
  refreshButtonVisualStates();
  syncHeader();
  if (LAYER_PANEL.enabled===false) {{
@@ -5438,6 +5457,38 @@ def build_device_render_bundle(
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
     product_model_key = _hard_key_model_key(device)
+    hk_split_layout: dict[str, Any] | None = None
+    if product_model_key is not None:
+        from sentinel.generation.hard_keys import registry as _hk_registry
+
+        _hk_model = _hk_registry.MODELS.get(product_model_key)
+        if _hk_model is not None:
+            hk_design_w, hk_design_h = _hk_model.design_size
+            gap_design_px = 16
+            for orient_key in ("portrait", "landscape"):
+                size = orientation_state["sizes"].get(orient_key)
+                if not isinstance(size, dict):
+                    continue
+                touch_w = int(size.get("width") or 0)
+                touch_h = int(size.get("height") or 0)
+                if touch_h > 0 and hk_design_h > 0 and touch_w > 0:
+                    virtual_hk_w = max(1, int(round(hk_design_w * touch_h / hk_design_h)))
+                    virtual_w = touch_w + gap_design_px + virtual_hk_w
+                    size["width"] = virtual_w
+                    if orient_key == active_orientation:
+                        hk_split_layout = {
+                            "touch_w": touch_w,
+                            "touch_h": touch_h,
+                            "virtual_hk_w": virtual_hk_w,
+                            "virtual_w": virtual_w,
+                            "gap_px": gap_design_px,
+                        }
+            if active_orientation == "portrait":
+                res = orientation_state["sizes"]["portrait"]
+            else:
+                res = orientation_state["sizes"]["landscape"]
+            w = int(res.get("width") or w)
+            h = int(res.get("height") or h)
     page_html_by_index: dict[str, str] = {}
     page_state: list[dict[str, Any]] = []
     page_payloads: list[dict[str, Any]] = []
@@ -5447,11 +5498,14 @@ def build_device_render_bundle(
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
         # Keep viewport box click-targets above same-layer button rows while preserving layer z-order.
         page_inner_main = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
-        if product_model_key is not None:
+        if product_model_key is not None and hk_split_layout is not None:
             strip_html = payload.get("hard_key_strip_html") or ""
+            virtual_w = max(1, int(hk_split_layout["virtual_w"]))
+            left_pct = (int(hk_split_layout["touch_w"]) / virtual_w) * 100.0
+            right_pct = (int(hk_split_layout["virtual_hk_w"]) / virtual_w) * 100.0
             page_html_by_index[str(page_index)] = (
-                f"<div class='hk-split-left'>{page_inner_main}</div>"
-                f"<div class='hk-split-right' data-hk-model=\"{product_model_key}\">{strip_html}</div>"
+                f"<div class='hk-split-left' style='width:{left_pct:.4f}%;'>{page_inner_main}</div>"
+                f"<div class='hk-split-right' data-hk-model=\"{product_model_key}\" style='width:{right_pct:.4f}%;'>{strip_html}</div>"
             )
         else:
             page_html_by_index[str(page_index)] = page_inner_main
