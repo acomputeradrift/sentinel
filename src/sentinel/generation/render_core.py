@@ -586,6 +586,58 @@ def _page_target_indexes(
 _HARD_KEY_TEMPLATE_CACHE: dict[str, tuple[str, str]] = {}
 
 
+def _hard_key_strip_width_for_height(touch_h: int, hk_design_w: int, hk_design_h: int) -> int:
+    if hk_design_h <= 0:
+        return 1
+    return max(1, int(round(hk_design_w * touch_h / hk_design_h)))
+
+
+def _hard_key_quarter_band_layout(
+    touch_w0: int,
+    touch_h0: int,
+    *,
+    hk_design_w: int,
+    hk_design_h: int,
+    gap_design_px: int,
+    pad_px: int,
+) -> dict[str, int | float] | None:
+    """Pad + inner usable width U; touch center at 25% of U, strip center at 75% (hard_keys.md)."""
+    if touch_h0 <= 0 or touch_w0 <= 0:
+        return None
+    virtual_hk_w = _hard_key_strip_width_for_height(touch_h0, hk_design_w, hk_design_h)
+    usable_u = max(
+        2 * touch_w0,
+        2 * virtual_hk_w,
+        touch_w0 + virtual_hk_w + 2 * gap_design_px,
+    )
+    for _ in range(32):
+        virtual_w = usable_u + 2 * pad_px
+        touch_left = pad_px + int(round(0.25 * usable_u - touch_w0 / 2))
+        hk_left = pad_px + int(round(0.75 * usable_u - virtual_hk_w / 2))
+        touch_left = max(0, touch_left)
+        hk_left = max(0, hk_left)
+        max_right = max(touch_left + touch_w0, hk_left + virtual_hk_w)
+        if max_right <= pad_px + usable_u:
+            vw = max(1, int(virtual_w))
+            return {
+                "touch_w": touch_w0,
+                "touch_h": touch_h0,
+                "virtual_hk_w": virtual_hk_w,
+                "virtual_w": vw,
+                "usable_u": int(usable_u),
+                "pad_px": int(pad_px),
+                "gap_px": int(gap_design_px),
+                "touch_left_px": int(touch_left),
+                "hk_left_px": int(hk_left),
+                "touch_left_pct": 100.0 * touch_left / vw,
+                "touch_width_pct": 100.0 * touch_w0 / vw,
+                "hk_left_pct": 100.0 * hk_left / vw,
+                "hk_width_pct": 100.0 * virtual_hk_w / vw,
+            }
+        usable_u += max(8, max_right - (pad_px + usable_u))
+    return None
+
+
 def _hard_key_model_key(device: dict[str, Any]) -> str | None:
     uf = device.get("userFacing") if isinstance(device, dict) else None
     if not isinstance(uf, dict):
@@ -2333,11 +2385,12 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
- .rti-device-canvas-hk{{background:#ffffff;padding:0;}}
+ .rti-device-canvas-hk{{border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;padding:0;overflow:hidden;box-sizing:border-box;}}
  .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
  .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;}}
- .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;left:0;top:0;height:100%;overflow:hidden;}}
- .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;right:0;top:0;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:#ffffff;}}
+ .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
+ .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:#ffffff;z-index:2;}}
+ .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;}}
  .hk-split-right .frame{{margin:0 auto;}}
  .hk-split-right .hk-slot{{position:relative;}}
  .hk-split-right .hk-slot.hk-empty{{opacity:0.35;}}
@@ -3885,6 +3938,15 @@ function currentOrientationSize() {{
   height:Number(size?.height||SOURCE_DEVICE_SIZE.height||854)
  }};
 }}
+function hkTouchSourceSize() {{
+ const sz=ORIENTATION_STATE.sizes && ORIENTATION_STATE.sizes[currentOrientation];
+ const hk=sz && sz.hardKeyLayout;
+ if (hk && Number(hk.touchSourceWidth)>0 && Number(hk.touchSourceHeight)>0) {{
+  return {{width:Number(hk.touchSourceWidth), height:Number(hk.touchSourceHeight)}};
+ }}
+ const s=currentOrientationSize();
+ return {{width:Number(s.width||0), height:Number(s.height||0)}};
+}}
 function applyOrientationState() {{
  const short=currentOrientation==='landscape' ? 'l' : 'p';
  document.querySelectorAll('.orientation-btn').forEach(button=>button.classList.toggle('active', button.dataset.orientation===currentOrientation));
@@ -4264,6 +4326,20 @@ const offsetTop=(contentHeight-fittedHeight)/2;
  currentTotalScale=totalScale;
  currentDeviceLeft=offsetLeft;
  currentDeviceTop=offsetTop;
+ if (rtiDeviceCanvas.classList.contains('rti-device-canvas-hk')) {{
+  const ts=hkTouchSourceSize();
+  const tsw=Number(ts.width||0);
+  const tsh=Number(ts.height||0);
+  if (tsw>0 && tsh>0) {{
+   rtiDeviceCanvas.style.setProperty('--sentinel-device-scale', String(totalScale));
+   document.querySelectorAll('.hk-touch-stack').forEach(el=>{{
+    el.style.width=`${{tsw*totalScale}}px`;
+    el.style.height=`${{tsh*totalScale}}px`;
+   }});
+  }}
+ }} else {{
+  rtiDeviceCanvas.style.removeProperty('--sentinel-device-scale');
+ }}
  if (_pendingZoomCenter) {{
   const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
   const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
@@ -5468,24 +5544,34 @@ def build_device_render_bundle(
         if _hk_model is not None:
             hk_design_w, hk_design_h = _hk_model.design_size
             gap_design_px = 16
+            pad_px = 20
             for orient_key in ("portrait", "landscape"):
                 size = orientation_state["sizes"].get(orient_key)
                 if not isinstance(size, dict):
                     continue
-                touch_w = int(size.get("width") or 0)
-                touch_h = int(size.get("height") or 0)
-                if touch_h > 0 and hk_design_h > 0 and touch_w > 0:
-                    virtual_hk_w = max(1, int(round(hk_design_w * touch_h / hk_design_h)))
-                    virtual_w = touch_w + gap_design_px + virtual_hk_w
-                    size["width"] = virtual_w
-                    if orient_key == active_orientation:
-                        hk_split_layout = {
-                            "touch_w": touch_w,
-                            "touch_h": touch_h,
-                            "virtual_hk_w": virtual_hk_w,
-                            "virtual_w": virtual_w,
-                            "gap_px": gap_design_px,
-                        }
+                touch_w0 = int(size.get("width") or 0)
+                touch_h0 = int(size.get("height") or 0)
+                lay = _hard_key_quarter_band_layout(
+                    touch_w0,
+                    touch_h0,
+                    hk_design_w=hk_design_w,
+                    hk_design_h=hk_design_h,
+                    gap_design_px=gap_design_px,
+                    pad_px=pad_px,
+                )
+                if lay is None:
+                    continue
+                size["width"] = int(lay["virtual_w"])
+                size["hardKeyLayout"] = {
+                    "touchSourceWidth": int(lay["touch_w"]),
+                    "touchSourceHeight": int(lay["touch_h"]),
+                    "virtualWidth": int(lay["virtual_w"]),
+                    "stripWidth": int(lay["virtual_hk_w"]),
+                    "usableU": int(lay["usable_u"]),
+                    "padPx": int(lay["pad_px"]),
+                }
+                if orient_key == active_orientation:
+                    hk_split_layout = lay
             if active_orientation == "portrait":
                 res = orientation_state["sizes"]["portrait"]
             else:
@@ -5503,12 +5589,15 @@ def build_device_render_bundle(
         page_inner_main = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
         if product_model_key is not None and hk_split_layout is not None:
             strip_html = payload.get("hard_key_strip_html") or ""
-            virtual_w = max(1, int(hk_split_layout["virtual_w"]))
-            left_pct = (int(hk_split_layout["touch_w"]) / virtual_w) * 100.0
-            right_pct = (int(hk_split_layout["virtual_hk_w"]) / virtual_w) * 100.0
+            tlp = float(hk_split_layout["touch_left_pct"])
+            twp = float(hk_split_layout["touch_width_pct"])
+            hlp = float(hk_split_layout["hk_left_pct"])
+            hwp = float(hk_split_layout["hk_width_pct"])
             page_html_by_index[str(page_index)] = (
-                f"<div class='hk-split-left' style='width:{left_pct:.4f}%;'>{page_inner_main}</div>"
-                f"<div class='hk-split-right' data-hk-model=\"{product_model_key}\" style='width:{right_pct:.4f}%;'>{strip_html}</div>"
+                f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;height:100%;'>"
+                f"<div class='hk-touch-stack'>{page_inner_main}</div></div>"
+                f"<div class='hk-split-right' data-hk-model=\"{product_model_key}\" "
+                f"style='left:{hlp:.4f}%;width:{hwp:.4f}%;top:0;height:100%;'>{strip_html}</div>"
             )
         else:
             page_html_by_index[str(page_index)] = page_inner_main
@@ -5581,7 +5670,7 @@ def build_device_render_bundle(
         "orientationState": {
             "current": active_orientation,
             "options": orientation_options,
-            "sizes": {"portrait": portrait_resolution, "landscape": landscape_resolution},
+            "sizes": orientation_state["sizes"],
         },
         "pages": payload_doc_pages,
         "roomListResolution": room_list,

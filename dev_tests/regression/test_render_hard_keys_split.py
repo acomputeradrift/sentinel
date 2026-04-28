@@ -1,3 +1,4 @@
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -7,7 +8,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from sentinel.generation.render_core import render_single_device_html
+from sentinel.generation.render_core import build_device_payload, render_single_device_html
 
 
 def _coords(*, top: int, left: int, height: int, width: int, font_size: int = 14) -> dict:
@@ -163,6 +164,27 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-left", html)
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"t4x\"", html)
+        self.assertIn("hk-touch-stack", html)
+        m = re.search(r"class='hk-split-left' style='([^']+)'", html)
+        self.assertIsNotNone(m, "expected inline styles on hk-split-left")
+        left_style = m.group(1)
+        self.assertIn("left:", left_style)
+        self.assertIn("width:", left_style)
+        self.assertRegex(left_style, r"left:0*\.?0*[1-9]")  # non-zero left offset (quarter-band inset)
+
+    def test_payload_orientation_sizes_include_hard_key_layout(self) -> None:
+        slot_lefts = list(range(128, 148))
+        payload = build_device_payload(
+            project_data=_project_data_with_hard_keys("t4x", slot_lefts),
+            app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
+            project_stem="render_test",
+        )
+        portrait = (payload.get("orientationState") or {}).get("sizes", {}).get("portrait") or {}
+        hkl = portrait.get("hardKeyLayout")
+        self.assertIsInstance(hkl, dict)
+        self.assertEqual(hkl.get("touchSourceWidth"), 480)
+        self.assertEqual(hkl.get("touchSourceHeight"), 854)
+        self.assertGreater(int(portrait.get("width") or 0), 480)
 
     def test_split_layout_emitted_for_isr2(self) -> None:
         slot_lefts = list(range(128, 162))

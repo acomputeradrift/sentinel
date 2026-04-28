@@ -41,6 +41,9 @@ _ALLOW_TOKENS: tuple[str, ...] = (
     ".vp-indicator",
     ".dot",
     ".viewport-mode",
+    ".hk-split-right .",
+    ".hk-split-left .",
+    ".hk-test-btn",
 )
 
 _BLOCK_TOKENS: tuple[str, ...] = (
@@ -92,6 +95,12 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
     def test_split_chrome_selectors_survive_filter(self) -> None:
         self.assertTrue(_shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-left"))
         self.assertTrue(_shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-right"))
+
+    def test_hk_slot_and_frame_rules_survive_filter(self) -> None:
+        self.assertTrue(_shell_style_selector_allowed(".hk-split-right .hk-slot"))
+        self.assertTrue(_shell_style_selector_allowed(".hk-split-right .hk-slot.hk-empty"))
+        self.assertTrue(_shell_style_selector_allowed(".hk-split-right .frame"))
+        self.assertTrue(_shell_style_selector_allowed(".hk-btn-wrap .hk-test-btn"))
 
 
 if __name__ == "__main__":

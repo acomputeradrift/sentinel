@@ -206,7 +206,15 @@ def main() -> int:
             "mountDataHkModel: document.querySelector('#rtiDeviceContent')?.getAttribute('data-hk-model') ?? null,"
             "mountHasHkClass: !!(document.querySelector('#rtiDeviceContent')?.classList?.contains('rti-device-canvas-hk')),"
             "splitInlineFrameW: (() => { const z = document.querySelector('.hk-split-right'); "
-            "return z ? String(z.style.getPropertyValue('--frame-w') || '').trim() : ''; })()"
+            "return z ? String(z.style.getPropertyValue('--frame-w') || '').trim() : ''; })(),"
+            "firstSlotPosition: (() => { const s = document.querySelector('.hk-split-right .hk-slot'); "
+            "return s ? getComputedStyle(s).position : ''; })(),"
+            "btnNarrowerThanFrame: (() => { "
+            "const f = document.querySelector('.hk-split-right .frame'); "
+            "const b = document.querySelector('.hk-split-right .hk-test-btn'); "
+            "if (!f || !b) return false; "
+            "const fw = f.getBoundingClientRect().width; const bw = b.getBoundingClientRect().width; "
+            "return fw > 20 && bw > 10 && bw < fw * 0.98; })()"
             "})"
         )
         r2 = _pw_cli(["eval", eval_js, "--raw"])
@@ -243,18 +251,19 @@ def main() -> int:
             and design_w == "608"
             and model == "t4x"
             and px_ok
+            and out.get("firstSlotPosition") == "relative"
+            and bool(out.get("btnNarrowerThanFrame"))
         )
         if not ok:
             print(
-                "FAIL: shell hard-key assertions (mount must copy data-hk-* to #rtiDeviceContent; "
-                "applyRtiLayout must set .hk-split-right inline --frame-w in px). Got:",
+                "FAIL: shell hard-key assertions (mount + px --frame-w + hk-slot position:relative "
+                "copied into shell + first test button not full-frame). Got:",
                 out,
                 file=sys.stderr,
             )
             return 1
         print(
-            "PASS: shell mount carries data-hk-design-w; split zone has px --frame-w after layout; "
-            "bypass stylesheet present."
+            "PASS: shell mount, px --frame-w, template CSS bypass, hk-slot relative, buttons sized to slots."
         )
         return 0
     finally:
