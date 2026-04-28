@@ -3416,6 +3416,209 @@ class ViewportPopupRuntimeTest(unittest.TestCase):
         run_nav("page")
         run_nav("verticalScroll")
 
+    def test_shell_viewport_popup_bounds_use_expanded_panel_contract_not_current_panel_state(self):
+        from playwright.sync_api import expect
+
+        source_html = self._write_fixture_html()
+        shell_html = self._write_shell_fixture_html(source_html=source_html)
+        server = self._StaticServer(shell_html.parent)
+        server.start()
+        page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+        try:
+            page.goto(f"{server.base_url}/{shell_html.name}?runtime=shell", wait_until="domcontentloaded")
+            page.wait_for_selector("#rtiDeviceContent .vp-box")
+
+            def set_panels(*, left_expanded: bool, right_expanded: bool) -> None:
+                page.evaluate(
+                    """(state) => {
+                      const l=document.getElementById('left-panel-toggle');
+                      const r=document.getElementById('right-panel-toggle');
+                      if (!l || !r) return;
+                      l.checked = !!state.left;
+                      r.checked = !!state.right;
+                      l.dispatchEvent(new Event('change', { bubbles: true }));
+                      r.dispatchEvent(new Event('change', { bubbles: true }));
+                    }""",
+                    {"left": left_expanded, "right": right_expanded},
+                )
+                page.wait_for_timeout(260)
+
+            def open_first_viewport_and_measure() -> dict:
+                page.locator("#rtiDeviceContent .vp-box").first.click()
+                expect(page.locator("#vpPopup")).to_be_visible()
+                page.wait_for_timeout(80)
+                return page.evaluate(
+                    """() => {
+                      const pop=document.getElementById('vpPopup');
+                      const r=pop ? pop.getBoundingClientRect() : null;
+                      return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null;
+                    }"""
+                )
+
+            states = [
+                (True, True),
+                (False, True),
+                (True, False),
+                (False, False),
+            ]
+            samples: list[dict] = []
+            for left_expanded, right_expanded in states:
+                set_panels(left_expanded=left_expanded, right_expanded=right_expanded)
+                sample = open_first_viewport_and_measure()
+                self.assertIsNotNone(sample)
+                sample["leftExpanded"] = left_expanded
+                sample["rightExpanded"] = right_expanded
+                samples.append(sample)
+                page.locator("#vpPopupClose").click()
+                expect(page.locator("#vpPopup")).to_be_hidden()
+
+            baseline = samples[0]
+            for sample in samples[1:]:
+                self.assertAlmostEqual(float(sample["left"]), float(baseline["left"]), delta=1.5, msg=samples)
+                self.assertAlmostEqual(float(sample["top"]), float(baseline["top"]), delta=1.5, msg=samples)
+                self.assertAlmostEqual(float(sample["width"]), float(baseline["width"]), delta=1.5, msg=samples)
+                self.assertAlmostEqual(float(sample["height"]), float(baseline["height"]), delta=1.5, msg=samples)
+        finally:
+            page.close()
+            server.stop()
+
+    def test_shell_viewport_popup_does_not_drop_after_delayed_layout_pass(self):
+        from playwright.sync_api import expect
+
+        source_html = self._write_fixture_html()
+        shell_html = self._write_shell_fixture_html(source_html=source_html)
+        server = self._StaticServer(shell_html.parent)
+        server.start()
+        page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+        try:
+            page.goto(f"{server.base_url}/{shell_html.name}?runtime=shell", wait_until="domcontentloaded")
+            page.wait_for_selector("#rtiDeviceContent .vp-box")
+            page.locator("#rtiDeviceContent .vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+
+            before = page.evaluate(
+                """() => {
+                  const pop=document.getElementById('vpPopup');
+                  const r=pop ? pop.getBoundingClientRect() : null;
+                  return r ? { top: r.top, height: r.height, left: r.left, width: r.width } : null;
+                }"""
+            )
+            self.assertIsNotNone(before)
+
+            page.evaluate(
+                """() => {
+                  setTimeout(() => {
+                    if (typeof syncLayerLocksForActiveLayers === 'function') {
+                      syncLayerLocksForActiveLayers(false).finally(() => {
+                        if (typeof renderLayerPanel === 'function') renderLayerPanel();
+                        if (typeof applyLayerVisibility === 'function') applyLayerVisibility();
+                        if (typeof applyRtiLayout === 'function') applyRtiLayout();
+                      });
+                      return;
+                    }
+                    if (typeof applyRtiLayout === 'function') applyRtiLayout();
+                  }, 350);
+                }"""
+            )
+            page.wait_for_timeout(900)
+
+            after = page.evaluate(
+                """() => {
+                  const pop=document.getElementById('vpPopup');
+                  const r=pop ? pop.getBoundingClientRect() : null;
+                  return r ? { top: r.top, height: r.height, left: r.left, width: r.width } : null;
+                }"""
+            )
+            self.assertIsNotNone(after)
+            self.assertAlmostEqual(float(after["top"]), float(before["top"]), delta=1.5, msg={"before": before, "after": after})
+            self.assertAlmostEqual(float(after["left"]), float(before["left"]), delta=1.5, msg={"before": before, "after": after})
+            self.assertAlmostEqual(float(after["width"]), float(before["width"]), delta=1.5, msg={"before": before, "after": after})
+            self.assertAlmostEqual(float(after["height"]), float(before["height"]), delta=1.5, msg={"before": before, "after": after})
+        finally:
+            page.close()
+            server.stop()
+
+    def test_viewport_frame_button_visibility_matches_outside_and_inside(self):
+        from playwright.sync_api import expect
+
+        html_path = self._write_fixture_html()
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            page.wait_for_selector(".device-page .btn-wrap.vp-btn")
+
+            page.evaluate(
+                """() => {
+                  if (!Array.isArray(currentViewportIndexes) || !currentViewportIndexes.length) return;
+                  currentViewportIndexes[0] = 1;
+                  if (typeof applyLayerVisibility === 'function') applyLayerVisibility();
+                }"""
+            )
+            page.wait_for_timeout(120)
+
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+
+            page.locator(".vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+        finally:
+            page.close()
+
+    def test_shell_viewport_frame_button_visibility_matches_outside_and_inside(self):
+        from playwright.sync_api import expect
+
+        source_html = self._write_fixture_html()
+        shell_html = self._write_shell_fixture_html(source_html=source_html)
+        server = self._StaticServer(shell_html.parent)
+        server.start()
+        page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+        try:
+            page.goto(f"{server.base_url}/{shell_html.name}?runtime=shell", wait_until="domcontentloaded")
+            page.wait_for_selector(".device-page .btn-wrap.vp-btn")
+            page.evaluate(
+                """() => {
+                  if (!Array.isArray(currentViewportIndexes) || !currentViewportIndexes.length) return;
+                  currentViewportIndexes[0] = 1;
+                  if (typeof applyLayerVisibility === 'function') applyLayerVisibility();
+                }"""
+            )
+            page.wait_for_timeout(120)
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+
+            page.locator(".vp-box").first.click()
+            expect(page.locator("#vpPopup")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='DUMMY_FRAME1']")).to_be_visible()
+            expect(page.locator(".vp-popup-stage .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_hidden()
+        finally:
+            page.close()
+            server.stop()
+
+    def test_viewport_outside_visibility_does_not_depend_on_stale_data_visible_for_vp_buttons(self):
+        from playwright.sync_api import expect
+
+        html_path = self._write_fixture_html()
+        page = self._browser.new_page(viewport={"width": 1280, "height": 800})
+        try:
+            page.goto(html_path.as_uri(), wait_until="domcontentloaded")
+            page.wait_for_selector(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")
+
+            page.evaluate(
+                """() => {
+                  const btn = document.querySelector(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']");
+                  if (!btn) return;
+                  btn.dataset.visible = "0";
+                  if (typeof applyLayerVisibility === 'function') applyLayerVisibility();
+                }"""
+            )
+            page.wait_for_timeout(120)
+
+            expect(page.locator(".device-page .btn-wrap.vp-btn[data-button-tag='VP Child']")).to_be_visible()
+        finally:
+            page.close()
+
     def test_shared_layer_lock_state_propagates_across_pages_by_shared_layer_id(self):
         from playwright.sync_api import expect
 

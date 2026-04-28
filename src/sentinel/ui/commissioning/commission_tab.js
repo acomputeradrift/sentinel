@@ -334,18 +334,21 @@ function normalizeEventMessage(ev) {
   const recordedAtUtc = String(data?.recordedAtUtc || data?.tsUtc || "");
   const timestampMsRaw = new Date(recordedAtUtc).getTime();
   const rawOutcome = String(data?.outcome || data?.currentOutcome || "").trim().toUpperCase();
+  const eventKind = String(data?.eventKind || refs?.eventKind || "").trim().toUpperCase();
+  const targetKey = String(data?.targetKey || "");
+  const eventDeviceLabel = targetKey.startsWith("event:") ? (eventKind === "DRIVER" ? "Driver Event" : "System Event") : "";
   return {
     timestamp: formatTimestampUtc(recordedAtUtc),
     timestampRaw: recordedAtUtc,
     timestampMs: Number.isNaN(timestampMsRaw) ? 0 : timestampMsRaw,
-    device: String(refs?.deviceName || ""),
+    device: String(eventDeviceLabel || refs?.deviceName || ""),
     pageName: String(refs?.pageName || ""),
     layer: String(refs?.layerName || data?.layerName || ""),
     viewport: String(refs?.viewport || data?.viewport || "No"),
     buttonName: String(refs?.buttonName || ""),
     testTarget: String(data?.targetName || ""),
     passFail: rawOutcome === "PASS" ? "Pass" : rawOutcome === "FAIL" ? "Fail" : "",
-    targetKey: String(data?.targetKey || ""),
+    targetKey,
   };
 }
 

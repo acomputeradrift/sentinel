@@ -33,6 +33,138 @@ body {
   box-sizing: border-box;
 }
 
+.topbar-inner--wide {
+  max-width: none;
+  margin: 0;
+  padding-left: 18px;
+  padding-right: 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.topbar-brand h1 {
+  margin: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  justify-content: flex-end;
+}
+
+.topbar-cluster--compact {
+  max-width: none;
+}
+
+.topbar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.topbar-field-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4e6a7f;
+}
+
+.topbar-field select {
+  min-width: 140px;
+  max-width: min(42vw, 280px);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #b6c7d6;
+  background: #ffffff;
+  font-size: 14px;
+}
+
+.field-error {
+  font-size: 12px;
+  color: #b00020;
+  max-width: 200px;
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+  border: 1px solid #c6d2dd;
+  background: #f7fbff;
+  flex-shrink: 0;
+}
+
+.user-chip--icon-only {
+  margin-left: 4px;
+}
+
+.user-chip-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #177bb5;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.commissioning-dialog {
+  padding: 0;
+  border: 1px solid #c6d2dd;
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(24, 50, 71, 0.15);
+  max-width: min(96vw, 400px);
+}
+
+.commissioning-dialog::backdrop {
+  background: rgba(23, 50, 71, 0.35);
+}
+
+.commissioning-dialog-inner {
+  padding: 20px 22px;
+  box-sizing: border-box;
+}
+
+.commissioning-dialog-title {
+  margin: 0 0 14px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #173246;
+}
+
+.commissioning-dialog .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.commissioning-dialog .field input[type="text"] {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #b6c7d6;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
 .layout {
   display: flex;
   flex: 1;
@@ -123,7 +255,7 @@ h2 {
   font-size: 16px;
 }
 
-#panel-manage h3 {
+.manage-section h3 {
   margin: 16px 0 10px 0;
   font-size: 16px;
 }
@@ -689,5 +821,62 @@ button.danger {
 .diag-pie-card:last-child .diag-pie-legend .diag-legend-swatch {
   width: 8px;
   height: 8px;
+}
+
+.tech-links-create-row {
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tech-link-inline-status {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 13px;
+  color: #8f1f1f;
+  align-self: flex-end;
+}
+
+.tech-link-url-cell {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#techLinksBody td.tech-link-actions {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#fileUploadedAt {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #4d6678;
+}
+
+.file-upload-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+}
+
+.file-upload-row .field {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.file-upload-row input[type="file"] {
+  height: 34px;
+  display: block;
+  width: 100%;
+}
+
+#techLinksBody td {
+  vertical-align: middle;
 }
 

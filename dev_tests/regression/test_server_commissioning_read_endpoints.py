@@ -204,10 +204,10 @@ class CommissioningReadEndpointsTest(unittest.TestCase):
             (project_dir / "fixture_project_data.json").write_text(json.dumps(project_data), encoding="utf-8")
 
             # Post some results (including a fail that later becomes pass).
-            event_trigger_key = "event:126:Trigger"
-            driver_macro_key = "event:136:Macro"
+            event_trigger_key = "event:126:Event Trigger"
+            driver_macro_key = "event:136:System Macro"
             btn_var_key = f"btn:{device_id}:{page_id}:{button_id}:Var.Reversed"
-            vp_macro_key = f"vpbtn:{device_id}:{page_id}:{viewport_button_id}:{frame_id}:{vp_child_button_id}:Macro"
+            vp_macro_key = f"vpbtn:{device_id}:{page_id}:{viewport_button_id}:{frame_id}:{vp_child_button_id}:System Macro"
 
             r1 = client.post(
                 f"/api/v1/testing/{tech_token}/results",
@@ -217,13 +217,13 @@ class CommissioningReadEndpointsTest(unittest.TestCase):
 
             r2 = client.post(
                 f"/api/v1/testing/{tech_token}/results",
-                json={"target": {"targetKey": event_trigger_key, "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Trigger"}, "outcome": "PASS", "failNote": None},
+                json={"target": {"targetKey": event_trigger_key, "kind": "EVENT", "refs": {"eventId": 126}, "targetName": "Event Trigger"}, "outcome": "PASS", "failNote": None},
             )
             self.assertEqual(r2.status_code, 200)
 
             r3 = client.post(
                 f"/api/v1/testing/{tech_token}/results",
-                json={"target": {"targetKey": vp_macro_key, "kind": "VIEWPORT_BUTTON", "refs": {}, "targetName": "Macro"}, "outcome": "PASS", "failNote": None},
+                json={"target": {"targetKey": vp_macro_key, "kind": "VIEWPORT_BUTTON", "refs": {}, "targetName": "System Macro"}, "outcome": "PASS", "failNote": None},
             )
             self.assertEqual(r3.status_code, 200)
 
@@ -240,7 +240,7 @@ class CommissioningReadEndpointsTest(unittest.TestCase):
             # Now create a real failure and ensure it shows.
             r5 = client.post(
                 f"/api/v1/testing/{tech_token}/results",
-                json={"target": {"targetKey": driver_macro_key, "kind": "EVENT", "refs": {"eventId": 136}, "targetName": "Macro"}, "outcome": "FAIL", "failNote": "Driver macro broken"},
+                json={"target": {"targetKey": driver_macro_key, "kind": "EVENT", "refs": {"eventId": 136}, "targetName": "System Macro"}, "outcome": "FAIL", "failNote": "Driver macro broken"},
             )
             self.assertEqual(r5.status_code, 200)
 

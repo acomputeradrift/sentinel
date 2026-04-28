@@ -350,7 +350,7 @@ class TestingResultPostingTest(unittest.TestCase):
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
             self.assertEqual(sent["target"]["kind"], "EVENT")
-            self.assertEqual(sent["target"]["targetKey"], "event:126:Trigger")
+            self.assertEqual(sent["target"]["targetKey"], "event:126:Event Trigger")
             self.assertEqual(sent["target"]["refs"]["scope"], expected_scope)
             self.assertEqual(sent["target"]["refs"]["resolvedData"], expected_resolved)
             page.evaluate(
@@ -370,7 +370,7 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self._wait_for_status_hidden(page)
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-21 00:00:00Z")
             self._wait_for_row_button_state(page, 0, pass_active=True, fail_active=False)
         finally:
             server.stop()
@@ -465,7 +465,7 @@ class TestingResultPostingTest(unittest.TestCase):
                         "recordedAtUtc": "2026-03-25T10:00:00Z",
                     },
                     {
-                        "targetKey": "btn:81:513:48551:PageLink",
+                        "targetKey": "btn:81:513:48551:Page Link",
                         "outcome": "FAIL",
                         "recordedAtUtc": "2026-03-25T10:00:01Z",
                         "failNote": "Page link broken",
@@ -476,9 +476,9 @@ class TestingResultPostingTest(unittest.TestCase):
             page.reload()
             page.click(".btn-wrap .test-btn")
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-25 10:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-25 10:00:00Z")
             self._wait_for_row_status_contains(page, 1, "FAIL")
-            self._wait_for_row_last_test_exact(page, 1, "Last Test: 2026-03-25 10:00:01Z")
+            self._wait_for_row_last_test_exact(page, 1, "Failed: 2026-03-25 10:00:01Z")
         finally:
             server.stop()
 
@@ -551,12 +551,13 @@ class TestingResultPostingTest(unittest.TestCase):
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.click(".btn-wrap .test-btn")
+            self.assertEqual(page.locator("#passAll:visible").count(), 0)
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_ws_outbox(page, min_posts=1)
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
             self.assertEqual(sent["target"]["kind"], "BUTTON")
-            self.assertEqual(sent["target"]["targetKey"], "btn:81:513:48551:Macro")
+            self.assertEqual(sent["target"]["targetKey"], "btn:81:513:48551:System Macro")
             page.evaluate(
                 """
 (payload) => window.__emitWs({
@@ -574,7 +575,7 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self._wait_for_status_hidden(page)
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-21 00:00:00Z")
         finally:
             server.stop()
 
@@ -767,7 +768,7 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self._wait_for_status_hidden(page)
             self._wait_for_row_status_contains(page, 0, "FAIL")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Failed: 2026-03-21 00:00:00Z")
             self._wait_for_row_button_state(page, 0, pass_active=False, fail_active=True)
         finally:
             server.stop()
@@ -863,7 +864,28 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click("#close")
             page.click(".btn-wrap .test-btn")
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-21 00:00:00Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-21 00:00:00Z")
+            page.click("#rows .row .actions button")
+            self._wait_for_ws_outbox(page, min_posts=2)
+            sent_revert = self._ws_payload(page, 1)
+            self.assertEqual(sent_revert["outcome"], "UNTESTED")
+            self.assertEqual(sent_revert["target"]["refs"].get("revertedFrom"), "PASS")
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-21T00:00:10Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent_revert,
+            )
+            self._wait_for_row_last_test_contains(page, 0, "Reverted: 2026-03-21 00:00:10Z")
         finally:
             server.stop()
 
@@ -985,7 +1007,7 @@ class TestingResultPostingTest(unittest.TestCase):
             self._wait_for_ws_outbox(page, min_posts=1)
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
-            self.assertEqual(sent["target"]["targetKey"], "tt2:2:ROOM:23:74:20:macro:3122:Macro")
+            self.assertEqual(sent["target"]["targetKey"], "tt2:2:ROOM:23:74:20:macro:3122:System Macro")
         finally:
             server.stop()
 
@@ -1087,25 +1109,15 @@ class TestingResultPostingTest(unittest.TestCase):
 """,
                 sent0,
             )
+            self.assertEqual(sent0["outcome"], "PASS")
             self._wait_for_ws_outbox(page, min_posts=2)
             sent1 = self._ws_payload(page, 1)
-            self.assertEqual(sent0["outcome"], "PASS")
             self.assertEqual(sent1["outcome"], "PASS")
             self.assertNotEqual(sent0["target"]["targetKey"], sent1["target"]["targetKey"])
 
             page.evaluate(
                 """
 ([a,b]) => {
-  window.__emitWs({
-    type: "test_result",
-    projectId: "proj-1",
-    recordedAtUtc: "2026-03-30T01:02:03Z",
-    targetKey: a.target.targetKey,
-    outcome: a.outcome,
-    targetName: a.target.targetName,
-    kind: a.target.kind,
-    refs: a.target.refs
-  });
   window.__emitWs({
     type: "test_result",
     projectId: "proj-1",
@@ -1116,16 +1128,149 @@ class TestingResultPostingTest(unittest.TestCase):
     kind: b.target.kind,
     refs: b.target.refs
   });
+  window.__emitWs({
+    type: "test_result",
+    projectId: "proj-1",
+    recordedAtUtc: "2026-03-30T01:02:03Z",
+    targetKey: a.target.targetKey,
+    outcome: a.outcome,
+    targetName: a.target.targetName,
+    kind: a.target.kind,
+    refs: a.target.refs
+  });
 }
 """,
                 [sent0, sent1],
             )
             self._wait_for_row_status_contains(page, 0, "PASS")
-            self._wait_for_row_last_test_exact(page, 0, "Last Test: 2026-03-30 01:02:03Z")
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-30 01:02:03Z")
             self._wait_for_row_button_state(page, 0, pass_active=True, fail_active=False)
             self._wait_for_row_status_contains(page, 1, "PASS")
-            self._wait_for_row_last_test_exact(page, 1, "Last Test: 2026-03-30 01:02:04Z")
+            self._wait_for_row_last_test_exact(page, 1, "Passed: 2026-03-30 01:02:04Z")
             self._wait_for_row_button_state(page, 1, pass_active=True, fail_active=False)
+        finally:
+            server.stop()
+
+    def test_pass_all_then_pass_toggle_on_first_row_posts_untested(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [
+                                                {
+                                                    "buttonIdentity": {"buttonTagName": "BTN-1", "text": "Button 1", "buttonType": None},
+                                                    "buttonUI": {
+                                                        "fontSize": 10,
+                                                        "orientations": {
+                                                            "portrait": {"visible": True, "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120}}
+                                                        },
+                                                    },
+                                                    "testTargets": {
+                                                        "text": True,
+                                                        "macros": False,
+                                                        "macroSteps": False,
+                                                        "variables": {},
+                                                        "pageLink": {"enabled": True, "targetPageId": 514},
+                                                    },
+                                                    "resolvedPageLink": {"targetPageId": 514},
+                                                }
+                                            ],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}],
+                                "buttons": [{"buttonId": 48551, "buttonTagName": "BTN-1", "identifiers": {"text": "Button 1"}, "testTargets": {}}],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
+
+        token = "techTokenPassAllRevert"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click(".btn-wrap .test-btn")
+            page.click("#passAll")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent0 = self._ws_payload(page, 0)
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-30T01:02:03Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent0,
+            )
+            self._wait_for_ws_outbox(page, min_posts=2)
+            sent1 = self._ws_payload(page, 1)
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_result",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-30T01:02:04Z",
+  targetKey: payload.target.targetKey,
+  outcome: payload.outcome,
+  targetName: payload.target.targetName,
+  kind: payload.target.kind,
+  refs: payload.target.refs
+})
+""",
+                sent1,
+            )
+            self._wait_for_row_last_test_exact(page, 0, "Passed: 2026-03-30 01:02:03Z")
+            self._wait_for_row_last_test_exact(page, 1, "Passed: 2026-03-30 01:02:04Z")
+            self._wait_for_status_hidden(page)
+            page.locator("#rows .row").first.locator(".actions button").first.click()
+            self._wait_for_ws_outbox(page, min_posts=3)
+            sent2 = self._ws_payload(page, 2)
+            self.assertEqual(sent2["outcome"], "UNTESTED")
+            self.assertEqual(sent2["target"]["refs"].get("revertedFrom"), "PASS")
         finally:
             server.stop()
 
@@ -1582,8 +1727,8 @@ class TestingResultPostingTest(unittest.TestCase):
             snapshot_payload = {
                 "type": "testing_snapshot",
                 "results": [
-                    {"targetKey": "btn:81:513:48551:Macro", "outcome": "PASS", "recordedAtUtc": "2026-03-30T01:02:03Z"},
-                    {"targetKey": "btn:81:513:48551:PageLink", "outcome": "FAIL", "recordedAtUtc": "2026-03-30T01:02:04Z"},
+                    {"targetKey": "btn:81:513:48551:System Macro", "outcome": "PASS", "recordedAtUtc": "2026-03-30T01:02:03Z"},
+                    {"targetKey": "btn:81:513:48551:Page Link", "outcome": "FAIL", "recordedAtUtc": "2026-03-30T01:02:04Z"},
                     {"targetKey": "btn:81:513:48552:Text", "outcome": "FAIL", "recordedAtUtc": "2026-03-30T01:02:05Z"},
                 ],
             }
@@ -1628,18 +1773,18 @@ class TestingResultPostingTest(unittest.TestCase):
             )
             self.assertEqual(visual["btn1"]["bg"], "rgb(44, 111, 183)")
             self.assertIn(visual["btn1"]["trim"], ("rgb(239, 68, 68)", "#ef4444"))
-            self.assertEqual(visual["btn1"]["countText"].strip(), "1/2")
-            self.assertEqual(visual["btn1"]["countDisplay"], "block")
-            self.assertEqual(visual["btn1"]["countVisibility"], "visible")
+            self.assertEqual(visual["btn1"]["countText"].strip(), "")
+            self.assertIn(visual["btn1"]["countDisplay"], ("", "none"))
+            self.assertIn(visual["btn1"]["countVisibility"], ("", "hidden"))
             self.assertEqual(visual["btn1"]["linkOpacity"], "1")
             self.assertEqual(visual["btn1"]["linkPointerEvents"], "auto")
             self.assertEqual(visual["btn1"]["btnText"].strip(), "Button One")
 
             self.assertEqual(visual["lbl1"]["bg"], "rgb(88, 88, 90)")
             self.assertIn(visual["lbl1"]["trim"], ("rgb(239, 68, 68)", "#ef4444"))
-            self.assertEqual(visual["lbl1"]["countText"].strip(), "0/1")
-            self.assertIn(visual["lbl1"]["countDisplay"], ("none", "block"))
-            self.assertEqual(visual["lbl1"]["countVisibility"], "hidden")
+            self.assertEqual(visual["lbl1"]["countText"].strip(), "")
+            self.assertIn(visual["lbl1"]["countDisplay"], ("", "none"))
+            self.assertIn(visual["lbl1"]["countVisibility"], ("", "hidden"))
             self.assertEqual(visual["lbl1"]["btnText"].strip(), "Label One")
 
             self.assertEqual(visual["ui1"]["bg"], "rgb(167, 169, 172)")

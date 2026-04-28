@@ -120,6 +120,40 @@ def _build_test_result_event(*, rec) -> dict:
     }
 
 
+def _build_layer_lock_rows(*, repo: Repository, projectId: str) -> list[dict[str, Any]]:
+    rows = repo.list_layer_lock_states_for_project(projectId=projectId, scopeKey=None)
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "scopeKey": str(row.get("scopeKey") or ""),
+                "layerKey": str(row.get("layerKey") or ""),
+                "visible": bool(row.get("visible")),
+                "locked": bool(row.get("locked")),
+                "updatedAtUtc": str(row.get("updatedAtUtc") or ""),
+            }
+        )
+    return out
+
+
+def _build_layer_lock_state_event(
+    *,
+    project_id: str,
+    scope_key: str,
+    layer_key: str,
+    visible: bool,
+    locked: bool,
+) -> dict[str, Any]:
+    return {
+        "type": "layer_lock_state",
+        "projectId": str(project_id or ""),
+        "scopeKey": str(scope_key or ""),
+        "layerKey": str(layer_key or ""),
+        "visible": bool(visible),
+        "locked": bool(locked),
+    }
+
+
 def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -> dict:
     latest = repo.get_latest_results_for_project(projectId=projectId)
     rows = list(latest.values())
@@ -138,7 +172,14 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
                 "failNote": rec.failNote,
             }
         )
-    return {"type": "testing_snapshot", "seq": int(seq or 0), "projectId": projectId, "results": results}
+    layer_locks = _build_layer_lock_rows(repo=repo, projectId=projectId)
+    return {
+        "type": "testing_snapshot",
+        "seq": int(seq or 0),
+        "projectId": projectId,
+        "results": results,
+        "layerLocks": layer_locks,
+    }
 
 
 async def _send_text_or_fail(*, websocket: WebSocket, text: str, project_id: str, tech_token: str) -> None:
@@ -526,7 +567,12 @@ async def testing_ws(websocket: WebSocket, techToken: str):
     }
     try:
         snapshot = _build_testing_snapshot(repo=repo, projectId=project_id, seq=broker.latest_seq(projectId=project_id))
-        log.info("[testing-ws] snapshot-send projectId=%s count=%s", project_id, len(snapshot.get("results") or []))
+        log.info(
+            "[testing-ws] snapshot-send projectId=%s count=%s layerLocks=%s",
+            project_id,
+            len(snapshot.get("results") or []),
+            len(snapshot.get("layerLocks") or []),
+        )
         await _send_text_or_fail(
             websocket=websocket,
             text=json.dumps(snapshot, separators=(",", ":"), ensure_ascii=False),
@@ -535,6 +581,28 @@ async def testing_ws(websocket: WebSocket, techToken: str):
         )
     except Exception:
         log.exception("[testing-ws] snapshot-send-failed projectId=%s techToken=%s", project_id, techToken)
+
+    try:
+        prog, roll = commissioning_rollups.compute_progress_and_testing_rollups(repo=repo, projectId=project_id)
+        if prog is not None:
+            roll_msg = json.dumps(
+                {
+                    "type": "commissioning_rollups",
+                    "projectId": project_id,
+                    "progress": prog,
+                    "rollups": roll,
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+            await _send_text_or_fail(
+                websocket=websocket,
+                text=roll_msg,
+                project_id=project_id,
+                tech_token=techToken,
+            )
+    except Exception:
+        log.exception("[testing-ws] commissioning-rollups-initial-send-failed projectId=%s", project_id)
 
     async def send_loop():
         while True:
@@ -607,6 +675,43 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                         tech_token=techToken,
                     )
                     continue
+                if msg_type == "layer_lock.set":
+                    scope_key = str(payload.get("scopeKey") or "").strip()
+                    layer_key = str(payload.get("layerKey") or "").strip()
+                    if not scope_key or not layer_key:
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps(
+                                {
+                                    "type": "error",
+                                    "code": "VALIDATION_ERROR",
+                                    "message": "scopeKey and layerKey are required.",
+                                }
+                            ),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        continue
+                    visible = bool(payload.get("visible", True))
+                    locked = bool(payload.get("locked", True))
+                    repo.set_layer_lock_state(
+                        projectId=project_id,
+                        scopeKey=scope_key,
+                        layerKey=layer_key,
+                        visible=visible,
+                        locked=locked,
+                    )
+                    broker.publish(
+                        projectId=project_id,
+                        event=_build_layer_lock_state_event(
+                            project_id=project_id,
+                            scope_key=scope_key,
+                            layer_key=layer_key,
+                            visible=visible,
+                            locked=locked,
+                        ),
+                    )
+                    continue
                 if msg_type not in ("test_result.submit", "test_result"):
                     await _send_text_or_fail(
                         websocket=websocket,
@@ -618,10 +723,10 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 target = payload.get("target") or {}
                 outcome = str(payload.get("outcome") or "").strip().upper()
                 fail_note = payload.get("failNote")
-                if outcome not in ("PASS", "FAIL"):
+                if outcome not in ("PASS", "FAIL", "UNTESTED"):
                     await _send_text_or_fail(
                         websocket=websocket,
-                        text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS or FAIL."}),
+                        text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Outcome must be PASS, FAIL, or UNTESTED."}),
                         project_id=project_id,
                         tech_token=techToken,
                     )
@@ -714,33 +819,3 @@ def target_status(request: Request, techToken: str, targetKey: str) -> dict:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
 
 
-@router.get("/api/v1/testing/{techToken}/layer-locks")
-def get_layer_locks(request: Request, techToken: str, scopeKey: str | None = None) -> dict:
-    try:
-        tok = _repo(request).resolve_active_token(techToken=techToken)
-    except KeyError:
-        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
-    rows = _repo(request).list_layer_lock_states_for_project(projectId=tok.projectId, scopeKey=scopeKey)
-    return {"projectId": tok.projectId, "scopeKey": scopeKey, "locks": rows}
-
-
-@router.post("/api/v1/testing/{techToken}/layer-locks")
-def post_layer_lock(request: Request, techToken: str, payload: dict) -> dict:
-    scope_key = str((payload or {}).get("scopeKey") or "").strip()
-    layer_key = str((payload or {}).get("layerKey") or "").strip()
-    visible = bool((payload or {}).get("visible", True))
-    locked = bool((payload or {}).get("locked", True))
-    if not scope_key or not layer_key:
-        raise http_error(400, code="VALIDATION_ERROR", message="scopeKey and layerKey are required.")
-    try:
-        tok = _repo(request).resolve_active_token(techToken=techToken)
-    except KeyError:
-        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
-    _repo(request).set_layer_lock_state(
-        projectId=tok.projectId,
-        scopeKey=scope_key,
-        layerKey=layer_key,
-        visible=visible,
-        locked=locked,
-    )
-    return {"projectId": tok.projectId, "scopeKey": scope_key, "layerKey": layer_key, "visible": visible, "locked": locked}

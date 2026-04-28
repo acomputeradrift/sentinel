@@ -52,6 +52,10 @@ window.__sentinelCommissioningHydrating = true;
 const LAST_CLIENT_KEY = "sentinel.commissioning.lastClientId";
 const LAST_PROJECT_BY_CLIENT_KEY = "sentinel.commissioning.lastProjectByClient";
 
+/** Sentinel option values (not real API ids) — open create dialogs when chosen. */
+const OPTION_NEW_CLIENT = "__new_client__";
+const OPTION_NEW_PROJECT = "__new_project__";
+
 function _safeStorageGet(key) {
   try {
     if (!window || !window.localStorage) return "";
@@ -86,7 +90,7 @@ function _safeStorageSetJsonObject(key, obj) {
 }
 
 function setActiveTab(tabName) {
-  const tabs = ["manage", "commission", "diagnostics"];
+  const tabs = ["commission", "diagnostics", "file", "tech-links", "reports", "clear-tests"];
   for (const t of tabs) {
     const btn = document.getElementById(`tab-${t}`);
     const panel = document.getElementById(`panel-${t}`);
@@ -121,6 +125,10 @@ function setStatus(el, msg) {
 
 function setSelectOptions(selectEl, items, getValue, getLabel) {
   selectEl.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = selectEl.id === "projectSelect" ? "Select project…" : "Select client…";
+  selectEl.appendChild(ph);
   for (const item of items) {
     const opt = document.createElement("option");
     opt.value = getValue(item);
@@ -129,47 +137,96 @@ function setSelectOptions(selectEl, items, getValue, getLabel) {
   }
 }
 
+function appendSelectNewOption(selectEl, value, label) {
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = label;
+  selectEl.appendChild(opt);
+}
+
+function parseHashRoute() {
+  try {
+    const raw = window.location.hash.replace(/^#/, "");
+    const params = new URLSearchParams(raw);
+    return {
+      clientId: String(params.get("c") || "").trim(),
+      projectId: String(params.get("p") || "").trim(),
+    };
+  } catch (_e) {
+    return { clientId: "", projectId: "" };
+  }
+}
+
+function writeHashRoute(clientId, projectId) {
+  const next = new URLSearchParams();
+  const c = String(clientId || "").trim();
+  const p = String(projectId || "").trim();
+  if (c) next.set("c", c);
+  if (p) next.set("p", p);
+  const frag = next.toString() ? `#${next.toString()}` : "";
+  const url = `${window.location.pathname}${window.location.search}${frag}`;
+  if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== url) {
+    history.replaceState(null, "", url);
+  }
+}
+
 function resetProjectDetailsUi() {
   setStatus($("uploadStatus"), "");
   setStatus($("uploadProgressLabel"), "");
   setStatus($("techLinkStatus"), "");
-  $("techUrl").textContent = "";
   $("techLabel").value = "";
+  const fin = $("apexFile");
+  if (fin) fin.value = "";
   setProgressHidden($("uploadProgressRow"), true);
 }
 
+function currentClientId() {
+  const v = String($("clientSelect").value || "").trim();
+  if (!v || v === OPTION_NEW_CLIENT) return "";
+  return v;
+}
+
 function updateManageVisibility() {
-  const hasClient = !!$("clientSelect").value;
-  const hasProject = !!$("projectSelect").value;
-  $("manageProjectCard").hidden = !hasClient;
+  const hasClient = !!currentClientId();
+  const hasProject = !!currentProjectId();
   $("manageProjectDetails").hidden = !hasProject;
+  const techBody = document.getElementById("techLinksPanelBody");
+  if (techBody) techBody.hidden = !hasProject;
+  const fh = document.getElementById("fileHintNoProject");
+  if (fh) fh.hidden = hasProject;
+  const th = document.getElementById("techHintNoProject");
+  if (th) th.hidden = hasProject;
   if (!hasProject) resetProjectDetailsUi();
 }
 
 async function refreshClients() {
   const prevClientId = String($("clientSelect").value || "").trim();
   const rememberedClientId = _safeStorageGet(LAST_CLIENT_KEY).trim();
+  const hashRoute = parseHashRoute();
   const clients = await jsonFetch(api("/commissioning/clients"));
   setSelectOptions($("clientSelect"), clients, (c) => c.clientId, (c) => c.name);
+  appendSelectNewOption($("clientSelect"), OPTION_NEW_CLIENT, "+ New client…");
   const clientIds = new Set((Array.isArray(clients) ? clients : []).map((c) => String(c?.clientId || "").trim()).filter(Boolean));
-  const nextClientId = clientIds.has(rememberedClientId)
-    ? rememberedClientId
-    : clientIds.has(prevClientId)
-      ? prevClientId
-      : "";
-  if (nextClientId) $("clientSelect").value = nextClientId;
+  const hashClient = String(hashRoute.clientId || "").trim();
+  let nextClientId = "";
+  if (hashClient && clientIds.has(hashClient)) nextClientId = hashClient;
+  else if (rememberedClientId && clientIds.has(rememberedClientId)) nextClientId = rememberedClientId;
+  else if (prevClientId && clientIds.has(prevClientId)) nextClientId = prevClientId;
+  $("clientSelect").value = nextClientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   updateManageVisibility();
   return clients;
 }
 
 async function refreshProjects() {
-  const clientId = $("clientSelect").value;
+  const clientId = currentClientId();
   const requestSeq = ++state.refreshProjectsRequestSeq;
   if (!clientId) {
     if (requestSeq !== state.refreshProjectsRequestSeq) return [];
     setSelectOptions($("projectSelect"), [], () => "", () => "");
+    $("projectSelect").value = "";
     $("projectSelect").dispatchEvent(new Event("change"));
+    writeHashRoute("", "");
     updateManageVisibility();
     return [];
   }
@@ -177,25 +234,26 @@ async function refreshProjects() {
   const projects = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`));
   if (requestSeq !== state.refreshProjectsRequestSeq) return projects;
   setSelectOptions($("projectSelect"), projects, (p) => p.projectId, (p) => p.name);
-  const liveSelectedProjectId = String($("projectSelect").value || "").trim();
+  appendSelectNewOption($("projectSelect"), OPTION_NEW_PROJECT, "+ New project…");
   const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
   const rememberedProjectId = String((persistedByClient && persistedByClient[clientId]) || state.selectedProjectIdByClient[clientId] || "").trim();
   const projectIds = new Set((Array.isArray(projects) ? projects : []).map((p) => String(p?.projectId || "").trim()).filter(Boolean));
-  const nextProjectId = projectIds.has(rememberedProjectId)
-    ? rememberedProjectId
-    : projectIds.has(liveSelectedProjectId)
-      ? liveSelectedProjectId
-      : projectIds.has(prevSelectedProjectId)
-      ? prevSelectedProjectId
-      : "";
-  if (nextProjectId) $("projectSelect").value = nextProjectId;
+  const hashProject = String(parseHashRoute().projectId || "").trim();
+  let nextProjectId = "";
+  if (hashProject && projectIds.has(hashProject)) nextProjectId = hashProject;
+  else if (rememberedProjectId && projectIds.has(rememberedProjectId)) nextProjectId = rememberedProjectId;
+  else if (prevSelectedProjectId && projectIds.has(prevSelectedProjectId)) nextProjectId = prevSelectedProjectId;
+  $("projectSelect").value = nextProjectId;
   $("projectSelect").dispatchEvent(new Event("change"));
+  writeHashRoute(clientId, nextProjectId);
   updateManageVisibility();
   return projects;
 }
 
 function currentProjectId() {
-  return $("projectSelect").value;
+  const v = String($("projectSelect").value || "").trim();
+  if (!v || v === OPTION_NEW_PROJECT) return "";
+  return v;
 }
 
 const state = {
@@ -207,6 +265,8 @@ const state = {
   uploadInFlightByProject: {},
   uploadFinalizeTimerByProject: {},
   refreshProjectsRequestSeq: 0,
+  lastValidClientId: "",
+  lastValidProjectId: "",
 };
 
 function setProgressHidden(el, hidden) {
@@ -247,11 +307,29 @@ function setLastGeneratedLabel() {
   const projectId = currentProjectId();
   if (!projectId) {
     el.textContent = "None";
+    setFileUploadedAtLabel();
     return;
   }
   const activeUpload = state.activeUploadByProject[projectId] || null;
   const name = activeUpload && activeUpload.originalFilename ? String(activeUpload.originalFilename).trim() : "";
   el.textContent = name || "None";
+  setFileUploadedAtLabel();
+}
+
+function setFileUploadedAtLabel() {
+  const el = document.getElementById("fileUploadedAt");
+  if (!el) return;
+  const projectId = currentProjectId();
+  const activeUpload = projectId ? state.activeUploadByProject[projectId] : null;
+  const raw = activeUpload && activeUpload.uploadedAtUtc ? String(activeUpload.uploadedAtUtc).trim() : "";
+  if (!raw) {
+    el.textContent = "";
+    el.hidden = true;
+    return;
+  }
+  const formatted = formatUtc(raw);
+  el.textContent = formatted ? `Uploaded: ${formatted}` : "";
+  el.hidden = !formatted;
 }
 
 function setPanelContext() {
@@ -306,6 +384,13 @@ function renderTechLinks() {
     const tdLabel = document.createElement("td");
     tdLabel.textContent = link.label || "(no label)";
 
+    const tdLink = document.createElement("td");
+    tdLink.className = "mono tech-link-url-cell";
+    tdLink.setAttribute("data-testid", "tech-url");
+    const linkText = String(link.techUrl || "").trim();
+    tdLink.textContent = linkText;
+    tdLink.title = linkText;
+
     const tdCreated = document.createElement("td");
     tdCreated.textContent = formatUtc(link.createdAtUtc || "");
 
@@ -342,13 +427,14 @@ function renderTechLinks() {
         .then(() => {
           state.techLinksByProject[projectIdNow] = techLinksForProject(projectIdNow).filter((x) => x.techLinkId !== link.techLinkId);
           renderTechLinks();
-          set("Revoked.");
+          set("");
         })
         .catch((e) => set(String(e?.message || e)));
     });
     tdActions.appendChild(revoke);
 
     tr.appendChild(tdLabel);
+    tr.appendChild(tdLink);
     tr.appendChild(tdCreated);
     tr.appendChild(tdActions);
     body.appendChild(tr);
@@ -434,36 +520,86 @@ function _setGenerationPhaseUi(projectId, phaseRaw, percentRaw) {
   }
 }
 
+function openModalNewClient() {
+  const dlg = document.getElementById("modalNewClient");
+  const name = document.getElementById("modalNewClientName");
+  const st = document.getElementById("modalNewClientStatus");
+  if (st) st.textContent = "";
+  if (name) name.value = "";
+  if (dlg && typeof dlg.showModal === "function") {
+    dlg.showModal();
+    setTimeout(() => {
+      if (name) name.focus();
+    }, 0);
+  }
+}
+
+function openModalNewProject() {
+  const dlg = document.getElementById("modalNewProject");
+  const name = document.getElementById("modalNewProjectName");
+  const st = document.getElementById("modalNewProjectStatus");
+  if (st) st.textContent = "";
+  if (name) name.value = "";
+  if (dlg && typeof dlg.showModal === "function") {
+    dlg.showModal();
+    setTimeout(() => {
+      if (name) name.focus();
+    }, 0);
+  }
+}
+
 async function createClient() {
-  const name = $("newClientName").value.trim();
-  if (!name) return;
+  const nameEl = document.getElementById("modalNewClientName");
+  const statusEl = document.getElementById("modalNewClientStatus");
+  const dlg = document.getElementById("modalNewClient");
+  const name = nameEl ? String(nameEl.value || "").trim() : "";
+  if (!name) {
+    if (statusEl) statusEl.textContent = "Name is required.";
+    return;
+  }
+  if (statusEl) statusEl.textContent = "";
   const client = await jsonFetch(api("/commissioning/clients"), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (nameEl) nameEl.value = "";
+  if (dlg && typeof dlg.close === "function") dlg.close();
   await refreshClients();
   $("clientSelect").value = client.clientId;
+  state.lastValidClientId = client.clientId;
   $("clientSelect").dispatchEvent(new Event("change"));
   await refreshProjects();
-  $("newClientName").value = "";
 }
 
 async function createProject() {
-  const clientId = $("clientSelect").value;
-  const name = $("newProjectName").value.trim();
-  if (!clientId || !name) return;
+  const clientId = currentClientId();
+  const nameEl = document.getElementById("modalNewProjectName");
+  const statusEl = document.getElementById("modalNewProjectStatus");
+  const dlg = document.getElementById("modalNewProject");
+  const name = nameEl ? String(nameEl.value || "").trim() : "";
+  if (!clientId) {
+    if (statusEl) statusEl.textContent = "Select a client first.";
+    return;
+  }
+  if (!name) {
+    if (statusEl) statusEl.textContent = "Name is required.";
+    return;
+  }
+  if (statusEl) statusEl.textContent = "";
   const proj = await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}/projects`), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
   });
+  if (nameEl) nameEl.value = "";
+  if (dlg && typeof dlg.close === "function") dlg.close();
   await refreshProjects();
   $("projectSelect").value = proj.projectId;
+  state.lastValidProjectId = proj.projectId;
   $("projectSelect").dispatchEvent(new Event("change"));
   state.generationReadyByProject[proj.projectId] = false;
   updateTechLinkEnabled();
-  $("newProjectName").value = "";
 }
 
 function _xhrPostFormData(url, fd, onProgress) {
@@ -570,16 +706,29 @@ async function uploadAndRegenerate() {
     const nextName = String((uploadObj?.originalFilename || file.name) || "");
 
     setProgress($("uploadProgress"), 100);
-    let msg = uploadId ? `Uploaded: ${uploadId} (${nextName})` : `Uploaded: ${nextName}`;
+    const activeFromApi = combined?.activeUpload && typeof combined.activeUpload === "object" ? combined.activeUpload : null;
+    const uploadedAtUtc =
+      String(activeFromApi?.uploadedAtUtc || "").trim() || new Date().toISOString();
+    state.activeUploadByProject[projectId] = {
+      uploadId: uploadId || null,
+      originalFilename: nextName,
+      storagePath: String(activeFromApi?.storagePath || uploadObj?.storagePath || ""),
+      uploadedAtUtc,
+    };
+    setLastGeneratedLabel();
+    let msg = "";
     if (prevName && nextName) {
       const sim = _baseSimilarity(prevName, nextName);
       if (sim < 0.6) {
-        msg += `\nWARNING: This upload name looks different than the previous file for this project.\nPrevious: ${prevName}\nNew: ${nextName}`;
+        msg = `WARNING: This upload name looks different than the previous file for this project.\nPrevious: ${prevName}\nNew: ${nextName}`;
       }
     }
-    setStatus($("uploadStatus"), msg);
+    // Keep upload status for warnings only; do not inject upload ids on success.
+    setStatus($("uploadStatus"), msg || "");
     state.generationReadyByProject[projectId] = true;
     updateTechLinkEnabled();
+    const fin = $("apexFile");
+    if (fin) fin.value = "";
   } finally {
     const finalizeUi = () => {
       state.uploadInFlightByProject[projectId] = false;
@@ -699,14 +848,13 @@ async function createTechLink() {
     body: JSON.stringify({ label }),
   });
   const payloadTechUrl = buildPayloadTechUrl(out.techUrl || "");
-  $("techUrl").textContent = payloadTechUrl || "";
   const createdAtUtc = new Date().toISOString();
   state.techLinksByProject[projectId] = [
     { techLinkId: out.techLinkId, label: label, createdAtUtc, techUrl: payloadTechUrl },
     ...techLinksForProject(projectId),
   ];
   renderTechLinks();
-  if (statusEl) statusEl.textContent = "Created tech link.";
+  if (statusEl) statusEl.textContent = "";
 }
 
 async function clearTestsForProject() {
@@ -725,41 +873,59 @@ async function clearTestsForProject() {
 
 async function run() {
   window.__sentinelCommissioningHydrating = true;
-  const clientStatusEl = document.getElementById("clientStatus");
-  const projectStatusEl = document.getElementById("projectStatus");
+  const modalClientStatusEl = document.getElementById("modalNewClientStatus");
+  const modalProjectStatusEl = document.getElementById("modalNewProjectStatus");
 
   const safe = async (fn, statusEl) => {
     try {
-      setStatus(statusEl, "");
+      if (statusEl) setStatus(statusEl, "");
       await fn();
     } catch (e) {
-      setStatus(statusEl, String(e?.message || e));
+      const msg = String(e?.message || e);
+      if (statusEl) setStatus(statusEl, msg);
+      else console.error("[commissioning]", msg);
       updateTechLinkEnabled();
     }
   };
 
   ensureManageStoreSubscription();
 
-  $("clientSelect").addEventListener("change", () =>
-    safe(async () => {
-      const clientId = String($("clientSelect").value || "").trim();
+  $("clientSelect").addEventListener("change", () => {
+    const raw = String($("clientSelect").value || "").trim();
+    if (raw === OPTION_NEW_CLIENT) {
+      $("clientSelect").value = state.lastValidClientId || "";
+      openModalNewClient();
+      return;
+    }
+    state.lastValidClientId = raw;
+    void safe(async () => {
+      const clientId = currentClientId();
       _safeStorageSet(LAST_CLIENT_KEY, clientId);
+      writeHashRoute(clientId, "");
       await refreshProjects();
       setPanelContext();
       setLastGeneratedLabel();
       updateManageVisibility();
-    }, projectStatusEl)
-  );
-  $("projectSelect").addEventListener("change", () =>
-    safe(async () => {
+    }, null);
+  });
+  $("projectSelect").addEventListener("change", () => {
+    const raw = String($("projectSelect").value || "").trim();
+    if (raw === OPTION_NEW_PROJECT) {
+      $("projectSelect").value = state.lastValidProjectId || "";
+      openModalNewProject();
+      return;
+    }
+    state.lastValidProjectId = raw;
+    void safe(async () => {
       const projectId = currentProjectId();
-      const clientId = String($("clientSelect").value || "").trim();
+      const clientId = currentClientId();
       if (clientId) {
         state.selectedProjectIdByClient[clientId] = projectId;
         const persistedByClient = _safeStorageGetJsonObject(LAST_PROJECT_BY_CLIENT_KEY);
         persistedByClient[clientId] = String(projectId || "");
         _safeStorageSetJsonObject(LAST_PROJECT_BY_CLIENT_KEY, persistedByClient);
       }
+      writeHashRoute(clientId, projectId);
       if (window.__sentinelCommissioningHydrating) {
         setPanelContext();
         setLastGeneratedLabel();
@@ -778,20 +944,64 @@ async function run() {
       startManageWs(projectId);
       syncManageFromStore(projectId);
       await loadTechLinks();
-    }, projectStatusEl)
-  );
+    }, null);
+  });
 
-  $("tab-manage").addEventListener("click", () => setActiveTab("manage"));
   $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
   $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
-  $("tab-clear-tests").addEventListener("click", () => safe(clearTestsForProject, $("uploadStatus")));
+  $("tab-file").addEventListener("click", () => setActiveTab("file"));
+  $("tab-tech-links").addEventListener("click", () => setActiveTab("tech-links"));
+  $("tab-reports").addEventListener("click", () => setActiveTab("reports"));
+  $("tab-clear-tests").addEventListener("click", () => setActiveTab("clear-tests"));
+  const clearTestsBtn = document.getElementById("clearTestsBtn");
+  if (clearTestsBtn) clearTestsBtn.addEventListener("click", () => safe(clearTestsForProject, $("uploadStatus")));
 
-  $("createClientBtn").addEventListener("click", () => safe(createClient, clientStatusEl));
-  $("createProjectBtn").addEventListener("click", () => safe(createProject, projectStatusEl));
+  window.addEventListener("hashchange", () => {
+    void safe(refreshClients, null);
+  });
+
+  const modalNewClientCancel = document.getElementById("modalNewClientCancel");
+  const modalNewClientSubmit = document.getElementById("modalNewClientSubmit");
+  const modalNewProjectCancel = document.getElementById("modalNewProjectCancel");
+  const modalNewProjectSubmit = document.getElementById("modalNewProjectSubmit");
+  const modalNewClientEl = document.getElementById("modalNewClient");
+  const modalNewProjectEl = document.getElementById("modalNewProject");
+  if (modalNewClientCancel && modalNewClientEl) {
+    modalNewClientCancel.addEventListener("click", () => {
+      modalNewClientEl.close();
+    });
+  }
+  if (modalNewProjectCancel && modalNewProjectEl) {
+    modalNewProjectCancel.addEventListener("click", () => {
+      modalNewProjectEl.close();
+    });
+  }
+  if (modalNewClientSubmit) modalNewClientSubmit.addEventListener("click", () => safe(createClient, modalClientStatusEl));
+  if (modalNewProjectSubmit) modalNewProjectSubmit.addEventListener("click", () => safe(createProject, modalProjectStatusEl));
+  const modalNewClientNameEl = document.getElementById("modalNewClientName");
+  const modalNewProjectNameEl = document.getElementById("modalNewProjectName");
+  if (modalNewClientNameEl && modalNewClientSubmit) {
+    modalNewClientNameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        modalNewClientSubmit.click();
+      }
+    });
+  }
+  if (modalNewProjectNameEl && modalNewProjectSubmit) {
+    modalNewProjectNameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        modalNewProjectSubmit.click();
+      }
+    });
+  }
   $("uploadBtn").addEventListener("click", () => safe(uploadAndRegenerate, $("uploadStatus")));
   $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
 
-  await safe(refreshClients, clientStatusEl);
+  await safe(refreshClients, null);
+  state.lastValidClientId = currentClientId();
+  state.lastValidProjectId = currentProjectId();
   setProgressHidden($("uploadProgressRow"), true);
   updateTechLinkEnabled();
   renderTechLinks();

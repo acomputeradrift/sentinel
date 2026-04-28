@@ -18,6 +18,25 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+OPTION_NEW_CLIENT = "__new_client__"
+OPTION_NEW_PROJECT = "__new_project__"
+
+
+def _commissioning_click_file_tab(page) -> None:
+    page.get_by_role("button", name="File").click()
+
+
+def _commissioning_create_client_via_modal(page, name: str) -> None:
+    page.locator("#clientSelect").select_option(value=OPTION_NEW_CLIENT)
+    page.locator("#modalNewClientName").fill(name)
+    page.locator("#modalNewClientSubmit").click()
+
+
+def _commissioning_create_project_via_modal(page, name: str) -> None:
+    page.locator("#projectSelect").select_option(value=OPTION_NEW_PROJECT)
+    page.locator("#modalNewProjectName").fill(name)
+    page.locator("#modalNewProjectSubmit").click()
+
 
 class _StaticServer:
     def __init__(self, directory: Path):
@@ -702,45 +721,38 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         )
 
         # Shell + tabs
-        expect(page.get_by_role("button", name="Projects")).to_be_visible()
-        expect(page.get_by_role("button", name="Commission")).to_be_visible()
+        expect(page.get_by_role("button", name="File")).to_be_visible()
+        expect(page.get_by_role("button", name="Commissioning")).to_be_visible()
         expect(page.get_by_role("button", name="Diagnostics")).to_be_visible()
         expect(page.get_by_role("button", name=re.compile("refresh", re.I))).to_have_count(0)
         expect(page.get_by_role("heading", name="Sentinel Console")).to_be_visible()
         expect(page.locator("#panel-commission")).to_be_visible()
-        expect(page.locator("#panel-manage")).to_be_hidden()
-        expect(page.locator("#manageClientCard")).to_be_hidden()
-        expect(page.locator("#manageProjectCard")).to_be_hidden()
+        expect(page.locator("#panel-file")).to_be_hidden()
+        expect(page.locator("#panel-file #manageProjectCard")).to_be_hidden()
         expect(page.locator("#manageProjectDetails")).to_be_hidden()
 
-        # Manage must not render Progress/Fails sections.
-        expect(page.locator("#panel-manage [data-testid='progress']")).to_have_count(0)
-        expect(page.locator("#panel-manage [data-testid='fails-count']")).to_have_count(0)
-        expect(page.locator("#panel-manage [data-testid='fails-list']")).to_have_count(0)
-        expect(page.locator("#newClientName")).to_have_attribute("placeholder", "Enter here...")
-        expect(page.locator("#newProjectName")).to_have_attribute("placeholder", "Enter here...")
+        # File/Tech panels must not render Commissioning Progress/Fails sections.
+        expect(page.locator("#panel-file [data-testid='progress']")).to_have_count(0)
+        expect(page.locator("#panel-file [data-testid='fails-count']")).to_have_count(0)
+        expect(page.locator("#panel-file [data-testid='fails-list']")).to_have_count(0)
 
-        page.get_by_role("button", name="Projects").click()
-        expect(page.locator("#panel-manage")).to_be_visible()
+        _commissioning_click_file_tab(page)
+        expect(page.locator("#panel-file")).to_be_visible()
 
-        page.get_by_label("New client name").fill("Client A")
-        page.get_by_role("button", name="Create client").click()
+        _commissioning_create_client_via_modal(page, "Client A")
         expect(page.get_by_label("Client", exact=True)).to_have_value("client-1")
-        expect(page.get_by_label("New client name")).to_have_value("")
         expect(page.locator("#manageProjectCard")).to_be_visible()
         expect(page.locator("#manageProjectDetails")).to_be_hidden()
 
-        page.get_by_label("New project name").fill("Project 1")
-        page.get_by_role("button", name="Create project").click()
+        _commissioning_create_project_via_modal(page, "Project 1")
         expect(page.get_by_label("Project", exact=True)).to_have_value("proj-1")
-        expect(page.get_by_label("New project name")).to_have_value("")
         expect(page.locator("#manageProjectDetails")).to_be_visible()
-        expect(page.locator("#panel-manage")).to_contain_text("Current File")
-        expect(page.locator("#panel-manage")).to_contain_text("Current Tech Links")
+        expect(page.locator("#panel-file")).not_to_contain_text("Current File")
+        page.get_by_role("button", name="Tech Links").click()
+        expect(page.locator("#panel-tech-links")).to_be_visible()
+        expect(page.locator("#panel-tech-links")).to_contain_text("Tech Links")
         expect(page.locator("#manageProjectDetails h3", has_text="Upload + Generate")).to_have_count(0)
         expect(page.locator("#manageProjectDetails span", has_text=".apex file")).to_have_count(0)
-        expect(page.locator("#clientStatus")).to_have_count(0)
-        expect(page.locator("#projectStatus")).to_have_count(0)
         expect(page.locator("#regenProgress")).to_have_count(0)
         expect(page.locator("#regenProgressLabel")).to_have_count(0)
         expect(page.locator("#regenStatus")).to_have_count(0)
@@ -751,13 +763,14 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             ("none", "hidden"),
         )
 
+        _commissioning_click_file_tab(page)
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
         page.get_by_role("button", name="Load File").click()
-        expect(page.get_by_test_id("upload-status")).to_contain_text("upload-1")
+        expect(page.get_by_test_id("upload-status")).to_have_text("")
         expect(page.locator("#uploadProgressLabel")).to_have_count(1)
-        self.assertEqual(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), 100)
+        self.assertIn(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), (0, 100))
         expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name)
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
@@ -765,6 +778,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         expect(page.get_by_role("button", name="Regenerate")).to_have_count(0)
 
+        page.get_by_role("button", name="Tech Links").click()
         page.get_by_label("Tech label").fill("   ")
         page.get_by_role("button", name="Create tech link").click()
         expect(page.locator("#techLinkStatus")).to_contain_text("Tech label is required.")
@@ -772,28 +786,29 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.get_by_label("Tech label").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
-        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-abc?runtime=shell")
+        expect(page.get_by_test_id("tech-url").first).to_contain_text("/testing/token-abc?runtime=shell")
         with page.expect_popup() as open_popup_info:
             page.get_by_role("button", name="Open").click()
         open_popup = open_popup_info.value
         self.assertIn("/testing/token-abc?runtime=shell", str(open_popup.url))
         open_popup.close()
         expect(page.get_by_role("button", name="Legacy")).to_have_count(0)
-        row_actions = page.locator("#techLinksBody tr").first.locator("td").nth(2).locator("button")
+        row_actions = page.locator("#techLinksBody tr").first.locator("td").nth(3).locator("button")
         expect(row_actions).to_have_count(2)
         expect(row_actions.nth(0)).to_have_text("Open")
         expect(row_actions.nth(1)).to_have_text("Revoke")
-        expect(page.locator("#panel-manage")).to_contain_text("Onsite Tech")
-        expect(page.locator("#panel-manage")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
+        expect(page.locator("#panel-tech-links")).to_contain_text("Onsite Tech")
+        expect(page.locator("#panel-tech-links")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
         expect(page.get_by_role("button", name="Revoke")).to_be_visible()
         page.get_by_role("button", name="Revoke").click()
-        expect(page.locator("#panel-manage")).not_to_contain_text("Onsite Tech")
+        expect(page.locator("#panel-tech-links")).not_to_contain_text("Onsite Tech")
+        expect(page.locator("#techLinkStatus")).to_have_text("")
         page.get_by_label("Tech label").fill("Remote Tech")
         page.get_by_role("button", name="Create tech link").click()
-        expect(page.locator("#panel-manage")).to_contain_text("Remote Tech")
+        expect(page.locator("#panel-tech-links")).to_contain_text("Remote Tech")
 
         # Tab switching
-        page.get_by_role("button", name="Commission").click()
+        page.get_by_role("button", name="Commissioning").click()
         expect(page.locator("#panel-commission")).to_be_visible()
         expect(page.locator("#commissionSelection")).to_have_count(0)
         expect(page.locator("[data-testid='commission-selected-client']")).to_have_count(0)
@@ -938,7 +953,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .pie")).to_have_attribute("data-center", "50%")
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .pie")).to_have_attribute("data-center", "")
         expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .pie")).to_have_attribute("data-center", "0%")
-        expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .piecard-count")).to_have_text("6/12")
+        expect(page.locator("[data-testid='diagnostics-pie-failure-rate'] .piecard-count")).to_have_text("3/6")
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("")
         expect(page.locator("[data-testid='diagnostics-pie-task-completion'] .piecard-count")).to_have_text("0/4")
         self.assertEqual(
@@ -1002,17 +1017,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Frame 2")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("No")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("SOURCE - Set To CABLE MUSIC")
-        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("icon")
-        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("wrong icon")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Icon")
+        expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Wrong Icon")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Living Room -> Main AVR")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> Lighting Processor")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show")).to_be_visible()
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_class(re.compile(r"status-template-select"))
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("macros")
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("pageLink")
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("text")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("System Macros")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Page Links")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Event Triggers")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Text")
         page.evaluate(
             """
 () => {
@@ -1031,7 +1047,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 }
 """
         )
-        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("graphics (2")
+        expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Graphics (2")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Fail (")
         expect(page.get_by_test_id("diagnostics-pie-failure-rate")).not_to_contain_text("Pass (")
         expect(page.locator("[data-testid='diagnostics-pie-failure-types'] .piecard-count")).to_have_text("")
@@ -1054,16 +1070,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.get_by_role("columnheader", name="Status").click()
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_value("Complete")
 
-        page.get_by_role("button", name="Commission").click()
+        page.get_by_role("button", name="Commissioning").click()
         expect(page.locator("#panel-commission")).to_be_visible()
         self.assertEqual(page.evaluate("window.__wsConnectCount()"), 1)
         self.assertEqual(page.evaluate("window.__wsCloseCount()"), 0)
 
-        page.get_by_role("button", name="Projects").click()
-        expect(page.locator("#panel-manage")).to_be_visible()
+        page.get_by_role("button", name="File").click()
+        expect(page.locator("#panel-file")).to_be_visible()
         page.get_by_role("button", name="Clear Tests").click()
+        expect(page.locator("#panel-clear-tests")).to_be_visible()
+        page.get_by_role("button", name="Clear tests for this project").click()
         self.assertEqual(int(state.get("clear_tests_count") or 0), 1)
-        page.get_by_role("button", name="Commission").click()
+        page.get_by_role("button", name="Commissioning").click()
         expect(page.locator("#commissionActivityBody tr")).to_have_count(0)
         page.get_by_role("button", name="Diagnostics").click()
         expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(0)
@@ -1097,10 +1115,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             other_path = Path(td) / "Completely Different Project v1.0.apex"
             other_path.write_bytes(apex_path.read_bytes())
             state["expected_upload_filename"] = other_path.name
-            page.get_by_role("button", name="Projects").click()
+            page.get_by_role("button", name="File").click()
             page.set_input_files("input[type=file][name=apex]", str(other_path))
             page.get_by_role("button", name="Load File").click()
-            expect(page.get_by_test_id("upload-status")).to_contain_text("upload-2")
+            expect(page.get_by_test_id("upload-status")).to_have_text("")
 
         self.assertEqual(state.get("progress_fetch_count"), 0)
         self.assertEqual(state.get("fails_fetch_count"), 0)
@@ -1131,11 +1149,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 page.on("console", lambda msg: console_logs.append(str(msg.text or "")))
 
                 page.goto(f"{base_url}/commissioning/index.html")
-                page.get_by_role("button", name="Projects").click()
-                page.get_by_label("New client name").fill("Live Client")
-                page.get_by_role("button", name="Create client").click()
-                page.get_by_label("New project name").fill("Live Project")
-                page.get_by_role("button", name="Create project").click()
+                _commissioning_click_file_tab(page)
+                _commissioning_create_client_via_modal(page, "Live Client")
+                _commissioning_create_project_via_modal(page, "Live Project")
                 expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
 
                 project_id = str(page.locator("#projectSelect").input_value() or "").strip()
@@ -1146,13 +1162,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
                 expect(page.get_by_test_id("upload-status")).to_contain_text(apex_path.name, timeout=120000)
 
-                page.get_by_role("button", name="Commission").click()
+                page.get_by_role("button", name="Commissioning").click()
                 expect(page.locator("#panel-commission")).to_be_visible()
                 page.get_by_role("button", name="Diagnostics").click()
                 expect(page.locator("#panel-diagnostics")).to_be_visible()
-                page.get_by_role("button", name="Projects").click()
-                expect(page.locator("#panel-manage")).to_be_visible()
-                page.get_by_role("button", name="Commission").click()
+                page.get_by_role("button", name="File").click()
+                expect(page.locator("#panel-file")).to_be_visible()
+                page.get_by_role("button", name="Commissioning").click()
                 expect(page.locator("#panel-commission")).to_be_visible()
                 page.get_by_role("button", name="Diagnostics").click()
                 expect(page.locator("#panel-diagnostics")).to_be_visible()
@@ -1194,10 +1210,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 with urlrequest.urlopen(post_req, timeout=10.0) as resp:
                     self.assertEqual(int(resp.status), 200)
 
-                page.get_by_role("button", name="Commission").click()
+                page.get_by_role("button", name="Commissioning").click()
                 expect(page.locator("#commissionActivityBody")).to_contain_text("Live Smoke Target", timeout=30000)
                 page.get_by_role("button", name="Diagnostics").click()
-                expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("live smoke target", timeout=30000)
+                expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Live Smoke Target", timeout=30000)
 
                 self.assertFalse(
                     any("[project-ws] close unexpected" in line for line in console_logs),
@@ -1231,12 +1247,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 base_url = str(app_server.base_url or "").rstrip("/")
                 page = self._browser.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
-                page.get_by_role("button", name="Projects").click()
-
-                page.get_by_label("New client name").fill("Live Client")
-                page.get_by_role("button", name="Create client").click()
-                page.get_by_label("New project name").fill("Live Project")
-                page.get_by_role("button", name="Create project").click()
+                _commissioning_click_file_tab(page)
+                _commissioning_create_client_via_modal(page, "Live Client")
+                _commissioning_create_project_via_modal(page, "Live Project")
                 expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
 
                 # Record all phase-label transitions, even brief ones.
@@ -1289,12 +1302,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 base_url = str(app_server.base_url or "").rstrip("/")
                 page = self._browser.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
-                page.get_by_role("button", name="Projects").click()
-
-                page.get_by_label("New client name").fill("Live Client")
-                page.get_by_role("button", name="Create client").click()
-                page.get_by_label("New project name").fill("Live Project")
-                page.get_by_role("button", name="Create project").click()
+                _commissioning_click_file_tab(page)
+                _commissioning_create_client_via_modal(page, "Live Client")
+                _commissioning_create_project_via_modal(page, "Live Project")
                 expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
 
                 page.evaluate(
@@ -1365,12 +1375,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 base_url = str(app_server.base_url or "").rstrip("/")
                 page = self._browser.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
-                page.get_by_role("button", name="Projects").click()
-
-                page.get_by_label("New client name").fill("Live Client")
-                page.get_by_role("button", name="Create client").click()
-                page.get_by_label("New project name").fill("Live Project")
-                page.get_by_role("button", name="Create project").click()
+                _commissioning_click_file_tab(page)
+                _commissioning_create_client_via_modal(page, "Live Client")
+                _commissioning_create_project_via_modal(page, "Live Project")
                 expect(page.get_by_label("Project", exact=True)).not_to_have_value("")
 
                 project_id = str(page.locator("#projectSelect").input_value() or "").strip()

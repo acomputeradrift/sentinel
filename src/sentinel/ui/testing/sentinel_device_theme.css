@@ -1,0 +1,66 @@
+:root {
+  --sentinel-fill-screen-label: #58585a;
+  --sentinel-fill-screen-button: #2c6fb7;
+  --sentinel-fill-hard-button: #2c6fb7;
+  --sentinel-fill-ui-item: #a7a9ac;
+  --sentinel-fill-empty-tag: #ef4444;
+  --sentinel-fill-system-event: #58585a;
+  --sentinel-fill-driver-event: #2c6fb7;
+  --sentinel-trim-pass: #39b54a;
+  --sentinel-trim-partial: #fcb040;
+  --sentinel-trim-fail: #ef4444;
+  --sentinel-trim-untested: transparent;
+  --sentinel-device-frame-bg: #eaecec;
+  --sentinel-device-frame-ring-width: 3px;
+  --sentinel-device-frame-ring-color: #000000;
+  --sentinel-device-frame-radius-iphone-ipad: 32px;
+  --sentinel-device-frame-radius-other: 0px;
+  /* DEVICE button radius only (button corners, not device frame). */
+  --sentinel-device-button-radius-base: 32;
+  --sentinel-device-button-radius: 32px;
+  --sentinel-device-button-border-color: #154665;
+}
+
+/* Device frame shell: ring-only border (no dimension impact). */
+.rti-device-canvas,
+.rtiDeviceContent {
+  border: 0 !important;
+  background: var(--sentinel-device-frame-bg) !important;
+  box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width)
+    var(--sentinel-device-frame-ring-color) !important;
+  border-radius: var(--sentinel-device-frame-radius-other) !important;
+}
+
+/* iPhone/iPad profile: rounded frame corners. */
+.rti-device-canvas:has(.device-page.sentinel-device-profile-iphone-ipad),
+.rtiDeviceContent:has(.device-page.sentinel-device-profile-iphone-ipad) {
+  border-radius: var(--sentinel-device-frame-radius-iphone-ipad) !important;
+}
+
+.btn-wrap {
+  --btn-fill-color: var(--sentinel-fill-screen-button);
+  --btn-state-trim-color: var(--sentinel-trim-untested);
+  --btn-state-trim-width: 0px;
+}
+
+.test-btn {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--sentinel-device-button-radius);
+  background: var(--btn-fill-color);
+  box-shadow: inset 0 0 0 1px var(--sentinel-device-button-border-color),
+    inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);
+  color: #fff;
+  line-height: 1.1;
+  white-space: pre-line;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+}
+
+.btn-pass-total {
+  display: none !important;
+  visibility: hidden !important;
+}

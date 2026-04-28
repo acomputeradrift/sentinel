@@ -104,17 +104,19 @@ def _measure_one_run(
         if not _wait_for_text(page, "h1", "Sentinel Console", timeout_ms):
             raise RuntimeError("Commissioning UI did not load.")
 
-        page.locator("#tab-manage").click()
+        page.locator("#tab-file").click()
         client_name = _new_name(f"probe-client-r{run_index}")
         project_name = _new_name(f"probe-project-{_slug(apex_path.stem)}-r{run_index}")
 
-        page.fill("#newClientName", client_name)
-        page.locator("#createClientBtn").click()
+        page.locator("#clientSelect").select_option(value="__new_client__")
+        page.fill("#modalNewClientName", client_name)
+        page.locator("#modalNewClientSubmit").click()
         if not _wait_for_text(page, "#clientSelect", client_name, timeout_ms):
             raise RuntimeError("Client was not created/selected.")
 
-        page.fill("#newProjectName", project_name)
-        page.locator("#createProjectBtn").click()
+        page.locator("#projectSelect").select_option(value="__new_project__")
+        page.fill("#modalNewProjectName", project_name)
+        page.locator("#modalNewProjectSubmit").click()
         if not _wait_for_text(page, "#projectSelect", project_name, timeout_ms):
             raise RuntimeError("Project was not created/selected.")
 
