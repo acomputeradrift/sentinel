@@ -13,6 +13,7 @@ _ALLOW_TOKENS: tuple[str, ...] = (
     ".rti-content",
     ".rti-device-canvas",
     ".rti-device-canvas-hk",
+    ".rtiDeviceContent",
     ".device-page",
     ".vp-box",
     ".vp-overlay",
@@ -106,6 +107,10 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
     def test_split_chrome_selectors_survive_filter(self) -> None:
         self.assertTrue(_shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-left"))
         self.assertTrue(_shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-right"))
+        self.assertTrue(
+            _shell_style_selector_allowed(".rtiDeviceContent:not(.rti-device-canvas-hk)"),
+            msg="shared sentinel_device_theme.css uses .rtiDeviceContent for commissioning mount",
+        )
 
     def test_hk_slot_and_frame_rules_survive_filter(self) -> None:
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .box"))

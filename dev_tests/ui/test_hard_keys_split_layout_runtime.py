@@ -392,7 +392,8 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             page.close()
             server.stop()
 
-    def test_device_and_touch_rings_use_box_shadow_not_gray_border(self):
+    def test_hk_outer_canvas_has_no_ring_touch_and_hard_key_columns_have_rings(self):
+        """Hard-key mode: no outer #rtiDeviceCanvas ring; black ring on touchscreen `.hk-touch-stack` and `.hk-split-right`."""
         page, server = self._render_and_serve()
         try:
             result = page.evaluate(
@@ -402,22 +403,29 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
   if (!canvas) return {error: 'no #rtiDeviceCanvas'};
   const touch = document.querySelector('.hk-touch-stack');
   if (!touch) return {error: 'no .hk-touch-stack'};
+  const right = document.querySelector('.hk-split-right');
+  if (!right) return {error: 'no .hk-split-right'};
   const c = getComputedStyle(canvas);
   const t = getComputedStyle(touch);
+  const r = getComputedStyle(right);
   return {
     canvasBorderW: c.borderTopWidth,
     canvasShadow: c.boxShadow,
     touchBorderW: t.borderTopWidth,
     touchShadow: t.boxShadow,
+    rightBorderW: r.borderTopWidth,
+    rightShadow: r.boxShadow,
   };
 }
 """
             )
             self.assertNotIn("error", result, msg=result.get("error", ""))
             self.assertEqual(result["canvasBorderW"], "0px")
-            self.assertNotEqual(result["canvasShadow"], "none")
+            self.assertEqual(result["canvasShadow"], "none")
             self.assertEqual(result["touchBorderW"], "0px")
             self.assertNotEqual(result["touchShadow"], "none")
+            self.assertEqual(result["rightBorderW"], "0px")
+            self.assertNotEqual(result["rightShadow"], "none")
         finally:
             page.close()
             server.stop()

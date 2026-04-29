@@ -1,4 +1,6 @@
-﻿:root {
+﻿@import url("../testing/sentinel_device_theme.css");
+
+:root {
   --device-header-h: 50px;
   --device-footer-h: 40px;
   --controls-expanded-w: 300px;
@@ -170,6 +172,8 @@ body {
   inset-inline-end: var(--controls-collapsed-w);
   background: var(--color-rti);
   border: 0;
+  outline: none;
+  box-shadow: none;
   z-index: 1;
   overflow: auto;
   scrollbar-width: none;
@@ -448,11 +452,6 @@ body {
 
 .rtiDeviceContent {
   position: absolute;
-  border: 0;
-  border-radius: var(--sentinel-device-frame-radius-other, 0px);
-  background: var(--sentinel-device-frame-bg, #f8fbfe);
-  box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width, 3px)
-    var(--sentinel-device-frame-ring-color, #000);
   overflow: hidden;
   box-sizing: border-box;
   z-index: 2;

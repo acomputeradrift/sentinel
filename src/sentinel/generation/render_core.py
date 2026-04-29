@@ -2447,7 +2447,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
-.rti-device-canvas{{--sentinel-ring-border:0;--sentinel-ring-radius:var(--sentinel-device-frame-radius-other, 0px);--sentinel-ring-shadow:0 0 0 var(--sentinel-device-frame-ring-width, 3px) var(--sentinel-device-frame-ring-color, #000);position:absolute;border:0;box-shadow:var(--sentinel-ring-shadow);border-radius:var(--sentinel-ring-radius);background:var(--sentinel-device-frame-bg, #f8fbfe);overflow:hidden;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas:not(.rti-device-canvas-hk){{position:absolute;border:0;overflow:hidden;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas.rti-device-canvas-hk{{position:absolute;border:0;overflow:visible;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
@@ -2549,13 +2550,12 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
- .rti-device-canvas-hk{{border:0;border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:var(--sentinel-device-frame-bg, #f8fbfe);padding:0;overflow:hidden;box-sizing:border-box;}}
  .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
- .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;}}
+ .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;min-height:100%;}}
  .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
- .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:#ffffff;z-index:2;}}
- .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;border:0;border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:var(--sentinel-device-frame-bg, #f8fbfe);overflow:hidden;}}
- .hk-split-right .frame{{margin:0 auto;}}
+ .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;left:auto;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;z-index:2;}}
+ .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;}}
+ .hk-split-right .frame{{margin:0 auto;max-height:100%;}}
  .hk-split-right .box{{position:relative;}}
  .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:stretch;justify-content:stretch;}}
 </style>{_hard_key_template_style_tag}</head>
@@ -4739,8 +4739,8 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    const zoneH=zone.clientHeight;
    if (designW>0 && designH>0 && zoneW>0 && zoneH>0) {{
      const fitScale=Math.min(zoneW/designW, zoneH/designH);
-     const frameW=designW*fitScale;
-     const frameH=designH*fitScale;
+     const frameW=Math.max(1, Math.floor(designW*fitScale));
+     const frameH=Math.max(1, Math.floor(designH*fitScale));
      zone.style.setProperty('--frame-w', `${{frameW}}px`);
      zone.style.setProperty('--frame-h', `${{frameH}}px`);
    }}

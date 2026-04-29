@@ -21,9 +21,13 @@
   --sentinel-device-button-border-color: #154665;
 }
 
-/* Device frame shell: ring-only border (no dimension impact). */
-.rti-device-canvas,
-.rtiDeviceContent {
+/*
+ * Device frame shell — single source for testing HTML and commissioning mount.
+ * - Outer black ring + fill: all devices except hard-key split (those use inner column rings).
+ * - iPhone/iPad: larger frame corner radius; all others use --sentinel-device-frame-radius-other.
+ */
+.rti-device-canvas:not(.rti-device-canvas-hk),
+.rtiDeviceContent:not(.rti-device-canvas-hk) {
   border: 0 !important;
   background: var(--sentinel-device-frame-bg) !important;
   box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width)
@@ -31,10 +35,36 @@
   border-radius: var(--sentinel-device-frame-radius-other) !important;
 }
 
-/* iPhone/iPad profile: rounded frame corners. */
-.rti-device-canvas:has(.device-page.sentinel-device-profile-iphone-ipad),
-.rtiDeviceContent:has(.device-page.sentinel-device-profile-iphone-ipad) {
+.rti-device-canvas:not(.rti-device-canvas-hk):has(.device-page.sentinel-device-profile-iphone-ipad),
+.rtiDeviceContent:not(.rti-device-canvas-hk):has(.device-page.sentinel-device-profile-iphone-ipad) {
   border-radius: var(--sentinel-device-frame-radius-iphone-ipad) !important;
+}
+
+/* Hard-key split: outer mount is ringless; rings on touchscreen + remote columns. */
+.rti-device-canvas.rti-device-canvas-hk,
+.rtiDeviceContent.rti-device-canvas-hk {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.rti-device-canvas-hk .hk-touch-stack,
+.rti-device-canvas-hk .device-page .hk-split-right {
+  border: 0 !important;
+  border-radius: var(--sentinel-device-frame-radius-other) !important;
+  box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width)
+    var(--sentinel-device-frame-ring-color) !important;
+}
+
+.rti-device-canvas-hk .hk-touch-stack {
+  background: var(--sentinel-device-frame-bg) !important;
+  overflow: hidden;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right {
+  background: #ffffff !important;
+  overflow: hidden;
 }
 
 .btn-wrap {
