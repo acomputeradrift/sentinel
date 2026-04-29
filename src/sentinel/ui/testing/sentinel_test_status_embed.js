@@ -6,20 +6,20 @@
   "use strict";
 
   const CATEGORY_FILL = {
-    screenLabels: "#58585a",
-    screenButtons: "#2c6fb7",
-    hardButtons: "#2c6fb7",
-    uiItems: "#a7a9ac",
-    emptyTag: "#ef4444",
-    systemEvents: "#58585a",
-    driverEvents: "#2c6fb7",
+    screenLabels: "var(--sentinel-fill-screen-label, #58585a)",
+    screenButtons: "var(--sentinel-fill-screen-button, #2c6fb7)",
+    hardButtons: "var(--sentinel-fill-hard-button, #2c6fb7)",
+    uiItems: "var(--sentinel-fill-ui-item, #a7a9ac)",
+    emptyTag: "var(--sentinel-fill-empty-tag, #ef4444)",
+    systemEvents: "var(--sentinel-fill-system-event, #58585a)",
+    driverEvents: "var(--sentinel-fill-driver-event, #2c6fb7)",
   };
 
   const STATE_TRIM = {
-    pass: "#39b54a",
-    partial: "#fcb040",
-    fail: "#ef4444",
-    untested: "transparent",
+    pass: "var(--sentinel-trim-pass, #39b54a)",
+    partial: "var(--sentinel-trim-partial, #fcb040)",
+    fail: "var(--sentinel-trim-fail, #ef4444)",
+    untested: "var(--sentinel-trim-untested, transparent)",
   };
 
   function buttonCategoryKeyFromMeta(meta, wrap) {

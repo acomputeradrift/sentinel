@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import copy
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -218,6 +219,94 @@ def _two_room_checked_sources_diag() -> dict:
             },
         ],
         "sourceListRows": rows,
+    }
+
+
+def _non_synthetic_room_link_pages() -> list[dict]:
+    nav_btn = {
+        "buttonIdentity": {"buttonTagName": "NAV - Living", "text": "Living Room", "buttonType": None},
+        "buttonUI": {
+            "fontSize": 12,
+            "orientations": {
+                "portrait": {"visible": True, "coordinates": {"left": 20, "top": 40, "width": 180, "height": 40}},
+                "landscape": {"visible": True, "coordinates": {"left": 40, "top": 60, "width": 220, "height": 44}},
+            },
+            "stack": {"layerOrder": 0, "buttonOrder": 1, "frameNumber": 0},
+        },
+        "testTargets": {
+            "text": False,
+            "macros": False,
+            "macroSteps": False,
+            "variables": {k: False for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List")},
+            "graphics": {"bitmap": False, "icon": False},
+            "pageLink": {"enabled": True, "targetPageId": 2},
+        },
+        "resolvedPageLink": {"targetPageId": 2, "targetPageName": "Living Room", "resolutionPath": "roomSelectEvent", "resolvedRoomId": 2},
+        "apexScopeSource": {
+            "page": {"pageId": 1, "roomId": 0, "sourceDeviceId": 11, "rtiAddress": 99},
+            "viewportLayer": {"layerId": 0, "sharedLayerId": 0, "roomId": None, "sourceId": None},
+            "pageLayer": {"roomId": None, "sourceId": None},
+            "button": {"buttonId": 9001, "buttonTagId": 222},
+            "bindings": {"macroIds": [300], "variableIds": [], "macroStepIds": [301], "pageLinkId": 701},
+        },
+    }
+    home = {
+        "pageName": "Home",
+        "pageId": 1,
+        "rtiAddress": 99,
+        "layers": [
+            {
+                "layerName": "Main",
+                "layerOrder": 0,
+                "sharedLayerId": 0,
+                "buttonCategories": {"screenLabels": [], "screenButtons": [nav_btn], "hardButtons": [], "uiItems": []},
+                "viewports": [],
+            }
+        ],
+    }
+    room = {
+        "pageName": "Living Room",
+        "pageId": 2,
+        "rtiAddress": 99,
+        "layers": [
+            {
+                "layerName": "Main",
+                "layerOrder": 0,
+                "sharedLayerId": 0,
+                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": [], "uiItems": []},
+                "viewports": [],
+            }
+        ],
+    }
+    return [home, room]
+
+
+def _non_synthetic_room_link_diag() -> dict:
+    return {
+        "deviceId": 1,
+        "pages": [
+            {"pageId": 1, "buttons": [{"buttonId": 9001, "buttonTagName": "NAV - Living", "identifiers": {"text": "Living Room"}}], "viewports": []},
+            {"pageId": 2, "buttons": [], "viewports": []},
+        ],
+        "rooms": [
+            {
+                "roomId": 1,
+                "roomName": "Kitchen",
+                "controllerRoomOrder": 0,
+                "roomSelectTagsAll": [],
+                "roomSelectRoomLabelTags": [{"buttonTagId": 1, "buttonTagName": "Kitchen", "macroId": 1}],
+                "resolvedPageLink": {},
+            },
+            {
+                "roomId": 2,
+                "roomName": "Living Room",
+                "controllerRoomOrder": 1,
+                "roomSelectTagsAll": [],
+                "roomSelectRoomLabelTags": [{"buttonTagId": 2, "buttonTagName": "Living Room", "macroId": 2}],
+                "resolvedPageLink": {},
+            },
+        ],
+        "sourceListRows": [],
     }
 
 
@@ -635,6 +724,66 @@ async () => {
   const maxMinTop = Math.max(...samples);
   if (maxMinTop > 4) return { ok: false, reason: 'first-paint compaction flash detected', maxMinTop, samples };
   return { ok: true, maxMinTop, samples };
+}
+"""
+            )
+            self.assertTrue(result.get("ok"), msg=str(result))
+        finally:
+            page.close()
+            server.stop()
+
+    def test_non_synthetic_page_link_uses_resolved_room_id_for_selected_room(self):
+        device = {
+            "userFacing": {
+                "displayName": "NavDevice",
+                "deviceUI": _device_ui_standard(),
+                "pages": _non_synthetic_room_link_pages(),
+            },
+            "diagnostics": _non_synthetic_room_link_diag(),
+        }
+        project = {"devices": [device]}
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        merged = {**app_ui, **self._app_ui_browser_viewport()}
+        nav = copy.deepcopy(merged.get("appNavigation") or {})
+        links = copy.deepcopy(nav.get("pageLinks") or {})
+        links["enabled"] = True
+        nav["pageLinks"] = links
+        merged["appNavigation"] = nav
+        html = render_single_device_html(project, merged, project_stem="synthetic_scroll_ui", device_index=0)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel-synthetic-scroll-"))
+        source_path = tmp_dir / "source_runtime.html"
+        source_path.write_text(html, encoding="utf-8")
+        shell_template = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "project_device_static_layout.html"
+        shell_css = ROOT / "src" / "sentinel" / "ui" / "commissioning" / "project_device_static_layout.css"
+        shell_path = tmp_dir / "shell_runtime.html"
+        css_copy = tmp_dir / "project_device_static_layout.css"
+        css_copy.write_text(shell_css.read_text(encoding="utf-8"), encoding="utf-8")
+        doc = shell_template.read_text(encoding="utf-8")
+        doc = doc.replace("</head>", '<meta name="sentinel-shell-source" content="/source_runtime.html"></head>', 1)
+        shell_path.write_text(doc, encoding="utf-8")
+        server = self._StaticServer(tmp_dir)
+        server.start()
+        assert server.base_url
+        page = self._browser.new_page(viewport={"width": 1400, "height": 900})
+        page.goto(f"{server.base_url}/{shell_path.name}", wait_until="domcontentloaded")
+        page.wait_for_selector("#rtiDeviceContent .device-page.active .btn-wrap .page-link-hit", timeout=15000)
+        page.wait_for_timeout(300)
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const selectedBefore = (document.getElementById('selectedRoomValue')?.textContent || '').trim();
+  const link = document.querySelector('.device-page.active .btn-wrap .page-link-hit');
+  if (!link) return { ok: false, reason: 'missing page link' };
+  const roomAttr = Number(link.getAttribute('data-resolved-room-id') || 0);
+  if (roomAttr !== 2) return { ok: false, reason: 'link missing resolved room id', roomAttr };
+  link.click();
+  const active = document.querySelector('.device-page.active');
+  const activePage = Number(active?.dataset?.pageIndex ?? -1);
+  const selectedAfter = (document.getElementById('selectedRoomValue')?.textContent || '').trim();
+  if (activePage !== 1) return { ok: false, reason: 'did not navigate to destination page', activePage, selectedBefore, selectedAfter };
+  if (selectedAfter !== 'Living Room') return { ok: false, reason: 'selected room did not update from link room id', selectedBefore, selectedAfter };
+  return { ok: true, selectedBefore, selectedAfter, activePage };
 }
 """
             )

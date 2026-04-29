@@ -13,8 +13,27 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="topbar-inner" style="max-width: none; margin: 0; padding-left: 18px; padding-right: 18px;">
-          <h1>Sentinel Console</h1>
+        <div class="topbar-inner topbar-inner--wide">
+          <div class="topbar-brand">
+            <h1>Sentinel Console</h1>
+          </div>
+          <div class="topbar-actions" role="group" aria-label="Context and account">
+            <div class="topbar-cluster topbar-cluster--compact">
+              <label class="topbar-field">
+                <span class="topbar-field-label">Client</span>
+                <select id="clientSelect" aria-label="Client"></select>
+              </label>
+            </div>
+            <div class="topbar-cluster topbar-cluster--compact">
+              <label class="topbar-field">
+                <span class="topbar-field-label">Project</span>
+                <select id="projectSelect" aria-label="Project"></select>
+              </label>
+            </div>
+            <div class="user-chip user-chip--icon-only" aria-label="Signed in as Jamie" title="Jamie">
+              <span class="user-chip-avatar" aria-hidden="true">J</span>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -22,56 +41,27 @@
         <nav class="sidenav" aria-label="Console tabs">
           <button id="tab-commission" class="tab" type="button" aria-selected="false" data-tab="commission">Commissioning</button>
           <button id="tab-diagnostics" class="tab" type="button" aria-selected="false" data-tab="diagnostics">Diagnostics</button>
-          <button id="tab-manage" class="tab" type="button" aria-selected="false" data-tab="manage">Projects</button>
+          <button id="tab-file" class="tab" type="button" aria-selected="false" data-tab="file">File</button>
+          <button id="tab-tech-links" class="tab" type="button" aria-selected="false" data-tab="tech-links">Tech Links</button>
           <button id="tab-reports" class="tab" type="button" aria-selected="false" data-tab="reports">Reports</button>
           <button id="tab-clear-tests" class="tab" type="button" aria-selected="false" data-tab="clear-tests">Clear Tests</button>
         </nav>
 
         <main class="content">
-          <section id="panel-manage" class="panel" hidden>
-            <section class="card" id="manageClientCard">
-              <h2>Client</h2>
-              <div class="row">
-                <label class="field grow">
-                  <span>New client name</span>
-                  <input id="newClientName" type="text" placeholder="Enter here..." />
-                </label>
-                <button class="manage-create-btn" id="createClientBtn" type="button">Create client</button>
-              </div>
-              <div class="row">
-                <label class="field grow">
-                  <span>Client</span>
-                  <select id="clientSelect" aria-label="Client"></select>
-                </label>
-              </div>
-            </section>
-
-            <section class="card" id="manageProjectCard" hidden>
-              <h2>Project</h2>
-              <div class="row">
-                <label class="field grow">
-                  <span>New project name</span>
-                  <input id="newProjectName" type="text" placeholder="Enter here..." />
-                </label>
-                <button class="manage-create-btn" id="createProjectBtn" type="button">Create project</button>
-              </div>
-              <div class="row">
-                <label class="field grow">
-                  <span>Project</span>
-                  <select id="projectSelect" aria-label="Project"></select>
-                </label>
-              </div>
-
+          <section id="panel-file" class="panel" hidden>
+            <section class="card" id="manageProjectCard">
+              <h2>File</h2>
+              <p class="sub" id="fileHintNoProject">Select a client and project in the header.</p>
               <div id="manageProjectDetails" hidden>
                 <div class="manage-section">
-                  <h3>Current File</h3>
                   <div class="status">
                     <div id="lastGeneratedLabel">None</div>
+                    <div id="fileUploadedAt" class="sub" data-testid="file-uploaded-at" hidden></div>
                   </div>
                 </div>
 
                 <div class="manage-section">
-                  <div class="row">
+                  <div class="row file-upload-row">
                     <label class="field grow">
                       <input type="file" name="apex" id="apexFile" accept=".apex" />
                     </label>
@@ -83,28 +73,33 @@
                   </div>
                   <div class="status" data-testid="upload-status" id="uploadStatus"></div>
                 </div>
+              </div>
+            </section>
+          </section>
 
+          <section id="panel-tech-links" class="panel" hidden>
+            <section class="card">
+              <h2>Tech Links</h2>
+              <p class="sub" id="techHintNoProject">Select a client and project in the header.</p>
+              <div id="techLinksPanelBody" hidden>
                 <div class="manage-section">
-                  <h3>Current Tech Links</h3>
-                  <div class="row">
+                  <div class="row tech-links-create-row">
                     <label class="field grow">
                       <span>Tech label</span>
                       <input id="techLabel" type="text" placeholder="e.g. Onsite Tech" />
                     </label>
                     <button id="createTechLinkBtn" type="button" disabled>Create tech link</button>
-                  </div>
-                  <div class="status">
-                    <div class="mono" data-testid="tech-url" id="techUrl"></div>
-                    <div id="techLinkStatus"></div>
+                    <span id="techLinkStatus" class="tech-link-inline-status" role="status"></span>
                   </div>
 
                   <div class="table-wrap">
                     <table class="mini-table" aria-label="Active tech links">
                       <thead>
                         <tr>
-                          <th style="width: 220px">Label</th>
+                          <th style="width: 140px">Label</th>
+                          <th>Link</th>
                           <th style="width: 190px">Created (UTC)</th>
-                          <th style="width: 110px"></th>
+                          <th style="width: 140px"></th>
                         </tr>
                       </thead>
                       <tbody id="techLinksBody"></tbody>
@@ -113,6 +108,21 @@
                   </div>
                 </div>
               </div>
+            </section>
+          </section>
+
+          <section id="panel-reports" class="panel" hidden>
+            <section class="card">
+              <h2>Reports</h2>
+              <p class="sub">Project-specific reports will appear here.</p>
+            </section>
+          </section>
+
+          <section id="panel-clear-tests" class="panel" hidden>
+            <section class="card">
+              <h2>Clear Tests</h2>
+              <p class="sub">Remove all recorded test results for the current project.</p>
+              <button class="manage-create-btn" id="clearTestsBtn" type="button">Clear tests for this project</button>
             </section>
           </section>
 
@@ -276,11 +286,12 @@
                       </div>
                       <div class="diag-pie-legend diag-pie-legend-compact" aria-hidden="true">
                         <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">text</span></div>
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">macros</span></div>
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">macro step</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">system macros</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">macro steps</span></div>
                         <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">variables</span></div>
                         <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">graphics</span></div>
-                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">pageLink</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">pageLinks</span></div>
+                        <div class="diag-legend-row"><span class="diag-legend-swatch"></span><span class="diag-legend-text">event triggers</span></div>
                       </div>
                     </div>
                   </section>
@@ -369,6 +380,36 @@
         </main>
       </div>
     </div>
+
+    <dialog id="modalNewClient" class="commissioning-dialog" aria-labelledby="modalNewClientTitle">
+      <div class="commissioning-dialog-inner">
+        <h2 id="modalNewClientTitle" class="commissioning-dialog-title">New client</h2>
+        <label class="field">
+          <span>Name</span>
+          <input id="modalNewClientName" type="text" autocomplete="off" />
+        </label>
+        <p id="modalNewClientStatus" class="field-error" role="status"></p>
+        <div class="dialog-actions">
+          <button type="button" class="manage-create-btn" id="modalNewClientCancel">Cancel</button>
+          <button type="button" class="manage-create-btn" id="modalNewClientSubmit">Create</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="modalNewProject" class="commissioning-dialog" aria-labelledby="modalNewProjectTitle">
+      <div class="commissioning-dialog-inner">
+        <h2 id="modalNewProjectTitle" class="commissioning-dialog-title">New project</h2>
+        <label class="field">
+          <span>Name</span>
+          <input id="modalNewProjectName" type="text" autocomplete="off" />
+        </label>
+        <p id="modalNewProjectStatus" class="field-error" role="status"></p>
+        <div class="dialog-actions">
+          <button type="button" class="manage-create-btn" id="modalNewProjectCancel">Cancel</button>
+          <button type="button" class="manage-create-btn" id="modalNewProjectSubmit">Create</button>
+        </div>
+      </div>
+    </dialog>
 
     <script src="./commissioning.js"></script>
     <!-- commission-tab:js -->

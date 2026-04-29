@@ -1,5 +1,6 @@
 import sys
 import unittest
+import re
 from pathlib import Path
 
 
@@ -62,6 +63,29 @@ def _app_ui() -> dict:
 
 
 class ButtonStackOrderRenderingRegressionTest(unittest.TestCase):
+    @staticmethod
+    def _extract_button_z(html: str, tag: str) -> int:
+        pattern = (
+            r"<div class='[^']*' style='([^']*)'[^>]*data-button-tag='"
+            + re.escape(tag)
+            + r"'"
+        )
+        match = re.search(pattern, html)
+        if not match:
+            raise AssertionError(f"Missing button markup for tag: {tag}")
+        style = match.group(1)
+        z_match = re.search(r"z-index:([0-9]+)", style)
+        if not z_match:
+            raise AssertionError(f"Missing z-index in style for tag: {tag}")
+        return int(z_match.group(1))
+
+    @staticmethod
+    def _extract_first_vp_box_z(html: str) -> int:
+        match = re.search(r"class='vp-box' style='z-index:([0-9]+);'", html)
+        if not match:
+            raise AssertionError("Missing viewport box markup")
+        return int(match.group(1))
+
     def test_page_layer_respects_button_order_across_categories(self):
         project_data = {
             "devices": [
@@ -166,6 +190,89 @@ class ButtonStackOrderRenderingRegressionTest(unittest.TestCase):
         idx_bg = html.index("data-button-tag='VP-BG'")
         idx_act = html.index("data-button-tag='VP-ACT'")
         self.assertLess(idx_bg, idx_act, "Expected lower buttonOrder VP-BG to render before higher buttonOrder VP-ACT")
+
+    def test_viewport_child_z_stays_below_vp_box_and_respects_vp_layer_order(self):
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "RTI (Test Device)",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 3,
+                                        "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 123},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {"visible": True, "coordinates": {"top": 10, "left": 20, "height": 200, "width": 300}},
+                                                        "landscape": {"visible": False, "coordinates": {"top": 10, "left": 20, "height": 200, "width": 300}},
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Layer 0",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "screenButtons": [_button("VP-L0", button_order=10, top=40)],
+                                                                    "hardButtons": [],
+                                                                    "uiItems": [],
+                                                                },
+                                                            }
+                                                        ],
+                                                    },
+                                                    {
+                                                        "layerName": "Viewport Layer 1",
+                                                        "layerOrder": 1,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "screenButtons": [_button("VP-L1", button_order=0, top=80)],
+                                                                    "hardButtons": [],
+                                                                    "uiItems": [],
+                                                                },
+                                                            }
+                                                        ],
+                                                    },
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "buttonCategories": {"screenLabels": [], "screenButtons": [], "hardButtons": []},
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                    "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                }
+            ]
+        }
+
+        html = render_single_device_html(project_data, _app_ui(), project_stem="sample_project_data", device_index=0)
+        vp_box_z = self._extract_first_vp_box_z(html)
+        vp_l0_z = self._extract_button_z(html, "VP-L0")
+        vp_l1_z = self._extract_button_z(html, "VP-L1")
+
+        self.assertLess(vp_l0_z, vp_box_z, "Viewport child button must stay below vp-box interaction/surface z")
+        self.assertLess(vp_l1_z, vp_box_z, "Viewport child button must stay below vp-box interaction/surface z")
+        self.assertGreater(vp_l1_z, vp_l0_z, "Higher viewport layerOrder should have higher z within owning layer band")
 
 
 if __name__ == "__main__":

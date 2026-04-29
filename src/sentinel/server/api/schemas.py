@@ -32,8 +32,8 @@ class PostTestResultBody(BaseModel):
     @classmethod
     def normalize_outcome(cls, v: str) -> str:
         u = str(v or "").strip().upper()
-        if u not in ("PASS", "FAIL"):
-            raise ValueError("outcome must be PASS or FAIL")
+        if u not in ("PASS", "FAIL", "UNTESTED"):
+            raise ValueError("outcome must be PASS, FAIL, or UNTESTED")
         return u
 
     def fail_note_normalized(self) -> str | None:

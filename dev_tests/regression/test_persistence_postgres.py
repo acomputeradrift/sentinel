@@ -10,6 +10,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+
 
 DATABASE_URL_ENV = "DATABASE_URL"
 
@@ -34,10 +36,12 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
         db.apply_migrations(database_url)
 
         suffix = uuid4().hex
-        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        client_id = queries.create_client(
+            database_url, user_id=COMMISSIONING_STUB_USER_ID, name=f"Test Client {suffix}"
+        )
         project_id = queries.create_project(database_url, client_id=client_id, name=f"Test Project {suffix}")
 
-        clients = queries.list_clients(database_url)
+        clients = queries.list_clients_for_user(database_url, user_id=COMMISSIONING_STUB_USER_ID)
         self.assertTrue(any(c["clientId"] == client_id for c in clients))
 
         projects = queries.list_projects_for_client(database_url, client_id=client_id)
@@ -91,7 +95,9 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
         db.apply_migrations(database_url)
 
         suffix = uuid4().hex
-        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        client_id = queries.create_client(
+            database_url, user_id=COMMISSIONING_STUB_USER_ID, name=f"Test Client {suffix}"
+        )
         project_id = queries.create_project(database_url, client_id=client_id, name=f"Test Project {suffix}")
 
         tech_link = queries.create_tech_link(database_url, project_id=project_id, label="Onsite Tech")
@@ -165,7 +171,9 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
         db.apply_migrations(database_url)
 
         suffix = uuid4().hex
-        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        client_id = queries.create_client(
+            database_url, user_id=COMMISSIONING_STUB_USER_ID, name=f"Test Client {suffix}"
+        )
         project_id = queries.create_project(database_url, client_id=client_id, name=f"Test Project {suffix}")
 
         upload_id = str(uuid4())
@@ -192,7 +200,9 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
         db.apply_migrations(database_url)
 
         suffix = uuid4().hex
-        client_id = queries.create_client(database_url, name=f"Test Client {suffix}")
+        client_id = queries.create_client(
+            database_url, user_id=COMMISSIONING_STUB_USER_ID, name=f"Test Client {suffix}"
+        )
         p1 = queries.create_project(database_url, client_id=client_id, name=f"Project A {suffix}")
         p2 = queries.create_project(database_url, client_id=client_id, name=f"Project B {suffix}")
 

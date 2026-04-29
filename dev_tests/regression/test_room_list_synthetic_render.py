@@ -550,6 +550,21 @@ class RoomListSyntheticRenderingTest(unittest.TestCase):
         self.assertIn("function setSelectedRoom(", html)
         self.assertIn("function applySelectedRoomToSourceRows(", html)
 
+    def test_runtime_page_link_handler_updates_room_for_non_synthetic_buttons(self):
+        p2 = {"pageName": "B", "pageId": 2, "rtiAddress": 99, "layers": []}
+        device = {
+            "userFacing": {"displayName": "DeviceA", "pages": [_minimal_source_list_host_page(), p2]},
+            "diagnostics": _minimal_diag(),
+        }
+        project = {"devices": [device]}
+        app_ui = render_core.load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_core.render_single_device_html(project, app_ui, "sample", device_index=0, resolved_targets=None)
+        self.assertIn("const resolvedRoomId=normalizeRoomId(link?.dataset?.resolvedRoomId);", html)
+        self.assertIn("else if (resolvedRoomId != null) {", html)
+        self.assertIn("setSelectedRoom(resolvedRoomId);", html)
+        self.assertIn("if (wrap && String(wrap.dataset.syntheticSourceList || '')==='1')", html)
+        self.assertIn("/* source-list rows intentionally do not set selected room */", html)
+
 
 if __name__ == "__main__":
     unittest.main()

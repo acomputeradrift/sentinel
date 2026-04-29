@@ -19,6 +19,10 @@ def _sentinel_test_status_embed_js() -> str:
     return (_SENTINEL_UI_DIR / "testing" / "sentinel_test_status_embed.js").read_text(encoding="utf-8")
 
 
+def _sentinel_device_theme_css() -> str:
+    return (_SENTINEL_UI_DIR / "testing" / "sentinel_device_theme.css").read_text(encoding="utf-8")
+
+
 def _resolution_or_default(resolution: dict[str, Any] | None, default_width: int, default_height: int) -> dict[str, int]:
     raw = resolution or {}
     width = int(raw.get("width") or 0)
@@ -86,6 +90,20 @@ def _page_link_target_id(btn: dict[str, Any]) -> int | None:
     if isinstance(resolved, dict):
         raw = resolved.get("targetPageId")
         return int(raw) if raw is not None else None
+    return None
+
+
+def _page_link_resolved_room_id(btn: dict[str, Any]) -> int | None:
+    resolved = btn.get("resolvedPageLink")
+    if isinstance(resolved, dict):
+        raw = resolved.get("resolvedRoomId")
+        if raw is not None:
+            try:
+                rid = int(raw)
+                if rid > 0:
+                    return rid
+            except (TypeError, ValueError):
+                return None
     return None
 
 
@@ -159,9 +177,9 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     if t.get("text"):
         out.append("Text")
     if t.get("macros"):
-        out.append("Macro")
+        out.append("System Macro")
     if t.get("macroSteps"):
-        out.append("MacroStep")
+        out.append("Macro Step")
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(variable_label_template.replace("{variableType}", name))
@@ -170,7 +188,7 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     if graphics_t.get("icon"):
         out.append("Icon")
     if _page_link_enabled(t):
-        out.append("PageLink")
+        out.append("Page Link")
     return out
 
 
@@ -294,6 +312,31 @@ def _button_composite_z_index(
     button_order = int(stack.get("buttonOrder", 0) or 0)
     frame_number = int(stack.get("frameNumber", fallback_frame_number) or fallback_frame_number)
     return _composite_z_index(layer_order, button_order, frame_number, tie_breaker=tie_breaker)
+
+
+def _viewport_child_composite_z_index(
+    *,
+    owner_layer_order: int,
+    vp_layer_order: int,
+    button_order: int,
+    frame_number: int,
+) -> int:
+    """Viewport child z that preserves layer bands and keeps vp-box on top.
+
+    Viewport children must never leap outside their owning page layer band, and must
+    remain below the viewport hit/surface cap so `.vp-box` keeps click capture/signifier
+    behavior in normal mode.
+    """
+    layer = int(owner_layer_order)
+    vp_layer = max(0, int(vp_layer_order))
+    btn = max(0, int(button_order))
+    frame = int(frame_number)
+
+    # Pack viewport layer + button order into the within-layer lane, then clamp below
+    # the viewport box cap to preserve `.vp-box` precedence.
+    packed_within_layer = (vp_layer * 10_000) + min(btn, 9_999)
+    packed_within_layer = min(packed_within_layer, max(0, _VP_BOX_BUTTON_ORDER - 2))
+    return _composite_z_index(layer, packed_within_layer, frame, tie_breaker=1)
 
 
 def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, int, int, str, int]]:
@@ -953,6 +996,7 @@ def _render_button_control(
     tag_name = _button_tag_name(btn)
     if link_cfg.get("enabled") and _page_link_enabled(targets):
         target_page_id = _page_link_target_id(btn)
+        resolved_room_id = _page_link_resolved_room_id(btn)
         target_href = page_targets.get(target_page_id) if target_page_id is not None else None
         if target_href:
             nav_width = int(link_cfg.get("hoverActivationArea", {}).get("width") or 28)
@@ -962,16 +1006,16 @@ def _render_button_control(
             page_index_attr = ""
             if target_page_id is not None and page_target_indexes and target_page_id in page_target_indexes:
                 page_index_attr = f" data-target-page-index='{page_target_indexes[target_page_id]}'"
+            resolved_room_attr = f" data-resolved-room-id='{int(resolved_room_id)}'" if resolved_room_id is not None else ""
             link_html = (
                 f"<a class='page-link-hit' href='{target_href}' aria-label='Open linked page' "
-                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}>"
+                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}{resolved_room_attr}>"
                 f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
             )
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-button-category='{escape(category_key, quote=True)}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
         f"<button class='test-btn' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
-        f"<div class='btn-pass-total' aria-hidden='true'></div>"
         f"{link_html}</div>"
     )
 
@@ -2195,8 +2239,15 @@ def _page_payload(
     for vb in _iter_viewport_buttons(page, orientation):
         btn = vb["btn"]
         c = _ui_coordinates(btn["buttonUI"], orientation)
+        stack = ((btn.get("buttonUI") or {}).get("stack") or {}) if isinstance(btn, dict) else {}
+        z = _viewport_child_composite_z_index(
+            owner_layer_order=int(vb["owner_layer_order"]),
+            vp_layer_order=int(vb.get("vp_layer_order") or 0),
+            button_order=int(stack.get("buttonOrder", 0) or 0),
+            frame_number=int(stack.get("frameNumber", vb.get("frame_id") or 0) or 0),
+        )
         extra = (
-            f"z-index:{_button_composite_z_index(btn, fallback_layer_order=int(vb['owner_layer_order']), fallback_frame_number=int(vb.get('frame_id') or 0))};"
+            f"z-index:{z};"
         )
         if not vb["visible"]:
             extra = "display:none;" + extra
@@ -2340,6 +2391,7 @@ def _render_document(
     hard_key_style_css: str = "",
     hard_key_design_w: int = 0,
     hard_key_design_h: int = 0,
+    device_profile_class: str = "",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -2359,10 +2411,12 @@ def _render_document(
     _hard_key_template_style_tag = (
         '<style data-sentinel-hard-key-template="1">\n' + _hk_css_stripped + "\n</style>" if _hk_css_stripped else ""
     )
+    device_theme_css = _sentinel_device_theme_css()
     return f"""<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
+{device_theme_css}
 html,body{{margin:0;width:100%;height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;overflow:hidden;}}
 .app-canvas{{position:relative;width:100vw;height:100vh;overflow:hidden;}}
@@ -2387,7 +2441,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
-.rti-device-canvas{{--sentinel-ring-border:1px solid #c6d2dd;--sentinel-ring-radius:10px;--sentinel-ring-shadow:none;position:absolute;border:var(--sentinel-ring-border);border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas{{--sentinel-ring-border:1px solid #c6d2dd;--sentinel-ring-radius:10px;--sentinel-ring-shadow:none;position:absolute;border:0;box-shadow:0 0 0 var(--sentinel-device-frame-ring-width, 3px) var(--sentinel-device-frame-ring-color, #000);border-radius:var(--sentinel-device-frame-radius-other, 0px);background:var(--sentinel-device-frame-bg, #f8fbfe);overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
@@ -2415,7 +2469,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup{{position:fixed;left:0;top:0;width:0;height:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,0.05);z-index:9800;}}
  .viewport-mode .vp-popup{{display:flex;}}
  .vp-popup[hidden]{{display:none;}}
- .vp-popup-panel{{position:relative;width:min(920px,calc(100% - 56px));height:min(720px,calc(100% - 56px));background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;isolation:isolate;}}
+.vp-popup-panel{{position:relative;width:100%;height:100%;max-width:none;max-height:none;background:rgba(247,251,255,.96);border:1px solid #b9cad8;border-radius:18px;box-shadow:0 18px 50px rgba(20,50,75,.20);overflow:hidden;box-sizing:border-box;isolation:isolate;}}
  .vp-popup-scroller{{position:absolute;inset:0;overflow:hidden;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable overlay;z-index:1;}}
  .vp-popup-scroller.scroll-hover:hover{{scrollbar-color:#a9bccd transparent;}}
  .vp-popup-scroller::-webkit-scrollbar{{width:10px;height:10px;}}
@@ -2434,9 +2488,6 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .vp-popup-indicator.is-vertical{{flex-direction:column;}}
  .vp-popup-viewport{{position:relative;left:auto;top:auto;border:2px dashed #88a6bd;border-radius:0;background:transparent;box-shadow:none;box-sizing:border-box;overflow:hidden;}}
  .vp-popup-vcontent{{position:relative;left:0;top:0;}}
-.btn-wrap{{--btn-fill-color:#2c6fb7;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
-.test-btn{{position:absolute;inset:0;box-sizing:border-box;border:0;border-radius:10px;background:var(--btn-fill-color);box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);color:#fff;line-height:1.1;white-space:pre-line;cursor:pointer;overflow:hidden;padding:0;}}
-.btn-pass-total{{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:none;visibility:hidden;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.22);color:#fff;font-size:11px;line-height:1.1;font-weight:700;white-space:nowrap;pointer-events:none;}}
 .page-link-hit{{position:absolute;top:0;right:0;height:100%;display:flex;align-items:center;justify-content:flex-end;text-decoration:none;color:#fff;opacity:1;pointer-events:auto;transition:opacity .15s ease;font-size:inherit;}}
 .page-link-icon{{display:inline-flex;align-items:center;justify-content:center;width:1em;height:1em;font-size:1em;line-height:1;background:transparent;border-radius:0;}}
 .page-link-icon .material-symbols-outlined{{font-size:1em;line-height:1;}}
@@ -2552,12 +2603,15 @@ let selectedRoomId=null;
  let techWsToken=null;
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
- let pendingTargetKey=null;
- let techLastAppliedSeq=0;
- let passAllQueue=[];
- let passAllContext=null;
- const rowStatusByTargetKey=new Map();
- const statusByTargetKey=new Map();
+let pendingTargetKey=null;
+let techLastAppliedSeq=0;
+let passAllQueue=[];
+let passAllContext=null;
+const rowStatusByTargetKey=new Map();
+const statusByTargetKey=new Map();
+const persistedLayerLocksByScope=new Map();
+const sessionUnlockedLayerLocks=new Set();
+const pendingLayerLockWsByKey=new Map();
  function _buttonTargetPrefix(wrap) {{
   if (!wrap || !wrap.dataset) return "";
   const deviceId=wrap.dataset.diagDeviceId;
@@ -2691,6 +2745,31 @@ function inferScopedRoomIdFromPage(pageEl) {{
  if (ids.size === 1) return Number(Array.from(ids)[0]);
  return null;
 }}
+function scopedRoomIdFromApexScope(apexScopeSource) {{
+ const src=(apexScopeSource && typeof apexScopeSource==="object") ? apexScopeSource : null;
+ if (!src) return null;
+ const page=(src.page && typeof src.page==="object") ? src.page : {{}};
+ const viewportLayer=(src.viewportLayer && typeof src.viewportLayer==="object")
+  ? src.viewportLayer
+  : ((src.layer && typeof src.layer==="object") ? src.layer : {{}});
+ const pageLayer=(src.pageLayer && typeof src.pageLayer==="object") ? src.pageLayer : {{}};
+ const roomRaw=(viewportLayer.roomId!=null)
+  ? viewportLayer.roomId
+  : ((pageLayer.roomId!=null) ? pageLayer.roomId : page.roomId);
+ return normalizeRoomId(roomRaw);
+}}
+function scopedRoomIdFromWrap(wrap) {{
+ if (!wrap) return null;
+ const btn=wrap.querySelector(".test-btn");
+ if (!btn || !btn.dataset) return null;
+ let meta={{}};
+ try {{
+  meta=JSON.parse(btn.dataset.meta||"{{}}");
+ }} catch (_e) {{
+  meta={{}};
+ }}
+ return scopedRoomIdFromApexScope(meta && typeof meta==="object" ? meta.apexScopeSource : null);
+}}
 function setSelectedRoom(nextRoomId, options) {{
  const opts=(options && typeof options==="object") ? options : {{}};
  const persist=opts.persist!==false;
@@ -2710,7 +2789,20 @@ function setSelectedRoom(nextRoomId, options) {{
    statusByTargetKey: statusByTargetKey,
    buildTargetPayload: buildTargetPayload,
   }});
+}}
+function deviceButtonRadiusBase() {{
+ try {{
+  const rootStyle=getComputedStyle(document.documentElement);
+  const rawBase=String(rootStyle.getPropertyValue('--sentinel-device-button-radius-base')||'').trim();
+  const nBase=Number.parseFloat(rawBase);
+  if (Number.isFinite(nBase) && nBase>0) return nBase;
+  const rawRadius=String(rootStyle.getPropertyValue('--sentinel-device-button-radius')||'').trim();
+  const nRadius=Number.parseFloat(rawRadius);
+  return Number.isFinite(nRadius) && nRadius>0 ? nRadius : 10;
+ }} catch (_e) {{
+  return 10;
  }}
+}}
  const _perfNow=()=>((typeof performance!=="undefined"&&performance.now)?performance.now():Date.now());
  const techPerf={{layoutCalls:0,layoutTotalMs:0,wsCalls:0,wsTotalMs:0,lastConsoleAt:0}};
  function _emitTechPerf(reason, lastMs) {{
@@ -2781,18 +2873,22 @@ function setSelectedRoom(nextRoomId, options) {{
    _logTechWs("sync.request", Number(techLastAppliedSeq||0));
   }} catch (_e) {{}}
  }}
- function _applyTechPayload(payload) {{
-   const _wsT0=_perfNow();
-   const t = String(payload?.type || "").trim();
-   try {{
-    _logTechWs("recv", t || "(unknown)");
-    if (t === "error") {{
+function _applyTechPayload(payload) {{
+  const _wsT0=_perfNow();
+  const t = String(payload?.type || "").trim();
+  try {{
+   _logTechWs("recv", t || "(unknown)");
+   if (t === "error") {{
      const code = payload?.code;
      const message = payload?.message;
      const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-     setPosting(false);
-     setPostStatus(`Error: ${{msg}}`, "error");
-     drainPassAllQueue();
+     if (pendingTargetKey || isPosting) {{
+      setPosting(false);
+      setPostStatus(`Error: ${{msg}}`, "error");
+      drainPassAllQueue();
+     }} else {{
+      _logTechWs("error-msg", msg);
+     }}
      return;
     }}
     if (t === "replay.batch") {{
@@ -2812,6 +2908,7 @@ function setSelectedRoom(nextRoomId, options) {{
     }}
     if (t === "testing_snapshot") {{
      const results = Array.isArray(payload?.results) ? payload.results : [];
+     const layerLocks = Array.isArray(payload?.layerLocks) ? payload.layerLocks : [];
      let applied = 0;
      for (const rec of results) {{
       const targetKey = String(rec?.targetKey || "");
@@ -2825,8 +2922,19 @@ function setSelectedRoom(nextRoomId, options) {{
        applied += 1;
       }}
      }}
-     _logTechWs("snapshot:applied", {{ total: results.length, applied }});
+     _syncPersistedLayerLocksFromRows(layerLocks, true);
+     renderLayerPanel();
+     applyLayerVisibility();
+     applyRtiLayout();
+     _logTechWs("snapshot:applied", {{ total: results.length, applied, layerLocks: layerLocks.length }});
      refreshButtonVisualStates();
+     return;
+    }}
+    if (t === "layer_lock_state") {{
+     _syncPersistedLayerLocksFromRows([payload], false);
+     renderLayerPanel();
+     applyLayerVisibility();
+     applyRtiLayout();
      return;
     }}
     if (t === "commissioning_rollups") return;
@@ -2864,7 +2972,7 @@ function setSelectedRoom(nextRoomId, options) {{
    _logTechWs("recv:parse-failed");
   }}
  }}
- function _connectTechWs() {{
+function _connectTechWs() {{
   const techToken = techTokenFromLocation();
   if (!techToken) return;
   if (techWs && techWsToken === techToken) return;
@@ -2876,7 +2984,7 @@ function setSelectedRoom(nextRoomId, options) {{
   _logTechWs("connect", techToken);
   const ws = new WebSocket(techWsUrl(`/api/v1/testing/${{encodeURIComponent(techToken)}}/ws`));
   techWs = ws;
-  ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); }};
+ ws.onopen = () => {{ techWsReconnectDelayMs = 500; _logTechWs("open"); _sendTechSyncRequest(); _flushLayerLockWsQueue(); }};
   ws.onclose = () => {{
    techWs = null;
    _logTechWs("close");
@@ -2916,13 +3024,34 @@ function setSelectedRoom(nextRoomId, options) {{
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function _renderRowStatusTimes(rowUi) {{
+  if (!rowUi || !rowUi.lastTestEl) return;
+  const times = rowUi.statusTimes || {{}};
+  const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
+  if (outcome === "PASS" && times.PASS) {{
+    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    return;
+  }}
+  if (outcome === "FAIL" && times.FAIL) {{
+    rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
+    return;
+  }}
+  if (outcome === "UNTESTED" && times.UNTESTED) {{
+    rowUi.lastTestEl.textContent = `Reverted: ${{times.UNTESTED}}`;
+    return;
+  }}
+  rowUi.lastTestEl.textContent = "";
+ }}
  function setRowStatus(rowUi, outcome, recordedAtUtc) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
   if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
-  if (rowUi.lastTestEl) rowUi.lastTestEl.textContent = at ? `Last Test: ${{at}}` : "";
+  rowUi.currentOutcome = o;
+  if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
   if (!rowUi) return;
@@ -2942,7 +3071,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (kind === "EVENT") {{
    const eventId = refs.eventId;
    if (eventId == null) return null;
-   const targetKey = `event:${{eventId}}:${{label || "Trigger"}}`;
+  const targetKey = `event:${{eventId}}:${{label || "Event Trigger"}}`;
    return {{
     targetKey,
     kind: "EVENT",
@@ -3055,9 +3184,9 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
     const firstMacroStepId = macroStepIds.length ? Number(macroStepIds[0]) : null;
-    if (lowerLabel === "macro" || lowerLabel === "macros") {{
+    if (lowerLabel === "macro" || lowerLabel === "macros" || lowerLabel === "system macro" || lowerLabel === "system macros") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
-    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
+    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps" || lowerLabel === "macro step" || lowerLabel === "macro steps") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) {{
       if (firstMacroStepId != null && Number.isFinite(firstMacroStepId)) {{
        programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
@@ -3160,19 +3289,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
  }}
  function queuePassAll(ctxBtn, meta) {{
   clearPassAllQueue();
+  const m = (meta && typeof meta === "object") ? meta : {{}};
   rows.querySelectorAll('.row').forEach(row=>{{
    const label = String(row.querySelector('.n')?.textContent || '').trim();
-   const buttons = row.querySelectorAll('.actions button');
-   const rowUi = {{
-    passBtn: buttons.length >= 1 ? buttons[0] : null,
-    failBtn: buttons.length >= 2 ? buttons[1] : null,
-    lastTestEl: row.querySelector('.row-last-test'),
-   }};
    if (!label) return;
+   const target = buildTargetPayload(ctxBtn, m, label);
+   if (!target?.targetKey) return;
+   const rowUi = rowStatusByTargetKey.get(target.targetKey);
+   if (!rowUi) return;
    passAllQueue.push({{ label, rowUi }});
   }});
   if (!passAllQueue.length) return;
-  passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m }};
   drainPassAllQueue();
  }}
 
@@ -3193,7 +3321,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
 
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -3217,7 +3345,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
 
   const payload={{
     type:"test_result.submit",
-    target:{{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName}},
+    target:{{targetKey:target.targetKey,kind:target.kind,refs:{{...(target.refs||{{}}), ...(isRevert ? {{ revertedFrom: "PASS" }} : {{}})}},targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
   }};
@@ -3262,7 +3390,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     rowStatusByTargetKey.set(target.targetKey, rowUi);
     applyCachedStatus(rowUi, target.targetKey);
    }}
-   passBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'PASS', null, rowUi);}});
+   passBtn.addEventListener('click', e=>{{e.stopPropagation(); const nextOutcome = rowUi.currentOutcome === 'PASS' ? 'UNTESTED' : 'PASS'; postResultWs(ctxBtn, meta, label, nextOutcome, null, rowUi, nextOutcome === 'UNTESTED');}});
    failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
@@ -3283,8 +3411,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
      clearPassAllQueue();
      setPostStatus('','');
      if (passAllBtn) {{
-      passAllBtn.disabled = !(Array.isArray(m.targets) && m.targets.length);
-      passAllBtn.onclick = () => queuePassAll(b, m);
+      const targets = Array.isArray(m.targets) ? m.targets : [];
+      const showPassAll = targets.length > 1;
+      passAllBtn.hidden = !showPassAll;
+      passAllBtn.disabled = !showPassAll;
+      passAllBtn.onclick = showPassAll ? (() => queuePassAll(b, m)) : null;
      }}
      ov.classList.add('open');
      bindResultRows(b, m);
@@ -3392,15 +3523,76 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
     indicator: document.getElementById('vpPopupIndicator')
    }};
   }}
+  function computeViewportPopupBounds() {{
+   const usable=document.getElementById('rtiUsableCanvas') || document.getElementById('rtiCanvas');
+   if (!usable) return null;
+   const ur=usable.getBoundingClientRect();
+   const controls={{
+    top:Number(APP_UI_CONTROLS.top||0),
+    bottom:Number(APP_UI_CONTROLS.bottom||0),
+    left:Number(APP_UI_CONTROLS.left||0),
+    right:Number(APP_UI_CONTROLS.right||0),
+   }};
+   let expandedContractWidth=NaN;
+   try {{
+    const rootStyle=getComputedStyle(document.documentElement);
+    expandedContractWidth=Number.parseFloat(String(rootStyle.getPropertyValue('--controls-expanded-w')||'').replace('px','').trim());
+   }} catch (_e) {{}}
+   const effectiveLeft=Number.isFinite(expandedContractWidth) ? Math.max(0, expandedContractWidth) : controls.left;
+   const effectiveRight=Number.isFinite(expandedContractWidth) ? Math.max(0, expandedContractWidth) : controls.right;
+   let left=effectiveLeft;
+   let top=controls.top;
+   let width=Math.max(1, window.innerWidth - effectiveLeft - effectiveRight);
+   let height=Math.max(1, window.innerHeight - controls.top - controls.bottom);
+   if (!Number.isFinite(left) || !Number.isFinite(top) || !Number.isFinite(width) || !Number.isFinite(height) || width <= 1 || height <= 1) {{
+    left=ur.left;
+    top=ur.top;
+    width=Math.max(1, ur.width);
+    height=Math.max(1, ur.height);
+   }}
+   return {{
+    left,
+    top,
+    width,
+    height,
+   }};
+  }}
   function syncViewportPopupBounds() {{
-   const rtiCanvas=document.getElementById('rtiCanvas');
    const popup=document.getElementById('vpPopup');
-   if (!rtiCanvas || !popup) return;
-   const rr=rtiCanvas.getBoundingClientRect();
-   popup.style.left=`${{rr.left}}px`;
-   popup.style.top=`${{rr.top}}px`;
-   popup.style.width=`${{rr.width}}px`;
-   popup.style.height=`${{rr.height}}px`;
+   if (!popup) return;
+   const bounds=computeViewportPopupBounds();
+   if (!bounds) return;
+   popup.style.left=`${{bounds.left}}px`;
+   popup.style.top=`${{bounds.top}}px`;
+   popup.style.width=`${{bounds.width}}px`;
+   popup.style.height=`${{bounds.height}}px`;
+  }}
+  function waitForStableViewportBounds(onStable) {{
+   let prev=null;
+   let stableFrames=0;
+   let ticks=0;
+   const MAX_TICKS=10;
+   const EPS=0.75;
+   const step=() => {{
+    if (!viewportMode.active) return;
+    const cur=computeViewportPopupBounds();
+    if (cur && prev) {{
+     const stable=
+      Math.abs(cur.left - prev.left) <= EPS &&
+      Math.abs(cur.top - prev.top) <= EPS &&
+      Math.abs(cur.width - prev.width) <= EPS &&
+      Math.abs(cur.height - prev.height) <= EPS;
+     stableFrames = stable ? (stableFrames + 1) : 0;
+    }}
+    prev=cur;
+    ticks += 1;
+    if (stableFrames >= 1 || ticks >= MAX_TICKS) {{
+     onStable();
+     return;
+    }}
+    requestAnimationFrame(step);
+   }};
+   requestAnimationFrame(step);
   }}
  function activeViewportFrameId(vpIndex) {{
   const frames=activePageState().vpFrames||[];
@@ -3492,8 +3684,9 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
   }}
 	  function applyViewportPopupLayout() {{
 	    if (!viewportMode.active) return;
-	    syncViewportPopupBounds();
 	    const els=popupElements();
+	    if (!els.popup) return;
+	    syncViewportPopupBounds();
 	    const stage=els.stage;
 	    const scroller=els.scroller;
 	    const scrollpad=els.scrollpad;
@@ -3641,11 +3834,11 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
     inner.style.top=`${{it}}px`;
     inner.style.width=`${{iw}}px`;
     inner.style.height=`${{ih}}px`;
-    const btn=inner.querySelector('.test-btn');
+   const btn=inner.querySelector('.test-btn');
     if (btn) {{
      const buttonFontPx=resolveButtonFontPx(inner, scale);
      btn.style.fontSize=`${{buttonFontPx}}px`;
-     btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+     btn.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*scale)}}px`;
      const linkHit=inner.querySelector('.page-link-hit');
      if (linkHit) applyLinkSizing(linkHit, buttonFontPx, scale);
     }}
@@ -3665,7 +3858,7 @@ ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.cla
    if (btn) {{
     const buttonFontPx=resolveButtonFontPx(el, scale);
     btn.style.fontSize=`${{buttonFontPx}}px`;
-    btn.style.borderRadius=`${{Math.max(2, 10*scale)}}px`;
+    btn.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*scale)}}px`;
     const linkHit=el.querySelector('.page-link-hit');
     if (linkHit) applyLinkSizing(linkHit, buttonFontPx, scale);
    }}
@@ -3849,12 +4042,19 @@ function enterViewportMode(vpIndex) {{
   viewportMode.active=true;
   viewportMode.vpIndex=Number(vpIndex||0);
   viewportMode.preZoom=currentZoomPercent;
-   syncViewportPopupBounds();
-   overlay.removeAttribute('hidden');
-   popup.removeAttribute('hidden');
+  overlay.removeAttribute('hidden');
   viewportRoot.classList.add('viewport-mode');
   focusViewportElements();
-  renderViewportPopup();
+  // Wait until shell/side-panel geometry stops moving, then size the popup once and render.
+  // Doing layout before this (or re-layout in a second pass) makes the viewer jump when bounds settle.
+  const openViewportWhenStable=() => {{
+   if (!viewportMode.active) return;
+   syncViewportPopupBounds();
+   popup.removeAttribute('hidden');
+   renderViewportPopup();
+   positionPopupIndicator();
+  }};
+  waitForStableViewportBounds(openViewportWhenStable);
   syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); }});
   renderLayerPanel();
   applyLayerVisibility();
@@ -3885,9 +4085,48 @@ function exitViewportMode() {{
   syncViewportControls();
   applyLayerVisibility();
 }}
-const persistedLayerLocksByScope=new Map();
-const sessionUnlockedLayerLocks=new Set();
-const loadedLayerLockScopes=new Set();
+function _syncPersistedLayerLocksFromRows(rows, replaceAll) {{
+ const list = Array.isArray(rows) ? rows : [];
+ if (replaceAll) persistedLayerLocksByScope.clear();
+ list.forEach((row) => {{
+  const rowScope=String(row?.scopeKey||'').trim();
+  const layerKey=String(row?.layerKey||'').trim();
+  if (!rowScope || !layerKey) return;
+  const lockKey=layerLockCompositeKey(rowScope, layerKey);
+  if (Boolean(row?.locked)) {{
+   persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(row?.visible), locked:true}});
+  }} else {{
+   persistedLayerLocksByScope.delete(lockKey);
+  }}
+ }});
+}}
+function _flushLayerLockWsQueue() {{
+ if (!techWs || techWs.readyState !== 1) return;
+ const items=Array.from(pendingLayerLockWsByKey.entries());
+ items.forEach(([key, payload]) => {{
+  try {{
+   techWs.send(JSON.stringify(payload));
+   pendingLayerLockWsByKey.delete(key);
+   _logTechWs("send", payload?.type || "");
+  }} catch (_e) {{}}
+ }});
+}}
+function _queueLayerLockStateForWs(scopeKey, layerKey, visible, locked) {{
+ const scope=String(scopeKey||'').trim();
+ const layer=String(layerKey||'').trim();
+ if (!scope || !layer) return;
+ const payload={{
+  type:"layer_lock.set",
+  scopeKey:scope,
+  layerKey:layer,
+  visible:Boolean(visible),
+  locked:Boolean(locked),
+ }};
+ const key=layerLockCompositeKey(scope, layer);
+ pendingLayerLockWsByKey.set(key, payload);
+ _flushLayerLockWsQueue();
+ if (pendingLayerLockWsByKey.has(key)) _connectTechWs();
+}}
 function layerScopeKey(state) {{
  return [PROJECT_SESSION_KEY, state?.deviceName||'', state?.pageName||''].join('::');
 }}
@@ -3920,51 +4159,8 @@ function layerPersistenceLockKey(layer, defaultScopeKey) {{
  const layerKey=layerPersistenceLayerKey(layer);
  return layerLockCompositeKey(scopeKey, layerKey);
 }}
-function layerLocksApiUrl() {{
- const techToken=techTokenFromLocation();
- if (!techToken) return '';
- return `/api/v1/testing/${{encodeURIComponent(techToken)}}/layer-locks`;
-}}
-function syncLayerLocksForScope(scopeKey, force) {{
- const scope=String(scopeKey||'').trim();
- if (!scope) return Promise.resolve();
- if (!force && loadedLayerLockScopes.has(scope)) return Promise.resolve();
- const url=layerLocksApiUrl();
- if (!url) return Promise.resolve();
- return fetch(`${{url}}?scopeKey=${{encodeURIComponent(scope)}}`, {{credentials:'same-origin'}})
-  .then((res) => {{
-   if (!res.ok) return null;
-   return res.json();
-  }})
-  .then((payload) => {{
-   if (!payload) return;
-   const locks=Array.isArray(payload?.locks) ? payload.locks : [];
-   locks.forEach((row)=>{{
-    const rowScope=String(row?.scopeKey||'').trim();
-    const layerKey=String(row?.layerKey||'').trim();
-    if (!rowScope || !layerKey) return;
-    const lockKey=layerLockCompositeKey(rowScope, layerKey);
-    if (Boolean(row?.locked)) {{
-     persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(row?.visible), locked:true}});
-    }} else {{
-     persistedLayerLocksByScope.delete(lockKey);
-    }}
-   }});
-   loadedLayerLockScopes.add(scope);
-  }})
-  .catch(() => {{}});
-}}
-function syncLayerLocksForActiveLayers(force) {{
- const baseScope=activeLayerScopeKey();
- const scopes=new Set();
- const addScope=(value)=>{{
-  const scope=String(value||'').trim();
-  if (scope) scopes.add(scope);
- }};
- addScope(baseScope);
- (activeLayerList()||[]).forEach(layer=>{{ addScope(layerPersistenceScopeKey(layer, baseScope)); }});
- const scopeList=Array.from(scopes);
- return scopeList.reduce((p, scope) => p.then(() => syncLayerLocksForScope(scope, force)), Promise.resolve());
+function syncLayerLocksForActiveLayers(_force) {{
+ return Promise.resolve();
 }}
 function loadLayerVisibility(scopeKey) {{
  try {{
@@ -4137,15 +4333,7 @@ function renderLayerPanel() {{
       sessionUnlockedLayerLocks.delete(lockKey);
       const lockedVisible=visibility[key] !== false;
       persistedLayerLocksByScope.set(lockKey, {{visible:Boolean(lockedVisible), locked:true}});
-      const url=layerLocksApiUrl();
-      if (url) {{
-        fetch(url, {{
-          method:'POST',
-          headers:{{'content-type':'application/json'}},
-          credentials:'same-origin',
-          body:JSON.stringify({{scopeKey:lockScopeKey, layerKey:lockLayerKey, visible:Boolean(lockedVisible), locked:true}})
-        }}).catch(()=>{{}});
-      }}
+      _queueLayerLockStateForWs(lockScopeKey, lockLayerKey, Boolean(lockedVisible), true);
       renderLayerPanel();
       applyLayerVisibility();
       return;
@@ -4174,10 +4362,13 @@ function renderLayerPanel() {{
  }});
   pageEl.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
-   const baseVisible=String(el.dataset.visible||'1')==='1';
+   let baseVisible=String(el.dataset.visible||'1')==='1';
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
    if (el.classList.contains('vp-btn')) {{
+     // Viewport children should be gated by viewport orientation/frame/layer state, not stale data-visible.
+     baseVisible=true;
+     shouldShow=layerVisible && baseVisible;
      if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
       shouldShow=false;
      }}
@@ -4203,13 +4394,16 @@ function renderLayerPanel() {{
   }});
   pageEl.querySelectorAll('.btn-wrap').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
-   const baseVisible=String(el.dataset.visible||'1')==='1';
+   let baseVisible=String(el.dataset.visible||'1')==='1';
    const layerVisible=isLayerVisible(layerKey);
    let shouldShow=layerVisible && baseVisible;
   if (String(el.dataset.syntheticSourceList || '') === '1' && String(el.dataset.selectedRoomMatch || '1') !== '1') {{
     shouldShow=false;
   }}
    if (el.classList.contains('vp-btn')) {{
+     // Viewport children should be gated by viewport orientation/frame/layer state, not stale data-visible.
+     baseVisible=true;
+     shouldShow=layerVisible && baseVisible;
      if (viewportMode.active && Number(el.dataset.vp||-1)!==Number(viewportMode.vpIndex||0)) {{
       shouldShow=false;
      }}
@@ -4528,7 +4722,7 @@ const offsetTop=(contentHeight-fittedHeight)/2;
     if (button) {{
       const buttonFontPx=resolveButtonFontPx(el, totalScale);
       button.style.fontSize=`${{buttonFontPx}}px`;
-      button.style.borderRadius=`${{Math.max(2, 10*totalScale)}}px`;
+      button.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*totalScale)}}px`;
       const linkHit=el.querySelector('.page-link-hit');
       if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
     }}
@@ -4580,6 +4774,50 @@ function scheduleRtiLayout(reason) {{
 }}
 function clamp(value,min,max){{return Math.min(max,Math.max(min,value));}}
 let _readyBaselineSent=false;
+window.__sentinelRuntimeReady=false;
+let _runtimeReadySignaled=false;
+const _shellBootDelayMs=Math.max(0, Number(window.__sentinelShellBootDelayMs||0));
+function markRuntimeReady() {{
+ if (_runtimeReadySignaled) return;
+ _runtimeReadySignaled=true;
+ window.__sentinelRuntimeReady=true;
+ try {{
+  if (document.body) document.body.setAttribute('data-sentinel-runtime-ready','1');
+  document.dispatchEvent(new CustomEvent('sentinel:runtime-ready', {{ detail: {{ ready:true }} }}));
+ }} catch (_e) {{}}
+}}
+function waitForStableRtiGeometry(onStable) {{
+ let prev=null;
+ let stableFrames=0;
+ let ticks=0;
+ const MAX_TICKS=24;
+ const EPS=0.75;
+ const step=() => {{
+  const canvas=document.getElementById('rtiCanvas');
+  if (!canvas) {{
+   onStable();
+   return;
+  }}
+  const r=canvas.getBoundingClientRect();
+  const cur={{left:r.left, top:r.top, width:r.width, height:r.height}};
+  if (prev) {{
+   const stable=
+    Math.abs(cur.left-prev.left)<=EPS &&
+    Math.abs(cur.top-prev.top)<=EPS &&
+    Math.abs(cur.width-prev.width)<=EPS &&
+    Math.abs(cur.height-prev.height)<=EPS;
+   stableFrames=stable ? (stableFrames+1) : 0;
+  }}
+  prev=cur;
+  ticks += 1;
+  if (stableFrames>=2 || ticks>=MAX_TICKS) {{
+   onStable();
+   return;
+  }}
+  requestAnimationFrame(step);
+ }};
+ requestAnimationFrame(step);
+}}
 function maybeReportReadyBaseline() {{
  if (_readyBaselineSent) return;
  const canvas=document.getElementById('rtiCanvas');
@@ -4635,7 +4873,7 @@ function ensurePageMaterialized(pageIndex) {{
  const inner=PAGE_HTML_BY_INDEX[String(normalized)];
  if (typeof inner !== 'string') return null;
  pageEl=document.createElement('div');
- pageEl.className='device-page';
+ pageEl.className='device-page {device_profile_class}';
  pageEl.dataset.pageIndex=String(normalized);
  pageEl.innerHTML=inner;
  rtiDeviceCanvas.appendChild(pageEl);
@@ -4678,20 +4916,37 @@ renderOrientationToggle();
 applyOrientationState();
 // Ensure synthetic source rows are compacted before first layout paint.
 applyLayerVisibility();
-syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
 syncTextZoomResetText();
-applyRtiLayout();
 const rtiCanvasEl=document.getElementById('rtiCanvas');
 if (rtiCanvasEl) rtiCanvasEl.addEventListener('scroll', applyRtiLayout, {{passive:true}});
+const _finalizeRuntimeBoot=() => {{
+ waitForStableRtiGeometry(() => {{
+  if (_shellBootDelayMs > 0) {{
+   setTimeout(markRuntimeReady, _shellBootDelayMs);
+  }} else {{
+   markRuntimeReady();
+  }}
+ }});
+}};
+applyRtiLayout();
+syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); _finalizeRuntimeBoot(); }});
 	document.addEventListener('click', e=>{{
 	 const link=e.target.closest('.page-link-hit');
 	 if (!link) return;
 	 const targetPageIndex=link.dataset.targetPageIndex;
 	 if (targetPageIndex==null || targetPageIndex==='') return;
 	 e.preventDefault();
+   const resolvedRoomId=normalizeRoomId(link?.dataset?.resolvedRoomId);
    const wrap=link.closest('.btn-wrap');
    if (wrap && String(wrap.dataset.syntheticRoomList || '')==='1') {{
     setSelectedRoom(wrap.dataset.syntheticRoomId);
+   }} else if (wrap && String(wrap.dataset.syntheticSourceList || '')==='1') {{
+    /* source-list rows intentionally do not set selected room */
+   }} else if (resolvedRoomId != null) {{
+    setSelectedRoom(resolvedRoomId);
+   }} else {{
+    const scopedRoomId=scopedRoomIdFromWrap(wrap);
+    if (scopedRoomId != null) setSelectedRoom(scopedRoomId);
    }}
 	 if (viewportMode.active) exitViewportMode();
 	 setActivePage(targetPageIndex);
@@ -4823,14 +5078,14 @@ def _driver_resolved_actions(user: dict[str, Any]) -> tuple[list[str], list[dict
 
 def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> str:
     if macro_names and not command_names:
-        noun = "macro" if len(macro_names) == 1 else "macros"
+        noun = "System Macro" if len(macro_names) == 1 else "System Macros"
         return f"run {noun}: {'; '.join(macro_names)}"
     if command_names and not macro_names:
         noun = "command" if len(command_names) == 1 else "commands"
         return f"run {noun}: {'; '.join(command_names)}"
     if macro_names and command_names:
         parts = [
-            f"{'macro' if len(macro_names) == 1 else 'macros'} {'; '.join(macro_names)}",
+            f"{'System Macro' if len(macro_names) == 1 else 'System Macros'} {'; '.join(macro_names)}",
             f"{'command' if len(command_names) == 1 else 'commands'} {'; '.join(command_names)}",
         ]
         return f"run actions: {'; '.join(parts)}"
@@ -4839,7 +5094,7 @@ def _event_action_phrase(macro_names: list[str], command_names: list[str]) -> st
 
 def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
     user = item.get("userFacing", {}) if isinstance(item, dict) else {}
-    trigger = str(user.get("resolvedTrigger") or "No trigger").strip()
+    trigger = str(user.get("resolvedTrigger") or "No Event Trigger").strip()
     if event_kind == "driver":
         driver_category = str(user.get("driverCategory") or "").strip()
         trigger_text = f"{driver_category} / {trigger}" if driver_category else trigger
@@ -4852,18 +5107,18 @@ def _event_button_text(item: dict[str, Any], event_kind: str) -> str:
             else:
                 first_action_name = next((str(step.get("name") or "").strip() for step in macro_steps if str(step.get("name") or "").strip()), "")
         if macro_names and not macro_steps:
-            noun = "macro" if len(macro_names) == 1 else "macros"
+            noun = "System Macro" if len(macro_names) == 1 else "System Macros"
             remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
             return f"When {trigger_text} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
         if macro_steps and not macro_names:
             undefined_count = int(user.get("macroStepCount") or len(macro_steps) or 0)
             if macro_steps and all(str(step.get("type") or "") == "undefined" for step in macro_steps):
-                noun = "macro step" if undefined_count == 1 else "macro steps"
+                noun = "Macro Step" if undefined_count == 1 else "Macro Steps"
                 return f"When {trigger_text} happens, run {undefined_count} undefined {noun}"
             if len(macro_steps) == 1 and str(macro_steps[0].get("type") or "") == "command":
-                return f"When {trigger_text} happens, run macro step (Command): {first_action_name or 'Unknown'}"
+                return f"When {trigger_text} happens, run Macro Step (Command): {first_action_name or 'Unknown'}"
             remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
-            noun = "macro step" if total_actions == 1 else "macro steps"
+            noun = "Macro Step" if total_actions == 1 else "Macro Steps"
             return f"When {trigger_text} happens, run {noun}: {first_action_name or 'Unknown'}{remainder}"
         if macro_names and macro_steps:
             remainder = f" ...+{total_actions - 1} more" if total_actions > 1 else ""
@@ -4890,11 +5145,18 @@ def _event_meta(item: dict[str, Any], event_kind: str) -> dict[str, Any]:
     targets: list[str] = []
     test_targets = user.get("testTargets", {})
     if isinstance(test_targets, dict):
-        for label in ("Trigger", "Macro", "Macros", "MacroStep", "MacroSteps", "Command", "Commands"):
-            if test_targets.get(label):
-                targets.append(label)
+        canonical_map = (
+            ("Event Trigger", ("Event Trigger", "Trigger")),
+            ("System Macro", ("System Macro", "System Macros", "Macro", "Macros")),
+            ("Macro Step", ("Macro Step", "Macro Steps", "MacroStep", "MacroSteps")),
+            ("Command", ("Command", "Commands")),
+        )
+        for canonical, aliases in canonical_map:
+            if any(test_targets.get(alias) for alias in aliases):
+                targets.append(canonical)
 
     refs: dict[str, Any] = {"eventId": int(event_id) if event_id is not None else None}
+    refs["eventKind"] = "DRIVER" if event_kind == "driver" else "SYSTEM"
     if isinstance(diag, dict):
         if diag.get("scope") is not None:
             refs["scope"] = diag.get("scope")
@@ -4931,7 +5193,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
         system_rows.append(
             f"<div class='btn-wrap btn-wrap--home-event'>"
             f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'system')}</button>"
-            f"<div class='btn-pass-total' aria-hidden='true'></div></div>"
+            f"</div>"
         )
 
     driver_rows = []
@@ -4947,7 +5209,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
             driver_rows.append(
                 f"<div class='btn-wrap btn-wrap--home-event'>"
                 f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{_event_button_text(item, 'driver')}</button>"
-                f"<div class='btn-pass-total' aria-hidden='true'></div></div>"
+                f"</div>"
             )
 
     device_rows = []
@@ -4965,6 +5227,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
     system_content = "".join(system_rows) if system_rows else "<div class='home-empty'>No system events in project.</div>"
     driver_content = "".join(driver_rows) if driver_rows else "<div class='home-empty'>No driver events in project.</div>"
     device_content = "".join(device_rows) if device_rows else "<div class='home-empty'>No testable devices in project.</div>"
+    device_title = f"Devices | {_count_label(len(device_rows), 'device')}"
 
     app_json = json.dumps(app_ui)
     _ts_embed = _sentinel_test_status_embed_js()
@@ -4979,8 +5242,10 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-title{{margin:0;font-size:32px;line-height:1.05;}}
 .home-source{{margin-top:10px;font-size:14px;color:#4d6678;word-break:break-word;}}
 .home-section{{margin-top:28px;padding:22px 24px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
-.section-toggle{{display:inline-flex;align-items:center;gap:10px;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
+.section-toggle{{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;box-sizing:border-box;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
+.section-toggle-main{{display:inline-flex;align-items:center;gap:10px;min-width:0;}}
 .section-toggle-label{{font-size:22px;line-height:1.1;font-weight:700;}}
+.section-pct{{flex-shrink:0;font-size:18px;line-height:1.1;font-weight:700;color:#5a7387;}}
 .section-chevron{{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;color:#5a7387;}}
 .section-chevron svg{{display:block;width:14px;height:14px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;}}
 .home-subtitle{{margin:18px 0 10px;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5a7387;}}
@@ -4991,7 +5256,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .btn-wrap.btn-wrap--home-event{{width:100%;position:relative;border-radius:16px;--btn-fill-color:#1e5f86;--btn-state-trim-color:transparent;--btn-state-trim-width:0px;}}
 .btn-wrap--home-event .test-btn{{width:100%;margin:0;font:inherit;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:0;background:var(--btn-fill-color);color:#fff;box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);font-size:15px;line-height:1.35;text-align:left;cursor:pointer;white-space:normal;}}
 .btn-wrap--home-event:hover .test-btn{{filter:brightness(1.05);}}
-.btn-wrap--home-event .btn-pass-total{{position:absolute;left:6px;top:50%;transform:translateY(-50%);display:none;visibility:hidden;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.22);color:#fff;font-size:11px;line-height:1.1;font-weight:700;white-space:nowrap;pointer-events:none;}}
+.btn-wrap--home-event .btn-pass-total{{display:none !important;visibility:hidden !important;}}
 .device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px;z-index:10000;}}
@@ -5034,16 +5299,16 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <div class='home-source'>{source_file}</div>
 </section>
 <section class='home-section'>
-<button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-system'>0%</span></button>
 <div class='home-list' id='system-events' hidden>{system_content}</div>
 </section>
 <section class='home-section'>
-<button class='section-toggle' type='button' data-target='driver-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-label'>{driver_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></button>
+<button class='section-toggle' type='button' data-target='driver-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{driver_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-driver'>0%</span></button>
 <div class='home-list' id='driver-events' hidden>{driver_content}</div>
 </section>
 <section class='home-section'>
-<h2>Devices</h2>
-<div class='home-list'>{device_content}</div>
+<button class='section-toggle' type='button' data-target='devices' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{device_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-devices'>0%</span></button>
+<div class='home-list' id='devices' hidden>{device_content}</div>
 </section>
 </main>
 <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
@@ -5062,6 +5327,35 @@ const APP_UI={app_json};
  let passAllContext=null;
  const rowStatusByTargetKey=new Map();
  const statusByTargetKey=new Map();
+ function homePctDisplay(pass, total) {{
+  const p = Number(pass || 0);
+  const t = Number(total || 0);
+  if (t <= 0) return "0%";
+  return `${{Math.round((p / t) * 100)}}%`;
+ }}
+ function updateHomeSectionPercents(progress) {{
+  if (!progress || typeof progress !== "object") return;
+  const sys = progress.eventSections && progress.eventSections.system ? progress.eventSections.system.counts : null;
+  const drv = progress.eventSections && progress.eventSections.driver ? progress.eventSections.driver.counts : null;
+  const elS = document.getElementById("home-pct-system");
+  const elD = document.getElementById("home-pct-driver");
+  const elV = document.getElementById("home-pct-devices");
+  if (elS && sys) elS.textContent = homePctDisplay(sys.pass, sys.totalTargets);
+  if (elD && drv) elD.textContent = homePctDisplay(drv.pass, drv.totalTargets);
+  if (elV && Array.isArray(progress.devices)) {{
+   let pass = 0, total = 0;
+   for (let i = 0; i < progress.devices.length; i++) {{
+    const d = progress.devices[i];
+    const c = d && d.counts ? d.counts : null;
+    if (!c) continue;
+    const t = Number(c.totalTargets || 0);
+    if (t <= 0) continue;
+    total += t;
+    pass += Number(c.pass || 0);
+   }}
+   elV.textContent = homePctDisplay(pass, total);
+  }}
+ }}
  function refreshHomeEventVisualStates() {{
   const api=globalThis.__sentinelTestStatus;
   if (!api||typeof api.refreshButtonWraps!=="function") return;
@@ -5152,7 +5446,10 @@ const APP_UI={app_json};
     refreshHomeEventVisualStates();
     return;
    }}
-   if (t === "commissioning_rollups") return;
+   if (t === "commissioning_rollups") {{
+    updateHomeSectionPercents(payload?.progress);
+    return;
+   }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
@@ -5232,13 +5529,34 @@ const APP_UI={app_json};
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function _renderRowStatusTimes(rowUi) {{
+  if (!rowUi || !rowUi.lastTestEl) return;
+  const times = rowUi.statusTimes || {{}};
+  const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
+  if (outcome === "PASS" && times.PASS) {{
+    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    return;
+  }}
+  if (outcome === "FAIL" && times.FAIL) {{
+    rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
+    return;
+  }}
+  if (outcome === "UNTESTED" && times.UNTESTED) {{
+    rowUi.lastTestEl.textContent = `Reverted: ${{times.UNTESTED}}`;
+    return;
+  }}
+  rowUi.lastTestEl.textContent = "";
+ }}
  function setRowStatus(rowUi, outcome, recordedAtUtc) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
   if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
-  if (rowUi.lastTestEl) rowUi.lastTestEl.textContent = at ? `Last Test: ${{at}}` : "";
+  rowUi.currentOutcome = o;
+  if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
   if (!rowUi) return;
@@ -5258,7 +5576,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (kind === "EVENT") {{
    const eventId = refs.eventId;
    if (eventId == null) return null;
-   const targetKey = `event:${{eventId}}:${{label || "Trigger"}}`;
+  const targetKey = `event:${{eventId}}:${{label || "Event Trigger"}}`;
    return {{
     targetKey,
     kind: "EVENT",
@@ -5371,9 +5689,9 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
     const firstMacroStepId = macroStepIds.length ? Number(macroStepIds[0]) : null;
-    if (lowerLabel === "macro" || lowerLabel === "macros") {{
+    if (lowerLabel === "macro" || lowerLabel === "macros" || lowerLabel === "system macro" || lowerLabel === "system macros") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) programRef = `macro:${{firstMacroId}}`;
-    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps") {{
+    }} else if (lowerLabel === "macrostep" || lowerLabel === "macrosteps" || lowerLabel === "macro step" || lowerLabel === "macro steps") {{
      if (firstMacroId != null && Number.isFinite(firstMacroId)) {{
       if (firstMacroStepId != null && Number.isFinite(firstMacroStepId)) {{
        programRef = `mstep:${{firstMacroId}}:${{firstMacroStepId}}`;
@@ -5476,19 +5794,18 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
  }}
  function queuePassAll(ctxBtn, meta) {{
   clearPassAllQueue();
+  const m = (meta && typeof meta === "object") ? meta : {{}};
   rows.querySelectorAll('.row').forEach(function(row){{
-   const label = String((row.querySelector('.n')||{{}}).textContent || '').trim();
-   const buttons = row.querySelectorAll('.actions button');
-   const rowUi = {{
-    passBtn: buttons.length >= 1 ? buttons[0] : null,
-    failBtn: buttons.length >= 2 ? buttons[1] : null,
-    lastTestEl: row.querySelector('.row-last-test'),
-   }};
+   var label = String((row.querySelector('.n')||{{}}).textContent || '').trim();
    if (!label) return;
-   passAllQueue.push({{ label, rowUi }});
+   var target = buildTargetPayload(ctxBtn || null, m, label);
+   if (!target || !target.targetKey) return;
+   var rowUi = rowStatusByTargetKey.get(target.targetKey);
+   if (!rowUi) return;
+   passAllQueue.push({{ label: label, rowUi: rowUi }});
   }});
   if (!passAllQueue.length) return;
-  passAllContext = {{ ctxBtn: ctxBtn || null, meta: (meta && typeof meta === "object") ? meta : {{}} }};
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m }};
   drainPassAllQueue();
  }}
  function setPosting(on) {{
@@ -5516,7 +5833,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   else section.setAttribute("hidden", "hidden");
   btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
  }}
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -5540,7 +5857,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
 
   const payload={{
     type:"test_result.submit",
-    target:{{targetKey:target.targetKey,kind:target.kind,refs:target.refs,targetName:target.targetName}},
+    target:{{targetKey:target.targetKey,kind:target.kind,refs:{{...(target.refs||{{}}), ...(isRevert ? {{ revertedFrom: "PASS" }} : {{}})}},targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
     failNote:note
   }};
@@ -5573,7 +5890,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     rowStatusByTargetKey.set(target.targetKey, rowUi);
     applyCachedStatus(rowUi, target.targetKey);
    }}
-   passBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'PASS', null, rowUi);}});
+  passBtn.addEventListener('click', function(e){{e.stopPropagation(); const nextOutcome = rowUi.currentOutcome === 'PASS' ? 'UNTESTED' : 'PASS'; postResultWs(null, meta, label, nextOutcome, null, rowUi, nextOutcome === 'UNTESTED');}});
    failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
@@ -5589,8 +5906,10 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     clearPassAllQueue();
     setPostStatus('','');
     if (passAllBtn) {{
-     passAllBtn.disabled = !targets.length;
-     passAllBtn.onclick = function(){{ queuePassAll(null, m); }};
+     const showPassAll = targets.length > 1;
+     passAllBtn.hidden = !showPassAll;
+     passAllBtn.disabled = !showPassAll;
+     passAllBtn.onclick = showPassAll ? function(){{ queuePassAll(null, m); }} : null;
     }}
     ov.classList.add('open');
    bindResultRows(m);
@@ -5636,6 +5955,13 @@ def build_device_render_bundle(
         },
     }
     pages = uf.get("pages", [])
+    device_display_name = str(uf.get("displayName", "") or "")
+    profile_name = device_display_name.lower()
+    device_profile_class = (
+        "sentinel-device-profile-iphone-ipad"
+        if ("iphone" in profile_name or "ipad" in profile_name)
+        else "sentinel-device-profile-other"
+    )
     title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
     header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
@@ -5724,7 +6050,6 @@ def build_device_render_bundle(
     if not isinstance(source_list, list):
         source_list = []
     first_page_inner = page_html_by_index.get("0", "")
-    initial_page_markup = f"<div class='device-page active' data-page-index='0'>{first_page_inner}</div>" if pages else ""
     hard_key_style_css = ""
     hard_key_design_w = 0
     hard_key_design_h = 0
@@ -5736,6 +6061,11 @@ def build_device_render_bundle(
         model = _hk_registry.MODELS.get(product_model_key)
         if model is not None:
             hard_key_design_w, hard_key_design_h = model.design_size
+    initial_page_markup = (
+        f"<div class='device-page active {device_profile_class}' data-page-index='0'>{first_page_inner}</div>"
+        if pages
+        else ""
+    )
     html = _render_document(
         app_ui,
         header,
@@ -5754,6 +6084,7 @@ def build_device_render_bundle(
         hard_key_style_css=hard_key_style_css,
         hard_key_design_w=hard_key_design_w,
         hard_key_design_h=hard_key_design_h,
+        device_profile_class=device_profile_class,
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):

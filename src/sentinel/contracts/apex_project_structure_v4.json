@@ -222,7 +222,8 @@
                       "resolvedPageLink": {
                         "targetPageId": 0,
                         "targetPageName": null,
-                        "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent"
+                        "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+                        "resolvedRoomId": null
                       },
                       "apexScopeSource": {
                         "page": {
@@ -354,7 +355,8 @@
                                   "resolvedPageLink": {
                                     "targetPageId": 0,
                                     "targetPageName": null,
-                                    "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent"
+                                    "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+                                    "resolvedRoomId": null
                                   },
                                   "apexScopeSource": {
                                     "page": {
@@ -430,7 +432,8 @@
             "resolvedPageLink": {
               "targetPageId": 0,
               "targetPageName": null,
-              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent"
+              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+              "resolvedRoomId": null
             }
           }
         ],
@@ -445,7 +448,8 @@
             "resolvedPageLink": {
               "targetPageId": 0,
               "targetPageName": null,
-              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent"
+              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+              "resolvedRoomId": null
             }
           }
         ],

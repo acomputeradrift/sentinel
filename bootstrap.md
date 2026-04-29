@@ -36,5 +36,6 @@ When needed, append:
 
 - **Testing:** `The agent runs tests (devtools/run_regression_with_venv.py or scoped unittest); Jamie does not run test commands.`
 - Backend only: `Focus on src/sentinel/server/**`
-- UI only: `Focus on src/sentinel/ui/commissioning/** and src/sentinel/generation/render_core.py`
+- UI only: `Focus on src/sentinel/ui/commissioning/**, src/sentinel/ui/testing/**, and src/sentinel/generation/render_core.py`
 - Deploy only: `Follow docs/directives/dev_environment_and_workflow.md strictly`
+- Extraction/contract changes: `If you add or change extracted/output fields, keep src/sentinel/contracts/apex_project_structure_v4.json in sync.`

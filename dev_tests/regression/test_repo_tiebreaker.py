@@ -13,10 +13,11 @@ class InMemoryRepositoryTieBreakerTest(unittest.TestCase):
     def test_latest_per_target_ties_break_by_test_result_id(self):
         """When recordedAtUtc ties, higher test_result_id wins (Postgres: order by recorded_at desc, id desc)."""
         from sentinel.server.services import repositories as repo_mod
+        from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
 
         repo = repo_mod.InMemoryRepository()
-        c = repo.create_client(name="Client A")
-        p = repo.create_project(clientId=c.clientId, name="Project A")
+        c = repo.create_client(userId=COMMISSIONING_STUB_USER_ID, name="Client A")
+        p = repo.create_project(userId=COMMISSIONING_STUB_USER_ID, clientId=c.clientId, name="Project A")
         _link, tok = repo.create_tech_link(projectId=p.projectId, label="Onsite")
 
         old_utc_now = repo_mod.utc_now

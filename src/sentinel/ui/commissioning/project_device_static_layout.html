@@ -20,7 +20,10 @@
     </header>
 
     <main class="deviceLayoutStage">
-      <section id="rtiUsableCanvas" class="rtiUsableCanvas">
+      <section id="rtiUsableCanvas" class="rtiUsableCanvas shell-rti-pending">
+        <div id="shellBootOverlay" class="shellBootOverlay" hidden>
+          <div class="shellBootOverlayPanel" role="status" aria-live="polite">Preparing device layout...</div>
+        </div>
         <div id="vpOverlay" class="vp-overlay" hidden></div>
         <div id="rtiDeviceCanvas" class="rtiDeviceCanvas">
           <div id="rtiDeviceContent" class="rtiDeviceContent"></div>
@@ -98,6 +101,37 @@
   </div>
   <script data-shell-runtime-adapter="1">
     (function () {
+      function createBootController() {
+        const rti = document.getElementById("rtiUsableCanvas");
+        const overlay = document.getElementById("shellBootOverlay");
+        const SHOW_DELAY_MS = 180;
+        let showTimer = 0;
+        let done = false;
+        function finish() {
+          if (done) return;
+          done = true;
+          if (showTimer) {
+            clearTimeout(showTimer);
+            showTimer = 0;
+          }
+          if (overlay) overlay.setAttribute("hidden", "hidden");
+          if (rti) rti.classList.remove("shell-rti-pending");
+        }
+        function syncFromRuntime() {
+          if (window.__sentinelRuntimeReady) finish();
+        }
+        if (rti) rti.classList.add("shell-rti-pending");
+        showTimer = setTimeout(function () {
+          if (done) return;
+          if (overlay) overlay.removeAttribute("hidden");
+        }, SHOW_DELAY_MS);
+        document.addEventListener("sentinel:runtime-ready", finish, { once: true });
+        return { finish, syncFromRuntime };
+      }
+
+      const boot = createBootController();
+      window.__sentinelShellSyncBootState = boot.syncFromRuntime;
+
       const HOOK_REMAP = [
         ["#topControls", "#topControlsStatic"],
         ["#orientationToggle", ".orientationToggleStatic"],
@@ -349,6 +383,7 @@
         function allowSelector(sel) {
           const s = String(sel || "");
           if (!s) return false;
+          if (s.indexOf(":root") >= 0) return true;
           if (s.indexOf(".viewport-mode #rtiCanvas") >= 0) return true;
           // Testing popup uses a few id selectors in the embedded device stylesheet; keep them (not rti shell ids).
           var t = s.replace(/\s+/g, " ").trim();
@@ -482,6 +517,8 @@
           right.style.top = "";
           right.style.bottom = "";
           right.style.height = "";
+          right.style.justifyContent = "";
+          right.style.alignItems = "";
         }
         if (layerPanel) {
           layerPanel.style.width = "";
@@ -497,6 +534,9 @@
         if (!targets.length) return;
         const obs = new MutationObserver(function () {
           lockShellGeometry();
+          if (document.body.classList.contains("viewport-mode") && typeof window.applyViewportPopupLayout === "function") {
+            window.applyViewportPopupLayout();
+          }
         });
         targets.forEach(function (t) {
           obs.observe(t, { attributes: true, attributeFilter: ["style"] });
@@ -524,6 +564,24 @@
         controls.bottom = parsePxVariable("--device-footer-h", 40);
         controls.left = parsePxVariable("--controls-collapsed-w", 58);
         controls.right = parsePxVariable("--controls-collapsed-w", 58);
+      }
+
+      function wrapApplyRtiLayoutForShell() {
+        const original = window.applyRtiLayout;
+        if (typeof original !== "function" || original.__shellWrapped) return;
+        const wrapped = function () {
+          const out = original.apply(this, arguments);
+          lockShellGeometry();
+          if (document.body.classList.contains("viewport-mode") && typeof window.applyViewportPopupLayout === "function") {
+            window.applyViewportPopupLayout();
+          }
+          if (typeof window.__sentinelShellSyncBootState === "function") {
+            window.__sentinelShellSyncBootState();
+          }
+          return out;
+        };
+        wrapped.__shellWrapped = true;
+        window.applyRtiLayout = wrapped;
       }
 
       function dispatchTextZoom(action) {
@@ -666,6 +724,7 @@
           annotateControls();
           bindShellControls();
           alignRuntimeControlsToShell();
+          wrapApplyRtiLayoutForShell();
           lockShellGeometry();
           observeShellGeometry();
           observeFullControlState();
@@ -675,12 +734,16 @@
           if (typeof window.applyRtiLayout === "function") {
             window.applyRtiLayout();
           }
+          if (typeof window.__sentinelShellSyncBootState === "function") {
+            window.__sentinelShellSyncBootState();
+          }
           syncTextZoomFromRuntime();
           syncMiniDeviceZoomFromFull();
           syncMiniOrientationStateFromFull();
         })
         .catch(function () {
           window.__sentinelShellRuntimeError = "shell-runtime-load-failed";
+          boot.finish();
         });
     })();
   </script>
