@@ -289,46 +289,21 @@
           ".rti-canvas",
           ".rti-content",
           ".rti-device-canvas",
+          ".rti-device-canvas-hk",
           ".device-page",
-          ".vp-box",
-          ".vp-overlay",
           ".btn-wrap",
           ".synthetic-list-scroll",
           ".test-btn",
           ".btn-pass-total",
           ".page-link-hit",
           ".page-link-icon",
-          ".material-symbols-outlined",
-          ".vp-popup",
-          ".vp-popup-panel",
-          ".vp-popup-scroller",
-          ".vp-popup-stage",
-          ".vp-popup-scrollpad",
-          ".vp-popup-close",
-          ".vp-popup-nav",
-          ".vp-popup-prev",
-          ".vp-popup-next",
-          ".vp-popup-up",
-          ".vp-popup-down",
-          ".vp-popup-indicator",
-          ".vp-popup-viewport",
-          ".vp-popup-vcontent",
-          ".vp-indicator",
-          ".dot",
-          ".viewport-mode",
-          ".hk-split-right .",
-          ".hk-split-left .",
-          ".hk-test-btn",
-          ".ov",
-          ".pop",
-          ".rows-scroll",
-          ".row",
-          ".row-head",
-          ".row-meta",
-          ".n",
-          ".actions",
-          ".row:last-child",
-          "textarea"
+          ".material-symbols-outlined"
+        ];
+        const hardKeyAllowTokens = [
+          ".rti-device-canvas-hk",
+          ".hk-split-right",
+          ".hk-split-left",
+          ".hk-test-btn"
         ];
         const blockTokens = [
           ".app-canvas",
@@ -350,6 +325,27 @@
           "#rtiDeviceCanvas"
         ];
 
+        function hasAllowedToken(selector, tokens) {
+          for (let i = 0; i < tokens.length; i += 1) {
+            if (selector.indexOf(tokens[i]) >= 0) return true;
+          }
+          return false;
+        }
+
+        function selectorsPass(selectorText, tokens) {
+          const selectors = String(selectorText || "").split(",");
+          for (let i = 0; i < selectors.length; i += 1) {
+            const s = String(selectors[i] || "").trim();
+            if (!s) return false;
+            if (s.indexOf("#") >= 0) return false;
+            for (let j = 0; j < blockTokens.length; j += 1) {
+              if (s.indexOf(blockTokens[j]) >= 0) return false;
+            }
+            if (!hasAllowedToken(s, tokens)) return false;
+          }
+          return true;
+        }
+
         function allowSelector(sel) {
           const s = String(sel || "");
           if (!s) return false;
@@ -364,14 +360,11 @@
           ) {
             return true;
           }
-          if (s.indexOf("#") >= 0) return false;
-          for (let i = 0; i < blockTokens.length; i += 1) {
-            if (s.indexOf(blockTokens[i]) >= 0) return false;
-          }
-          for (let i = 0; i < allowTokens.length; i += 1) {
-            if (s.indexOf(allowTokens[i]) >= 0) return true;
-          }
-          return false;
+          return selectorsPass(s, allowTokens);
+        }
+
+        function allowHardKeyTemplateSelector(sel) {
+          return selectorsPass(sel, hardKeyAllowTokens);
         }
 
         const styles = sourceDoc.querySelectorAll("style");
@@ -379,9 +372,21 @@
           if (node.getAttribute && node.getAttribute("data-sentinel-hard-key-template") === "1") {
             const raw = String(node.textContent || "");
             if (!raw.trim()) return;
+            const blocks = raw.split("}");
+            const kept = [];
+            blocks.forEach(function (block) {
+              const rule = String(block || "").trim();
+              if (!rule) return;
+              const brace = rule.indexOf("{");
+              if (brace <= 0) return;
+              const selector = rule.slice(0, brace).trim();
+              if (!allowHardKeyTemplateSelector(selector)) return;
+              kept.push(remapText(selector + "{" + rule.slice(brace + 1) + "}"));
+            });
+            if (!kept.length) return;
             const style = document.createElement("style");
             style.setAttribute("data-shell-source-style-hard-keys", "1");
-            style.textContent = remapText(raw);
+            style.textContent = kept.join("\n");
             document.head.appendChild(style);
             return;
           }

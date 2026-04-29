@@ -649,13 +649,88 @@ def _hard_key_model_key(device: dict[str, Any]) -> str | None:
     return key or None
 
 
+def _scope_hard_key_selector(selector: str, scope_selector: str) -> str:
+    trimmed = selector.strip()
+    if not trimmed:
+        return scope_selector
+    if scope_selector in trimmed:
+        return trimmed
+    lowered = trimmed.lower()
+    for root_sel in (":root", "html", "body"):
+        if lowered == root_sel:
+            return scope_selector
+        if lowered.startswith(root_sel + " "):
+            return f"{scope_selector}{trimmed[len(root_sel):]}"
+        if lowered.startswith(root_sel + ">"):
+            return f"{scope_selector}{trimmed[len(root_sel):]}"
+        if lowered.startswith(root_sel + ":"):
+            return f"{scope_selector}{trimmed[len(root_sel):]}"
+    return f"{scope_selector} {trimmed}"
+
+
+def _scope_hard_key_template_css(css: str, scope_selector: str) -> str:
+    """Prefix template selectors so hard-key template CSS cannot leak globally."""
+
+    def _walk(block: str, *, allow_keyframe_steps: bool) -> str:
+        out: list[str] = []
+        idx = 0
+        n = len(block)
+        while idx < n:
+            start = idx
+            while idx < n and block[idx] not in "{;":
+                idx += 1
+            if idx >= n:
+                out.append(block[start:])
+                break
+            token = block[start:idx]
+            delim = block[idx]
+            if delim == ";":
+                out.append(token + ";")
+                idx += 1
+                continue
+            depth = 1
+            inner_start = idx + 1
+            idx += 1
+            while idx < n and depth > 0:
+                if block[idx] == "{":
+                    depth += 1
+                elif block[idx] == "}":
+                    depth -= 1
+                idx += 1
+            inner = block[inner_start : idx - 1] if depth == 0 else block[inner_start:]
+            header = token.strip()
+            if not header:
+                out.append("{" + inner + "}")
+                continue
+            if header.startswith("@"):
+                at_lower = header.lower()
+                keyframes = at_lower.startswith(("@keyframes", "@-webkit-keyframes"))
+                out.append(header + "{" + _walk(inner, allow_keyframe_steps=keyframes) + "}")
+                continue
+            if allow_keyframe_steps:
+                out.append(header + "{" + inner + "}")
+                continue
+            scoped_selector = ", ".join(
+                _scope_hard_key_selector(part, scope_selector) for part in header.split(",")
+            )
+            out.append(scoped_selector + "{" + inner + "}")
+        return "".join(out)
+
+    return _walk(css or "", allow_keyframe_steps=False)
+
+
+def _hard_key_template_class_count(html_text: str, class_token: str) -> int:
+    if not html_text or not class_token:
+        return 0
+    pattern = rf'class="[^"]*\b{re.escape(class_token)}\b[^"]*"'
+    return len(re.findall(pattern, html_text, flags=re.IGNORECASE))
+
+
 def _load_hard_key_template(model_key: str) -> tuple[str, str]:
     """Return `(scoped_style_css, body_inner_html)` for a hard-key template, cached.
 
-    The template's `:root` is rewritten to the right-zone selector so its CSS variables
-    do not leak. The template's `body { ... }` rule is dropped (it would conflict with
-    the host document's body). All other selectors keep their original names; `.frame`,
-    `.box`, and `.row*` classes do not collide with anything else in the codebase.
+    Template CSS is fully scoped so generic template selectors (for example `.row` and
+    `.box`) are confined to this model's right hard-key zone.
     """
     cached = _HARD_KEY_TEMPLATE_CACHE.get(model_key)
     if cached is not None:
@@ -670,8 +745,8 @@ def _load_hard_key_template(model_key: str) -> tuple[str, str]:
     body_match = re.search(r"<body[^>]*>(.*?)</body>", text, re.DOTALL | re.IGNORECASE)
     style = style_match.group(1) if style_match else ""
     body = body_match.group(1) if body_match else ""
-    style = re.sub(r"\bbody\s*\{[^{}]*\}", "", style, flags=re.DOTALL)
-    style = re.sub(r":root\s*\{", f".hk-split-right[data-hk-model=\"{model_key}\"] {{", style)
+    scope_selector = f".hk-split-right[data-hk-model=\"{model_key}\"]"
+    style = _scope_hard_key_template_css(style, scope_selector)
     _HARD_KEY_TEMPLATE_CACHE[model_key] = (style, body)
     return (style, body)
 
@@ -726,17 +801,29 @@ def _augment_template_with_slots(
     model = _hk_registry.MODELS.get(model_key)
     if model is None:
         return body_html
+    template_slots = list(model.slot_dom_order)
+    expected_slot_count = len(template_slots)
+    expected_slot_keys = {int(slot) for slot in template_slots}
     iter_slots = iter(model.slot_dom_order)
     box_re = re.compile(
         r'<div\s+class="([^"]*\bbox\b[^"]*)"([^>]*?)>\s*</div>',
         re.DOTALL,
     )
+    template_box_count = len(box_re.findall(body_html))
+    if template_box_count != expected_slot_count:
+        raise ValueError(
+            f"Hard-key template slot count mismatch for model '{model_key}': "
+            f"template empty boxes={template_box_count}, registry slot_dom_order={expected_slot_count}"
+        )
+    dpad_count_before = _hard_key_template_class_count(body_html, "dpad")
+    injected_slots: list[int] = []
 
     def _replace(match: re.Match[str]) -> str:
         try:
             slot = next(iter_slots)
         except StopIteration:
             return match.group(0)
+        injected_slots.append(int(slot))
         button = slot_buttons_by_left.get(int(slot))
         full = match.group(0)
         # Keep the template's opening tag byte-for-byte; only inject children before </div>.
@@ -749,7 +836,24 @@ def _augment_template_with_slots(
         btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
         return f"{open_tag}{btn_html}{close_tag}"
 
-    return box_re.sub(_replace, body_html)
+    augmented = box_re.sub(_replace, body_html)
+    if len(injected_slots) != expected_slot_count:
+        raise ValueError(
+            f"Hard-key slot walk mismatch for model '{model_key}': "
+            f"walked={len(injected_slots)} expected={expected_slot_count}"
+        )
+    unknown_slots = sorted(k for k in slot_buttons_by_left.keys() if int(k) not in expected_slot_keys)
+    if unknown_slots:
+        raise ValueError(
+            f"Hard-key slot mapping contains unknown slots for model '{model_key}': {unknown_slots}"
+        )
+    dpad_count_after = _hard_key_template_class_count(augmented, "dpad")
+    if dpad_count_before != dpad_count_after:
+        raise ValueError(
+            f"Hard-key template d-pad structure changed for model '{model_key}': "
+            f"before={dpad_count_before} after={dpad_count_after}"
+        )
+    return augmented
 
 
 def _render_hard_key_strip(
@@ -2283,7 +2387,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
-.rti-device-canvas{{position:absolute;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas{{--sentinel-ring-border:1px solid #c6d2dd;--sentinel-ring-radius:10px;--sentinel-ring-shadow:none;position:absolute;border:var(--sentinel-ring-border);border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:#f8fbfe;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
@@ -2388,12 +2492,12 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
- .rti-device-canvas-hk{{border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;padding:0;overflow:hidden;box-sizing:border-box;}}
+ .rti-device-canvas-hk{{border:var(--sentinel-ring-border);border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:#f8fbfe;padding:0;overflow:hidden;box-sizing:border-box;}}
  .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
  .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;}}
  .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
  .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:#ffffff;z-index:2;}}
- .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;}}
+ .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;border:var(--sentinel-ring-border);border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:#f8fbfe;overflow:hidden;}}
  .hk-split-right .frame{{margin:0 auto;}}
  .hk-split-right .box{{position:relative;}}
  .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;}}
