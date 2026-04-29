@@ -16,6 +16,11 @@
       --stroke: 3px;
       --radius: calc(var(--frame-w) * 16 / var(--design-w));
 
+      /* Vertical rhythm token: x ~= 4px at the reference design height. */
+      --hk-x: calc(var(--frame-h) * 4 / var(--design-h));
+      --hk-2x: calc(var(--hk-x) * 2);
+      --hk-4x: calc(var(--hk-x) * 4);
+
       --outer-x: calc(var(--frame-w) * 20 / var(--design-w));
       --col-gap: calc(var(--frame-w) * 19 / var(--design-w));
       --col-w: calc((var(--frame-w) - (2 * var(--outer-x)) - (2 * var(--col-gap))) / 3);
@@ -27,21 +32,21 @@
       --small-h: calc(var(--frame-h) * 45 / var(--design-h));
 
       --dpad-size: calc(var(--frame-w) * 65 / var(--design-w));
-      --dpad-gap: calc(var(--frame-w) * 4 / var(--design-w));
+      --dpad-gap: var(--hk-x);
 
-      --pad-top: calc(var(--frame-h) * 6 / var(--design-h));
+      --pad-top: calc(var(--hk-2x) - var(--hk-x));
 
-      --gap-r1-r2: calc(var(--frame-h) * 49 / var(--design-h));
-      --gap-r2-r3: calc(var(--frame-h) * 28 / var(--design-h));
-      --gap-r3-r4: calc(var(--frame-h) * 30 / var(--design-h));
-      --gap-r4-r5: calc(var(--frame-h) * 19 / var(--design-h));
+      --gap-r1-r2: calc(var(--hk-4x) * 3 + var(--hk-x));
+      --gap-r2-r3: calc(var(--hk-4x) * 2 - var(--hk-x));
+      --gap-r3-r4: calc(var(--hk-4x) * 2 - var(--hk-2x));
+      --gap-r4-r5: calc(var(--hk-4x) + var(--hk-x));
 
-      --gap-r5-r6: calc(var(--frame-h) * 13 / var(--design-h));
-      --gap-r6-r7: calc(var(--frame-h) * 13 / var(--design-h));
-      --gap-r7-r8: calc(var(--frame-h) * 28 / var(--design-h));
-      --gap-r8-r9: calc(var(--frame-h) * 10 / var(--design-h));
-      --gap-r9-r10: calc(var(--frame-h) * 10 / var(--design-h));
-      --gap-r10-r11: calc(var(--frame-h) * 10 / var(--design-h));
+      --gap-r5-r6: calc(var(--hk-4x) - var(--hk-x));
+      --gap-r6-r7: calc(var(--hk-4x) - var(--hk-x));
+      --gap-r7-r8: calc(var(--hk-4x) * 2 - var(--hk-x));
+      --gap-r8-r9: calc(var(--hk-2x) + var(--hk-x));
+      --gap-r9-r10: calc(var(--hk-2x) + var(--hk-x));
+      --gap-r10-r11: calc(var(--hk-2x) + var(--hk-x));
     }
 
     * {
@@ -92,7 +97,7 @@
 
     .box {
       flex: 0 0 auto;
-      border: var(--stroke) solid var(--red);
+      border: 0;
       border-radius: var(--radius);
       background: transparent;
     }

@@ -629,6 +629,12 @@ def _page_target_indexes(
 _HARD_KEY_TEMPLATE_CACHE: dict[str, tuple[str, str]] = {}
 
 
+def clear_hard_key_template_cache() -> None:
+    """Testing hook: templates are cached on disk reads; clear between fixture edits."""
+
+    _HARD_KEY_TEMPLATE_CACHE.clear()
+
+
 def _hard_key_strip_width_for_height(touch_h: int, hk_design_w: int, hk_design_h: int) -> int:
     if hk_design_h <= 0:
         return 1
@@ -825,7 +831,7 @@ def _render_hard_key_button(btn: dict[str, Any], *, slot: int, variable_label: s
         f" data-hard-key-slot='{int(slot)}'"
         f" data-button-category='{escape(category_key, quote=True)}'"
         f" data-button-tag='{escape(tag_name, quote=True)}'>"
-        f"<button class='test-btn hk-test-btn' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
+        f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
         f"<div class='btn-pass-total' aria-hidden='true'></div>"
         f"</div>"
     )
@@ -2441,7 +2447,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
-.rti-device-canvas{{--sentinel-ring-border:1px solid #c6d2dd;--sentinel-ring-radius:10px;--sentinel-ring-shadow:none;position:absolute;border:0;box-shadow:0 0 0 var(--sentinel-device-frame-ring-width, 3px) var(--sentinel-device-frame-ring-color, #000);border-radius:var(--sentinel-device-frame-radius-other, 0px);background:var(--sentinel-device-frame-bg, #f8fbfe);overflow:hidden;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas{{--sentinel-ring-border:0;--sentinel-ring-radius:var(--sentinel-device-frame-radius-other, 0px);--sentinel-ring-shadow:0 0 0 var(--sentinel-device-frame-ring-width, 3px) var(--sentinel-device-frame-ring-color, #000);position:absolute;border:0;box-shadow:var(--sentinel-ring-shadow);border-radius:var(--sentinel-ring-radius);background:var(--sentinel-device-frame-bg, #f8fbfe);overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
@@ -2543,16 +2549,15 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
- .rti-device-canvas-hk{{border:var(--sentinel-ring-border);border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:#f8fbfe;padding:0;overflow:hidden;box-sizing:border-box;}}
+ .rti-device-canvas-hk{{border:0;border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:var(--sentinel-device-frame-bg, #f8fbfe);padding:0;overflow:hidden;box-sizing:border-box;}}
  .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
  .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;}}
  .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
  .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:#ffffff;z-index:2;}}
- .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;border:var(--sentinel-ring-border);border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:#f8fbfe;overflow:hidden;}}
+ .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;border:0;border-radius:var(--sentinel-ring-radius);box-shadow:var(--sentinel-ring-shadow);background:var(--sentinel-device-frame-bg, #f8fbfe);overflow:hidden;}}
  .hk-split-right .frame{{margin:0 auto;}}
  .hk-split-right .box{{position:relative;}}
- .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;}}
- .hk-btn-wrap .hk-test-btn{{flex:1;width:100%;height:100%;border:0;background:transparent;color:transparent;cursor:pointer;font-size:0;padding:0;}}
+ .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:stretch;justify-content:stretch;}}
 </style>{_hard_key_template_style_tag}</head>
 <body><div class='app-canvas' id='appCanvas'>
 <div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div><div class='selected-room-indicator' id='selectedRoomIndicator'>Selected Room: <span class='value' id='selectedRoomValue'>All Rooms</span></div></div>

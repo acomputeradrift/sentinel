@@ -42,7 +42,7 @@ _ALLOW_TOKENS: tuple[str, ...] = (
     ".viewport-mode",
     ".hk-split-right .",
     ".hk-split-left .",
-    ".hk-test-btn",
+    ".hk-touch-stack",
     ".hk-btn-wrap",
     ".ov",
     ".pop",
@@ -110,7 +110,7 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
     def test_hk_slot_and_frame_rules_survive_filter(self) -> None:
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .box"))
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .frame"))
-        self.assertTrue(_shell_style_selector_allowed(".hk-btn-wrap .hk-test-btn"))
+        self.assertTrue(_shell_style_selector_allowed(".hk-btn-wrap .test-btn"))
 
     def test_testing_popup_selectors_survive_filter(self) -> None:
         self.assertTrue(_shell_style_selector_allowed(".ov"))

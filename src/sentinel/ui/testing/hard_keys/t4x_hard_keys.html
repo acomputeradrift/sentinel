@@ -13,6 +13,11 @@
       --stroke: 4px;
       --radius: 18px;
 
+      /* Vertical rhythm token: x ~= 5px at the 608×732 design size (2x/4x are exact multiples). */
+      --hk-x: calc(var(--frame-h) * 5 / 732);
+      --hk-2x: calc(var(--hk-x) * 2);
+      --hk-4x: calc(var(--hk-x) * 4);
+
       --r1-w: calc(var(--frame-w) * 146 / 608);
       --r1-h: calc(var(--frame-h) * 78 / 732);
 
@@ -26,17 +31,18 @@
       --dpad-w: calc(var(--frame-w) * 101 / 608);
       --dpad-h: calc(var(--frame-h) * 105 / 732);
 
-      --top-pad: calc(var(--frame-h) * 52 / 732);
-      --gap-after-row1: calc(var(--frame-h) * 57 / 732);
-      --gap-after-row2: calc(var(--frame-h) * 25 / 732);
-      --gap-before-row3: calc(var(--frame-h) * 24 / 732);
+      --top-pad: calc(var(--hk-4x) * 2 + var(--hk-2x));
+      --gap-after-row1: calc(var(--hk-4x) * 3 - var(--hk-x));
+      --gap-after-row2: calc(var(--hk-4x) + var(--hk-x));
+      --gap-before-row3: calc(var(--hk-4x) + var(--hk-x));
 
       --row-side-pad: calc(var(--frame-w) * 28 / 608);
       --small-row-side-pad: calc(var(--frame-w) * 33 / 608);
 
-      --side-stack-gap: calc(var(--frame-h) * 16 / 732);
-      --dpad-gap-x: calc(var(--frame-w) * 8 / 608);
-      --dpad-gap-y: calc(var(--frame-h) * 5 / 732);
+      --side-stack-gap: var(--hk-2x);
+
+      --dpad-gap-x: var(--hk-2x);
+      --dpad-gap-y: var(--hk-x);
     }
 
     * { box-sizing: border-box; }
@@ -61,7 +67,7 @@
 
     .box {
       flex: 0 0 auto;
-      border: var(--stroke) solid var(--red);
+      border: 0;
       border-radius: var(--radius);
       background: transparent;
     }

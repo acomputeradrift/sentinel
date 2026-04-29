@@ -211,7 +211,7 @@ def main() -> int:
             "return s ? getComputedStyle(s).position : ''; })(),"
             "btnNarrowerThanFrame: (() => { "
             "const f = document.querySelector('.hk-split-right .frame'); "
-            "const b = document.querySelector('.hk-split-right .hk-test-btn'); "
+            "const b = document.querySelector('.hk-split-right .hk-btn-wrap .test-btn'); "
             "if (!f || !b) return false; "
             "const fw = f.getBoundingClientRect().width; const bw = b.getBoundingClientRect().width; "
             "return fw > 20 && bw > 10 && bw < fw * 0.98; })()"

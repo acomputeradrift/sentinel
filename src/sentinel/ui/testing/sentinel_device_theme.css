@@ -43,6 +43,13 @@
   --btn-state-trim-width: 0px;
 }
 
+/* Hard-key remote slots: same testing button chrome as the main touchscreen. */
+.rti-device-canvas-hk .hk-btn-wrap {
+  --btn-fill-color: var(--sentinel-fill-hard-button);
+  --btn-state-trim-color: var(--sentinel-trim-untested);
+  --btn-state-trim-width: 0px;
+}
+
 .test-btn {
   position: absolute;
   inset: 0;

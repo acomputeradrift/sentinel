@@ -12,7 +12,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from sentinel.generation.render_core import render_single_device_html
+from sentinel.generation.render_core import clear_hard_key_template_cache, render_single_device_html
 
 
 def _make_hard_key_button(button_id: int, tag: str) -> dict:
@@ -100,6 +100,7 @@ def _t4x_project_data() -> dict:
 class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        clear_hard_key_template_cache()
         try:
             from playwright.sync_api import sync_playwright
         except Exception as exc:  # pragma: no cover
@@ -334,6 +335,89 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             self.assertEqual(result["hkModel"], "t4x", msg=f"data-hk-model should be 't4x', got {result['hkModel']!r}")
             self.assertEqual(result["hkDesignW"], "608", msg=f"data-hk-design-w should be '608', got {result['hkDesignW']!r}")
             self.assertEqual(result["hkDesignH"], "732", msg=f"data-hk-design-h should be '732', got {result['hkDesignH']!r}")
+        finally:
+            page.close()
+            server.stop()
+
+    def test_hard_key_template_boxes_are_not_stroked(self):
+        page, server = self._render_and_serve()
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const activePage = document.querySelector('.device-page.active');
+  if (!activePage) return {error: 'no active page'};
+  const right = activePage.querySelector('.hk-split-right');
+  if (!right) return {error: 'no .hk-split-right'};
+  const box = right.querySelector('.box');
+  if (!box) return {error: 'no template .box'};
+  const cs = getComputedStyle(box);
+  return {
+    borderTopWidth: cs.borderTopWidth,
+    borderTopStyle: cs.borderTopStyle,
+    borderTopColor: cs.borderTopColor,
+  };
+}
+"""
+            )
+            self.assertNotIn("error", result, msg=result.get("error", ""))
+            self.assertEqual(result["borderTopWidth"], "0px")
+            self.assertEqual(result["borderTopStyle"], "none")
+        finally:
+            page.close()
+            server.stop()
+
+    def test_hard_key_buttons_use_testing_chrome(self):
+        page, server = self._render_and_serve()
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const activePage = document.querySelector('.device-page.active');
+  if (!activePage) return {error: 'no active page'};
+  const btn = activePage.querySelector('.hk-split-right .hk-btn-wrap .test-btn');
+  if (!btn) return {error: 'no hard-key .test-btn'};
+  const cs = getComputedStyle(btn);
+  return {
+    bg: cs.backgroundColor,
+    hasInsetShadow: cs.boxShadow !== 'none',
+  };
+}
+"""
+            )
+            self.assertNotIn("error", result, msg=result.get("error", ""))
+            self.assertNotEqual(result["bg"], "rgba(0, 0, 0, 0)")
+            self.assertTrue(result["hasInsetShadow"], msg="expected inset trim/border shadow on hard-key testing buttons")
+        finally:
+            page.close()
+            server.stop()
+
+    def test_device_and_touch_rings_use_box_shadow_not_gray_border(self):
+        page, server = self._render_and_serve()
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const canvas = document.getElementById('rtiDeviceCanvas');
+  if (!canvas) return {error: 'no #rtiDeviceCanvas'};
+  const touch = document.querySelector('.hk-touch-stack');
+  if (!touch) return {error: 'no .hk-touch-stack'};
+  const c = getComputedStyle(canvas);
+  const t = getComputedStyle(touch);
+  return {
+    canvasBorderW: c.borderTopWidth,
+    canvasShadow: c.boxShadow,
+    touchBorderW: t.borderTopWidth,
+    touchShadow: t.boxShadow,
+  };
+}
+"""
+            )
+            self.assertNotIn("error", result, msg=result.get("error", ""))
+            self.assertEqual(result["canvasBorderW"], "0px")
+            self.assertNotEqual(result["canvasShadow"], "none")
+            self.assertEqual(result["touchBorderW"], "0px")
+            self.assertNotEqual(result["touchShadow"], "none")
         finally:
             page.close()
             server.stop()

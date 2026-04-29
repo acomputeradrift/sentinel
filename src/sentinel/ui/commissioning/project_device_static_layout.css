@@ -169,7 +169,7 @@ body {
   inset-inline-start: var(--controls-collapsed-w);
   inset-inline-end: var(--controls-collapsed-w);
   background: var(--color-rti);
-  border: 1px solid var(--outline);
+  border: 0;
   z-index: 1;
   overflow: auto;
   scrollbar-width: none;

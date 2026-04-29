@@ -16,6 +16,11 @@
       --stroke: 3px;
       --radius: calc(var(--frame-w) * 16 / var(--design-w));
 
+      /* Vertical rhythm token: x ~= 5px at the reference design height. */
+      --hk-x: calc(var(--frame-h) * 5 / var(--design-h));
+      --hk-2x: calc(var(--hk-x) * 2);
+      --hk-4x: calc(var(--hk-x) * 4);
+
       --outer-x: calc(var(--frame-w) * 32 / var(--design-w));
       --col-gap: calc(var(--frame-w) * 10 / var(--design-w));
       --col-w: calc((var(--frame-w) - (2 * var(--outer-x)) - (2 * var(--col-gap))) / 3);
@@ -32,16 +37,16 @@
       --main-h: calc(var(--frame-h) * 68 / var(--design-h));
 
       --dpad-size: calc(var(--frame-w) * 79 / var(--design-w));
-      --dpad-gap: calc(var(--frame-w) * 4 / var(--design-w));
+      --dpad-gap: var(--hk-x);
 
-      --pad-top: calc(var(--frame-h) * 14 / var(--design-h));
+      --pad-top: calc(var(--hk-4x) - var(--hk-x));
 
-      --gap-top-to-middle: calc(var(--frame-h) * 69 / var(--design-h));
-      --gap-r1-r2: calc(var(--frame-h) * 19 / var(--design-h));
-      --gap-r2-r3: calc(var(--frame-h) * 24 / var(--design-h));
-      --gap-middle-main: calc(var(--frame-h) * 25 / var(--design-h));
+      --gap-top-to-middle: calc(var(--hk-x) * 13);
+      --gap-r1-r2: calc(var(--hk-4x) - var(--hk-x));
+      --gap-r2-r3: var(--hk-4x);
+      --gap-middle-main: calc(var(--hk-4x) + var(--hk-x));
 
-      --gap-main: calc(var(--frame-h) * 14 / var(--design-h));
+      --gap-main: calc(var(--hk-4x) - var(--hk-2x));
 
       --dpad-ok-y: calc(var(--frame-h) * 283 / var(--design-h));
     }
@@ -72,7 +77,7 @@
 
     .box {
       flex: 0 0 auto;
-      border: var(--stroke) solid var(--red);
+      border: 0;
       border-radius: var(--radius);
       background: transparent;
     }
