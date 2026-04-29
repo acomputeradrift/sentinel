@@ -2448,7 +2448,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
 .rti-device-canvas:not(.rti-device-canvas-hk){{position:absolute;border:0;overflow:hidden;box-sizing:border-box;z-index:2;}}
-.rti-device-canvas.rti-device-canvas-hk{{position:absolute;border:0;overflow:visible;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas.rti-device-canvas-hk{{position:absolute;border:0;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
@@ -2551,9 +2551,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
  .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
- .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;min-height:100%;}}
- .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
- .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;left:auto;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;z-index:2;}}
+ .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;min-height:0;max-height:100%;overflow:hidden;box-sizing:border-box;}}
+ .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;bottom:0;height:auto;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
+ .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;bottom:0;left:auto;height:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;z-index:2;min-height:0;}}
  .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;}}
  .hk-split-right .frame{{margin:0 auto;max-height:100%;}}
  .hk-split-right .box{{position:relative;}}
@@ -6031,10 +6031,10 @@ def build_device_render_bundle(
             hlp = float(hk_split_layout["hk_left_pct"])
             hwp = float(hk_split_layout["hk_width_pct"])
             page_html_by_index[str(page_index)] = (
-                f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;height:100%;'>"
+                f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;bottom:0;'>"
                 f"<div class='hk-touch-stack'>{page_inner_main}</div></div>"
                 f"<div class='hk-split-right' data-hk-model=\"{product_model_key}\" "
-                f"style='left:{hlp:.4f}%;width:{hwp:.4f}%;top:0;height:100%;'>{strip_html}</div>"
+                f"style='left:{hlp:.4f}%;width:{hwp:.4f}%;top:0;bottom:0;'>{strip_html}</div>"
             )
         else:
             page_html_by_index[str(page_index)] = page_inner_main

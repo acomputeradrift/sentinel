@@ -47,6 +47,8 @@
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
+  /* Keep split + column chrome inside RTI scrollport (shell may re-inject older overflow:visible). */
+  overflow: hidden !important;
 }
 
 .rti-device-canvas-hk .hk-touch-stack,
@@ -65,6 +67,22 @@
 .rti-device-canvas-hk .device-page .hk-split-right {
   background: #ffffff !important;
   overflow: hidden;
+}
+
+/* Stretch splits to .device-page height (top/bottom beats fragile height:100% + flex). */
+.rti-device-canvas-hk .device-page.active {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-left,
+.rti-device-canvas-hk .device-page .hk-split-right {
+  top: 0 !important;
+  bottom: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 .btn-wrap {
