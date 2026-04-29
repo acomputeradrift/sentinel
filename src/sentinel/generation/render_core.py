@@ -737,14 +737,17 @@ def _augment_template_with_slots(
             slot = next(iter_slots)
         except StopIteration:
             return match.group(0)
-        classes = match.group(1)
-        attrs = match.group(2) or ""
         button = slot_buttons_by_left.get(int(slot))
-        slot_attr = f' data-hard-key-slot="{int(slot)}"'
+        full = match.group(0)
+        # Keep the template's opening tag byte-for-byte; only inject children before </div>.
+        inner = re.match(r"^(<div\b[^>]+>)\s*(</div>)\s*$", full, flags=re.DOTALL | re.IGNORECASE)
+        if not inner:
+            return full
+        open_tag, close_tag = inner.group(1), inner.group(2)
         if button is None:
-            return f'<div class="{classes} hk-slot hk-empty" {attrs}{slot_attr}></div>'
+            return full
         btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
-        return f'<div class="{classes} hk-slot" {attrs}{slot_attr}>{btn_html}</div>'
+        return f"{open_tag}{btn_html}{close_tag}"
 
     return box_re.sub(_replace, body_html)
 
@@ -2392,8 +2395,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;height:100%;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:#ffffff;z-index:2;}}
  .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;border:1px solid #c6d2dd;border-radius:10px;background:#f8fbfe;overflow:hidden;}}
  .hk-split-right .frame{{margin:0 auto;}}
- .hk-split-right .hk-slot{{position:relative;}}
- .hk-split-right .hk-slot.hk-empty{{opacity:0.35;}}
+ .hk-split-right .box{{position:relative;}}
  .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;}}
  .hk-btn-wrap .hk-test-btn{{flex:1;width:100%;height:100%;border:0;background:transparent;color:transparent;cursor:pointer;font-size:0;padding:0;}}
 </style>{_hard_key_template_style_tag}</head>

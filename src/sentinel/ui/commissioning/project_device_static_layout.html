@@ -318,7 +318,17 @@
           ".viewport-mode",
           ".hk-split-right .",
           ".hk-split-left .",
-          ".hk-test-btn"
+          ".hk-test-btn",
+          ".ov",
+          ".pop",
+          ".rows-scroll",
+          ".row",
+          ".row-head",
+          ".row-meta",
+          ".n",
+          ".actions",
+          ".row:last-child",
+          "textarea"
         ];
         const blockTokens = [
           ".app-canvas",
@@ -344,6 +354,16 @@
           const s = String(sel || "");
           if (!s) return false;
           if (s.indexOf(".viewport-mode #rtiCanvas") >= 0) return true;
+          // Testing popup uses a few id selectors in the embedded device stylesheet; keep them (not rti shell ids).
+          var t = s.replace(/\s+/g, " ").trim();
+          if (
+            t === "#close" ||
+            t === "#close:disabled" ||
+            t === "#passAll" ||
+            t === "#passAll:disabled"
+          ) {
+            return true;
+          }
           if (s.indexOf("#") >= 0) return false;
           for (let i = 0; i < blockTokens.length; i += 1) {
             if (s.indexOf(blockTokens[i]) >= 0) return false;

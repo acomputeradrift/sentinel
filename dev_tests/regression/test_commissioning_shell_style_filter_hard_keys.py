@@ -1,9 +1,7 @@
-"""Minimal proof: commissioning shell style filter drops hard-key template selectors.
+"""Minimal proof: commissioning shell copyFilteredStyles allow-list (mirrors static layout).
 
-The shell's copyFilteredStyles (project_device_static_layout.html) only keeps rules whose
-selector substring-matches allowTokens. Hard-key layout CSS uses .frame, .row, .box, and
-the scoped :root rewrite (.hk-split-right[data-hk-model="..."]); those do not match, so
-geometry never reaches the shell — independent of Apex or render_core slot logic.
+Hard-key template CSS is copied via ``data-sentinel-hard-key-template`` (whole block).
+The filtered pass keeps device-page / split / popup rules whose selectors match allowTokens.
 """
 from __future__ import annotations
 
@@ -44,6 +42,15 @@ _ALLOW_TOKENS: tuple[str, ...] = (
     ".hk-split-right .",
     ".hk-split-left .",
     ".hk-test-btn",
+    ".ov",
+    ".pop",
+    ".rows-scroll",
+    ".row",
+    ".row-head",
+    ".row-meta",
+    ".n",
+    ".actions",
+    "textarea",
 )
 
 _BLOCK_TOKENS: tuple[str, ...] = (
@@ -73,6 +80,9 @@ def _shell_style_selector_allowed(selector: str) -> bool:
         return False
     if ".viewport-mode #rtiCanvas" in s:
         return True
+    t = " ".join(s.split()).strip()
+    if t in ("#close", "#close:disabled", "#passAll", "#passAll:disabled"):
+        return True
     if "#" in s:
         return False
     for tok in _BLOCK_TOKENS:
@@ -87,7 +97,6 @@ def _shell_style_selector_allowed(selector: str) -> bool:
 class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
     def test_hard_key_template_selectors_are_filtered_out(self) -> None:
         self.assertFalse(_shell_style_selector_allowed(".frame"))
-        self.assertFalse(_shell_style_selector_allowed(".row"))
         self.assertFalse(_shell_style_selector_allowed(".box"))
         self.assertFalse(_shell_style_selector_allowed(".cell"))
         self.assertFalse(_shell_style_selector_allowed('.hk-split-right[data-hk-model="isr2"]'))
@@ -97,10 +106,17 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertTrue(_shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-right"))
 
     def test_hk_slot_and_frame_rules_survive_filter(self) -> None:
-        self.assertTrue(_shell_style_selector_allowed(".hk-split-right .hk-slot"))
-        self.assertTrue(_shell_style_selector_allowed(".hk-split-right .hk-slot.hk-empty"))
+        self.assertTrue(_shell_style_selector_allowed(".hk-split-right .box"))
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .frame"))
         self.assertTrue(_shell_style_selector_allowed(".hk-btn-wrap .hk-test-btn"))
+
+    def test_testing_popup_selectors_survive_filter(self) -> None:
+        self.assertTrue(_shell_style_selector_allowed(".ov"))
+        self.assertTrue(_shell_style_selector_allowed(".pop h3"))
+        self.assertTrue(_shell_style_selector_allowed(".rows-scroll"))
+        self.assertTrue(_shell_style_selector_allowed(".row"))
+        self.assertTrue(_shell_style_selector_allowed("#close"))
+        self.assertTrue(_shell_style_selector_allowed("#passAll:disabled"))
 
 
 if __name__ == "__main__":

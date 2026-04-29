@@ -241,8 +241,8 @@ class HardKeysSplitRenderTest(unittest.TestCase):
             project_stem="render_test",
         )
         self.assertIn("data-meta=", html)
-        self.assertIn("data-hard-key-slot=\"128\"", html)
-        self.assertIn("data-hard-key-slot=\"147\"", html)
+        self.assertRegex(html, r"data-hard-key-slot=['\"]128['\"]")
+        self.assertRegex(html, r"data-hard-key-slot=['\"]147['\"]")
 
 
 if __name__ == "__main__":

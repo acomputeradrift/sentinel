@@ -10,15 +10,14 @@ Locked rules from `hard_keys.md` (Phase 0 lock-in):
   `FrameNumber = 252` (gestures: Rotate Clockwise, Rotate Counterclockwise, Shake) are
   recorded but not rendered on the hard-key strip.
 
-Canonical button layout (HTML/CSS) lives only under ``src/sentinel/ui/testing/hard_keys/``
-(``t4x_hard_keys.html``, ``isr2_hard_keys.html``, ``isr4_hard_keys.html``). Those files are
-the shipped source of truth for proportions and box placement; they are kept identical to
-the approved reference HTML in ``Assets/Hard Keys/`` (T4x / ISR-2 / ISR-4 ``*.html``).
-The generator does not read ``Assets/`` at runtime.
+Canonical button layout (HTML/CSS) is ``src/sentinel/ui/testing/hard_keys/*.html`` — a
+byte-for-byte copy of ``Assets/Hard Keys/*.html`` (sync when references change). The
+generator reads only the ``src/`` copies at runtime.
 
 `slot_dom_order` lists `ButtonLeft` values in the order empty ``.box`` slots appear in that
 template's ``<body>`` (same order ``render_core._augment_template_with_slots`` walks the DOM).
-The renderer pairs each Apex hard-key row to a template slot via this order.
+Augmentation only injects children inside each empty ``<div …></div>``; opening tags are
+unchanged from the template file.
 
 Confidence:
 

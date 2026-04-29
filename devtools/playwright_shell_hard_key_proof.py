@@ -207,7 +207,7 @@ def main() -> int:
             "mountHasHkClass: !!(document.querySelector('#rtiDeviceContent')?.classList?.contains('rti-device-canvas-hk')),"
             "splitInlineFrameW: (() => { const z = document.querySelector('.hk-split-right'); "
             "return z ? String(z.style.getPropertyValue('--frame-w') || '').trim() : ''; })(),"
-            "firstSlotPosition: (() => { const s = document.querySelector('.hk-split-right .hk-slot'); "
+            "firstSlotPosition: (() => { const s = document.querySelector('.hk-split-right .frame .box'); "
             "return s ? getComputedStyle(s).position : ''; })(),"
             "btnNarrowerThanFrame: (() => { "
             "const f = document.querySelector('.hk-split-right .frame'); "
@@ -256,14 +256,14 @@ def main() -> int:
         )
         if not ok:
             print(
-                "FAIL: shell hard-key assertions (mount + px --frame-w + hk-slot position:relative "
+                "FAIL: shell hard-key assertions (mount + px --frame-w + .box position:relative "
                 "copied into shell + first test button not full-frame). Got:",
                 out,
                 file=sys.stderr,
             )
             return 1
         print(
-            "PASS: shell mount, px --frame-w, template CSS bypass, hk-slot relative, buttons sized to slots."
+            "PASS: shell mount, px --frame-w, template CSS bypass, .box relative, buttons sized to slots."
         )
         return 0
     finally:
