@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import unittest
 
-# Mirrors project_device_static_layout.html copyFilteredStyles → allowSelector (2026-04).
+# Mirrors project_device_static_layout.html copyFilteredStyles → allowSelector (keep in sync).
 _ALLOW_TOKENS: tuple[str, ...] = (
     ".rti-canvas",
     ".rti-content",
     ".rti-device-canvas",
+    ".rti-device-canvas-hk",
     ".device-page",
     ".vp-box",
     ".vp-overlay",
@@ -42,6 +43,7 @@ _ALLOW_TOKENS: tuple[str, ...] = (
     ".hk-split-right .",
     ".hk-split-left .",
     ".hk-test-btn",
+    ".hk-btn-wrap",
     ".ov",
     ".pop",
     ".rows-scroll",

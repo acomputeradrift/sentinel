@@ -331,7 +331,15 @@
           ".btn-pass-total",
           ".page-link-hit",
           ".page-link-icon",
-          ".material-symbols-outlined"
+          ".material-symbols-outlined",
+          /* Viewport popup chrome (z-index/stacking); keep narrow — do not re-add generic testing-popup rows */
+          ".viewport-mode",
+          ".vp-popup",
+          ".vp-overlay",
+          ".vp-box",
+          /* Hard-key split chrome from embedded device stylesheet (not template tag): slot anchoring + invisible hit targets */
+          ".hk-split-right .",
+          ".hk-btn-wrap"
         ];
         const hardKeyAllowTokens = [
           ".rti-device-canvas-hk",
