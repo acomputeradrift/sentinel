@@ -208,6 +208,8 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("applyHkTightClusterLayout", html)
         self.assertIn("hk-cluster-rim", html)
         self.assertIn("hk-tight-cluster", html)
+        self.assertIn(".hk-split-right.hk-tight-cluster .hk-cluster-rim", html)
+        self.assertIn("var(--sentinel-device-frame-ring-width)", html)
 
     def test_hard_key_page_link_anchor_when_resolved_and_navigation_enabled(self) -> None:
         """Hard-key strip should emit page-link-hit like touchscreen buttons when link resolves."""

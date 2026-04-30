@@ -69,7 +69,7 @@
   overflow: hidden;
 }
 
-/* Tight HK cluster: inner 3px square rim + scale-to-touch; drop column ring while active. */
+/* Tight HK cluster: rim uses device ring tokens; drop column ring while active. */
 .rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster {
   box-shadow: none !important;
   border-radius: 0 !important;
@@ -78,6 +78,12 @@
 
 .rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster .frame {
   background: transparent !important;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster .hk-cluster-rim {
+  box-sizing: content-box !important;
+  border: var(--sentinel-device-frame-ring-width) solid var(--sentinel-device-frame-ring-color) !important;
+  border-radius: 0 !important;
 }
 
 /* Stretch splits to .device-page height (top/bottom beats fragile height:100% + flex). */

@@ -4709,7 +4709,8 @@ function syncHeader() {{
    const touchEl=leftCol ? (leftCol.querySelector('.hk-touch-stack')||leftCol) : null;
    if (!touchEl) return;
    const HK_TIGHT_PAD=4;
-   const HK_TIGHT_STROKE=3;
+   const ringStrokeRaw=getComputedStyle(document.documentElement).getPropertyValue('--sentinel-device-frame-ring-width').trim();
+   const ringStroke=Math.max(0,parseFloat(ringStrokeRaw)||0)||3;
    activePage.querySelectorAll('.hk-split-right').forEach((zone)=>{{
     const frame=zone.querySelector('.frame');
     if (!frame) return;
@@ -4738,8 +4739,8 @@ function syncHeader() {{
     rim.setAttribute('aria-hidden','true');
     rim.style.cssText=
      'position:absolute;box-sizing:content-box;pointer-events:none;z-index:2147483647;'+
-     `left:${{minX-HK_TIGHT_PAD-HK_TIGHT_STROKE}}px;top:${{minY-HK_TIGHT_PAD-HK_TIGHT_STROKE}}px;`+
-     `width:${{innerW}}px;height:${{innerH}}px;border:${{HK_TIGHT_STROKE}}px solid #000;border-radius:0;`;
+     `left:${{minX-HK_TIGHT_PAD-ringStroke}}px;top:${{minY-HK_TIGHT_PAD-ringStroke}}px;`+
+     `width:${{innerW}}px;height:${{innerH}}px;`;
     frame.appendChild(rim);
     const fr2=frame.getBoundingClientRect();
     const rr=rim.getBoundingClientRect();
