@@ -1134,6 +1134,31 @@ def _load_scrolling_list_item_heights(cur: sqlite3.Cursor) -> dict[tuple[int, in
     return out
 
 
+_PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES = frozenset({2})
+
+
+def _build_next_in_group_sequences(
+    page_rows: list[sqlite3.Row],
+    page_room_id_by_page_id: dict[int, int],
+) -> dict[tuple[int, int, int], list[int]]:
+    """Ordered page ids per (RTIAddress, SourceDeviceId, page room) for LinkType next-in-group."""
+    buckets: dict[tuple[int, int, int], list[tuple[int, int]]] = {}
+    for prow in page_rows:
+        pid = int(prow["PageId"])
+        rti = int(prow["RTIAddress"] or 0)
+        src = int(prow["SourceDeviceId"] or 0) if prow["SourceDeviceId"] is not None else 0
+        room = int(page_room_id_by_page_id.get(pid, 0) or 0)
+        po = int(prow["PageOrder"] or 0)
+        buckets.setdefault((rti, src, room), []).append((po, pid))
+    out: dict[tuple[int, int, int], list[int]] = {}
+    for key, pairs in buckets.items():
+        pairs.sort(key=lambda t: (t[0], t[1]))
+        ordered = [p[1] for p in pairs]
+        if len(ordered) >= 2:
+            out[key] = ordered
+    return out
+
+
 def _resolve_button(
     cur: sqlite3.Cursor,
     button_row: sqlite3.Row,
@@ -1177,6 +1202,7 @@ def _resolve_button(
     button_order: int,
     frame_number: int,
     host_viewport_button_id: int | None,
+    next_in_group_sequences: dict[tuple[int, int, int], list[int]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -1269,13 +1295,16 @@ def _resolve_button(
     else:
         page_link_enabled = page_link_row is not None
         target_page_id = None
-        if page_link_row and page_link_row["PageId"] is not None:
-            if page_link_row_link_type == 1:
+        page_link_id = int(page_link_row["PageLinkId"]) if page_link_row and page_link_row["PageLinkId"] is not None else None
+        if page_link_row:
+            pid_raw = page_link_row["PageId"] if "PageId" in page_link_row.keys() else None
+            if page_link_row_link_type == 1 and pid_raw is not None:
                 first_page_target = first_page_target_by_device_id.get(current_device_id)
                 target_page_id = first_page_target[0] if first_page_target is not None else None
-            else:
-                target_page_id = int(page_link_row["PageId"])
-        page_link_id = int(page_link_row["PageLinkId"]) if page_link_row and page_link_row["PageLinkId"] is not None else None
+            elif page_link_row_link_type in _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES:
+                target_page_id = None
+            elif pid_raw is not None:
+                target_page_id = int(pid_raw)
 
     resolved_page_link: dict[str, Any] | None = None
     if target_page_id is not None:
@@ -1285,6 +1314,21 @@ def _resolve_button(
             "resolutionPath": "directPageLink",
             "resolvedRoomId": (int(page_room_id) if int(page_room_id or 0) > 0 else None),
         }
+
+    if resolved_page_link is None and page_link_row is not None:
+        lt_ng = int(page_link_row_link_type) if page_link_row_link_type is not None else -999
+        if lt_ng in _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES:
+            src_gid = int(page_source_device_id) if page_source_device_id is not None else 0
+            seq_key = (int(current_rti_address), src_gid, int(page_room_id or 0))
+            seq = list(next_in_group_sequences.get(seq_key) or [])
+            if len(seq) >= 2 and int(page_id) in seq:
+                resolved_page_link = {
+                    "resolutionPath": "nextInGroup",
+                    "groupPageIds": [int(x) for x in seq],
+                    "anchorPageId": int(page_id),
+                    "targetPageName": None,
+                    "resolvedRoomId": (int(page_room_id) if int(page_room_id or 0) > 0 else None),
+                }
 
     candidate_macro_ids: list[int] = explicit_macro_ids[:]
     for macro_row in tag_macro_rows:
@@ -2089,6 +2133,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
             (rti_address,),
         )
         page_rows = cur.fetchall()
+        next_in_group_sequences = _build_next_in_group_sequences(page_rows, page_room_id_by_page_id)
 
         user_pages: list[dict[str, Any]] = []
         diag_pages: list[dict[str, Any]] = []
@@ -2171,6 +2216,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         button_order=int(b["ButtonOrder"] or 0),
                         frame_number=int(b["FrameNumber"] or 0),
                         host_viewport_button_id=None,
+                        next_in_group_sequences=next_in_group_sequences,
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -2204,6 +2250,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             macro_flag_summaries_by_macro_id,
                             button_graphics_targets_by_button_id,
                             use_explicit_button_bitmaps,
+                            next_in_group_sequences,
                             page_id,
                             (int(prow["SourceDeviceId"]) if prow["SourceDeviceId"] is not None else None),
                             page_room_id,
@@ -2330,6 +2377,7 @@ def _resolve_viewport_frames(
     macro_flag_summaries_by_macro_id: dict[int, list[str]],
     button_graphics_targets_by_button_id: dict[int, tuple[bool, bool]],
     use_explicit_button_bitmaps: bool,
+    next_in_group_sequences: dict[tuple[int, int, int], list[int]],
     page_id: int,
     page_source_device_id: int | None,
     page_room_id: int,
@@ -2426,6 +2474,7 @@ def _resolve_viewport_frames(
                 button_order=int(b["ButtonOrder"] or 0),
                 frame_number=int(b["FrameNumber"] or 0),
                 host_viewport_button_id=int(viewport_button_id),
+                next_in_group_sequences=next_in_group_sequences,
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(

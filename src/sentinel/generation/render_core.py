@@ -85,12 +85,22 @@ def _page_link_enabled(targets: dict[str, Any]) -> bool:
     return bool(page_link)
 
 
-def _page_link_target_id(btn: dict[str, Any]) -> int | None:
+def _page_link_target_id(btn: dict[str, Any], *, rendering_page_id: int | None = None) -> int | None:
     resolved = btn.get("resolvedPageLink")
-    if isinstance(resolved, dict):
-        raw = resolved.get("targetPageId")
-        return int(raw) if raw is not None else None
-    return None
+    if not isinstance(resolved, dict):
+        return None
+    if resolved.get("resolutionPath") == "nextInGroup":
+        ids = resolved.get("groupPageIds")
+        if not isinstance(ids, list) or len(ids) < 2:
+            return None
+        gids = [int(x) for x in ids]
+        cur = int(rendering_page_id) if rendering_page_id is not None else int(resolved.get("anchorPageId") or 0)
+        if cur not in gids:
+            return None
+        i = gids.index(cur)
+        return int(gids[(i + 1) % len(gids)])
+    raw = resolved.get("targetPageId")
+    return int(raw) if raw is not None else None
 
 
 def _page_link_resolved_room_id(btn: dict[str, Any]) -> int | None:
@@ -112,13 +122,15 @@ def _page_link_markup(
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
     page_target_indexes: dict[int, int] | None,
+    *,
+    rendering_page_id: int | None = None,
 ) -> str:
     """Anchor + icon for resolved page links (shared by touchscreen and hard-key buttons)."""
     targets = btn.get("testTargets", {}) if isinstance(btn, dict) else {}
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     if not link_cfg.get("enabled") or not _page_link_enabled(targets):
         return ""
-    target_page_id = _page_link_target_id(btn)
+    target_page_id = _page_link_target_id(btn, rendering_page_id=rendering_page_id)
     resolved_room_id = _page_link_resolved_room_id(btn)
     target_href = page_targets.get(target_page_id) if target_page_id is not None else None
     if not target_href:
@@ -856,6 +868,7 @@ def _render_hard_key_button(
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
     page_target_indexes: dict[int, int] | None,
+    rendering_page_id: int | None = None,
 ) -> str:
     """Render a hard-key `.btn-wrap` that fills its template slot and reuses target wiring."""
     if not isinstance(btn, dict):
@@ -864,7 +877,7 @@ def _render_hard_key_button(
     tag_name = _button_tag_name(btn)
     category_key = _category_key_from_label("hardButtons")
     meta_attr = _hard_key_button_meta(btn, variable_label, app_ui)
-    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes)
+    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
     return (
         f"<div class='btn-wrap hk-btn-wrap' "
         f"style='position:absolute;inset:0;width:auto;height:auto;display:flex;'"
@@ -887,6 +900,7 @@ def _augment_template_with_slots(
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
     page_target_indexes: dict[int, int] | None,
+    rendering_page_id: int | None = None,
 ) -> str:
     from sentinel.generation.hard_keys import registry as _hk_registry
 
@@ -946,6 +960,7 @@ def _augment_template_with_slots(
                 app_ui=app_ui,
                 page_targets=page_targets,
                 page_target_indexes=page_target_indexes,
+                rendering_page_id=rendering_page_id,
             )
             return f"{open_tag}{btn_html}{close_tag}"
 
@@ -981,6 +996,7 @@ def _augment_template_with_slots(
                 app_ui=app_ui,
                 page_targets=page_targets,
                 page_target_indexes=page_target_indexes,
+                rendering_page_id=rendering_page_id,
             )
             return f"{open_tag}{btn_html}{close_tag}"
 
@@ -1013,6 +1029,7 @@ def _render_hard_key_strip(
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
     page_target_indexes: dict[int, int] | None,
+    rendering_page_id: int | None = None,
 ) -> str:
     """Build the right-zone HTML for one page using the registry template + layer rows."""
     _, body = _load_hard_key_template(model_key)
@@ -1050,6 +1067,7 @@ def _render_hard_key_strip(
         app_ui=app_ui,
         page_targets=page_targets,
         page_target_indexes=page_target_indexes,
+        rendering_page_id=rendering_page_id,
     )
     return augmented
 
@@ -1071,6 +1089,7 @@ def _render_button_control(
     portrait_offset_top: int = 0,
     landscape_offset_left: int = 0,
     landscape_offset_top: int = 0,
+    rendering_page_id: int | None = None,
 ) -> str:
     oriented_ui = _orientation_ui(btn["buttonUI"], orientation)
     c = _ui_coordinates(btn["buttonUI"], orientation)
@@ -1101,7 +1120,7 @@ def _render_button_control(
     visibility_attr = "1" if bool(oriented_ui.get("visible", True)) and "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
     tag_name = _button_tag_name(btn)
-    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes)
+    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-button-category='{escape(category_key, quote=True)}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
@@ -1426,7 +1445,14 @@ def _synthetic_room_list_row_button(
     row_left_l, row_top_l, row_w_l, row_h_l = row_rect_landscape
     slot_fs = 10
     resolved = room_row.get("resolvedPageLink")
-    page_link_on = isinstance(resolved, dict) and resolved.get("targetPageId") is not None
+    page_link_on = isinstance(resolved, dict) and (
+        resolved.get("targetPageId") is not None
+        or (
+            resolved.get("resolutionPath") == "nextInGroup"
+            and isinstance(resolved.get("groupPageIds"), list)
+            and len(resolved["groupPageIds"]) >= 2
+        )
+    )
     room_id = int(room_row.get("roomId") or 0)
     return {
         "buttonIdentity": {
@@ -1631,6 +1657,7 @@ def _synthetic_controller_room_list_rows_html(
                     extra_style=f"z-index:{list_z};",
                     extra_attrs=extra,
                     orientation=orientation,
+                    rendering_page_id=int(diag_page_id) if diag_page_id is not None else None,
                 )
             )
         parts.append("</div>")
@@ -1768,6 +1795,7 @@ def _synthetic_controller_room_list_rows_html(
                 extra_style=f"z-index:{list_z};",
                 extra_attrs=extra,
                 orientation=orientation,
+                rendering_page_id=int(diag_page_id) if diag_page_id is not None else None,
             )
         )
     parts.append("</div>")
@@ -1888,7 +1916,14 @@ def _synthetic_source_list_row_button(
     source_device_id = int(source_row.get("sourceDeviceId") or 0)
     room_id = int(source_row.get("roomId") or 0)
     resolved = source_row.get("resolvedPageLink")
-    page_link_on = isinstance(resolved, dict) and resolved.get("targetPageId") is not None
+    page_link_on = isinstance(resolved, dict) and (
+        resolved.get("targetPageId") is not None
+        or (
+            resolved.get("resolutionPath") == "nextInGroup"
+            and isinstance(resolved.get("groupPageIds"), list)
+            and len(resolved["groupPageIds"]) >= 2
+        )
+    )
     return {
         "buttonIdentity": {"buttonTagName": f"Source:{source_name}", "text": source_name, "buttonType": None},
         "buttonUI": {
@@ -2059,6 +2094,7 @@ def _synthetic_source_list_rows_html(
                     extra_style=f"z-index:{list_z};",
                     extra_attrs=extra,
                     orientation=orientation,
+                    rendering_page_id=int(diag_page_id) if diag_page_id is not None else None,
                 )
             )
         parts.append("</div>")
@@ -2181,6 +2217,7 @@ def _synthetic_source_list_rows_html(
                 extra_style=f"z-index:{list_z};",
                 extra_attrs=extra,
                 orientation=orientation,
+                rendering_page_id=int(diag_page_id) if diag_page_id is not None else None,
             )
         )
     parts.append("</div>")
@@ -2202,6 +2239,7 @@ def _page_payload(
     diag_pages = (diag.get("pages") if isinstance(diag, dict) else None) or []
     diag_page = diag_pages[page_index] if isinstance(diag_pages, list) and page_index < len(diag_pages) else {}
     diag_page_id = diag_page.get("pageId") if isinstance(diag_page, dict) else None
+    rendering_page_id = int(diag_page_id) if diag_page_id is not None else None
     diag_buttons = (diag_page.get("buttons") if isinstance(diag_page, dict) else None) or []
     diag_viewports = (diag_page.get("viewports") if isinstance(diag_page, dict) else None) or []
     if not isinstance(diag_buttons, list):
@@ -2289,6 +2327,7 @@ def _page_payload(
                     f"data-owner-layer-name='{escape(str(layer_name_by_key.get(str(layer_key), '') or ''))}'{diag_attrs}"
                 ),
                 orientation=orientation,
+                rendering_page_id=rendering_page_id,
             )
         )
 
@@ -2394,6 +2433,7 @@ def _page_payload(
                 portrait_offset_top=int(vb["portrait_off_top"]),
                 landscape_offset_left=int(vb["landscape_off_left"]),
                 landscape_offset_top=int(vb["landscape_off_top"]),
+                rendering_page_id=rendering_page_id,
             )
         )
 
@@ -2449,6 +2489,7 @@ def _page_payload(
                 app_ui=app_ui,
                 page_targets=page_targets,
                 page_target_indexes=page_target_indexes,
+                rendering_page_id=rendering_page_id,
             )
             if hard_key_strip_html:
                 hard_key_owner_layer_key = _layer_key(layer_index)

@@ -83,6 +83,7 @@ class MacroStepsInButtonResolutionTest(unittest.TestCase):
             button_order=0,
             frame_number=0,
             host_viewport_button_id=None,
+            next_in_group_sequences={},
         )
 
         self.assertTrue(user_button["testTargets"]["macroSteps"])
@@ -155,6 +156,7 @@ class MacroStepsInButtonResolutionTest(unittest.TestCase):
             button_order=0,
             frame_number=0,
             host_viewport_button_id=None,
+            next_in_group_sequences={},
         )
 
         self.assertTrue(user_button["testTargets"]["pageLink"])

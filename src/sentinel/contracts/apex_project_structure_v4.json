@@ -222,7 +222,7 @@
                       "resolvedPageLink": {
                         "targetPageId": 0,
                         "targetPageName": null,
-                        "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+                        "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent | nextInGroup",
                         "resolvedRoomId": null
                       },
                       "apexScopeSource": {
@@ -355,7 +355,7 @@
                                   "resolvedPageLink": {
                                     "targetPageId": 0,
                                     "targetPageName": null,
-                                    "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+                                    "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent | nextInGroup",
                                     "resolvedRoomId": null
                                   },
                                   "apexScopeSource": {
@@ -432,7 +432,7 @@
             "resolvedPageLink": {
               "targetPageId": 0,
               "targetPageName": null,
-              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent | nextInGroup",
               "resolvedRoomId": null
             }
           }
@@ -448,7 +448,7 @@
             "resolvedPageLink": {
               "targetPageId": 0,
               "targetPageName": null,
-              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent",
+              "resolutionPath": "directPageLink | macroStep | roomSelectEvent | activityEvent | roomOffEvent | nextInGroup",
               "resolvedRoomId": null
             }
           }

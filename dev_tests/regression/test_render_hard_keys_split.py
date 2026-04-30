@@ -8,7 +8,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from sentinel.generation.render_core import build_device_payload, render_single_device_html
+from sentinel.generation.render_core import _page_link_markup, build_device_payload, render_single_device_html
 
 
 def _coords(*, top: int, left: int, height: int, width: int, font_size: int = 14) -> dict:
@@ -284,6 +284,34 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         )
         self.assertIn("class='page-link-hit'", html)
         self.assertIn("data-target-page-index='1'", html)
+
+    def test_next_in_group_page_link_markup_uses_rendering_page_for_successor(self) -> None:
+        btn = {
+            "testTargets": {"pageLink": True},
+            "resolvedPageLink": {
+                "resolutionPath": "nextInGroup",
+                "groupPageIds": [1, 2, 3],
+                "anchorPageId": 1,
+            },
+        }
+        app_ui = {
+            "appNavigation": {
+                "pageLinks": {
+                    "enabled": True,
+                    "hoverActivationArea": {"width": 28},
+                    "iconPaddingRight": 8,
+                    "iconSize": 16,
+                }
+            }
+        }
+        targets = {1: "./p1.html", 2: "./p2.html", 3: "./p3.html"}
+        indexes = {1: 0, 2: 1, 3: 2}
+        html_on_p1 = _page_link_markup(btn, app_ui, targets, indexes, rendering_page_id=1)
+        self.assertIn("./p2.html", html_on_p1)
+        self.assertIn("data-target-page-index='1'", html_on_p1)
+        html_on_p3 = _page_link_markup(btn, app_ui, targets, indexes, rendering_page_id=3)
+        self.assertIn("./p1.html", html_on_p3)
+        self.assertIn("data-target-page-index='0'", html_on_p3)
 
     def test_isr2_injects_buttons_in_data_label_slot_order_not_sequential_order(self) -> None:
         """ISR-2 DOM order is not 128..161 consecutive; strip uses registry label → ButtonLeft map."""
