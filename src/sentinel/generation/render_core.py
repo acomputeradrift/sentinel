@@ -850,40 +850,82 @@ def _augment_template_with_slots(
     model = _hk_registry.MODELS.get(model_key)
     if model is None:
         return body_html
-    template_slots = list(model.slot_dom_order)
-    expected_slot_count = len(template_slots)
-    expected_slot_keys = {int(slot) for slot in template_slots}
-    iter_slots = iter(model.slot_dom_order)
+
     box_re = re.compile(
         r'<div\s+class="([^"]*\bbox\b[^"]*)"([^>]*?)>\s*</div>',
         re.DOTALL,
     )
     template_box_count = len(box_re.findall(body_html))
-    if template_box_count != expected_slot_count:
-        raise ValueError(
-            f"Hard-key template slot count mismatch for model '{model_key}': "
-            f"template empty boxes={template_box_count}, registry slot_dom_order={expected_slot_count}"
-        )
+    lo, hi = model.slot_range
+    expected_slot_keys = set(range(lo, hi + 1))
+
+    label_map = model.slot_by_data_label
     dpad_count_before = _hard_key_template_class_count(body_html, "dpad")
     injected_slots: list[int] = []
+    data_label_re = re.compile(r'data-label\s*=\s*"([^"]*)"', re.IGNORECASE)
 
-    def _replace(match: re.Match[str]) -> str:
-        try:
-            slot = next(iter_slots)
-        except StopIteration:
-            return match.group(0)
-        injected_slots.append(int(slot))
-        button = slot_buttons_by_left.get(int(slot))
-        full = match.group(0)
-        # Keep the template's opening tag byte-for-byte; only inject children before </div>.
-        inner = re.match(r"^(<div\b[^>]+>)\s*(</div>)\s*$", full, flags=re.DOTALL | re.IGNORECASE)
-        if not inner:
-            return full
-        open_tag, close_tag = inner.group(1), inner.group(2)
-        if button is None:
-            return full
-        btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
-        return f"{open_tag}{btn_html}{close_tag}"
+    if label_map is not None:
+        if len(label_map) != template_box_count:
+            raise ValueError(
+                f"Hard-key template slot count mismatch for model '{model_key}': "
+                f"template empty boxes={template_box_count}, registry label map={len(label_map)}"
+            )
+        if sorted(label_map.values()) != list(range(lo, hi + 1)):
+            raise ValueError(
+                f"Hard-key label map must list each ButtonLeft in [{lo},{hi}] exactly once "
+                f"for model '{model_key}'"
+            )
+        expected_slot_count = template_box_count
+
+        def _replace(match: re.Match[str]) -> str:
+            full = match.group(0)
+            inner = re.match(r"^(<div\b[^>]+>)\s*(</div>)\s*$", full, flags=re.DOTALL | re.IGNORECASE)
+            if not inner:
+                return full
+            open_tag, close_tag = inner.group(1), inner.group(2)
+            dm = data_label_re.search(open_tag)
+            if not dm:
+                raise ValueError(
+                    f"Hard-key template box missing data-label for model '{model_key}': {open_tag[:160]!r}"
+                )
+            dl = dm.group(1).strip()
+            slot = label_map.get(dl)
+            if slot is None:
+                raise ValueError(f"Unknown data-label {dl!r} for model '{model_key}'")
+            injected_slots.append(int(slot))
+            button = slot_buttons_by_left.get(int(slot))
+            if button is None:
+                return full
+            btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
+            return f"{open_tag}{btn_html}{close_tag}"
+
+    else:
+        template_slots = list(model.slot_dom_order)
+        expected_slot_count = len(template_slots)
+        if template_box_count != expected_slot_count:
+            raise ValueError(
+                f"Hard-key template slot count mismatch for model '{model_key}': "
+                f"template empty boxes={template_box_count}, registry slot_dom_order={expected_slot_count}"
+            )
+        iter_slots = iter(model.slot_dom_order)
+
+        def _replace(match: re.Match[str]) -> str:
+            try:
+                slot = next(iter_slots)
+            except StopIteration:
+                return match.group(0)
+            injected_slots.append(int(slot))
+            button = slot_buttons_by_left.get(int(slot))
+            full = match.group(0)
+            # Keep the template's opening tag byte-for-byte; only inject children before </div>.
+            inner = re.match(r"^(<div\b[^>]+>)\s*(</div>)\s*$", full, flags=re.DOTALL | re.IGNORECASE)
+            if not inner:
+                return full
+            open_tag, close_tag = inner.group(1), inner.group(2)
+            if button is None:
+                return full
+            btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
+            return f"{open_tag}{btn_html}{close_tag}"
 
     augmented = box_re.sub(_replace, body_html)
     if len(injected_slots) != expected_slot_count:

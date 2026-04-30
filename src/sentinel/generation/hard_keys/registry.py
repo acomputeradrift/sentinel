@@ -23,9 +23,10 @@ Confidence:
 
 * T4x: ``slot_dom_order`` matches probe-verified ``ButtonLeft`` ↔ layout (non-sequential
   d-pad / rows); template DOM matches approved ``T4x Hard Keys.html``.
-* ISR-2 / ISR-4: ``slot_dom_order`` is ``128..hi`` in DOM order (sequential). If Apex
-  ``ButtonLeft`` order ever diverges from physical box order in the approved HTML, replace
-  those tuples with an explicit permutation (same length as empty ``.box`` count).
+* ISR-4: ``slot_dom_order`` is ``128..hi`` in DOM order (sequential).
+* ISR-2: ``slot_by_data_label`` maps each template ``data-label`` to ``ButtonLeft`` (ISR-2
+  strip is not sequential in DOM order); ``slot_dom_order`` remains ``128..161`` for tests
+  and range checks only.
 """
 from __future__ import annotations
 
@@ -34,6 +35,45 @@ from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[3]
+
+# ISR-2: template `data-label` → Apex ButtonLeft (ISR-2 data label mapping v2.xlsx).
+# DOM walk order is not sequential in ButtonLeft; do not infer from `slot_dom_order`.
+ISR2_SLOT_BY_DATA_LABEL: dict[str, int] = {
+    "c1 r1": 128,
+    "c3 r1": 129,
+    "c1 r2": 130,
+    "c3 r2": 132,
+    "c1 r3": 133,
+    "c3 r3": 137,
+    "c1 r4": 138,
+    "c3 r4": 140,
+    "c1 r5": 141,
+    "c2 r5": 142,
+    "c3 r5": 143,
+    "c1 r6": 144,
+    "c2 r6": 145,
+    "c3 r6": 146,
+    "c1 r7": 147,
+    "c2 r7": 148,
+    "c3 r7": 149,
+    "c1 r8": 150,
+    "c2 r8": 151,
+    "c3 r8": 152,
+    "c1 r9": 153,
+    "c2 r9": 154,
+    "c3 r9": 155,
+    "c1 r10": 156,
+    "c2 r10": 157,
+    "c3 r10": 158,
+    "c1 r11": 159,
+    "c2 r11": 160,
+    "c3 r11": 161,
+    "dpad up": 131,
+    "dpad left": 134,
+    "dpad ok": 135,
+    "dpad right": 136,
+    "dpad down": 139,
+}
 TEMPLATE_DIR = ROOT / "sentinel" / "ui" / "testing" / "hard_keys"
 
 
@@ -45,6 +85,7 @@ class HardKeyModel:
     slot_dom_order: tuple[int, ...]
     design_size: tuple[int, int]
     template_html_path: Path
+    slot_by_data_label: Optional[dict[str, int]] = None
 
     def slot_count(self) -> int:
         lo, hi = self.slot_range
@@ -83,6 +124,7 @@ MODELS: dict[str, HardKeyModel] = {
         slot_dom_order=_sequential_range(128, 161),
         design_size=(468, 862),
         template_html_path=TEMPLATE_DIR / "isr2_hard_keys.html",
+        slot_by_data_label=ISR2_SLOT_BY_DATA_LABEL,
     ),
     "isr4": HardKeyModel(
         key="isr4",
