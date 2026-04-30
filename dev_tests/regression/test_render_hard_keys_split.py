@@ -197,6 +197,94 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"isr2\"", html)
 
+    def test_hard_key_page_link_anchor_when_resolved_and_navigation_enabled(self) -> None:
+        """Hard-key strip should emit page-link-hit like touchscreen buttons when link resolves."""
+        hb = {
+            **_identity("LinkHK"),
+            "apexScopeSource": {"button": {"buttonId": 1}},
+            "testTargets": {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "pageLink": True,
+            },
+            "resolvedPageLink": {"targetPageId": 2, "resolvedRoomId": None},
+        }
+        project_data = {
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "T4X Device",
+                        "productModel": "t4x",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": True, "resolution": {"width": 854, "height": 480}},
+                        },
+                        "pages": [
+                            {"pageName": "Page 1", "layers": []},
+                            {"pageName": "Page 2", "layers": []},
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 1,
+                        "deviceName": "T4X Device",
+                        "displayName": "T4X Device",
+                        "rtiAddress": 1,
+                        "isClonedController": False,
+                        "rooms": [],
+                        "sourceListRows": [],
+                        "pages": [
+                            {"pageId": 1, "pageName": "Page 1", "pageOrder": 0, "pageNumber": 1, "uiItems": [], "buttons": [], "viewports": []},
+                            {"pageId": 2, "pageName": "Page 2", "pageOrder": 1, "pageNumber": 2, "uiItems": [], "buttons": [], "viewports": []},
+                        ],
+                    },
+                }
+            ],
+            "events": {"system": [], "macro": [], "macroStep": []},
+            "source": {},
+        }
+        page = project_data["devices"][0]["userFacing"]["pages"][0]
+        page["layers"] = [
+            {
+                "layerName": "Hard Keys",
+                "sharedLayerId": 1,
+                "layerOrder": 0,
+                "isKeypadLayer": True,
+                "buttonCategories": {
+                    "screenLabels": [],
+                    "screenButtons": [],
+                    "hardButtons": [hb],
+                    "emptyTag": [],
+                    "uiItems": [],
+                },
+                "viewports": [],
+                "hardKeyLayer": {
+                    "slots": [{"slotKey": 128, "buttonId": 1, "buttonTagId": 0, "frameNumber": 254, "buttonOrder": 0}],
+                    "gestures": [],
+                    "unmappedSlots": [],
+                },
+            }
+        ]
+        app_ui = {
+            "header": {"titleTemplate": "{deviceName} - {pageName}"},
+            "appNavigation": {
+                "pageLinks": {
+                    "enabled": True,
+                    "hoverActivationArea": {"width": 28},
+                    "iconPaddingRight": 8,
+                    "iconSize": 16,
+                }
+            },
+        }
+        html = render_single_device_html(
+            project_data=project_data,
+            app_ui=app_ui,
+            project_stem="render_test",
+        )
+        self.assertIn("class='page-link-hit'", html)
+        self.assertIn("data-target-page-index='1'", html)
+
     def test_isr2_injects_buttons_in_data_label_slot_order_not_sequential_order(self) -> None:
         """ISR-2 DOM order is not 128..161 consecutive; strip uses registry label → ButtonLeft map."""
         from sentinel.generation.hard_keys.registry import ISR2_SLOT_BY_DATA_LABEL

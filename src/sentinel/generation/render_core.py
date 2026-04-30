@@ -107,6 +107,37 @@ def _page_link_resolved_room_id(btn: dict[str, Any]) -> int | None:
     return None
 
 
+def _page_link_markup(
+    btn: dict[str, Any],
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
+) -> str:
+    """Anchor + icon for resolved page links (shared by touchscreen and hard-key buttons)."""
+    targets = btn.get("testTargets", {}) if isinstance(btn, dict) else {}
+    link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
+    if not link_cfg.get("enabled") or not _page_link_enabled(targets):
+        return ""
+    target_page_id = _page_link_target_id(btn)
+    resolved_room_id = _page_link_resolved_room_id(btn)
+    target_href = page_targets.get(target_page_id) if target_page_id is not None else None
+    if not target_href:
+        return ""
+    nav_width = int(link_cfg.get("hoverActivationArea", {}).get("width") or 28)
+    nav_pad = int(link_cfg.get("iconPaddingRight") or 8)
+    icon_size = int(link_cfg.get("iconSize") or 16)
+    icon = "<span class='material-symbols-outlined' aria-hidden='true'>link_2</span>"
+    page_index_attr = ""
+    if target_page_id is not None and page_target_indexes and target_page_id in page_target_indexes:
+        page_index_attr = f" data-target-page-index='{page_target_indexes[target_page_id]}'"
+    resolved_room_attr = f" data-resolved-room-id='{int(resolved_room_id)}'" if resolved_room_id is not None else ""
+    return (
+        f"<a class='page-link-hit' href='{target_href}' aria-label='Open linked page' "
+        f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}{resolved_room_attr}>"
+        f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
+    )
+
+
 def _button_tag_name(btn: dict[str, Any]) -> str:
     return str(btn.get("buttonIdentity", {}).get("buttonTagName") or "").strip()
 
@@ -817,7 +848,15 @@ def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict
     return json.dumps(meta).replace("'", "&apos;")
 
 
-def _render_hard_key_button(btn: dict[str, Any], *, slot: int, variable_label: str, app_ui: dict[str, Any]) -> str:
+def _render_hard_key_button(
+    btn: dict[str, Any],
+    *,
+    slot: int,
+    variable_label: str,
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
+) -> str:
     """Render a hard-key `.btn-wrap` that fills its template slot and reuses target wiring."""
     if not isinstance(btn, dict):
         return ""
@@ -825,6 +864,7 @@ def _render_hard_key_button(btn: dict[str, Any], *, slot: int, variable_label: s
     tag_name = _button_tag_name(btn)
     category_key = _category_key_from_label("hardButtons")
     meta_attr = _hard_key_button_meta(btn, variable_label, app_ui)
+    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes)
     return (
         f"<div class='btn-wrap hk-btn-wrap' "
         f"style='position:absolute;inset:0;width:auto;height:auto;display:flex;'"
@@ -832,6 +872,7 @@ def _render_hard_key_button(btn: dict[str, Any], *, slot: int, variable_label: s
         f" data-button-category='{escape(category_key, quote=True)}'"
         f" data-button-tag='{escape(tag_name, quote=True)}'>"
         f"<button class='test-btn' type='button' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
+        f"{link_html}"
         f"<div class='btn-pass-total' aria-hidden='true'></div>"
         f"</div>"
     )
@@ -844,6 +885,8 @@ def _augment_template_with_slots(
     slot_buttons_by_left: dict[int, dict[str, Any]],
     variable_label: str,
     app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
 ) -> str:
     from sentinel.generation.hard_keys import registry as _hk_registry
 
@@ -896,7 +939,14 @@ def _augment_template_with_slots(
             button = slot_buttons_by_left.get(int(slot))
             if button is None:
                 return full
-            btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
+            btn_html = _render_hard_key_button(
+                button,
+                slot=int(slot),
+                variable_label=variable_label,
+                app_ui=app_ui,
+                page_targets=page_targets,
+                page_target_indexes=page_target_indexes,
+            )
             return f"{open_tag}{btn_html}{close_tag}"
 
     else:
@@ -924,7 +974,14 @@ def _augment_template_with_slots(
             open_tag, close_tag = inner.group(1), inner.group(2)
             if button is None:
                 return full
-            btn_html = _render_hard_key_button(button, slot=int(slot), variable_label=variable_label, app_ui=app_ui)
+            btn_html = _render_hard_key_button(
+                button,
+                slot=int(slot),
+                variable_label=variable_label,
+                app_ui=app_ui,
+                page_targets=page_targets,
+                page_target_indexes=page_target_indexes,
+            )
             return f"{open_tag}{btn_html}{close_tag}"
 
     augmented = box_re.sub(_replace, body_html)
@@ -954,6 +1011,8 @@ def _render_hard_key_strip(
     layer_hard_buttons: list[dict[str, Any]],
     variable_label: str,
     app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
 ) -> str:
     """Build the right-zone HTML for one page using the registry template + layer rows."""
     _, body = _load_hard_key_template(model_key)
@@ -989,6 +1048,8 @@ def _render_hard_key_strip(
         slot_buttons_by_left=slot_buttons_by_left,
         variable_label=variable_label,
         app_ui=app_ui,
+        page_targets=page_targets,
+        page_target_indexes=page_target_indexes,
     )
     return augmented
 
@@ -1039,27 +1100,8 @@ def _render_button_control(
     meta_attr = json.dumps(meta).replace("'", "&apos;")
     visibility_attr = "1" if bool(oriented_ui.get("visible", True)) and "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
-    link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
-    link_html = ""
     tag_name = _button_tag_name(btn)
-    if link_cfg.get("enabled") and _page_link_enabled(targets):
-        target_page_id = _page_link_target_id(btn)
-        resolved_room_id = _page_link_resolved_room_id(btn)
-        target_href = page_targets.get(target_page_id) if target_page_id is not None else None
-        if target_href:
-            nav_width = int(link_cfg.get("hoverActivationArea", {}).get("width") or 28)
-            nav_pad = int(link_cfg.get("iconPaddingRight") or 8)
-            icon_size = int(link_cfg.get("iconSize") or 16)
-            icon = "<span class='material-symbols-outlined' aria-hidden='true'>link_2</span>"
-            page_index_attr = ""
-            if target_page_id is not None and page_target_indexes and target_page_id in page_target_indexes:
-                page_index_attr = f" data-target-page-index='{page_target_indexes[target_page_id]}'"
-            resolved_room_attr = f" data-resolved-room-id='{int(resolved_room_id)}'" if resolved_room_id is not None else ""
-            link_html = (
-                f"<a class='page-link-hit' href='{target_href}' aria-label='Open linked page' "
-                f"data-hit-width='{nav_width}' data-hit-padding='{nav_pad}'{page_index_attr}{resolved_room_attr}>"
-                f"<span class='page-link-icon' data-icon-size='{icon_size}'>{icon}</span></a>"
-            )
+    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes)
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-button-category='{escape(category_key, quote=True)}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
@@ -2383,9 +2425,11 @@ def _page_payload(
         ]
     )
     hard_key_strip_html = ""
+    hard_key_owner_layer_key = ""
     model_key = _hard_key_model_key(device)
     if model_key is not None:
-        for layer in _page_layers(page) or []:
+        page_layers_list = _page_layers(page) or []
+        for layer_index, layer in enumerate(page_layers_list):
             if not isinstance(layer, dict):
                 continue
             if not layer.get("isKeypadLayer"):
@@ -2403,8 +2447,11 @@ def _page_payload(
                 layer_hard_buttons=hard_buttons,
                 variable_label=variable_label,
                 app_ui=app_ui,
+                page_targets=page_targets,
+                page_target_indexes=page_target_indexes,
             )
             if hard_key_strip_html:
+                hard_key_owner_layer_key = _layer_key(layer_index)
                 break
 
     return {
@@ -2416,6 +2463,7 @@ def _page_payload(
         "page_button_rows": "".join(page_button_rows),
         "viewport_button_rows": "".join(viewport_button_rows),
         "hard_key_strip_html": hard_key_strip_html,
+        "hard_key_owner_layer_key": hard_key_owner_layer_key,
         "product_model": model_key,
     }
 
@@ -4407,6 +4455,10 @@ function renderLayerPanel() {{
     el.style.display=(isLayerVisible(layerKey) && baseVisible)?'':'none';
    }}
  }});
+  pageEl.querySelectorAll('.hk-split-right[data-owner-layer-key]').forEach(el=>{{
+   const layerKey=String(el.dataset.ownerLayerKey||'');
+   el.style.display=isLayerVisible(layerKey)?'':'none';
+ }});
   pageEl.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
    const layerKey=String(el.dataset.ownerLayerKey||'');
    let baseVisible=String(el.dataset.visible||'1')==='1';
@@ -4751,7 +4803,8 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    el.style.height=`${{ph}}px`;
  }});
  if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
-   if (el.classList.contains('hk-btn-wrap')) return;
+   const isHk=el.classList.contains('hk-btn-wrap');
+   if (!isHk) {{
    const left=Number(el.dataset.left||0)*totalScale;
    const top=Number(el.dataset.top||0)*totalScale;
    const width=Number(el.dataset.width||0)*totalScale;
@@ -4765,6 +4818,7 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    el.style.top=`${{top}}px`;
    el.style.width=`${{adjustedWidth}}px`;
    el.style.height=`${{height}}px`;
+   }}
    const button=el.querySelector('.test-btn');
     if (button) {{
       const buttonFontPx=resolveButtonFontPx(el, totalScale);
@@ -6068,6 +6122,10 @@ def build_device_render_bundle(
         page_inner_main = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
         if product_model_key is not None and hk_split_layout is not None:
             strip_html = payload.get("hard_key_strip_html") or ""
+            hk_owner = str(payload.get("hard_key_owner_layer_key") or "").strip()
+            hk_owner_attr = (
+                f" data-owner-layer-key='{escape(hk_owner, quote=True)}'" if hk_owner else ""
+            )
             tlp = float(hk_split_layout["touch_left_pct"])
             twp = float(hk_split_layout["touch_width_pct"])
             hlp = float(hk_split_layout["hk_left_pct"])
@@ -6075,7 +6133,7 @@ def build_device_render_bundle(
             page_html_by_index[str(page_index)] = (
                 f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;bottom:0;'>"
                 f"<div class='hk-touch-stack'>{page_inner_main}</div></div>"
-                f"<div class='hk-split-right' data-hk-model=\"{product_model_key}\" "
+                f"<div class='hk-split-right'{hk_owner_attr} data-hk-model=\"{product_model_key}\" "
                 f"style='left:{hlp:.4f}%;width:{hwp:.4f}%;top:0;bottom:0;'>{strip_html}</div>"
             )
         else:
