@@ -1,4 +1,6 @@
-﻿@import url("../testing/sentinel_device_theme.css");
+﻿/* Load from /commissioning/ only: `../testing/...` resolves to /testing/... and collides
+   with the technician route GET /testing/{techToken} (410). */
+@import url("./sentinel_device_theme.css");
 
 :root {
   --device-header-h: 50px;

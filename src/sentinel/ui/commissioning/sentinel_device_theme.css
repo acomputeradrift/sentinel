@@ -1,0 +1,121 @@
+:root {
+  --sentinel-fill-screen-label: #58585a;
+  --sentinel-fill-screen-button: #2c6fb7;
+  --sentinel-fill-hard-button: #2c6fb7;
+  --sentinel-fill-ui-item: #a7a9ac;
+  --sentinel-fill-empty-tag: #ef4444;
+  --sentinel-fill-system-event: #58585a;
+  --sentinel-fill-driver-event: #2c6fb7;
+  --sentinel-trim-pass: #39b54a;
+  --sentinel-trim-partial: #fcb040;
+  --sentinel-trim-fail: #ef4444;
+  --sentinel-trim-untested: transparent;
+  --sentinel-device-frame-bg: #eaecec;
+  --sentinel-device-frame-ring-width: 3px;
+  --sentinel-device-frame-ring-color: #000000;
+  --sentinel-device-frame-radius-iphone-ipad: 32px;
+  --sentinel-device-frame-radius-other: 0px;
+  /* DEVICE button radius only (button corners, not device frame). */
+  --sentinel-device-button-radius-base: 32;
+  --sentinel-device-button-radius: 32px;
+  --sentinel-device-button-border-color: #154665;
+}
+
+/*
+ * Device frame shell — single source for testing HTML and commissioning mount.
+ * - Outer black ring + fill: all devices except hard-key split (those use inner column rings).
+ * - iPhone/iPad: larger frame corner radius; all others use --sentinel-device-frame-radius-other.
+ */
+.rti-device-canvas:not(.rti-device-canvas-hk),
+.rtiDeviceContent:not(.rti-device-canvas-hk) {
+  border: 0 !important;
+  background: var(--sentinel-device-frame-bg) !important;
+  box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width)
+    var(--sentinel-device-frame-ring-color) !important;
+  border-radius: var(--sentinel-device-frame-radius-other) !important;
+}
+
+.rti-device-canvas:not(.rti-device-canvas-hk):has(.device-page.sentinel-device-profile-iphone-ipad),
+.rtiDeviceContent:not(.rti-device-canvas-hk):has(.device-page.sentinel-device-profile-iphone-ipad) {
+  border-radius: var(--sentinel-device-frame-radius-iphone-ipad) !important;
+}
+
+/* Hard-key split: outer mount is ringless; rings on touchscreen + remote columns. */
+.rti-device-canvas.rti-device-canvas-hk,
+.rtiDeviceContent.rti-device-canvas-hk {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  /* Keep split + column chrome inside RTI scrollport (shell may re-inject older overflow:visible). */
+  overflow: hidden !important;
+}
+
+.rti-device-canvas-hk .hk-touch-stack,
+.rti-device-canvas-hk .device-page .hk-split-right {
+  border: 0 !important;
+  border-radius: var(--sentinel-device-frame-radius-other) !important;
+  box-shadow: 0 0 0 var(--sentinel-device-frame-ring-width)
+    var(--sentinel-device-frame-ring-color) !important;
+}
+
+.rti-device-canvas-hk .hk-touch-stack {
+  background: var(--sentinel-device-frame-bg) !important;
+  overflow: hidden;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right {
+  background: #ffffff !important;
+  overflow: hidden;
+}
+
+/* Stretch splits to .device-page height (top/bottom beats fragile height:100% + flex). */
+.rti-device-canvas-hk .device-page.active {
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-left,
+.rti-device-canvas-hk .device-page .hk-split-right {
+  top: 0 !important;
+  bottom: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.btn-wrap {
+  --btn-fill-color: var(--sentinel-fill-screen-button);
+  --btn-state-trim-color: var(--sentinel-trim-untested);
+  --btn-state-trim-width: 0px;
+}
+
+/* Hard-key remote slots: same testing button chrome as the main touchscreen. */
+.rti-device-canvas-hk .hk-btn-wrap {
+  --btn-fill-color: var(--sentinel-fill-hard-button);
+  --btn-state-trim-color: var(--sentinel-trim-untested);
+  --btn-state-trim-width: 0px;
+}
+
+.test-btn {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--sentinel-device-button-radius);
+  background: var(--btn-fill-color);
+  box-shadow: inset 0 0 0 1px var(--sentinel-device-button-border-color),
+    inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);
+  color: #fff;
+  line-height: 1.1;
+  white-space: pre-line;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+}
+
+.btn-pass-total {
+  display: none !important;
+  visibility: hidden !important;
+}
