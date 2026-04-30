@@ -4694,6 +4694,81 @@ function syncHeader() {{
   }}
   window.__sentinelTextZoomAction=textZoomAction;
   window.__sentinelSyncTextZoomControls=syncTextZoomResetText;
+  function applyHkTightClusterLayout(activePage) {{
+   const canvas=document.getElementById('rtiDeviceCanvas');
+   if (!canvas||!canvas.classList.contains('rti-device-canvas-hk')) return;
+   canvas.querySelectorAll('.hk-split-right').forEach((zone)=>{{ zone.classList.remove('hk-tight-cluster'); }});
+   canvas.querySelectorAll('.hk-cluster-rim').forEach((el)=>{{ el.remove(); }});
+   canvas.querySelectorAll('.hk-split-right .frame').forEach((fr)=>{{
+    fr.style.removeProperty('transform');
+    fr.style.removeProperty('transform-origin');
+    delete fr.dataset.sentinelHkTightApplied;
+   }});
+   if (!activePage) return;
+   const leftCol=activePage.querySelector('.hk-split-left');
+   const touchEl=leftCol ? (leftCol.querySelector('.hk-touch-stack')||leftCol) : null;
+   if (!touchEl) return;
+   const HK_TIGHT_PAD=4;
+   const HK_TIGHT_STROKE=3;
+   activePage.querySelectorAll('.hk-split-right').forEach((zone)=>{{
+    const frame=zone.querySelector('.frame');
+    if (!frame) return;
+    const boxes=[...frame.querySelectorAll('.box')];
+    if (!boxes.length) return;
+    zone.classList.add('hk-tight-cluster');
+    const fr=frame.getBoundingClientRect();
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for (const el of boxes) {{
+     const r=el.getBoundingClientRect();
+     minX=Math.min(minX,r.left-fr.left);
+     minY=Math.min(minY,r.top-fr.top);
+     maxX=Math.max(maxX,r.right-fr.left);
+     maxY=Math.max(maxY,r.bottom-fr.top);
+    }}
+    const uw=maxX-minX;
+    const uh=maxY-minY;
+    if (!Number.isFinite(uw)||!Number.isFinite(uh)||uw<=0||uh<=0) {{
+     zone.classList.remove('hk-tight-cluster');
+     return;
+    }}
+    const innerW=uw+2*HK_TIGHT_PAD;
+    const innerH=uh+2*HK_TIGHT_PAD;
+    const rim=document.createElement('div');
+    rim.className='hk-cluster-rim';
+    rim.setAttribute('aria-hidden','true');
+    rim.style.cssText=
+     'position:absolute;box-sizing:content-box;pointer-events:none;z-index:2147483647;'+
+     `left:${{minX-HK_TIGHT_PAD-HK_TIGHT_STROKE}}px;top:${{minY-HK_TIGHT_PAD-HK_TIGHT_STROKE}}px;`+
+     `width:${{innerW}}px;height:${{innerH}}px;border:${{HK_TIGHT_STROKE}}px solid #000;border-radius:0;`;
+    frame.appendChild(rim);
+    const fr2=frame.getBoundingClientRect();
+    const rr=rim.getBoundingClientRect();
+    const ox=rr.left-fr2.left+rr.width/2;
+    const oy=rr.top-fr2.top+rr.height/2;
+    const leftW=touchEl.getBoundingClientRect().width;
+    const s=leftW/rr.width;
+    if (!Number.isFinite(s)||s<=0||!(leftW>0)) {{
+     rim.remove();
+     zone.classList.remove('hk-tight-cluster');
+     return;
+    }}
+    const scaleAroundRing='translate('+ox+'px,'+oy+'px) scale('+s+') translate('+(-ox)+'px,'+(-oy)+'px)';
+    frame.style.transformOrigin='0 0';
+    frame.style.transform=scaleAroundRing;
+    requestAnimationFrame(()=>{{
+     let top=Infinity,bot=-Infinity;
+     for (const el of frame.querySelectorAll('.box')) {{
+      const r=el.getBoundingClientRect();
+      top=Math.min(top,r.top);
+      bot=Math.max(bot,r.bottom);
+     }}
+     const z=zone.getBoundingClientRect();
+     const dy=z.top+z.height/2-(top+bot)/2;
+     frame.style.transform='translateY('+dy+'px) '+scaleAroundRing;
+     frame.dataset.sentinelHkTightApplied='1';
+    }});
+   }});
+  }}
 function applyRtiLayout() {{
  const _layoutT0=_perfNow();
  try {{
@@ -4882,6 +4957,7 @@ const offsetTop=(contentHeight-fittedHeight)/2;
      zone.style.setProperty('--frame-h', `${{frameH}}px`);
    }}
  }});
+ applyHkTightClusterLayout(activePage);
  refreshButtonVisualStates();
  syncHeader();
  if (LAYER_PANEL.enabled===false) {{

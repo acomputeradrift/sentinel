@@ -69,6 +69,17 @@
   overflow: hidden;
 }
 
+/* Tight HK cluster: inner 3px square rim + scale-to-touch; drop column ring while active. */
+.rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster {
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster .frame {
+  background: transparent !important;
+}
+
 /* Stretch splits to .device-page height (top/bottom beats fragile height:100% + flex). */
 .rti-device-canvas-hk .device-page.active {
   min-height: 0 !important;

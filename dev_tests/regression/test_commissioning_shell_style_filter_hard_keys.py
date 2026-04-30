@@ -108,6 +108,9 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertTrue(_shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-left"))
         self.assertTrue(_shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-right"))
         self.assertTrue(
+            _shell_style_selector_allowed(".rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster")
+        )
+        self.assertTrue(
             _shell_style_selector_allowed(".rtiDeviceContent:not(.rti-device-canvas-hk)"),
             msg="shared sentinel_device_theme.css uses .rtiDeviceContent for commissioning mount",
         )

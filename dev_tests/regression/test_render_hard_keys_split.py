@@ -197,6 +197,18 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"isr2\"", html)
 
+    def test_hk_tight_cluster_layout_wired_in_runtime_script(self) -> None:
+        """Hard-key device HTML embeds tight-cluster rim + scale layout after --frame-w sizing."""
+        slot_lefts = list(range(128, 140))
+        html = render_single_device_html(
+            project_data=_project_data_with_hard_keys("isr4", slot_lefts),
+            app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
+            project_stem="render_test",
+        )
+        self.assertIn("applyHkTightClusterLayout", html)
+        self.assertIn("hk-cluster-rim", html)
+        self.assertIn("hk-tight-cluster", html)
+
     def test_hard_key_page_link_anchor_when_resolved_and_navigation_enabled(self) -> None:
         """Hard-key strip should emit page-link-hit like touchscreen buttons when link resolves."""
         hb = {
