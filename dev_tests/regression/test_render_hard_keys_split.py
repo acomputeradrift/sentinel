@@ -341,6 +341,23 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"isr4\"", html)
 
+    def test_isr4_injects_buttons_in_data_label_slot_order_not_sequential_order(self) -> None:
+        """ISR-4 DOM order is not 128..149 consecutive; strip uses registry label → ButtonLeft map."""
+        from sentinel.generation.hard_keys.registry import ISR4_SLOT_BY_DATA_LABEL
+
+        slot_lefts = list(range(128, 150))
+        html = render_single_device_html(
+            project_data=_project_data_with_hard_keys("isr4", slot_lefts),
+            app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
+            project_stem="render_test",
+        )
+        all_slots = [int(x) for x in re.findall(r"data-hard-key-slot='(\d+)'", html)]
+        self.assertGreaterEqual(len(all_slots), 22)
+        # Document may emit the active page strip twice (e.g. orientation shells); first strip order is canonical.
+        slots_found = all_slots[:22]
+        expected = tuple(ISR4_SLOT_BY_DATA_LABEL.values())
+        self.assertEqual(tuple(slots_found), expected)
+
     def test_single_screen_layout_unchanged_when_product_model_missing(self) -> None:
         html = render_single_device_html(
             project_data=_project_data_single_screen(),

@@ -23,7 +23,9 @@ Confidence:
 
 * T4x: ``slot_dom_order`` matches probe-verified ``ButtonLeft`` ↔ layout (non-sequential
   d-pad / rows); template DOM matches approved ``T4x Hard Keys.html``.
-* ISR-4: ``slot_dom_order`` is ``128..hi`` in DOM order (sequential).
+* ISR-4: ``slot_by_data_label`` maps each template ``data-label`` to ``ButtonLeft`` (ISR-4
+  strip is not sequential in DOM order); ``slot_dom_order`` remains ``128..149`` for tests
+  and range checks only.
 * ISR-2: ``slot_by_data_label`` maps each template ``data-label`` to ``ButtonLeft`` (ISR-2
   strip is not sequential in DOM order); ``slot_dom_order`` remains ``128..161`` for tests
   and range checks only.
@@ -68,6 +70,33 @@ ISR2_SLOT_BY_DATA_LABEL: dict[str, int] = {
     "c1 r11": 159,
     "c2 r11": 160,
     "c3 r11": 161,
+    "dpad up": 131,
+    "dpad left": 134,
+    "dpad ok": 135,
+    "dpad right": 136,
+    "dpad down": 139,
+}
+
+# ISR-4: template `data-label` → Apex ButtonLeft (ISR-4 data label mapping.xlsx).
+# DOM walk order is not sequential in ButtonLeft; do not infer from `slot_dom_order`.
+ISR4_SLOT_BY_DATA_LABEL: dict[str, int] = {
+    "c1 r1": 128,
+    "c3 r1": 129,
+    "c1 r2": 130,
+    "c1 r3": 133,
+    "c1 r4": 138,
+    "c3 r2": 132,
+    "c3 r3": 137,
+    "c3 r4": 140,
+    "c1 r5": 141,
+    "c2 r5": 142,
+    "c3 r5": 143,
+    "c1 r6": 144,
+    "c2 r6": 145,
+    "c3 r6": 146,
+    "c1 r7": 147,
+    "c2 r7": 148,
+    "c3 r7": 149,
     "dpad up": 131,
     "dpad left": 134,
     "dpad ok": 135,
@@ -133,6 +162,7 @@ MODELS: dict[str, HardKeyModel] = {
         slot_dom_order=_sequential_range(128, 149),
         design_size=(602, 734),
         template_html_path=TEMPLATE_DIR / "isr4_hard_keys.html",
+        slot_by_data_label=ISR4_SLOT_BY_DATA_LABEL,
     ),
 }
 

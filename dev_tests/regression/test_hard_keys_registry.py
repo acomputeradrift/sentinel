@@ -34,6 +34,11 @@ class HardKeysRegistryTest(unittest.TestCase):
         self.assertEqual(len(isr4.slot_dom_order), 22)
         self.assertEqual(isr4.design_size, (602, 734))
         self.assertTrue(isr4.template_html_path.exists())
+        self.assertIsNotNone(isr4.slot_by_data_label)
+        lbl = isr4.slot_by_data_label or {}
+        self.assertEqual(len(lbl), 22)
+        lo, hi = isr4.slot_range
+        self.assertEqual(sorted(lbl.values()), list(range(lo, hi + 1)))
 
     def test_isr2_locked_slot_range_and_design(self) -> None:
         from sentinel.generation.hard_keys import registry as hk
@@ -50,11 +55,10 @@ class HardKeysRegistryTest(unittest.TestCase):
         lo, hi = isr2.slot_range
         self.assertEqual(sorted(lbl.values()), list(range(lo, hi + 1)))
 
-    def test_t4x_isr4_use_dom_order_not_data_labels(self) -> None:
+    def test_t4x_only_uses_dom_order_not_data_labels(self) -> None:
         from sentinel.generation.hard_keys import registry as hk
 
         self.assertIsNone(hk.MODELS["t4x"].slot_by_data_label)
-        self.assertIsNone(hk.MODELS["isr4"].slot_by_data_label)
 
     def test_resolve_product_model_from_product_id(self) -> None:
         from sentinel.generation.hard_keys import registry as hk
