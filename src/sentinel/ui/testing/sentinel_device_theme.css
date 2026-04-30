@@ -61,11 +61,13 @@
 
 .rti-device-canvas-hk .hk-touch-stack {
   background: var(--sentinel-device-frame-bg) !important;
-  overflow: hidden;
+  /* box-shadow ring paints outside the border box; overflow:hidden clips top/bottom ring */
+  overflow: visible !important;
 }
 
 .rti-device-canvas-hk .device-page .hk-split-right {
-  background: #ffffff !important;
+  /* Match touchscreen column; keys sit on same tone as .hk-touch-stack */
+  background: var(--sentinel-device-frame-bg) !important;
   overflow: hidden;
 }
 
