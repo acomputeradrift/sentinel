@@ -1,0 +1,32 @@
+---
+description: One logical change per iteration; for DevTools console, one snippet at a time—wait for results
+alwaysApply: true
+---
+
+# One change, then wait
+
+## Non-negotiable
+
+- **Single focus per response cycle:** Implement, diagnose, or deploy **one logical thing** at a time (one bug, one visual issue, one deploy, one test pass). Finish it, report briefly, **stop**.
+- **Wait for user results** before starting the next change. Do not chain a second fix, refactor, or “while we are here” edit in the same turn because it “might also help.”
+- **Do not bundle unrelated work** (for example: frame background, ring clipping, and deploy) unless the user **explicitly** asked for all of them together.
+- If you see multiple issues: address **only the one the user asked for** (or the single clearest blocker they named). You may **mention** other issues in one short sentence; do **not** implement them until the user confirms or asks.
+
+## When the user is iterating or testing
+
+- Prefer **one** verification path (e.g. one deploy, one test file) unless they asked for a batch.
+- After they run a check: **read their outcome** and only then apply the **next** single change.
+
+## Browser / DevTools console code (strict)
+
+When giving **paste-into-the-console** scripts (diagnostics, temporary style overrides, probes):
+
+- **One snippet per reply**—a single coherent paste that does **one** job (e.g. only diagnostics, or only apply candidate fix A, or only undo). Do not deliver a “menu” of multiple fixes (A/B/C), multiple undos, and optional alternates in the same message.
+- **Wait for the user’s outcome** (what they saw, console output, screenshot description) before sending the **next** snippet or moving on to a repo change.
+- If another check is needed next, say that explicitly in one line (“after you paste that, tell me X”)—still **one** paste.
+- The user may ask for “all diagnostics” or “give me everything”; only then bundle console steps.
+
+## Exceptions
+
+- **Trivial same-file follow-ups** that are required for the *same* change to compile or pass tests (e.g. missing import for the line you just added) are part of “one change.”
+- If the user explicitly says “do X and Y together” or “fix all of these,” treat that as explicit bundling.

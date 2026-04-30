@@ -460,6 +460,16 @@ body {
   padding: 0;
 }
 
+/* Hard-key: column box-shadow rings extend past overflow boxes (matches console overflow fix). */
+.projectDeviceStaticLayout:has(#rtiDeviceContent.rti-device-canvas-hk) .deviceLayoutStage,
+.projectDeviceStaticLayout:has(#rtiDeviceContent.rti-device-canvas-hk) .rtiUsableCanvas {
+  overflow: visible !important;
+}
+
+.rtiDeviceContent.rti-device-canvas-hk {
+  overflow: visible !important;
+}
+
 .page-link-hit {
   font-size: inherit;
 }

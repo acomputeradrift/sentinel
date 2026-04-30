@@ -2577,9 +2577,11 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas:not(.scroll-hover)::-webkit-scrollbar-track{{background:transparent;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
+.app-canvas:has(.rti-device-canvas-hk){{overflow:visible !important;}}
+.app-canvas:has(.rti-device-canvas-hk) .rti-canvas{{overflow:visible !important;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
 .rti-device-canvas:not(.rti-device-canvas-hk){{position:absolute;border:0;overflow:hidden;box-sizing:border-box;z-index:2;}}
-.rti-device-canvas.rti-device-canvas-hk{{position:absolute;border:0;overflow:hidden;box-sizing:border-box;z-index:2;}}
+.rti-device-canvas.rti-device-canvas-hk{{position:absolute;border:0;overflow:visible;box-sizing:border-box;z-index:2;}}
 .device-page{{position:absolute;inset:0;display:none;}}
 .device-page.active{{display:block;}}
  .vp-box{{position:absolute;border:2px dashed #88a6bd;border-radius:0;background:rgba(255,255,255,0.50);pointer-events:auto;cursor:pointer;z-index:9101;box-sizing:border-box;}}
@@ -2682,7 +2684,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
  .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
- .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;min-height:0;max-height:100%;overflow:hidden;box-sizing:border-box;}}
+ .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;min-height:0;max-height:100%;overflow:visible;box-sizing:border-box;}}
  .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;bottom:0;height:auto;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
  .rti-device-canvas-hk .device-page .hk-split-right{{position:absolute;top:0;bottom:0;left:auto;height:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;z-index:2;min-height:0;}}
  .rti-device-canvas-hk .hk-touch-stack{{position:relative;box-sizing:border-box;}}

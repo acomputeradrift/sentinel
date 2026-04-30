@@ -11,6 +11,8 @@
   --sentinel-trim-fail: #ef4444;
   --sentinel-trim-untested: transparent;
   --sentinel-device-frame-bg: #eaecec;
+  /* Hard-key remote column + .frame: matches commissioning .projectDeviceStaticLayout */
+  --sentinel-hk-remote-surround-bg: #fbfbfc;
   --sentinel-device-frame-ring-width: 3px;
   --sentinel-device-frame-ring-color: #000000;
   --sentinel-device-frame-radius-iphone-ipad: 32px;
@@ -47,8 +49,8 @@
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
-  /* Keep split + column chrome inside RTI scrollport (shell may re-inject older overflow:visible). */
-  overflow: hidden !important;
+  /* box-shadow column rings extend outside the box; overflow:hidden clips them */
+  overflow: visible !important;
 }
 
 .rti-device-canvas-hk .hk-touch-stack,
@@ -61,19 +63,43 @@
 
 .rti-device-canvas-hk .hk-touch-stack {
   background: var(--sentinel-device-frame-bg) !important;
-  overflow: hidden;
+  /* box-shadow ring paints outside the border box; overflow:hidden clips top/bottom ring */
+  overflow: visible !important;
 }
 
 .rti-device-canvas-hk .device-page .hk-split-right {
-  background: #ffffff !important;
+  /* Shell tone around remote .frame; touch column stays --sentinel-device-frame-bg */
+  background: var(--sentinel-hk-remote-surround-bg) !important;
   overflow: hidden;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right .frame {
+  background: var(--sentinel-hk-remote-surround-bg) !important;
+}
+
+/* Tight HK cluster: rim uses device ring tokens; drop column ring while active. */
+.rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster {
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster .frame {
+  background: var(--sentinel-hk-remote-surround-bg) !important;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster .hk-cluster-rim {
+  box-sizing: content-box !important;
+  border: var(--sentinel-device-frame-ring-width) solid var(--sentinel-device-frame-ring-color) !important;
+  border-radius: 0 !important;
 }
 
 /* Stretch splits to .device-page height (top/bottom beats fragile height:100% + flex). */
 .rti-device-canvas-hk .device-page.active {
   min-height: 0 !important;
   max-height: 100% !important;
-  overflow: hidden !important;
+  /* Same as HK mount: rings on .hk-touch-stack / columns paint outside border box */
+  overflow: visible !important;
   box-sizing: border-box !important;
 }
 
