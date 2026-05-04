@@ -4758,18 +4758,17 @@ function syncHeader() {{
     const scaleAroundRing='translate('+ox+'px,'+oy+'px) scale('+s+') translate('+(-ox)+'px,'+(-oy)+'px)';
     frame.style.transformOrigin='0 0';
     frame.style.transform=scaleAroundRing;
-    requestAnimationFrame(()=>{{
-     let top=Infinity,bot=-Infinity;
-     for (const el of frame.querySelectorAll('.box')) {{
-      const r=el.getBoundingClientRect();
-      top=Math.min(top,r.top);
-      bot=Math.max(bot,r.bottom);
-     }}
-     const z=zone.getBoundingClientRect();
-     const dy=z.top+z.height/2-(top+bot)/2;
-     frame.style.transform='translateY('+dy+'px) '+scaleAroundRing;
-     frame.dataset.sentinelHkTightApplied='1';
-    }});
+    void frame.offsetHeight;
+    let top=Infinity,bot=-Infinity;
+    for (const el of frame.querySelectorAll('.box')) {{
+     const r=el.getBoundingClientRect();
+     top=Math.min(top,r.top);
+     bot=Math.max(bot,r.bottom);
+    }}
+    const z=zone.getBoundingClientRect();
+    const dy=z.top+z.height/2-(top+bot)/2;
+    frame.style.transform='translateY('+dy+'px) '+scaleAroundRing;
+    frame.dataset.sentinelHkTightApplied='1';
    }});
   }}
 function applyRtiLayout() {{
@@ -5123,8 +5122,7 @@ function setActivePage(nextPageIndex) {{
  if (scopedRoomId != null) {{
   setSelectedRoom(scopedRoomId, {{persist:true}});
  }}
- syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); applyRtiLayout(); }});
- applyRtiLayout();
+ syncLayerLocksForActiveLayers(false).finally(()=>{{ renderLayerPanel(); applyLayerVisibility(); scheduleRtiLayout('page-change'); }});
 }}
 selectedRoomId=loadSelectedRoomId();
 if (selectedRoomId == null) {{

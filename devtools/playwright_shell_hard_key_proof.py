@@ -3,6 +3,9 @@
 Follows the playwright skill: npx @playwright/cli playwright-cli (open, run-code, eval, screenshot).
 
 Builds output/playwright/{hk_device.html,shell.html,css}, serves them, drives Chromium via CLI.
+
+Also proves HK tight-cluster layout does not shift vertically on a later animation frame (regression
+guard for the removed inner requestAnimationFrame in applyHkTightClusterLayout) and after page change.
 """
 from __future__ import annotations
 
@@ -75,10 +78,44 @@ def _minimal_t4x_project() -> dict:
                                     "viewports": [],
                                 },
                             ],
-                        }
+                        },
+                        {
+                            "pageName": "Page 2",
+                            "layers": [
+                                {
+                                    "layerName": "Screen",
+                                    "layerOrder": 0,
+                                    "isKeypadLayer": False,
+                                    "buttonCategories": {
+                                        "screenLabels": [],
+                                        "hardButtons": [],
+                                        "screenButtons": [],
+                                    },
+                                    "viewports": [],
+                                },
+                                {
+                                    "layerName": "Hard Keys",
+                                    "layerOrder": 1,
+                                    "isKeypadLayer": True,
+                                    "hardKeyLayer": {"slots": hk_slots},
+                                    "buttonCategories": {
+                                        "screenLabels": [],
+                                        "hardButtons": hk_buttons,
+                                        "screenButtons": [],
+                                    },
+                                    "viewports": [],
+                                },
+                            ],
+                        },
                     ],
                 },
-                "diagnostics": {"deviceId": 1, "pages": [{"pageId": 1, "pageName": "Home"}]},
+                "diagnostics": {
+                    "deviceId": 1,
+                    "pages": [
+                        {"pageId": 1, "pageName": "Home"},
+                        {"pageId": 2, "pageName": "Page 2"},
+                    ],
+                },
             }
         ]
     }
@@ -193,6 +230,35 @@ def main() -> int:
             print("run-code failed:", r1.stdout, r1.stderr, file=sys.stderr)
             return r1.returncode or 1
 
+        stab_js = (
+            "await page.waitForSelector('.hk-split-right .frame', { timeout: 30000 }); "
+            "await page.waitForFunction(() => typeof window.applyRtiLayout === 'function'); "
+            "await page.evaluate(async () => { "
+            " const raf = () => new Promise((r) => requestAnimationFrame(r)); "
+            " const top = () => { const f = document.querySelector('.hk-split-right .frame'); "
+            "  return f ? f.getBoundingClientRect().top : NaN; }; "
+            " if (typeof applyRtiLayout !== 'function') throw new Error('no applyRtiLayout'); "
+            " applyRtiLayout(); "
+            " const t0 = top(); await raf(); const t1 = top(); await raf(); const t2 = top(); "
+            " if (Math.abs(t0 - t1) >= 0.51 || Math.abs(t1 - t2) >= 0.51) { "
+            "  throw new Error('HK tight-cluster vertical drift after layout: '+JSON.stringify({t0,t1,t2})); } "
+            " if (typeof setActivePage !== 'function') return; "
+            " setActivePage(1); await raf(); await raf(); "
+            " const p1a = top(); await raf(); const p1b = top(); "
+            " if (Math.abs(p1a - p1b) >= 0.51) { "
+            "  throw new Error('HK drift after setActivePage(1): '+JSON.stringify({p1a,p1b})); } "
+            " setActivePage(0); await raf(); await raf(); "
+            " const p0a = top(); await raf(); const p0b = top(); "
+            " if (Math.abs(p0a - p0b) >= 0.51) { "
+            "  throw new Error('HK drift after setActivePage(0): '+JSON.stringify({p0a,p0b})); } "
+            "}); "
+        )
+        r_stab = _pw_cli(["run-code", stab_js])
+        if r_stab.returncode != 0:
+            print("stability run-code failed:", r_stab.stdout, r_stab.stderr, file=sys.stderr)
+            _pw_cli(["close"])
+            return r_stab.returncode or 1
+
         # These checks existed because earlier passes only asserted stylesheet/layout presence.
         # Shell mount must copy data-hk-* onto #rtiDeviceContent or applyRtiLayout sees designW=0 and
         # never sets px --frame-w on .hk-split-right (real commissioning bug).
@@ -264,6 +330,9 @@ def main() -> int:
             return 1
         print(
             "PASS: shell mount, px --frame-w, template CSS bypass, .box relative, buttons sized to slots."
+        )
+        print(
+            "PASS: HK .frame top stable across rAF after applyRtiLayout and after setActivePage (no post-rAF shift)."
         )
         return 0
     finally:
