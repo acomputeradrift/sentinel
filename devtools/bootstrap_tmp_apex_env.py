@@ -43,7 +43,7 @@ def main() -> int:
     env.pop("PYTHONPATH", None)
     editable = f"{ROOT.resolve(strict=False)}[dev]"
     steps = [
-        [str(py), "-m", "pip", "install", "-U", "pip"],
+        [str(py), "-m", "pip", "install", "-U", "pip>=26.1"],
         [str(py), "-m", "pip", "install", "-e", editable],
         [str(py), "-m", "playwright", "install", "chromium"],
     ]

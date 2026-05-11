@@ -3,7 +3,7 @@
 Status: draft working document for investigation/discovery.  
 Scope: define layout behavior for RTI remotes with touchscreen + hard keys before implementation.
 
-## Current Agreed Layout Model -> \\mac\Home\Desktop\Development\Sentinel\Assets\Hard Keys\Hard Key Remote Spacing Layout.png
+## Current Agreed Layout Model -> C:\Development\Sentinel\Assets\Hard Keys\Hard Key Remote Spacing Layout.png
 
 This captures the current understanding from the reference screenshot and discussion.
 

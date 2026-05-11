@@ -1,0 +1,35 @@
+---
+description: Every Hard Keys HTML revision bumps version (filename and/or title/metadata)
+globs: Assets/Hard Keys/**/*.html,src/sentinel/ui/testing/hard_keys/*.html
+alwaysApply: false
+---
+
+# Hard Keys HTML versioning
+
+Applies to **`Assets/Hard Keys/**/*.html`** and mirrored runtime templates under **`src/sentinel/ui/testing/hard_keys/*.html`**.
+
+## Rule
+
+**Each revision that changes layout, spacing, CSS geometry, DOM structure, `data-label`s, or other meaningful behavior must ship under a new version.** Do not ship substantive edits under an unchanged version string.
+
+## Versioned filenames (`*Template*v*.html`, e.g. ISR-2 / ISR-4 / T4x Template)
+
+1. **Bump the integer in the filename** for that edit: copy to the next version (`v2` → `v3`, etc.). Keep the prior file in the repo as history unless the user asks to delete it.
+2. **Update in-file metadata** to match: `<title>`, top HTML comments, `aria-label` (and any other strings that name the version).
+3. **Do not** add, edit, or sync copies under **`Assets/Hard Keys/Usable Templates/`** unless the user explicitly asks—canonical files live only in **`Assets/Hard Keys/`** (plus `src/.../hard_keys/` for runtime).
+
+## Canonical layout HTML (fixed names, e.g. `T4x Hard Keys.html`, `ISR-4 Hard Keys.html`)
+
+The filename may stay stable. Still **increment the documented version** every revision:
+
+- `<title>` (e.g. `T4x Hard Keys v3`)
+- A short **`<!-- vN: … -->`** comment after `<head>` (or equivalent) summarizing what changed vs `vN-1`
+- Root **`aria-label`** on `.frame` / `.chrome` when it names the version
+
+## Runtime mirrors (`src/sentinel/ui/testing/hard_keys/*.html`)
+
+When the Assets canonical file changes, sync content per **`registry.py`** / project practice and **match the same version comment/title/aria** so `src/` never looks older than Assets.
+
+## Waivers
+
+Only **trivial, non-layout** edits (typo in comment, whitespace, no geometry/DOM change) may skip a version bump—and only when the user explicitly allows it.

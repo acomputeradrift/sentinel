@@ -38,6 +38,13 @@ def _commissioning_create_project_via_modal(page, name: str) -> None:
     page.locator("#modalNewProjectSubmit").click()
 
 
+def _expect_commissioning_live_upload_finished(expect, page, apex_path: Path) -> None:
+    """commissioning.js: success clears upload-status; lastGeneratedLabel shows filename; Create tech link enables when ready."""
+    expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name, timeout=120000)
+    expect(page.locator("#createTechLinkBtn")).to_be_enabled(timeout=120000)
+    expect(page.get_by_test_id("upload-status")).to_have_text("")
+
+
 class _StaticServer:
     def __init__(self, directory: Path):
         self._directory = directory
@@ -1142,9 +1149,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             tmp = Path(td)
             app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
             app_server.start()
+            context = self._browser.new_context()
             try:
                 base_url = str(app_server.base_url or "").rstrip("/")
-                page = self._browser.new_page()
+                page = context.new_page()
                 console_logs: list[str] = []
                 page.on("console", lambda msg: console_logs.append(str(msg.text or "")))
 
@@ -1159,8 +1167,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
                 page.set_input_files("input[type=file][name=apex]", str(apex_path))
                 page.get_by_role("button", name="Load File").click()
-                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
-                expect(page.get_by_test_id("upload-status")).to_contain_text(apex_path.name, timeout=120000)
+                _expect_commissioning_live_upload_finished(expect, page, apex_path)
 
                 page.get_by_role("button", name="Commissioning").click()
                 expect(page.locator("#panel-commission")).to_be_visible()
@@ -1225,6 +1232,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 )
                 page.close()
             finally:
+                context.close()
                 app_server.stop()
 
     def test_live_status_bar_shows_extracting_and_generating_phases(self):
@@ -1243,9 +1251,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             tmp = Path(td)
             app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
             app_server.start()
+            context = self._browser.new_context()
             try:
                 base_url = str(app_server.base_url or "").rstrip("/")
-                page = self._browser.new_page()
+                page = context.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
                 _commissioning_click_file_tab(page)
                 _commissioning_create_client_via_modal(page, "Live Client")
@@ -1273,13 +1282,14 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
                 page.set_input_files("input[type=file][name=apex]", str(apex_path))
                 page.get_by_role("button", name="Load File").click()
-                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
+                _expect_commissioning_live_upload_finished(expect, page, apex_path)
 
                 phases = page.evaluate("() => Array.isArray(window.__phaseLabelHistory) ? window.__phaseLabelHistory.slice() : []")
                 self.assertTrue(any(str(p) == "Extracting..." for p in phases), f"Missing Extracting... phase. history={phases}")
                 self.assertTrue(any(str(p) == "Generating..." for p in phases), f"Missing Generating... phase. history={phases}")
                 page.close()
             finally:
+                context.close()
                 app_server.stop()
 
     def test_live_status_bar_recovers_phase_updates_after_manage_ws_gap(self):
@@ -1298,9 +1308,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             tmp = Path(td)
             app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
             app_server.start()
+            context = self._browser.new_context()
             try:
                 base_url = str(app_server.base_url or "").rstrip("/")
-                page = self._browser.new_page()
+                page = context.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
                 _commissioning_click_file_tab(page)
                 _commissioning_create_client_via_modal(page, "Live Client")
@@ -1347,12 +1358,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                     }"""
                 )
 
-                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
+                _expect_commissioning_live_upload_finished(expect, page, apex_path)
                 phases = page.evaluate("() => Array.isArray(window.__phaseLabelHistory) ? window.__phaseLabelHistory.slice() : []")
                 self.assertTrue(any(str(p) == "Extracting..." for p in phases), f"Missing Extracting... after ws gap. history={phases}")
                 self.assertTrue(any(str(p) == "Generating..." for p in phases), f"Missing Generating... after ws gap. history={phases}")
                 page.close()
             finally:
+                context.close()
                 app_server.stop()
 
     def test_live_device_page_change_resets_zoom_to_default(self):
@@ -1371,9 +1383,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             tmp = Path(td)
             app_server = _AppServer(generated_root=(tmp / "generated"), upload_root=(tmp / "uploads"))
             app_server.start()
+            context = self._browser.new_context()
             try:
                 base_url = str(app_server.base_url or "").rstrip("/")
-                page = self._browser.new_page()
+                page = context.new_page()
                 page.goto(f"{base_url}/commissioning/index.html")
                 _commissioning_click_file_tab(page)
                 _commissioning_create_client_via_modal(page, "Live Client")
@@ -1385,7 +1398,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
                 page.set_input_files("input[type=file][name=apex]", str(apex_path))
                 page.get_by_role("button", name="Load File").click()
-                expect(page.get_by_test_id("upload-status")).to_contain_text("Uploaded", timeout=120000)
+                _expect_commissioning_live_upload_finished(expect, page, apex_path)
 
                 create_link_req = urlrequest.Request(
                     f"{base_url}/api/v1/commissioning/projects/{project_id}/tech-links",
@@ -1399,7 +1412,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 self.assertTrue(tech_url.startswith("/testing/"), f"Unexpected techUrl: {tech_url}")
 
                 page.goto(f"{base_url}{tech_url}", wait_until="domcontentloaded")
-                page.locator("a.home-row.device-row").first.click()
+                device_link = page.locator("a.home-row.device-row").first
+                expect(device_link).to_be_visible(timeout=60000)
+                device_link.scroll_into_view_if_needed()
+                device_link.click()
                 expect(page.locator(".zoom-reset")).to_have_text("100%")
                 page.locator(".zoom-inc").click()
                 expect(page.locator(".zoom-reset")).to_have_text("110%")
@@ -1411,4 +1427,5 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 expect(page.locator(".zoom-reset")).to_have_text("100%")
                 page.close()
             finally:
+                context.close()
                 app_server.stop()

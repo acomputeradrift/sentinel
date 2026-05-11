@@ -7,6 +7,7 @@ AGENTS.md: HTML UI behavior requires browser-level verification.
 
 from __future__ import annotations
 
+import shutil
 import socket
 import sys
 import tempfile
@@ -365,6 +366,13 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             if self._thread:
                 self._thread.join(timeout=2)
 
+    def _teardown_static_session(self, page, server, tmp_dir: Path) -> None:
+        try:
+            page.close()
+            server.stop()
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     def _app_ui_browser_viewport(self) -> dict:
         return {
             "layout": {
@@ -426,7 +434,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             "diagnostics": _four_rooms_diag(),
         }
         project = {"devices": [device]}
-        page, server, _tmp = self._open_page(project)
+        page, server, tmp_dir = self._open_page(project)
         try:
             result = page.evaluate(
                 """
@@ -474,8 +482,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
     def test_source_list_scroll_shell_clips_overflow(self):
         device = {
@@ -487,7 +494,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             "diagnostics": _six_checked_sources_diag(),
         }
         project = {"devices": [device]}
-        page, server, _tmp = self._open_page(project)
+        page, server, tmp_dir = self._open_page(project)
         try:
             result = page.evaluate(
                 """
@@ -515,8 +522,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
     def test_source_list_selected_room_compacts_rows_to_top(self):
         device = {
@@ -528,7 +534,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             "diagnostics": _two_room_checked_sources_diag(),
         }
         project = {"devices": [device]}
-        page, server, _tmp = self._open_page(project)
+        page, server, tmp_dir = self._open_page(project)
         try:
             result = page.evaluate(
                 """
@@ -555,8 +561,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
     def test_source_list_first_load_starts_compacted_without_roundtrip(self):
         device = {
@@ -568,7 +573,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             "diagnostics": _two_room_checked_sources_diag(),
         }
         project = {"devices": [device]}
-        page, server, _tmp = self._open_page(project)
+        page, server, tmp_dir = self._open_page(project)
         try:
             page.wait_for_timeout(1200)
             result = page.evaluate(
@@ -596,8 +601,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
     def test_source_list_compaction_survives_layout_visibility_order(self):
         device = {
@@ -609,7 +613,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             "diagnostics": _two_room_checked_sources_diag(),
         }
         project = {"devices": [device]}
-        page, server, _tmp = self._open_page(project)
+        page, server, tmp_dir = self._open_page(project)
         try:
             result = page.evaluate(
                 """
@@ -641,8 +645,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
     def test_source_list_compaction_survives_orientation_toggle(self):
         device = {
@@ -654,7 +657,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             "diagnostics": _two_room_checked_sources_diag(),
         }
         project = {"devices": [device]}
-        page, server, _tmp = self._open_page(project)
+        page, server, tmp_dir = self._open_page(project)
         try:
             result = page.evaluate(
                 """
@@ -690,8 +693,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
     def test_source_list_first_paint_has_no_compaction_flash(self):
         device = {
@@ -703,7 +705,7 @@ class SyntheticListScrollRuntimeTest(unittest.TestCase):
             "diagnostics": _two_room_checked_sources_diag(),
         }
         project = {"devices": [device]}
-        page, server, _tmp = self._open_page(project)
+        page, server, tmp_dir = self._open_page(project)
         try:
             result = page.evaluate(
                 """
@@ -729,8 +731,7 @@ async () => {
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
     def test_non_synthetic_page_link_uses_resolved_room_id_for_selected_room(self):
         device = {
@@ -771,13 +772,14 @@ async () => {
         try:
             result = page.evaluate(
                 """
-() => {
+async () => {
   const selectedBefore = (document.getElementById('selectedRoomValue')?.textContent || '').trim();
   const link = document.querySelector('.device-page.active .btn-wrap .page-link-hit');
   if (!link) return { ok: false, reason: 'missing page link' };
   const roomAttr = Number(link.getAttribute('data-resolved-room-id') || 0);
   if (roomAttr !== 2) return { ok: false, reason: 'link missing resolved room id', roomAttr };
   link.click();
+  await new Promise((r) => setTimeout(r, 80));
   const active = document.querySelector('.device-page.active');
   const activePage = Number(active?.dataset?.pageIndex ?? -1);
   const selectedAfter = (document.getElementById('selectedRoomValue')?.textContent || '').trim();
@@ -789,8 +791,7 @@ async () => {
             )
             self.assertTrue(result.get("ok"), msg=str(result))
         finally:
-            page.close()
-            server.stop()
+            self._teardown_static_session(page, server, tmp_dir)
 
 
 if __name__ == "__main__":

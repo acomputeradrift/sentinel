@@ -4,7 +4,7 @@ Purpose: describe **how we develop and deploy** (repo layout, local vs droplet, 
 
 ## Workspace + rules
 
-- Local workspace root (Windows): `\\mac\Home\Desktop\Development\Sentinel`
+- Local workspace root (Windows): `C:\Development\Sentinel`
 - Shell: PowerShell
 - Git branch prefix: `codex/`
 - Primary process rules: `AGENTS.md`
@@ -17,8 +17,7 @@ Purpose: describe **how we develop and deploy** (repo layout, local vs droplet, 
 
 Purpose: single local venv for **Sentinel package deps, FastAPI stack, and Playwright** so regression and UI runtime tests do not depend on a random system Python.
 
-- Path (Windows): `Y:\Desktop\Development\Sentinel\.tmp_apex_env`
-- Path (UNC): `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env`
+- Path (venv, same machine): `C:\Development\Sentinel\.tmp_apex_env`
 - Python venv structure: `Scripts\python`, `Lib\site-packages`
 - **Create / refresh:** from repo root, run `python devtools/bootstrap_tmp_apex_env.py` (installs `pip install -e ".[dev]"` and `playwright install chromium`). Safe to re-run after `pyproject.toml` changes.
 - **Regression tests:** `python devtools/run_regression_with_venv.py` (uses this venv and writes `devtools/last_regression_run.txt` if you need a log file).
@@ -248,14 +247,14 @@ If test have been run on the new work, already, skip the retest below, but tell 
 
 1) Unit/regression tests (local)
    - Use temp env interpreter (required):
-     - `Y:\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest discover -s dev_tests/regression -p "test_*.py"`
+     - `C:\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest discover -s dev_tests/regression -p "test_*.py"`
    - Do not run local tests with system/default `python`.
    - If a test skips for missing dependencies, re-run once with the temp env interpreter before reporting a skip.
 
 2) UI runtime tests (Playwright)
    - Use the temp env:
-     - `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_testing_result_posting`
-     - `\\mac\Home\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_commissioning_console_runtime`
+     - `C:\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_testing_result_posting`
+     - `C:\Development\Sentinel\.tmp_apex_env\Scripts\python -m unittest dev_tests.ui.test_commissioning_console_runtime`
 
 Intent Check Gate (required before deploy)
 - Question: `Did this solution fix the exact user-visible problem Jamie reported?`

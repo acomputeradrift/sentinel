@@ -56,9 +56,14 @@ def dump_layer(label: str, apex: str, slid: int) -> None:
 
 
 def main() -> int:
-    dash = r"\\mac\Home\Desktop\Development\Sentinel\Assets\Dash OS v55.2 iPhone.apex"
-    sung = r"\\mac\Home\Desktop\Development\Sentinel\Assets\Sung Residence v207.2.apex"
-    rockett = r"\\mac\Home\Desktop\Development\Sentinel\Assets\cea2a845-c91e-40d2-9584-ebc5154b5a1d__Rockett RTI FarmHouse_RTI_iD11.14.6_Killed off ISR-2_2026-04-08_1151.apex"
+    root = Path(__file__).resolve().parents[1]
+    dash = str(root / "Assets" / "Dash OS v55.2 iPhone.apex")
+    sung = str(root / "Assets" / "Sung Residence v207.2.apex")
+    rockett = str(
+        root
+        / "Assets"
+        / "cea2a845-c91e-40d2-9584-ebc5154b5a1d__Rockett RTI FarmHouse_RTI_iD11.14.6_Killed off ISR-2_2026-04-08_1151.apex"
+    )
 
     dump_layer("T4x (Dash OS)", dash, 1574)
     dump_layer("ISR-4 (Sung)", sung, 482)

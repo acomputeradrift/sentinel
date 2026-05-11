@@ -1,4 +1,5 @@
 import json
+import shutil
 import socket
 import sys
 import tempfile
@@ -246,10 +247,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         page = self._browser.new_page()
         page.goto(f"{server.base_url}/{shell_path.name}", wait_until="domcontentloaded")
         page.wait_for_selector("#rtiDeviceContent .device-page.active .test-btn")
-        return page, server
+        return page, server, root_dir
 
     def test_shell_panel_colors_and_stacking_are_correct(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             state = page.evaluate(
                 """
@@ -277,9 +278,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_rti_device_canvas_has_zero_padding(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             pads = page.evaluate(
                 """
@@ -302,9 +304,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_rti_device_canvas_keeps_twenty_pixel_outer_margin(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             margins = page.evaluate(
                 """
@@ -329,9 +332,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_active_elements_fit_inside_device_content_inner_box(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             overflow = page.evaluate(
                 """
@@ -375,9 +379,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_text_zoom_changes_active_page_text_without_device_resize(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             before = page.evaluate(
                 """
@@ -413,9 +418,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_text_zoom_resets_on_page_change_and_label_matches(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             page.click('[data-control="text-zoom-inc"][data-variant="full"]')
             page.wait_for_timeout(120)
@@ -428,9 +434,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_page_link_icon_scales_with_text_zoom(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             page.evaluate(
                 """
@@ -469,9 +476,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_text_zoom_is_additive_with_device_zoom(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             before = page.evaluate(
                 """
@@ -509,9 +517,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_link_icon_matches_button_font_size(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             page.click('[data-control="device-zoom-inc"][data-variant="full"]')
             page.click('[data-control="text-zoom-inc"][data-variant="full"]')
@@ -534,9 +543,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_zoom_logs_are_emitted_for_device_and_text(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             logs: list[dict] = []
 
@@ -567,9 +577,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_viewport_popup_text_scales_with_text_zoom(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             page.evaluate(
                 """
@@ -612,9 +623,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_popup_pass_fail_active_colors_are_distinct(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             colors = page.evaluate(
                 """
@@ -633,9 +645,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_minimized_device_controls_use_same_behavior_as_full_controls(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             before_full = page.locator('[data-control="device-zoom-reset"][data-variant="full"]').inner_text().strip()
             page.click(".deviceControlsToggleLeft")
@@ -648,9 +661,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_orientation_active_state_is_synced_for_full_and_minimized_controls(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             page.click(".deviceControlsToggleLeft")
             page.click('[data-control="orientation-portrait"][data-variant="mini"]')
@@ -675,6 +689,7 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_shell_shows_loading_overlay_until_runtime_ready(self):
         from playwright.sync_api import expect
@@ -719,6 +734,7 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(root_dir, ignore_errors=True)
 
     def test_shell_runtime_ready_is_not_blocked_by_layer_lock_fetch_latency(self):
         from playwright.sync_api import expect
@@ -760,9 +776,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(root_dir, ignore_errors=True)
 
     def test_shell_layer_controls_keep_symmetric_safe_vertical_padding(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             paddings = page.evaluate(
                 """
@@ -786,9 +803,10 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
     def test_shell_device_button_box_shadow_and_status_trim_are_rendered(self):
-        page, server = self._open_shell_page()
+        page, server, tmp_root = self._open_shell_page()
         try:
             shadow_before = page.evaluate(
                 """
@@ -820,6 +838,7 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 if __name__ == "__main__":

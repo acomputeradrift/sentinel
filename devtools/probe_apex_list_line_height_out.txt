@@ -1,4 +1,4 @@
-﻿FILE=\\Mac\Home\Desktop\Development\Sentinel\Assets\Dash OS v55.2 iPhone.apex
+﻿FILE=C:\Development\Sentinel\Assets\Dash OS v55.2 iPhone.apex
 TABLES=91
 --- columns (name contains height|row|item|line|scroll|list) ---
 ControllerRoomList	ControllerRoomListId	INTEGER

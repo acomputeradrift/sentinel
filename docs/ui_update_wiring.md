@@ -137,7 +137,7 @@ Update triggers:
 ### 1) Effective Scope Source Contract
 
 Source of truth:
-- `Y:\Desktop\Development\Sentinel\docs\button_id_and_scope.md`
+- `C:\Development\Sentinel\docs\button_id_and_scope.md`
 
 Implementation note:
 - Existing code path is mostly working and should be reused.

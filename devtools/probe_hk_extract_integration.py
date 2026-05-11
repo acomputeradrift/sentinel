@@ -14,7 +14,7 @@ if str(SRC) not in sys.path:
 
 
 def main() -> int:
-    src = Path(r"\\mac\Home\Desktop\Development\Sentinel\Assets\Dash OS v55.2 iPhone.apex")
+    src = ROOT / "Assets" / "Dash OS v55.2 iPhone.apex"
     dst = Path(os.environ["TEMP"]) / "sentinel_hk_extract.apex"
     shutil.copyfile(src, dst)
 

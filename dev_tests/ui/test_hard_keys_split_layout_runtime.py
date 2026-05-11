@@ -1,4 +1,5 @@
 """Playwright runtime UI test: T4x hard-key split layout renders both zones side-by-side."""
+import shutil
 import socket
 import sys
 import tempfile
@@ -193,10 +194,10 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         page.wait_for_selector("#rtiDeviceCanvas", state="attached", timeout=5000)
         page.wait_for_selector(".device-page.active", state="attached", timeout=5000)
         page.wait_for_timeout(600)
-        return page, server
+        return page, server, tmp_dir
 
     def test_hk_split_zones_exist_and_are_visible(self):
-        page, server = self._render_and_serve()
+        page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
@@ -237,9 +238,10 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_hk_split_right_frame_vars_are_set(self):
-        page, server = self._render_and_serve()
+        page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
@@ -279,9 +281,10 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_hk_btn_wrap_elements_are_non_zero(self):
-        page, server = self._render_and_serve()
+        page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
@@ -314,9 +317,10 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_canvas_has_data_hk_model_t4x(self):
-        page, server = self._render_and_serve()
+        page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
@@ -338,9 +342,10 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_hard_key_template_boxes_are_not_stroked(self):
-        page, server = self._render_and_serve()
+        page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
@@ -366,9 +371,10 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_hard_key_buttons_use_testing_chrome(self):
-        page, server = self._render_and_serve()
+        page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
@@ -391,10 +397,11 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_hk_outer_canvas_has_no_ring_touch_and_hard_key_columns_have_rings(self):
         """Hard-key mode: no outer #rtiDeviceCanvas ring; black ring on touchscreen `.hk-touch-stack` and `.hk-split-right`."""
-        page, server = self._render_and_serve()
+        page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
@@ -429,6 +436,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
         finally:
             page.close()
             server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

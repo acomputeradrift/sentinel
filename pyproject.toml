@@ -8,6 +8,7 @@ dependencies = [
   "uvicorn>=0.27",
   "pydantic>=2.6",
   "pg8000>=1.31",
+  "python-multipart>=0.0.27",
 ]
 
 [project.optional-dependencies]

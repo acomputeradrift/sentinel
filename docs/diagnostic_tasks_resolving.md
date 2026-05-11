@@ -8,7 +8,7 @@ Primary test file used:
 - `Assets/Carlos OBryans v6.3.1 (tag cleanup).apex`
 
 Environment used:
-- `Y:\Desktop\Development\Sentinel\.tmp_apex_env\Scripts\python`
+- `C:\Development\Sentinel\.tmp_apex_env\Scripts\python`
 
 ## Required Diagnostics Headings
 

@@ -76,5 +76,18 @@ $env:PYTHONPATH = "src"
 
 Broader UI discovery is possible but slower; prefer targeted modules during development.
 
+### Playwright Cursor skill (reference, not a repo copy)
+
+**Decision:** Sentinel does **not** vendor a duplicate of the Playwright skill inside this repository. The canonical instructions live in the **Playwright** skill configured in Cursor (see **Cursor Settings → Skills** for the resolved path to `SKILL.md`). On typical Codex-style layouts the same file is also at `%USERPROFILE%\.codex\skills\playwright\SKILL.md`.
+
+**When agents must apply it**
+
+- Before doing **CLI-first** Playwright work from the terminal (`playwright-cli` / the skill’s wrapper script): **read that `SKILL.md` first** and follow its workflow (open → snapshot → interact by ref → re-snapshot, artifact locations, guardrails).
+- When **debugging or reproducing** UI behavior outside a committed `unittest` module (ad hoc navigation, screenshots, traces): use the skill’s patterns and, for artifacts in this repo, prefer **`output/playwright/`** as described in the skill.
+
+**What the skill does not replace**
+
+- **Automated test gates** stay **`python devtools/run_regression_with_venv.py`** and targeted **`.tmp_apex_env\Scripts\python.exe -m unittest dev_tests.ui…`** as above. Those use the Python Playwright API and pinned deps; passing them is still the project’s definition of “tests pass” for committed UI tests.
+
 ---
 
