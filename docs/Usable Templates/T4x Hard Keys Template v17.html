@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>T4x Hard Keys Template v17</title>
+  <!--
+    v17 (from v16): spacer-middle-to-row3 −2px; inner strip height −2px (−4px→−6px trailing). Else unchanged vs v16.
+    Canonical: ../T4x Hard Keys.html (608×732).
+  -->
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .chrome {
+      width: 532px;
+      height: calc(52px + (680px * 480 / 608 - 4px + 112px * 480 / 608 * (552 / 542 - 1) + 369px * 480 / 608 * (552 / 523 - 1) - 6px) * 608 / 552);
+      padding: 25px;
+      border: 1px solid #000000;
+      background: #ffffff;
+    }
+
+    .layout-clip {
+      width: 480px;
+      height: calc((680px * 480 / 608 - 4px + 112px * 480 / 608 * (552 / 542 - 1) + 369px * 480 / 608 * (552 / 523 - 1) - 6px) * 608 / 552);
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    /*
+      v4 layer at scale 480/608; extra factor 608/552 → net 480/552 vs design.
+      origin top center: symmetric horizontal crop into 480px.
+    */
+    .layout-scale {
+      flex: 0 0 auto;
+      width: 480px;
+      height: calc(680px * 480 / 608 - 4px + 112px * 480 / 608 * (552 / 542 - 1) + 369px * 480 / 608 * (552 / 523 - 1) - 6px);
+      transform: scale(calc(608 / 552));
+      transform-origin: top center;
+    }
+
+    .layout {
+      position: relative;
+      width: 480px;
+      height: calc(680px * 480 / 608 - 4px + 112px * 480 / 608 * (552 / 542 - 1) + 369px * 480 / 608 * (552 / 523 - 1) - 6px);
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      flex: 0 0 auto;
+    }
+
+    .row.row1 {
+      justify-content: space-between;
+      padding: 0 calc(28px * 480 / 608);
+    }
+
+    /* Match row1 side inset; inner width 552×480/608 like row1 */
+    .row.row2,
+    .row.row3 {
+      justify-content: space-between;
+      padding: 0 calc(28px * 480 / 608);
+    }
+
+    .middle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 calc(28px * 480 / 608);
+      height: calc(369px * 552 / 523 * 480 / 608);
+      flex: 0 0 auto;
+    }
+
+    .middle-spacer {
+      flex: 0 0 auto;
+      width: calc((95px + 8px + 95px + 8px + 95px) * 552 / 523 * 480 / 608);
+    }
+
+    .side-stack {
+      display: flex;
+      flex-direction: column;
+      gap: calc(16px * 480 / 608 + 3px + 2px - 2px - 2px);
+      flex: 0 0 auto;
+      margin-top: 1.5px;
+    }
+
+    .side-stack .box:nth-child(2) {
+      margin-top: 3px;
+    }
+
+    .box {
+      flex: 0 0 auto;
+      border: 1px solid #000000;
+      background: transparent;
+    }
+
+    .row1 .box {
+      width: calc(146px * 480 / 608);
+      height: calc(78px * 480 / 608);
+    }
+
+    /* Inner 542→552 vs row1 */
+    .row2 .box,
+    .row3 .box {
+      width: calc(123px * 552 / 542 * 480 / 608);
+      height: calc(56px * 552 / 542 * 480 / 608);
+    }
+
+    /* Middle column block 523→552 */
+    .side-stack .box {
+      width: calc(111px * 552 / 523 * 480 / 608);
+      height: calc(175px * 552 / 523 * 480 / 608);
+    }
+
+    .dpad-box {
+      position: absolute;
+      z-index: 1;
+      transform: translate(-50%, -50%);
+      width: calc(95px * 480 / 608 - 4px);
+      height: calc(105px * 480 / 608 - 9px);
+    }
+
+    /* v14 +0.5px → −0.5px (−1px more vs v14; −2px vs v13 base trailing) */
+    .dpad-ok {
+      left: 50%;
+      top: calc((160px + 56px * 552 / 542 + 184.5px * 552 / 523) * 480 / 608 - 0.5px);
+    }
+
+    .dpad-up {
+      left: 50%;
+      top: calc((160px + 56px * 552 / 542 + 184.5px * 552 / 523 - 113px) * 480 / 608 + 9px - 0.5px);
+    }
+
+    .dpad-down {
+      left: 50%;
+      top: calc((160px + 56px * 552 / 542 + 184.5px * 552 / 523 + 113px) * 480 / 608 - 9px - 0.5px);
+    }
+
+    .dpad-left {
+      left: calc(50% - 103px * 480 / 608 + 4px);
+      top: calc((160px + 56px * 552 / 542 + 184.5px * 552 / 523) * 480 / 608 - 0.5px);
+    }
+
+    .dpad-right {
+      left: calc(50% + 103px * 480 / 608 - 4px);
+      top: calc((160px + 56px * 552 / 542 + 184.5px * 552 / 523) * 480 / 608 - 0.5px);
+    }
+
+    .spacer-row1-to-row2 { height: calc(57px * 480 / 608); flex: 0 0 auto; }
+    .spacer-row2-to-middle { height: calc(25px * 480 / 608); flex: 0 0 auto; }
+    .spacer-middle-to-row3 { height: calc(39px * 480 / 608 - 4px - 3px - 2px - 2px - 2px); flex: 0 0 auto; }
+  </style>
+</head>
+<body>
+  <div class="chrome" aria-label="T4x hard keys template v17: spacer-middle-to-row3 −2px; strip −2px vs v16">
+    <div class="layout-clip">
+      <div class="layout-scale">
+        <div class="layout">
+
+          <div class="row row1">
+            <div class="box" data-label="Row 1 Col 1"></div>
+            <div class="box" data-label="Row 1 Col 2"></div>
+            <div class="box" data-label="Row 1 Col 3"></div>
+          </div>
+
+          <div class="spacer-row1-to-row2"></div>
+
+          <div class="row row2">
+            <div class="box" data-label="Row 2 Col 1"></div>
+            <div class="box" data-label="Row 2 Col 2"></div>
+            <div class="box" data-label="Row 2 Col 3"></div>
+            <div class="box" data-label="Row 2 Col 4"></div>
+          </div>
+
+          <div class="spacer-row2-to-middle"></div>
+
+          <div class="middle">
+            <div class="side-stack">
+              <div class="box" data-label="Chan Up"></div>
+              <div class="box" data-label="Chan Down"></div>
+            </div>
+            <div class="middle-spacer" aria-hidden="true"></div>
+            <div class="side-stack">
+              <div class="box" data-label="Vol Up"></div>
+              <div class="box" data-label="Vol Down"></div>
+            </div>
+          </div>
+
+          <div class="spacer-middle-to-row3"></div>
+
+          <div class="row row3">
+            <div class="box" data-label="Row 3 Col 1"></div>
+            <div class="box" data-label="Row 3 Col 2"></div>
+            <div class="box" data-label="Row 3 Col 3"></div>
+            <div class="box" data-label="Row 3 Col 4"></div>
+          </div>
+
+          <div class="box dpad-box dpad-up" data-label="Curs Up"></div>
+          <div class="box dpad-box dpad-left" data-label="Curs Left"></div>
+          <div class="box dpad-box dpad-ok" data-label="Curs Ok"></div>
+          <div class="box dpad-box dpad-right" data-label="Curs Right"></div>
+          <div class="box dpad-box dpad-down" data-label="Curs Down"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ISR-2 Hard Keys Template v11</title>
+  <!--
+    v11 (from v10): removed .spacer-after-r11; layout & chrome height −12px (former spacer height).
+    v10: r4–r5 −2px, r1–r2 +2px vs v9; d-pad +12px top vs v7.
+  -->
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    /*
+      Width: 260 inside ring + 1px border each side = 262.
+      Height: 2px border + 20px vertical padding + layout (439×240/220 − 12px).
+    */
+    .chrome {
+      width: 262px;
+      height: calc(22px + 439px * 240 / 220 - 12px);
+      padding: 10px;
+      border: 1px solid #000000;
+      background: #ffffff;
+    }
+
+    .layout {
+      position: relative;
+      width: 240px;
+      height: calc(439px * 240 / 220 - 12px);
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      padding: 0;
+      column-gap: calc(10px * 240 / 220);
+    }
+
+    .cell {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .cell.w67 {
+      width: calc(67px * 240 / 220);
+    }
+
+    .cell.w66 {
+      width: calc(66px * 240 / 220);
+    }
+
+    .cell.left {
+      justify-content: flex-start;
+    }
+
+    .cell.right {
+      justify-content: flex-end;
+    }
+
+    .box {
+      flex: 0 0 auto;
+      border: 1px solid #000000;
+      background: transparent;
+    }
+
+    .top-box {
+      width: calc(67px * 240 / 220);
+      height: calc(30px * 240 / 220);
+    }
+
+    .small-box {
+      width: calc(36px * 240 / 220);
+      height: calc(23px * 240 / 220);
+    }
+
+    .main-box {
+      width: calc(67px * 240 / 220);
+      height: calc(30px * 240 / 220);
+    }
+
+    .cell.w66 .top-box,
+    .cell.w66 .main-box {
+      width: calc(66px * 240 / 220);
+    }
+
+    .dpad-box {
+      position: absolute;
+      width: calc(33px * 240 / 220);
+      height: calc(33px * 240 / 220);
+    }
+
+    /* +12px vs v7 — r3 shifts down +2px vs v9 from larger r1–r2 */
+    .dpad-ok {
+      left: calc(110.5px * 240 / 220);
+      top: calc((106.5px - 3px) * 240 / 220 + 12px);
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-up {
+      left: calc(110.5px * 240 / 220);
+      top: calc((71.5px - 3px) * 240 / 220 + 12px);
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-down {
+      left: calc(110.5px * 240 / 220);
+      top: calc((141.5px - 3px) * 240 / 220 + 12px);
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-left {
+      left: calc(75.5px * 240 / 220);
+      top: calc((106.5px - 3px) * 240 / 220 + 12px);
+      transform: translate(-50%, -50%);
+    }
+
+    .dpad-right {
+      left: calc(145.5px * 240 / 220);
+      top: calc((106.5px - 3px) * 240 / 220 + 12px);
+      transform: translate(-50%, -50%);
+    }
+
+    .spacer-r1-r2 { height: calc(16px * 240 / 220 + 14px); }
+    .spacer-r2-r3 { height: calc(16px * 240 / 220 - 2px); }
+    .spacer-r3-r4 { height: calc(16px * 240 / 220 - 2px); }
+    .spacer-r4-r5 { height: calc(16px * 240 / 220 - 2px); }
+
+    .spacer-r5-r6 { height: calc(7px * 240 / 220 - 4px); }
+    .spacer-r6-r7 { height: calc(7px * 240 / 220 - 4px); }
+    .spacer-r7-r8 { height: calc(17px * 240 / 220); }
+    .spacer-r8-r9 { height: calc(7px * 240 / 220 - 4px); }
+    .spacer-r9-r10 { height: calc(7px * 240 / 220 - 4px); }
+    .spacer-r10-r11 { height: calc(7px * 240 / 220 - 4px); }
+  </style>
+</head>
+<body>
+  <div class="chrome" aria-label="ISR-2 hard keys template v11: no spacer-after-r11; height −12px vs v10">
+    <div class="layout">
+    <div class="row">
+      <div class="cell left w67"><div class="box top-box" data-label="c1 r1"></div></div>
+      <div class="cell w67"></div>
+      <div class="cell right w66"><div class="box top-box" data-label="c3 r1"></div></div>
+    </div>
+
+    <div class="spacer-r1-r2"></div>
+
+    <div class="row">
+      <div class="cell left w67"><div class="box top-box" data-label="c1 r2"></div></div>
+      <div class="cell w67"></div>
+      <div class="cell right w66"><div class="box top-box" data-label="c3 r2"></div></div>
+    </div>
+
+    <div class="spacer-r2-r3"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box small-box" data-label="c1 r3"></div></div>
+      <div class="cell w67"></div>
+      <div class="cell w66"><div class="box small-box" data-label="c3 r3"></div></div>
+    </div>
+
+    <div class="spacer-r3-r4"></div>
+
+    <div class="row">
+      <div class="cell left w67"><div class="box top-box" data-label="c1 r4"></div></div>
+      <div class="cell w67"></div>
+      <div class="cell right w66"><div class="box top-box" data-label="c3 r4"></div></div>
+    </div>
+
+    <div class="spacer-r4-r5"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box main-box" data-label="c1 r5"></div></div>
+      <div class="cell w67"><div class="box main-box" data-label="c2 r5"></div></div>
+      <div class="cell w66"><div class="box main-box" data-label="c3 r5"></div></div>
+    </div>
+
+    <div class="spacer-r5-r6"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box main-box" data-label="c1 r6"></div></div>
+      <div class="cell w67"><div class="box main-box" data-label="c2 r6"></div></div>
+      <div class="cell w66"><div class="box main-box" data-label="c3 r6"></div></div>
+    </div>
+
+    <div class="spacer-r6-r7"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box main-box" data-label="c1 r7"></div></div>
+      <div class="cell w67"><div class="box main-box" data-label="c2 r7"></div></div>
+      <div class="cell w66"><div class="box main-box" data-label="c3 r7"></div></div>
+    </div>
+
+    <div class="spacer-r7-r8"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box main-box" data-label="c1 r8"></div></div>
+      <div class="cell w67"><div class="box main-box" data-label="c2 r8"></div></div>
+      <div class="cell w66"><div class="box main-box" data-label="c3 r8"></div></div>
+    </div>
+
+    <div class="spacer-r8-r9"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box main-box" data-label="c1 r9"></div></div>
+      <div class="cell w67"><div class="box main-box" data-label="c2 r9"></div></div>
+      <div class="cell w66"><div class="box main-box" data-label="c3 r9"></div></div>
+    </div>
+
+    <div class="spacer-r9-r10"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box main-box" data-label="c1 r10"></div></div>
+      <div class="cell w67"><div class="box main-box" data-label="c2 r10"></div></div>
+      <div class="cell w66"><div class="box main-box" data-label="c3 r10"></div></div>
+    </div>
+
+    <div class="spacer-r10-r11"></div>
+
+    <div class="row">
+      <div class="cell w67"><div class="box main-box" data-label="c1 r11"></div></div>
+      <div class="cell w67"><div class="box main-box" data-label="c2 r11"></div></div>
+      <div class="cell w66"><div class="box main-box" data-label="c3 r11"></div></div>
+    </div>
+
+    <div class="box dpad-box dpad-up" data-label="dpad up"></div>
+    <div class="box dpad-box dpad-left" data-label="dpad left"></div>
+    <div class="box dpad-box dpad-ok" data-label="dpad ok"></div>
+    <div class="box dpad-box dpad-right" data-label="dpad right"></div>
+    <div class="box dpad-box dpad-down" data-label="dpad down"></div>
+    </div>
+  </div>
+</body>
+</html>
