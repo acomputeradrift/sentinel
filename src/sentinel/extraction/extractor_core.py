@@ -714,6 +714,65 @@ def _is_hard_button(button_ui: dict[str, Any]) -> bool:
     return int(portrait["height"] or 0) == 0 and int(portrait["width"] or 0) == 0
 
 
+def _load_macro_redirect_map(cur: sqlite3.Cursor) -> dict[tuple[int, int], int]:
+    """Read MacroRedirect rows into ``{(RoomId, ButtonTagId) -> SourceId}``.
+
+    See ``docs/audio_scope_investigation.md`` for the locked rules. Returns an
+    empty map when the table is missing or unreadable, so projects without
+    per-room hard-key audio overrides extract unchanged.
+    """
+    try:
+        cur.execute("select name from sqlite_master where type='table' and name='MacroRedirect'")
+        if cur.fetchone() is None:
+            return {}
+    except Exception:
+        return {}
+    out: dict[tuple[int, int], int] = {}
+    try:
+        cur.execute("select RoomId, ButtonTagId, SourceId from MacroRedirect")
+    except Exception:
+        return {}
+    for row in cur.fetchall():
+        try:
+            room_id = int(row["RoomId"])
+            tag_id = int(row["ButtonTagId"])
+            source_id = int(row["SourceId"])
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+        if room_id < 0 or tag_id <= 0 or source_id <= 0:
+            continue
+        out[(room_id, tag_id)] = source_id
+    return out
+
+
+def _audio_scope_for_hard_button(
+    *,
+    button_ui: dict[str, Any],
+    effective_room_id: int,
+    tag_id: int,
+    macro_redirect_map: dict[tuple[int, int], int],
+) -> dict[str, Any] | None:
+    """Return the per-room audio-wrapper scope for a redirected hard-key button.
+
+    See ``docs/audio_scope_investigation.md``. Returns ``None`` when the
+    button is not a hard key, has no usable ``ButtonTagId``, or no
+    ``MacroRedirect`` row exists for ``(effective_room_id, tag_id)``.
+    """
+    if not _is_hard_button(button_ui):
+        return None
+    try:
+        tag = int(tag_id)
+        room = int(effective_room_id)
+    except (TypeError, ValueError):
+        return None
+    if tag <= 0:
+        return None
+    wrapper_id = macro_redirect_map.get((room, tag))
+    if wrapper_id is None:
+        return None
+    return {"roomId": room, "wrapperDeviceId": int(wrapper_id)}
+
+
 def _row_value(row: Any, key: str, default: Any = None) -> Any:
     """Read `key` from a sqlite3.Row, dict, or SimpleNamespace-like row uniformly."""
     if row is None:
@@ -1203,6 +1262,7 @@ def _resolve_button(
     frame_number: int,
     host_viewport_button_id: int | None,
     next_in_group_sequences: dict[tuple[int, int, int], list[int]],
+    macro_redirect_map: dict[tuple[int, int], int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
@@ -1450,6 +1510,13 @@ def _resolve_button(
     if effective_source_id is not None:
         effective_source_name = str(source_name_by_device_id.get(int(effective_source_id)) or str(int(effective_source_id)))
 
+    audio_scope = _audio_scope_for_hard_button(
+        button_ui=button_ui,
+        effective_room_id=int(effective_room_id),
+        tag_id=int(tag_id),
+        macro_redirect_map=macro_redirect_map or {},
+    )
+
     user_button = {
         "buttonIdentity": {
             "buttonTagName": tag_name,
@@ -1506,6 +1573,7 @@ def _resolve_button(
                 "macroStepIds": [int(sid) for sid in macro_step_ids],
                 "pageLinkId": page_link_id,
             },
+            "audioScope": audio_scope,
         },
     }
 
@@ -1547,6 +1615,7 @@ def _resolve_button(
                 "List": {"enabled": list_enabled, "source": "ObjectData" if list_enabled else None, "objectRef": next(iter(list_object_tokens), None)},
             },
             "pageLink": {"pageLinkId": page_link_id, "targetPageId": target_page_id, "targetPageName": None},
+            "audioScope": audio_scope,
         },
         "viewportContext": {
             "hostViewportButtonId": (int(host_viewport_button_id) if host_viewport_button_id is not None else None),
@@ -1669,6 +1738,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
     tag_name_by_id = _fetch_map(cur, "select ButtonTagId, ButtonTagName from ButtonTagNames")
     page_name_by_id = _fetch_map(cur, "select PageNameId, PageName from PageNames")
     room_name_by_id = _fetch_map(cur, "select RoomId, Name from Rooms")
+    macro_redirect_map = _load_macro_redirect_map(cur)
     device_columns = _table_columns(cur, "Devices")
     driver_data_columns = _table_columns(cur, "DriverData") if "DriverData" in {row[0] for row in cur.execute("select name from sqlite_master where type='table'").fetchall()} else set()
     driver_config_columns = _table_columns(cur, "DriverConfig") if "DriverConfig" in {row[0] for row in cur.execute("select name from sqlite_master where type='table'").fetchall()} else set()
@@ -2217,6 +2287,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         frame_number=int(b["FrameNumber"] or 0),
                         host_viewport_button_id=None,
                         next_in_group_sequences=next_in_group_sequences,
+                        macro_redirect_map=macro_redirect_map,
                     )
                     diag_buttons.append(diag_button)
                     completed_work_units += 1
@@ -2260,6 +2331,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             (int(layer["SourceId"]) if layer["SourceId"] is not None else None),
                             shared_layer_buttons_cache,
                             _mark_viewport_frame_button_processed,
+                            macro_redirect_map=macro_redirect_map,
                         )
                         layer_user["viewports"].append(
                             {
@@ -2387,6 +2459,7 @@ def _resolve_viewport_frames(
     parent_layer_source_id: int | None,
     shared_layer_buttons_cache: dict[int, list[sqlite3.Row]] | None = None,
     button_processed_hook: Any = None,
+    macro_redirect_map: dict[tuple[int, int], int] | None = None,
 ) -> dict[str, Any]:
     cur.execute("select * from Layers where ViewPortButtonId = ? order by LayerOrder, LayerId", (viewport_button_id,))
     child_layers = cur.fetchall()
@@ -2475,6 +2548,7 @@ def _resolve_viewport_frames(
                 frame_number=int(b["FrameNumber"] or 0),
                 host_viewport_button_id=int(viewport_button_id),
                 next_in_group_sequences=next_in_group_sequences,
+                macro_redirect_map=macro_redirect_map,
             )
             frame_diag[frame_id]["buttons"].append(diag_button)
             category = _classify_user_button_category(

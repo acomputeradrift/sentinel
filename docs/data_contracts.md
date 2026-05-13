@@ -33,3 +33,15 @@
 
 ---
 
+## Per-Field Notes
+
+### `devices[].diagnostics.pages[].buttons[].testTargets.audioScope`
+
+- Source: RTI `MacroRedirect` table — `(RoomId, ButtonTagId) -> SourceId`.
+- Populated only on hard-key buttons (`buttonUI.orientations.portrait.coordinates.height==0 and .width==0`) whose `(effectiveRoomId, buttonTagId)` matches a `MacroRedirect` row; `null` otherwise.
+- Shape when populated: `{ "roomId": <int>, "wrapperDeviceId": <int> }` where `wrapperDeviceId` is the per-room audio wrapper device id (`Devices.ControlType=6`).
+- Equivalence rule for downstream consumers: two `testTargets` entries share audio scope iff both have non-null `audioScope.wrapperDeviceId` and the values are equal. `roomId` is informational only.
+- Locked rationale in `docs/audio_scope_investigation.md`.
+
+---
+

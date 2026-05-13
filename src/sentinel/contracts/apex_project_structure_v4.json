@@ -251,6 +251,10 @@
                           "variableIds": [],
                           "macroStepIds": [],
                           "pageLinkId": null
+                        },
+                        "audioScope": {
+                          "roomId": 0,
+                          "wrapperDeviceId": 0
                         }
                       }
                     }
@@ -384,6 +388,10 @@
                                       "variableIds": [],
                                       "macroStepIds": [],
                                       "pageLinkId": null
+                                    },
+                                    "audioScope": {
+                                      "roomId": 0,
+                                      "wrapperDeviceId": 0
                                     }
                                   }
                                 }
@@ -538,6 +546,10 @@
                     "pageLinkId": null,
                     "targetPageId": null,
                     "targetPageName": null
+                  },
+                  "audioScope": {
+                    "roomId": 0,
+                    "wrapperDeviceId": 0
                   }
                 },
                 "viewportContext": {
@@ -647,6 +659,10 @@
                             "pageLinkId": null,
                             "targetPageId": null,
                             "targetPageName": null
+                          },
+                          "audioScope": {
+                            "roomId": 0,
+                            "wrapperDeviceId": 0
                           }
                         },
                         "viewportContext": {

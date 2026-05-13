@@ -3348,6 +3348,16 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
   }}
     refs.programRef = programRef;
+    if (apexScopeSource.audioScope && typeof apexScopeSource.audioScope === "object" && apexScopeSource.audioScope.wrapperDeviceId != null && rtiAddress != null && effectiveRoomId != null) {{
+     const wrapperDeviceId = Number(apexScopeSource.audioScope.wrapperDeviceId);
+     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{keyTokenResolved}}`;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
      const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
@@ -5934,6 +5944,16 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
   }}
     refs.programRef = programRef;
+    if (apexScopeSource.audioScope && typeof apexScopeSource.audioScope === "object" && apexScopeSource.audioScope.wrapperDeviceId != null && rtiAddress != null && effectiveRoomId != null) {{
+     const wrapperDeviceId = Number(apexScopeSource.audioScope.wrapperDeviceId);
+     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{keyTokenResolved}}`;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
      const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{

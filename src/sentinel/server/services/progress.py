@@ -162,6 +162,17 @@ def _scoped_target_key_from_button(*, button: dict[str, Any], label: str) -> str
         if rti_address is None or effective_room_id is None or effective_source_id is None:
             return None
         scope_type = "GLOBAL" if int(effective_room_id) == 0 else "ROOM"
+        audio_scope = scope_source.get("audioScope")
+        if isinstance(audio_scope, dict):
+            wrapper_device_id = audio_scope.get("wrapperDeviceId")
+            if wrapper_device_id is not None:
+                # Per-room MacroRedirect override: collapse vol+/vol-/mute (and
+                # any other hard key in the same redirected room) to a single
+                # wrapper-anchored key. See docs/audio_scope_investigation.md.
+                return (
+                    f"tt2_audio:{int(rti_address)}:{scope_type}:{int(effective_room_id)}:"
+                    f"{int(wrapper_device_id)}:{target_name}"
+                )
         program_ref = _scope_program_ref(label=target_name, bindings=bindings)
         return (
             f"tt2:{int(rti_address)}:{scope_type}:{int(effective_room_id)}:{int(effective_source_id)}:"
