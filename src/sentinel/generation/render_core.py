@@ -3350,7 +3350,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.programRef = programRef;
     if (apexScopeSource.audioScope && typeof apexScopeSource.audioScope === "object" && apexScopeSource.audioScope.wrapperDeviceId != null && rtiAddress != null && effectiveRoomId != null) {{
      const wrapperDeviceId = Number(apexScopeSource.audioScope.wrapperDeviceId);
-     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{keyTokenResolved}}`;
+     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{Number(buttonTagId)}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,
@@ -5946,7 +5946,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     refs.programRef = programRef;
     if (apexScopeSource.audioScope && typeof apexScopeSource.audioScope === "object" && apexScopeSource.audioScope.wrapperDeviceId != null && rtiAddress != null && effectiveRoomId != null) {{
      const wrapperDeviceId = Number(apexScopeSource.audioScope.wrapperDeviceId);
-     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{keyTokenResolved}}`;
+     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{Number(buttonTagId)}}:${{keyTokenResolved}}`;
      return {{
       targetKey,
       kind: scope,

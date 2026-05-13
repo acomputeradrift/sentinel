@@ -164,14 +164,17 @@ When `apexScopeSource.audioScope.wrapperDeviceId` is non-null, the key
 becomes:
 
 ```
-tt2_audio:{rtiAddress}:{scopeType}:{roomId}:{wrapperDeviceId}:{label}
+tt2_audio:{rtiAddress}:{scopeType}:{roomId}:{wrapperDeviceId}:{buttonTagId}:{label}
 ```
 
 - `tt2_audio:` prefix is distinct from the existing `tt2:` / `tt_ui:`
   prefixes; collision with a non-redirected key is impossible.
-- `effectiveSourceId`, `buttonTagId`, and `programRef` are deliberately
-  omitted — those are the components that differ between vol+, vol-, and
-  mute on the same room.
+- `effectiveSourceId` and `programRef` are deliberately omitted — those are
+  the components that differ between pages (per-source) and per-button
+  (per-macro-instance) on the same hard key, so dropping them lets a pass on
+  any one page propagate to every page in the same redirected room.
+- `buttonTagId` is **kept** — vol+, vol-, and mute have distinct
+  `ButtonTagId`s and must remain three distinct test results.
 - `label` (e.g. `System Macro`) is preserved so different test targets on
   the same button still produce different keys.
 
@@ -179,8 +182,8 @@ tt2_audio:{rtiAddress}:{scopeType}:{roomId}:{wrapperDeviceId}:{label}
 
 | Scenario | Result |
 |---|---|
-| vol+/vol-/mute on the same redirected page | One shared `targetKey` |
-| vol+ on Theater Home and vol+ on Theater AppleTV | Same shared `targetKey` |
+| vol+, vol-, mute in the same redirected room | **Three distinct** `targetKey`s (one per hard key) |
+| vol+ on Theater Home and vol+ on Theater AppleTV | Same shared `targetKey` (cross-page propagation) |
 | Theater (wrapper 166) vs. Rec Room (wrapper 168) hard keys | Different keys |
 | Non-redirected hard key (no `MacroRedirect` row) | Existing `tt2:` key — byte-identical to pre-Phase-B |
 | Older fixture without `audioScope` field | Existing `tt2:` key — falls back |

@@ -166,12 +166,13 @@ def _scoped_target_key_from_button(*, button: dict[str, Any], label: str) -> str
         if isinstance(audio_scope, dict):
             wrapper_device_id = audio_scope.get("wrapperDeviceId")
             if wrapper_device_id is not None:
-                # Per-room MacroRedirect override: collapse vol+/vol-/mute (and
-                # any other hard key in the same redirected room) to a single
-                # wrapper-anchored key. See docs/audio_scope_investigation.md.
+                # Per-room MacroRedirect override: anchor on the audio wrapper
+                # and keep buttonTagId so vol+/vol-/mute stay distinct tests,
+                # each propagating across pages in the same redirected room.
+                # See docs/audio_scope_investigation.md.
                 return (
                     f"tt2_audio:{int(rti_address)}:{scope_type}:{int(effective_room_id)}:"
-                    f"{int(wrapper_device_id)}:{target_name}"
+                    f"{int(wrapper_device_id)}:{int(button_tag_id)}:{target_name}"
                 )
         program_ref = _scope_program_ref(label=target_name, bindings=bindings)
         return (

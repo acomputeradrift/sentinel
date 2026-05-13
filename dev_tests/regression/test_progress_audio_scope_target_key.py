@@ -1,12 +1,13 @@
-"""Regression: redirected hard-key buttons collapse to a single shared targetKey.
+"""Regression: redirected hard-key buttons collapse to a per-tag shared targetKey.
 
 See docs/audio_scope_investigation.md for the locked rules. Phase B reuses the
 existing identity-by-targetKey equivalence mechanism — a redirected hard-key
 button with non-null apexScopeSource.audioScope emits a wrapper-anchored key
-instead of the per-button tt2: key. All vol+/vol-/mute buttons in the same
-room (and on every page in that room) collapse to the same string, so a single
-test result automatically applies to all of them via the existing append-only
-history -> latest-record-per-targetKey model.
+instead of the per-button tt2: key. The collapse drops page-varying components
+(effectiveSourceId, programRef) but KEEPS buttonTagId, so vol+, vol-, and mute
+remain three distinct tests, each of which propagates across every page in the
+same redirected room via the existing append-only history -> latest-record-per-
+targetKey model.
 """
 
 import sys
@@ -75,11 +76,11 @@ class RedirectedHardKeyCollapsedKeyTest(unittest.TestCase):
             )
         }
         scoped = progress._scoped_target_key_from_button(button=button, label="System Macro")
-        self.assertEqual(scoped, "tt2_audio:2:ROOM:12:166:System Macro")
+        self.assertEqual(scoped, "tt2_audio:2:ROOM:12:166:14:System Macro")
 
-    def test_three_hard_keys_in_same_room_collapse_to_identical_key(self) -> None:
-        """vol+/vol-/mute share buttonTagId+macroId variation but same wrapper -> one key."""
-        keys: set[str] = set()
+    def test_three_hard_keys_in_same_room_get_three_distinct_keys(self) -> None:
+        """vol+, vol-, mute remain three distinct tests; only the per-key page propagation collapses."""
+        keys: dict[int, str] = {}
         for tag_id, macro_id in ((14, 3122), (22, 3123), (19, 3124)):
             button = {
                 "apexScopeSource": _apex_scope_source(
@@ -91,20 +92,24 @@ class RedirectedHardKeyCollapsedKeyTest(unittest.TestCase):
             scoped = progress._scoped_target_key_from_button(button=button, label="System Macro")
             self.assertIsNotNone(scoped)
             assert scoped is not None
-            keys.add(scoped)
-        self.assertEqual(len(keys), 1, f"Expected one shared key, got {keys}")
+            keys[tag_id] = scoped
+        self.assertEqual(len(set(keys.values())), 3, f"Expected three distinct keys, got {keys}")
+        for tag_id, key in keys.items():
+            self.assertEqual(key, f"tt2_audio:2:ROOM:12:166:{tag_id}:System Macro")
 
     def test_same_hard_key_on_different_pages_in_same_room_collapse(self) -> None:
         """vol+ on Theater Home and vol+ on Theater AppleTV must share the same key."""
         home = {
             "apexScopeSource": _apex_scope_source(
                 page_id=513, button_id=48551, button_tag_id=14,
+                page_source_id=74, macro_ids=[3122],
                 audio_scope={"roomId": 12, "wrapperDeviceId": 166},
             )
         }
         appletv = {
             "apexScopeSource": _apex_scope_source(
                 page_id=999, button_id=99999, button_tag_id=14,
+                page_source_id=82, macro_ids=[9001],
                 audio_scope={"roomId": 12, "wrapperDeviceId": 166},
             )
         }
@@ -112,6 +117,7 @@ class RedirectedHardKeyCollapsedKeyTest(unittest.TestCase):
         appletv_key = progress._scoped_target_key_from_button(button=appletv, label="System Macro")
         self.assertIsNotNone(home_key)
         self.assertEqual(home_key, appletv_key)
+        self.assertEqual(home_key, "tt2_audio:2:ROOM:12:166:14:System Macro")
 
     def test_two_rooms_with_different_wrappers_emit_different_keys(self) -> None:
         theater = {
@@ -129,8 +135,8 @@ class RedirectedHardKeyCollapsedKeyTest(unittest.TestCase):
         theater_key = progress._scoped_target_key_from_button(button=theater, label="System Macro")
         rec_key = progress._scoped_target_key_from_button(button=rec_room, label="System Macro")
         self.assertNotEqual(theater_key, rec_key)
-        self.assertEqual(theater_key, "tt2_audio:2:ROOM:12:166:System Macro")
-        self.assertEqual(rec_key, "tt2_audio:2:ROOM:7:168:System Macro")
+        self.assertEqual(theater_key, "tt2_audio:2:ROOM:12:166:14:System Macro")
+        self.assertEqual(rec_key, "tt2_audio:2:ROOM:7:168:14:System Macro")
 
     def test_collapsed_key_distinct_prefix_from_normal_key(self) -> None:
         """The collapsed key must not collide with any normal tt2: key."""
