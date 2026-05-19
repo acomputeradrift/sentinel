@@ -776,21 +776,51 @@ def _layout_hard_key_touch_column(
     }
 
 
-def _hard_key_assembly_span_width(
-    usable_w: float,
-    touch_w: float,
-    touch_h: float,
-    hk_design_w: float,
-    hk_design_h: float,
-    touch_scale: float,
-    strip_scale: float,
-) -> float:
-    tw_s = float(touch_w) * float(touch_scale)
-    strip_th = float(touch_h) * float(strip_scale)
-    strip_w = strip_th * float(hk_design_w) / float(hk_design_h)
-    touch_left = 0.25 * usable_w - tw_s / 2.0
-    hk_left = 0.75 * usable_w - strip_w / 2.0
-    return max(touch_left + tw_s, hk_left + strip_w) - min(touch_left, hk_left)
+def _layout_hard_key_strip_column(
+    usable_w: int,
+    usable_h: int,
+    touch_h: int,
+    hk_design_w: int,
+    hk_design_h: int,
+    touch_column_width: float,
+    *,
+    margin: int = 20,
+) -> dict[str, float] | None:
+    """HK strip column: contain in half padded width and padded height; width capped by scaled touch column."""
+    if usable_w <= 0 or usable_h <= 0 or touch_h <= 0:
+        return None
+    if hk_design_w <= 0 or hk_design_h <= 0:
+        return None
+    touch_col_w = float(touch_column_width)
+    if touch_col_w <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    th = float(touch_h)
+    dw = float(hk_design_w)
+    dh = float(hk_design_h)
+    half_w = max(1.0, (uw - 2.0 * float(margin)) / 2.0)
+    fit_h = max(1.0, uh - 2.0 * float(margin))
+    strip_w0 = th * dw / dh
+    candidates = [_contain_scale(strip_w0, th, half_w, fit_h)]
+    if strip_w0 > 0:
+        candidates.append(touch_col_w / strip_w0)
+    scale = min(c for c in candidates if c > 0)
+    if scale <= 0:
+        return None
+    height = th * scale
+    width = height * dw / dh
+    top = max(0.0, (uh - height) / 2.0)
+    left = 0.75 * uw - width / 2.0
+    return {
+        "scale": scale,
+        "left": left,
+        "top": top,
+        "width": width,
+        "height": height,
+        "centerX": 0.75 * uw,
+        "centerY": top + height / 2.0,
+    }
 
 
 def _hard_key_boxes_at_scales(
@@ -884,22 +914,24 @@ def _layout_hard_key_split(
     th = float(touch_h)
     dw = float(hk_design_w)
     dh = float(hk_design_h)
-    half_w = max(1.0, (uw - 2.0 * float(margin)) / 2.0)
-    fit_w = max(1.0, uw - 2.0 * float(margin))
-    fit_h = max(1.0, uh - 2.0 * float(margin))
-    strip_w0 = th * dw / dh
     touch_col = _layout_hard_key_touch_column(
         int(uw), int(uh), int(tw), int(th), margin=margin
     )
     if touch_col is None:
         return None
     touch_scale = float(touch_col["scale"])
-    strip_scale = _contain_scale(strip_w0, th, half_w, fit_h)
-    if strip_scale <= 0:
+    strip_col = _layout_hard_key_strip_column(
+        int(uw),
+        int(uh),
+        int(th),
+        int(dw),
+        int(dh),
+        float(touch_col["width"]),
+        margin=margin,
+    )
+    if strip_col is None:
         return None
-    span_w = _hard_key_assembly_span_width(uw, tw, th, dw, dh, touch_scale, strip_scale)
-    if span_w > fit_w and span_w > 0:
-        strip_scale = min(strip_scale, strip_scale * (fit_w / span_w))
+    strip_scale = float(strip_col["scale"])
     out = _hard_key_boxes_at_scales(uw, uh, tw, th, dw, dh, touch_scale, strip_scale)
     out["_usableW"] = uw
     out["_usableH"] = uh
@@ -4728,14 +4760,27 @@ function layoutHardKeyTouchColumn(usableW, usableH, touchW, touchH, margin) {{
  const left=0.25*uw-width/2;
  return {{scale, left, top, width, height, centerX:0.25*uw, centerY:top+height/2}};
 }}
-function hardKeyAssemblySpanWidth(usableW, touchW, touchH, designW, designH, touchScale, stripScale) {{
+function layoutHardKeyStripColumn(usableW, usableH, touchH, designW, designH, touchColumnWidth, margin) {{
  const uw=Number(usableW)||0;
- const tw=Number(touchW)*Number(touchScale);
- const stripTh=Number(touchH)*Number(stripScale);
- const stripW=stripTh*Number(designW)/Number(designH);
- const touchLeft=0.25*uw-tw/2;
- const hkLeft=0.75*uw-stripW/2;
- return Math.max(touchLeft+tw, hkLeft+stripW)-Math.min(touchLeft, hkLeft);
+ const uh=Number(usableH)||0;
+ const th=Number(touchH)||0;
+ const dw=Number(designW)||0;
+ const dh=Number(designH)||0;
+ const touchColW=Number(touchColumnWidth)||0;
+ const m=margin==null ? 20 : Number(margin);
+ if (uw<=0 || uh<=0 || th<=0 || dw<=0 || dh<=0 || touchColW<=0) return null;
+ const halfW=Math.max(1, (uw-2*m)/2);
+ const fitH=Math.max(1, uh-2*m);
+ const stripW0=th*dw/dh;
+ const candidates=[containScale(stripW0, th, halfW, fitH)];
+ if (stripW0>0) candidates.push(touchColW/stripW0);
+ const scale=Math.min.apply(null, candidates.filter(v=>Number.isFinite(v)&&v>0));
+ if (!Number.isFinite(scale) || scale<=0) return null;
+ const height=th*scale;
+ const width=height*dw/dh;
+ const top=Math.max(0, (uh-height)/2);
+ const left=0.75*uw-width/2;
+ return {{scale, left, top, width, height, centerX:0.75*uw, centerY:top+height/2}};
 }}
 function hardKeyBoxesAtScales(usableW, usableH, touchW, touchH, designW, designH, touchScale, stripScale) {{
  const uw=Number(usableW)||0;
@@ -4789,16 +4834,13 @@ function layoutHardKeySplit(usableW, usableH, touchW, touchH, designW, designH, 
  const dh=Number(designH)||0;
  const m=margin==null ? 20 : Number(margin);
  if (uw<=0 || uh<=0 || tw<=0 || th<=0 || dw<=0 || dh<=0) return null;
- const halfW=Math.max(1, (uw-2*m)/2);
- const fitW=Math.max(1, uw-2*m);
- const fitH=Math.max(1, uh-2*m);
  const touchCol=layoutHardKeyTouchColumn(uw, uh, tw, th, m);
  if (!touchCol) return null;
- let touchScale=Number(touchCol.scale)||0;
- let stripScale=containScale(th*dw/dh, th, halfW, fitH);
+ const stripCol=layoutHardKeyStripColumn(uw, uh, th, dw, dh, touchCol.width, m);
+ if (!stripCol) return null;
+ const touchScale=Number(touchCol.scale)||0;
+ const stripScale=Number(stripCol.scale)||0;
  if (!Number.isFinite(touchScale) || touchScale<=0 || !Number.isFinite(stripScale) || stripScale<=0) return null;
- let spanW=hardKeyAssemblySpanWidth(uw, tw, th, dw, dh, touchScale, stripScale);
- if (spanW>fitW && spanW>0) stripScale=Math.min(stripScale, stripScale*(fitW/spanW));
  const out=hardKeyBoxesAtScales(uw, uh, tw, th, dw, dh, touchScale, stripScale);
  out._usableW=uw;
  out._usableH=uh;

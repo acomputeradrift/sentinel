@@ -70,6 +70,51 @@ class LayoutHardKeyTouchColumnTest(unittest.TestCase):
         self.assertAlmostEqual(float(split["touchScale"]), float(touch_only["scale"]), places=5)
 
 
+class LayoutHardKeyStripColumnTest(unittest.TestCase):
+    def test_matches_half_width_height_contain(self) -> None:
+        touch = render_core._layout_hard_key_touch_column(1280, 900, 480, 854, margin=20)
+        self.assertIsNotNone(touch)
+        assert touch is not None
+        lay = render_core._layout_hard_key_strip_column(
+            1280, 900, 854, 608, 732, float(touch["width"]), margin=20
+        )
+        self.assertIsNotNone(lay)
+        assert lay is not None
+        half_w, fit_h = (1280 - 40) / 2, 900 - 40
+        strip_w0 = 854 * 608 / 732
+        expected = min(half_w / strip_w0, fit_h / 854, float(touch["width"]) / strip_w0)
+        self.assertAlmostEqual(lay["scale"], expected, places=5)
+
+    def test_strip_width_capped_by_scaled_touch_column(self) -> None:
+        touch = render_core._layout_hard_key_touch_column(1280, 900, 480, 854, margin=20)
+        self.assertIsNotNone(touch)
+        assert touch is not None
+        strip = render_core._layout_hard_key_strip_column(
+            1280, 900, 854, 608, 732, float(touch["width"]), margin=20
+        )
+        self.assertIsNotNone(strip)
+        assert strip is not None
+        self.assertLessEqual(float(strip["width"]), float(touch["width"]) + 0.5)
+        strip_w0 = 854 * 608 / 732
+        touch_cap = float(touch["width"]) / strip_w0
+        self.assertAlmostEqual(float(strip["scale"]), touch_cap, places=4)
+        self.assertAlmostEqual(float(strip["width"]), float(touch["width"]), places=3)
+
+    def test_jazz_room_strip_margins_when_height_limited(self) -> None:
+        """When touch-width cap does not bind, strip height fill gives top/bottom ~20px."""
+        touch = render_core._layout_hard_key_touch_column(1280, 900, 480, 854, margin=20)
+        assert touch is not None
+        strip = render_core._layout_hard_key_strip_column(
+            1280, 900, 854, 468, 862, float(touch["width"]), margin=20
+        )
+        self.assertIsNotNone(strip)
+        assert strip is not None
+        top = float(strip["top"])
+        height = float(strip["height"])
+        self.assertAlmostEqual(top, 20.0, delta=0.6)
+        self.assertAlmostEqual(900 - top - height, 20.0, delta=0.6)
+
+
 class LayoutHardKeySplitTest(unittest.TestCase):
     def test_centers_at_quarter_lines(self) -> None:
         lay = render_core._layout_hard_key_split(
@@ -98,6 +143,7 @@ class LayoutHardKeySplitTest(unittest.TestCase):
         assert lay is not None
         self.assertLessEqual(lay["touch"]["width"], half_w + 0.5)
         self.assertLessEqual(lay["strip"]["width"], half_w + 0.5)
+        self.assertLessEqual(lay["strip"]["width"], lay["touch"]["width"] + 0.5)
 
     def test_assembly_fits_margin_box(self) -> None:
         usable_w, usable_h, margin = 1280, 900, 20
