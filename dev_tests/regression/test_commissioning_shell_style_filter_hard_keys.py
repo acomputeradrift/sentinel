@@ -125,6 +125,15 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .frame"))
         self.assertTrue(_shell_style_selector_allowed(".hk-btn-wrap .test-btn"))
 
+    def test_hk_strip_row_surround_color_override_in_theme(self) -> None:
+        from pathlib import Path
+
+        theme = (Path(__file__).resolve().parents[2] / "src/sentinel/ui/commissioning/sentinel_device_theme.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".hk-split-right .frame > .row", theme)
+        self.assertIn("border-color: var(--sentinel-hk-remote-surround-bg)", theme)
+
     def test_testing_popup_selectors_survive_filter(self) -> None:
         self.assertTrue(_shell_style_selector_allowed(".ov"))
         self.assertTrue(_shell_style_selector_allowed(".pop h3"))

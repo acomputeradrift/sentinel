@@ -77,6 +77,12 @@
   background: var(--sentinel-hk-remote-surround-bg) !important;
 }
 
+/* HK template rows share class with testing-popup .row (filtered into shell); match surround. */
+.rti-device-canvas-hk .device-page .hk-split-right .frame > .row {
+  border-color: var(--sentinel-hk-remote-surround-bg) !important;
+  background-color: var(--sentinel-hk-remote-surround-bg) !important;
+}
+
 /* Tight HK cluster: rim uses device ring tokens; drop column ring while active. */
 .rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster {
   box-shadow: none !important;
