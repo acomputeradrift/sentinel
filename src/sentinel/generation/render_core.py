@@ -699,6 +699,70 @@ def _hard_key_layout_display_height(
     return max(int(touch_h), strip_h_at_touch_w)
 
 
+def _hard_key_usable_split_layout(
+    usable_w: int,
+    usable_h: int,
+    touch_w: int,
+    touch_h: int,
+    hk_design_w: int,
+    hk_design_h: int,
+    *,
+    margin: int = 20,
+) -> dict[str, float] | None:
+    """Anchor touch/HK boxes at 25% / 75% of usable width; margin applies to fit scale only."""
+    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
+        return None
+    if hk_design_w <= 0 or hk_design_h <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    tw = float(touch_w)
+    th = float(touch_h)
+    strip_w = th * float(hk_design_w) / float(hk_design_h)
+    touch_left_1 = 0.25 * uw - tw / 2.0
+    touch_right_1 = 0.25 * uw + tw / 2.0
+    hk_left_1 = 0.75 * uw - strip_w / 2.0
+    hk_right_1 = 0.75 * uw + strip_w / 2.0
+    span_w_1 = max(touch_right_1, hk_right_1) - min(touch_left_1, hk_left_1)
+    fit_w = max(1.0, uw - 2.0 * float(margin))
+    fit_h = max(1.0, uh - 2.0 * float(margin))
+    scale_candidates = [1.0]
+    if span_w_1 > 0:
+        scale_candidates.append(fit_w / span_w_1)
+    if th > 0:
+        scale_candidates.append(fit_h / th)
+    edge_room = 0.25 * uw - float(margin)
+    if edge_room > 0:
+        if tw > 0:
+            scale_candidates.append((2.0 * edge_room) / tw)
+        if strip_w > 0:
+            scale_candidates.append((2.0 * edge_room) / strip_w)
+    scale = max(0.0, min(scale_candidates))
+    if scale <= 0:
+        return None
+    touch_dw = tw * scale
+    touch_dh = th * scale
+    strip_dw = strip_w * scale
+    strip_dh = touch_dh
+    touch_left = 0.25 * uw - touch_dw / 2.0
+    hk_left = 0.75 * uw - strip_dw / 2.0
+    touch_top = max(0.0, (uh - touch_dh) / 2.0)
+    hk_top = touch_top
+    return {
+        "scale": scale,
+        "touchLeft": touch_left,
+        "touchTop": touch_top,
+        "touchWidth": touch_dw,
+        "touchHeight": touch_dh,
+        "touchCenterX": 0.25 * uw,
+        "hkLeft": hk_left,
+        "hkTop": hk_top,
+        "hkWidth": strip_dw,
+        "hkHeight": strip_dh,
+        "hkCenterX": 0.75 * uw,
+    }
+
+
 def _hard_key_quarter_band_layout(
     touch_w0: int,
     touch_h0: int,
@@ -4412,6 +4476,100 @@ function hkTouchSourceSize() {{
  const s=currentOrientationSize();
  return {{width:Number(s.width||0), height:Number(s.height||0)}};
 }}
+function computeHkUsableSplitLayout(usableW, usableH, touchW, touchH, designW, designH, margin) {{
+ const uw=Number(usableW)||0;
+ const uh=Number(usableH)||0;
+ const tw=Number(touchW)||0;
+ const th=Number(touchH)||0;
+ const dw=Number(designW)||0;
+ const dh=Number(designH)||0;
+ const m=margin==null ? 20 : Number(margin);
+ if (uw<=0 || uh<=0 || tw<=0 || th<=0 || dw<=0 || dh<=0) return null;
+ const stripW=th*dw/dh;
+ const touchLeft1=0.25*uw-tw/2;
+ const touchRight1=0.25*uw+tw/2;
+ const hkLeft1=0.75*uw-stripW/2;
+ const hkRight1=0.75*uw+stripW/2;
+ const spanW1=Math.max(touchRight1, hkRight1)-Math.min(touchLeft1, hkLeft1);
+ const fitW=Math.max(1, uw-2*m);
+ const fitH=Math.max(1, uh-2*m);
+ const candidates=[1];
+ if (spanW1>0) candidates.push(fitW/spanW1);
+ if (th>0) candidates.push(fitH/th);
+ const edgeRoom=0.25*uw-m;
+ if (edgeRoom>0) {{
+  if (tw>0) candidates.push((2*edgeRoom)/tw);
+  if (stripW>0) candidates.push((2*edgeRoom)/stripW);
+ }}
+ const scale=Math.max(0, Math.min.apply(null, candidates));
+ if (!Number.isFinite(scale) || scale<=0) return null;
+ return hkSplitLayoutAtScale(uw, uh, tw, th, dw, dh, scale);
+}}
+function hkSplitLayoutAtScale(usableW, usableH, touchW, touchH, designW, designH, scale) {{
+ const uw=Number(usableW)||0;
+ const uh=Number(usableH)||0;
+ const s=Number(scale)||0;
+ const tw=Number(touchW)*s;
+ const th=Number(touchH)*s;
+ const stripW=th*Number(designW)/Number(designH);
+ const touchTop=Math.max(0, (uh-th)/2);
+ return {{
+  scale:s,
+  touchLeft:0.25*uw-tw/2,
+  touchTop,
+  touchWidth:tw,
+  touchHeight:th,
+  touchCenterX:0.25*uw,
+  hkLeft:0.75*uw-stripW/2,
+  hkTop:touchTop,
+  hkWidth:stripW,
+  hkHeight:th,
+  hkCenterX:0.75*uw,
+ }};
+}}
+function applyHkUsableSplitColumns(activePage, usableW, usableH, totalScale) {{
+ const canvas=document.getElementById('rtiDeviceCanvas');
+ if (!canvas||!activePage) return;
+ const ts=hkTouchSourceSize();
+ const touchW=Number(ts.width||0);
+ const touchH=Number(ts.height||0);
+ const designW=Number(canvas.dataset.hkDesignW||0);
+ const designH=Number(canvas.dataset.hkDesignH||0);
+ const pos=hkSplitLayoutAtScale(usableW, usableH, touchW, touchH, designW, designH, totalScale);
+ if (!pos) return;
+ const leftCol=activePage.querySelector('.hk-split-left');
+ const rightCol=activePage.querySelector('.hk-split-right');
+ const touchStack=activePage.querySelector('.hk-touch-stack');
+ const place=(el, left, top, width, height)=>{{
+  if (!el) return;
+  el.style.position='absolute';
+  el.style.left=`${{left}}px`;
+  el.style.top=`${{top}}px`;
+  el.style.width=`${{width}}px`;
+  el.style.height=`${{height}}px`;
+  el.style.right='auto';
+  el.style.bottom='auto';
+ }};
+ place(leftCol, pos.touchLeft, 0, pos.touchWidth, pos.touchHeight);
+ place(rightCol, pos.hkLeft, 0, pos.hkWidth, pos.hkHeight);
+ if (touchStack) {{
+  touchStack.style.width=`${{pos.touchWidth}}px`;
+  touchStack.style.height=`${{pos.touchHeight}}px`;
+ }}
+ const frameW=Math.max(1, Math.floor(pos.hkWidth));
+ const frameH=Math.max(1, Math.floor(pos.hkHeight));
+ rightCol.style.setProperty('--frame-w', `${{frameW}}px`);
+ rightCol.style.setProperty('--frame-h', `${{frameH}}px`);
+ if (rightCol) {{
+  const frame=rightCol.querySelector('.frame');
+  if (frame) {{
+   frame.style.setProperty('--frame-w', `${{frameW}}px`);
+   frame.style.setProperty('--frame-h', `${{frameH}}px`);
+   frame.style.removeProperty('transform');
+   frame.style.removeProperty('transform-origin');
+  }}
+ }}
+}}
 function applyOrientationState() {{
  const short=currentOrientation==='landscape' ? 'l' : 'p';
  document.querySelectorAll('.orientation-btn').forEach(button=>button.classList.toggle('active', button.dataset.orientation===currentOrientation));
@@ -4842,49 +5000,71 @@ function applyRtiLayout() {{
  rtiCanvas.style.width=`${{rtiCanvasWidth}}px`;
  rtiCanvas.style.height=`${{rtiCanvasHeight}}px`;
 
-const sourceSize=currentOrientationSize();
+const isHkDevice=rtiDeviceCanvas.classList.contains('rti-device-canvas-hk');
 const DEVICE_CANVAS_MARGIN=20;
-const fitWidth=Math.max(rtiCanvasWidth-(DEVICE_CANVAS_MARGIN*2),1);
-const fitHeight=Math.max(rtiCanvasHeight-(DEVICE_CANVAS_MARGIN*2),1);
-const widthScale=fitWidth/sourceSize.width;
-const heightScale=fitHeight/sourceSize.height;
+const zoomMul=clamp(Number(currentZoomPercent||ZOOM_DEFAULT), ZOOM_DEFAULT, ZOOM_MAX)/100;
+const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
+const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
+let totalScale=1;
+let fittedWidth=0;
+let fittedHeight=0;
+let offsetLeft=0;
+let offsetTop=0;
+if (isHkDevice) {{
+ const usableW=rtiCanvasWidth;
+ const usableH=rtiCanvasHeight;
+ const ts=hkTouchSourceSize();
+ const touchW=Number(ts.width||0);
+ const touchH=Number(ts.height||0);
+ const designW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
+ const designH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
+ const baseLay=computeHkUsableSplitLayout(usableW, usableH, touchW, touchH, designW, designH, DEVICE_CANVAS_MARGIN);
+ let baseScale=(baseLay && Number(baseLay.scale)>0) ? Number(baseLay.scale) : 1;
+ if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) baseScale=Math.min(baseScale, 1);
+ baseScale=Math.min(maxScale, Math.max(minScale, baseScale));
+ totalScale=baseScale*zoomMul;
+ fittedWidth=usableW;
+ const posZoom=hkSplitLayoutAtScale(usableW, usableH, touchW, touchH, designW, designH, totalScale);
+ const spanRight=posZoom ? Math.max(posZoom.touchLeft+posZoom.touchWidth, posZoom.hkLeft+posZoom.hkWidth) : fittedWidth;
+ fittedHeight=posZoom ? posZoom.touchHeight : usableH;
+ offsetLeft=0;
+ offsetTop=posZoom ? posZoom.touchTop : 0;
+ const contentWidth=Math.max(rtiCanvasWidth, spanRight);
+ const contentHeight=Math.max(rtiCanvasHeight, offsetTop+fittedHeight);
+ rtiContent.style.width=`${{contentWidth}}px`;
+ rtiContent.style.height=`${{contentHeight}}px`;
+ rtiDeviceCanvas.style.left='0px';
+ rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
+ rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
+ rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
+ rtiDeviceCanvas.style.setProperty('--sentinel-device-scale', String(totalScale));
+}} else {{
+ const sourceSize=currentOrientationSize();
+ const fitWidth=Math.max(rtiCanvasWidth-(DEVICE_CANVAS_MARGIN*2),1);
+ const fitHeight=Math.max(rtiCanvasHeight-(DEVICE_CANVAS_MARGIN*2),1);
+ const widthScale=fitWidth/sourceSize.width;
+ const heightScale=fitHeight/sourceSize.height;
  let scale=Math.min(widthScale,heightScale);
- const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
- const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
- if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) {{
-   scale=Math.min(scale,1);
- }}
+ if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) scale=Math.min(scale,1);
  scale=Math.min(maxScale, Math.max(minScale, scale));
- const totalScale=scale*(currentZoomPercent/100);
-const fittedWidth=sourceSize.width*totalScale;
-const fittedHeight=sourceSize.height*totalScale;
-const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
-const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
-const offsetLeft=(contentWidth-fittedWidth)/2;
-const offsetTop=(contentHeight-fittedHeight)/2;
+ totalScale=scale*zoomMul;
+ fittedWidth=sourceSize.width*totalScale;
+ fittedHeight=sourceSize.height*totalScale;
+ const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
+ const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
+ offsetLeft=(contentWidth-fittedWidth)/2;
+ offsetTop=(contentHeight-fittedHeight)/2;
  rtiContent.style.width=`${{contentWidth}}px`;
  rtiContent.style.height=`${{contentHeight}}px`;
  rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
  rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
  rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
  rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
+ rtiDeviceCanvas.style.removeProperty('--sentinel-device-scale');
+}}
  currentTotalScale=totalScale;
  currentDeviceLeft=offsetLeft;
  currentDeviceTop=offsetTop;
- if (rtiDeviceCanvas.classList.contains('rti-device-canvas-hk')) {{
-  const ts=hkTouchSourceSize();
-  const tsw=Number(ts.width||0);
-  const tsh=Number(ts.height||0);
-  if (tsw>0 && tsh>0) {{
-   rtiDeviceCanvas.style.setProperty('--sentinel-device-scale', String(totalScale));
-   document.querySelectorAll('.hk-touch-stack').forEach(el=>{{
-    el.style.width=`${{tsw*totalScale}}px`;
-    el.style.height=`${{tsh*totalScale}}px`;
-   }});
-  }}
- }} else {{
-  rtiDeviceCanvas.style.removeProperty('--sentinel-device-scale');
- }}
  if (_pendingZoomCenter) {{
   const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
   const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
@@ -4974,20 +5154,9 @@ const offsetTop=(contentHeight-fittedHeight)/2;
       if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
     }}
   }});
- if (activePage) activePage.querySelectorAll('.hk-split-right').forEach(zone=>{{
-   const designW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
-   const designH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
-   const zoneW=zone.clientWidth;
-   const zoneH=zone.clientHeight;
-   if (designW>0 && designH>0 && zoneW>0 && zoneH>0) {{
-     const fitScale=Math.min(zoneW/designW, zoneH/designH);
-     const frameW=Math.max(1, Math.floor(designW*fitScale));
-     const frameH=Math.max(1, Math.floor(designH*fitScale));
-     zone.style.setProperty('--frame-w', `${{frameW}}px`);
-     zone.style.setProperty('--frame-h', `${{frameH}}px`);
-   }}
- }});
- applyHkTightClusterLayout(activePage);
+ if (isHkDevice && activePage) {{
+  applyHkUsableSplitColumns(activePage, rtiCanvasWidth, rtiCanvasHeight, totalScale);
+ }}
  refreshButtonVisualStates();
  syncHeader();
  if (LAYER_PANEL.enabled===false) {{
@@ -6225,48 +6394,26 @@ def build_device_render_bundle(
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
     product_model_key = _hard_key_model_key(device)
-    hk_split_layout: dict[str, Any] | None = None
+    hk_remote = False
     if product_model_key is not None:
         from sentinel.generation.hard_keys import registry as _hk_registry
 
         _hk_model = _hk_registry.MODELS.get(product_model_key)
         if _hk_model is not None:
+            hk_remote = True
             hk_design_w, hk_design_h = _hk_model.design_size
-            gap_design_px = 16
-            pad_px = 20
             for orient_key in ("portrait", "landscape"):
                 size = orientation_state["sizes"].get(orient_key)
                 if not isinstance(size, dict):
                     continue
                 touch_w0 = int(size.get("width") or 0)
                 touch_h0 = int(size.get("height") or 0)
-                lay = _hard_key_quarter_band_layout(
-                    touch_w0,
-                    touch_h0,
-                    hk_design_w=hk_design_w,
-                    hk_design_h=hk_design_h,
-                    gap_design_px=gap_design_px,
-                    pad_px=pad_px,
-                )
-                if lay is None:
-                    continue
-                size["width"] = int(lay["virtual_w"])
-                size["height"] = _hard_key_layout_display_height(
-                    touch_w0,
-                    touch_h0,
-                    hk_design_w,
-                    hk_design_h,
-                )
                 size["hardKeyLayout"] = {
-                    "touchSourceWidth": int(lay["touch_w"]),
-                    "touchSourceHeight": int(lay["touch_h"]),
-                    "virtualWidth": int(lay["virtual_w"]),
-                    "stripWidth": int(lay["virtual_hk_w"]),
-                    "usableU": int(lay["usable_u"]),
-                    "padPx": int(lay["pad_px"]),
+                    "touchSourceWidth": touch_w0,
+                    "touchSourceHeight": touch_h0,
+                    "stripDesignWidth": int(hk_design_w),
+                    "stripDesignHeight": int(hk_design_h),
                 }
-                if orient_key == active_orientation:
-                    hk_split_layout = lay
             if active_orientation == "portrait":
                 res = orientation_state["sizes"]["portrait"]
             else:
@@ -6282,21 +6429,17 @@ def build_device_render_bundle(
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
         # Keep viewport box click-targets above same-layer button rows while preserving layer z-order.
         page_inner_main = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
-        if product_model_key is not None and hk_split_layout is not None:
+        if hk_remote:
             strip_html = payload.get("hard_key_strip_html") or ""
             hk_owner = str(payload.get("hard_key_owner_layer_key") or "").strip()
             hk_owner_attr = (
                 f" data-owner-layer-key='{escape(hk_owner, quote=True)}'" if hk_owner else ""
             )
-            tlp = float(hk_split_layout["touch_left_pct"])
-            twp = float(hk_split_layout["touch_width_pct"])
-            hlp = float(hk_split_layout["hk_left_pct"])
-            hwp = float(hk_split_layout["hk_width_pct"])
             page_html_by_index[str(page_index)] = (
-                f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;bottom:0;'>"
+                f"<div class='hk-split-left'>"
                 f"<div class='hk-touch-stack'>{page_inner_main}</div></div>"
-                f"<div class='hk-split-right'{hk_owner_attr} data-hk-model=\"{product_model_key}\" "
-                f"style='left:{hlp:.4f}%;width:{hwp:.4f}%;top:0;bottom:0;'>{strip_html}</div>"
+                f"<div class='hk-split-right'{hk_owner_attr} data-hk-model=\"{product_model_key}\">"
+                f"{strip_html}</div>"
             )
         else:
             page_html_by_index[str(page_index)] = page_inner_main

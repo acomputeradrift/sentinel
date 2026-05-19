@@ -165,12 +165,10 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"t4x\"", html)
         self.assertIn("hk-touch-stack", html)
-        m = re.search(r"class='hk-split-left' style='([^']+)'", html)
-        self.assertIsNotNone(m, "expected inline styles on hk-split-left")
-        left_style = m.group(1)
-        self.assertIn("left:", left_style)
-        self.assertIn("width:", left_style)
-        self.assertRegex(left_style, r"left:0*\.?0*[1-9]")  # non-zero left offset (quarter-band inset)
+        self.assertRegex(html, r"class='hk-split-left'>")
+        self.assertNotRegex(html, r"class='hk-split-left' style=")
+        self.assertIn("computeHkUsableSplitLayout", html)
+        self.assertIn("applyHkUsableSplitColumns", html)
 
     def test_payload_orientation_sizes_include_hard_key_layout(self) -> None:
         slot_lefts = list(range(128, 148))
@@ -184,7 +182,9 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIsInstance(hkl, dict)
         self.assertEqual(hkl.get("touchSourceWidth"), 480)
         self.assertEqual(hkl.get("touchSourceHeight"), 854)
-        self.assertGreater(int(portrait.get("width") or 0), 480)
+        self.assertEqual(hkl.get("stripDesignWidth"), 608)
+        self.assertEqual(hkl.get("stripDesignHeight"), 732)
+        self.assertEqual(int(portrait.get("width") or 0), 480)
 
     def test_split_layout_emitted_for_isr2(self) -> None:
         slot_lefts = list(range(128, 162))
@@ -197,18 +197,17 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"isr2\"", html)
 
-    def test_hk_tight_cluster_layout_wired_in_runtime_script(self) -> None:
-        """Hard-key device HTML embeds tight-cluster rim + scale layout after --frame-w sizing."""
+    def test_hk_usable_split_layout_wired_in_runtime_script(self) -> None:
+        """Hard-key device HTML positions columns from rtiUsableCanvas 25% / 75% anchors."""
         slot_lefts = list(range(128, 140))
         html = render_single_device_html(
             project_data=_project_data_with_hard_keys("isr4", slot_lefts),
             app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
             project_stem="render_test",
         )
-        self.assertIn("applyHkTightClusterLayout", html)
-        self.assertIn("hk-cluster-rim", html)
-        self.assertIn("hk-tight-cluster", html)
-        self.assertIn(".hk-split-right.hk-tight-cluster .hk-cluster-rim", html)
+        self.assertIn("computeHkUsableSplitLayout", html)
+        self.assertIn("applyHkUsableSplitColumns", html)
+        self.assertIn("hkSplitLayoutAtScale", html)
         self.assertIn("var(--sentinel-device-frame-ring-width)", html)
 
     def test_hard_key_page_link_anchor_when_resolved_and_navigation_enabled(self) -> None:

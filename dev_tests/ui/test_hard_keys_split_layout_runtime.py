@@ -512,6 +512,43 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             server.stop()
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def test_hk_columns_center_on_quarter_lines_of_rti_canvas(self):
+        page, server, tmp_dir = self._render_and_serve(project_data=_isr2_project_data())
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const rti = document.getElementById('rtiCanvas');
+  const activePage = document.querySelector('.device-page.active');
+  const left = activePage?.querySelector('.hk-split-left');
+  const right = activePage?.querySelector('.hk-split-right');
+  if (!rti || !left || !right) return {error: 'missing nodes'};
+  const w = rti.clientWidth;
+  const lr = left.getBoundingClientRect();
+  const rr = right.getBoundingClientRect();
+  const rt = rti.getBoundingClientRect();
+  const touchCx = (lr.left - rt.left) + lr.width / 2;
+  const hkCx = (rr.left - rt.left) + rr.width / 2;
+  return {
+    usableW: w,
+    touchCenterX: touchCx,
+    hkCenterX: hkCx,
+    targetTouch: 0.25 * w,
+    targetHk: 0.75 * w,
+    touchErr: Math.abs(touchCx - 0.25 * w),
+    hkErr: Math.abs(hkCx - 0.75 * w),
+  };
+}
+"""
+            )
+            self.assertNotIn("error", result, msg=result.get("error", ""))
+            self.assertLessEqual(result["touchErr"], 2.5, msg=result)
+            self.assertLessEqual(result["hkErr"], 2.5, msg=result)
+        finally:
+            page.close()
+            server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     def test_isr2_hard_key_layout_fits_inside_rti_canvas(self):
         page, server, tmp_dir = self._render_and_serve(project_data=_isr2_project_data())
         try:
@@ -531,7 +568,6 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
   const samples = [];
   let overflowCount = 0;
   const nodes = [
-    device,
     activePage.querySelector('.hk-touch-stack'),
     activePage.querySelector('.hk-split-right'),
     activePage.querySelector('.hk-split-right .frame'),
@@ -569,7 +605,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             )
             self.assertNotIn("error", result, msg=result.get("error", ""))
             self.assertEqual(result["hkModel"], "isr2")
-            self.assertGreater(result["deviceH"], result["touchH"])
+            self.assertGreaterEqual(result["deviceH"], result["touchH"])
             self.assertEqual(
                 result["overflowCount"],
                 0,
