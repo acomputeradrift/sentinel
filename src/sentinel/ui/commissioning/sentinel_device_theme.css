@@ -21,6 +21,7 @@
   --sentinel-device-button-radius-base: 32;
   --sentinel-device-button-radius: 32px;
   --sentinel-device-button-border-color: #154665;
+  --sentinel-hard-button-font-size: 12px;
 }
 
 /*
@@ -129,6 +130,10 @@
   --btn-fill-color: var(--sentinel-fill-hard-button);
   --btn-state-trim-color: var(--sentinel-trim-untested);
   --btn-state-trim-width: 0px;
+}
+
+.rti-device-canvas-hk .hk-btn-wrap .test-btn {
+  font-size: var(--sentinel-hard-button-font-size) !important;
 }
 
 .test-btn {

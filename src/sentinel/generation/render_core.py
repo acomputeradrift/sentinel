@@ -5469,11 +5469,20 @@ if (isHkDevice) {{
    const button=el.querySelector('.test-btn');
     if (button) {{
       const elScale=hkElementScale(el);
-      const buttonFontPx=resolveButtonFontPx(el, elScale);
-      button.style.fontSize=`${{buttonFontPx}}px`;
+      if (isHk) {{
+       button.style.removeProperty('font-size');
+      }} else {{
+       const buttonFontPx=resolveButtonFontPx(el, elScale);
+       button.style.fontSize=`${{buttonFontPx}}px`;
+      }}
       button.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*elScale)}}px`;
       const linkHit=el.querySelector('.page-link-hit');
-      if (linkHit) applyLinkSizing(linkHit, buttonFontPx, elScale);
+      if (linkHit) {{
+       const buttonFontPx=isHk
+        ? Number.parseFloat(getComputedStyle(button).fontSize||'0')
+        : resolveButtonFontPx(el, elScale);
+       if (buttonFontPx>0) applyLinkSizing(linkHit, buttonFontPx, elScale);
+      }}
     }}
   }});
  if (isHkDevice && activePage && hkSplitPos) {{

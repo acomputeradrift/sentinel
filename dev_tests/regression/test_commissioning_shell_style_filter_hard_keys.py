@@ -125,6 +125,15 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .frame"))
         self.assertTrue(_shell_style_selector_allowed(".hk-btn-wrap .test-btn"))
 
+    def test_hk_button_font_size_token_in_theme(self) -> None:
+        from pathlib import Path
+
+        theme = (Path(__file__).resolve().parents[2] / "src/sentinel/ui/commissioning/sentinel_device_theme.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--sentinel-hard-button-font-size: 12px", theme)
+        self.assertIn(".rti-device-canvas-hk .hk-btn-wrap .test-btn", theme)
+
     def test_hk_strip_row_surround_color_override_in_theme(self) -> None:
         from pathlib import Path
 
