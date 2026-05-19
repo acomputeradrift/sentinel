@@ -699,6 +699,164 @@ def _hard_key_layout_display_height(
     return max(int(touch_h), strip_h_at_touch_w)
 
 
+def _contain_scale(
+    intrinsic_w: float,
+    intrinsic_h: float,
+    fit_w: float,
+    fit_h: float,
+) -> float:
+    """Uniform scale so intrinsic rect fits inside fit_w x fit_h (aspect preserved)."""
+    iw = float(intrinsic_w)
+    ih = float(intrinsic_h)
+    fw = float(fit_w)
+    fh = float(fit_h)
+    if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
+        return 0.0
+    return max(0.0, min(fw / iw, fh / ih))
+
+
+def _layout_touchscreen_device(
+    usable_w: int,
+    usable_h: int,
+    touch_w: int,
+    touch_h: int,
+    *,
+    margin: int = 20,
+) -> dict[str, float] | None:
+    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    fit_w = max(1.0, uw - 2.0 * float(margin))
+    fit_h = max(1.0, uh - 2.0 * float(margin))
+    scale = _contain_scale(touch_w, touch_h, fit_w, fit_h)
+    if scale <= 0:
+        return None
+    width = float(touch_w) * scale
+    height = float(touch_h) * scale
+    return {
+        "scale": scale,
+        "left": (uw - width) / 2.0,
+        "top": (uh - height) / 2.0,
+        "width": width,
+        "height": height,
+    }
+
+
+def _hard_key_boxes_at_scale(
+    usable_w: float,
+    usable_h: float,
+    touch_w: float,
+    touch_h: float,
+    hk_design_w: float,
+    hk_design_h: float,
+    scale: float,
+) -> dict[str, dict[str, float] | float]:
+    th_s = touch_h * scale
+    tw_s = touch_w * scale
+    strip_w = th_s * hk_design_w / hk_design_h
+    touch_left = 0.25 * usable_w - tw_s / 2.0
+    hk_left = 0.75 * usable_w - strip_w / 2.0
+    touch_top = max(0.0, (usable_h - th_s) / 2.0)
+    touch = {
+        "left": touch_left,
+        "top": touch_top,
+        "width": tw_s,
+        "height": th_s,
+        "centerX": 0.25 * usable_w,
+        "centerY": touch_top + th_s / 2.0,
+    }
+    strip = {
+        "left": hk_left,
+        "top": touch_top,
+        "width": strip_w,
+        "height": th_s,
+        "centerX": 0.75 * usable_w,
+        "centerY": touch["centerY"],
+    }
+    asm_left = min(touch_left, hk_left)
+    asm_top = touch_top
+    asm_right = max(touch_left + tw_s, hk_left + strip_w)
+    asm_bottom = touch_top + th_s
+    assembly = {
+        "left": asm_left,
+        "top": asm_top,
+        "width": asm_right - asm_left,
+        "height": asm_bottom - asm_top,
+        "centerX": 0.5 * usable_w,
+        "centerY": touch["centerY"],
+    }
+    return {"scale": scale, "touch": touch, "strip": strip, "assembly": assembly}
+
+
+def _layout_hard_key_split(
+    usable_w: int,
+    usable_h: int,
+    touch_w: int,
+    touch_h: int,
+    hk_design_w: int,
+    hk_design_h: int,
+    *,
+    margin: int = 20,
+) -> dict[str, dict[str, float] | float] | None:
+    """Anchor at 25% / 75% of usable width; each zone capped at half the padded usable width."""
+    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
+        return None
+    if hk_design_w <= 0 or hk_design_h <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    tw = float(touch_w)
+    th = float(touch_h)
+    dw = float(hk_design_w)
+    dh = float(hk_design_h)
+    half_w = max(1.0, (uw - 2.0 * float(margin)) / 2.0)
+    fit_w = max(1.0, uw - 2.0 * float(margin))
+    fit_h = max(1.0, uh - 2.0 * float(margin))
+    strip_w0 = th * dw / dh
+    candidates = [
+        _contain_scale(tw, th, half_w, fit_h),
+        _contain_scale(strip_w0, th, half_w, fit_h),
+    ]
+    touch_l1 = 0.25 * uw - tw / 2.0
+    hk_l1 = 0.75 * uw - strip_w0 / 2.0
+    span_w1 = max(touch_l1 + tw, hk_l1 + strip_w0) - min(touch_l1, hk_l1)
+    if span_w1 > 0:
+        candidates.append(fit_w / span_w1)
+    scale = min(candidates)
+    if scale <= 0:
+        return None
+    out = _hard_key_boxes_at_scale(uw, uh, tw, th, dw, dh, scale)
+    out["_usableW"] = uw
+    out["_usableH"] = uh
+    out["_touchW"] = tw
+    out["_touchH"] = th
+    out["_designW"] = dw
+    out["_designH"] = dh
+    return out
+
+
+def _layout_hard_key_split_at_scale(
+    layout: dict[str, dict[str, float] | float],
+    scale: float,
+) -> dict[str, dict[str, float] | float]:
+    """Recompute box geometry at a new uniform scale (e.g. after zoom)."""
+    uw = float(layout["_usableW"])
+    uh = float(layout["_usableH"])
+    tw = float(layout["_touchW"])
+    th = float(layout["_touchH"])
+    dw = float(layout["_designW"])
+    dh = float(layout["_designH"])
+    out = _hard_key_boxes_at_scale(uw, uh, tw, th, dw, dh, float(scale))
+    out["_usableW"] = uw
+    out["_usableH"] = uh
+    out["_touchW"] = tw
+    out["_touchH"] = th
+    out["_designW"] = dw
+    out["_designH"] = dh
+    return out
+
+
 def _hard_key_usable_split_layout(
     usable_w: int,
     usable_h: int,
@@ -709,57 +867,33 @@ def _hard_key_usable_split_layout(
     *,
     margin: int = 20,
 ) -> dict[str, float] | None:
-    """Anchor touch/HK boxes at 25% / 75% of usable width; margin applies to fit scale only."""
-    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
+    """Backward-compatible flat dict for callers/tests migrating to _layout_hard_key_split."""
+    lay = _layout_hard_key_split(
+        usable_w, usable_h, touch_w, touch_h, hk_design_w, hk_design_h, margin=margin
+    )
+    if lay is None:
         return None
-    if hk_design_w <= 0 or hk_design_h <= 0:
-        return None
-    uw = float(usable_w)
-    uh = float(usable_h)
-    tw = float(touch_w)
-    th = float(touch_h)
-    strip_w = th * float(hk_design_w) / float(hk_design_h)
-    touch_left_1 = 0.25 * uw - tw / 2.0
-    touch_right_1 = 0.25 * uw + tw / 2.0
-    hk_left_1 = 0.75 * uw - strip_w / 2.0
-    hk_right_1 = 0.75 * uw + strip_w / 2.0
-    span_w_1 = max(touch_right_1, hk_right_1) - min(touch_left_1, hk_left_1)
-    fit_w = max(1.0, uw - 2.0 * float(margin))
-    fit_h = max(1.0, uh - 2.0 * float(margin))
-    scale_candidates = [1.0]
-    if span_w_1 > 0:
-        scale_candidates.append(fit_w / span_w_1)
-    if th > 0:
-        scale_candidates.append(fit_h / th)
-    edge_room = 0.25 * uw - float(margin)
-    if edge_room > 0:
-        if tw > 0:
-            scale_candidates.append((2.0 * edge_room) / tw)
-        if strip_w > 0:
-            scale_candidates.append((2.0 * edge_room) / strip_w)
-    scale = max(0.0, min(scale_candidates))
-    if scale <= 0:
-        return None
-    touch_dw = tw * scale
-    touch_dh = th * scale
-    strip_dw = strip_w * scale
-    strip_dh = touch_dh
-    touch_left = 0.25 * uw - touch_dw / 2.0
-    hk_left = 0.75 * uw - strip_dw / 2.0
-    touch_top = max(0.0, (uh - touch_dh) / 2.0)
-    hk_top = touch_top
+    touch = lay["touch"]
+    strip = lay["strip"]
+    assert isinstance(touch, dict) and isinstance(strip, dict)
     return {
-        "scale": scale,
-        "touchLeft": touch_left,
-        "touchTop": touch_top,
-        "touchWidth": touch_dw,
-        "touchHeight": touch_dh,
-        "touchCenterX": 0.25 * uw,
-        "hkLeft": hk_left,
-        "hkTop": hk_top,
-        "hkWidth": strip_dw,
-        "hkHeight": strip_dh,
-        "hkCenterX": 0.75 * uw,
+        "scale": float(lay["scale"]),
+        "touchLeft": float(touch["left"]),
+        "touchTop": float(touch["top"]),
+        "touchWidth": float(touch["width"]),
+        "touchHeight": float(touch["height"]),
+        "touchCenterX": float(touch["centerX"]),
+        "hkLeft": float(strip["left"]),
+        "hkTop": float(strip["top"]),
+        "hkWidth": float(strip["width"]),
+        "hkHeight": float(strip["height"]),
+        "hkCenterX": float(strip["centerX"]),
+        "_usableW": float(usable_w),
+        "_usableH": float(usable_h),
+        "_touchW": float(touch_w),
+        "_touchH": float(touch_h),
+        "_designW": float(hk_design_w),
+        "_designH": float(hk_design_h),
     }
 
 
@@ -4476,7 +4610,70 @@ function hkTouchSourceSize() {{
  const s=currentOrientationSize();
  return {{width:Number(s.width||0), height:Number(s.height||0)}};
 }}
-function computeHkUsableSplitLayout(usableW, usableH, touchW, touchH, designW, designH, margin) {{
+function containScale(intrinsicW, intrinsicH, fitW, fitH) {{
+ const iw=Number(intrinsicW)||0;
+ const ih=Number(intrinsicH)||0;
+ const fw=Number(fitW)||0;
+ const fh=Number(fitH)||0;
+ if (iw<=0 || ih<=0 || fw<=0 || fh<=0) return 0;
+ return Math.max(0, Math.min(fw/iw, fh/ih));
+}}
+function layoutTouchscreenDevice(usableW, usableH, touchW, touchH, margin) {{
+ const uw=Number(usableW)||0;
+ const uh=Number(usableH)||0;
+ const tw=Number(touchW)||0;
+ const th=Number(touchH)||0;
+ const m=margin==null ? 20 : Number(margin);
+ if (uw<=0 || uh<=0 || tw<=0 || th<=0) return null;
+ const fitW=Math.max(1, uw-2*m);
+ const fitH=Math.max(1, uh-2*m);
+ const scale=containScale(tw, th, fitW, fitH);
+ if (!Number.isFinite(scale) || scale<=0) return null;
+ const width=tw*scale;
+ const height=th*scale;
+ return {{scale, left:(uw-width)/2, top:(uh-height)/2, width, height}};
+}}
+function hardKeyBoxesAtScale(usableW, usableH, touchW, touchH, designW, designH, scale) {{
+ const uw=Number(usableW)||0;
+ const uh=Number(usableH)||0;
+ const s=Number(scale)||0;
+ const tw=Number(touchW)*s;
+ const th=Number(touchH)*s;
+ const stripW=th*Number(designW)/Number(designH);
+ const touchLeft=0.25*uw-tw/2;
+ const hkLeft=0.75*uw-stripW/2;
+ const touchTop=Math.max(0, (uh-th)/2);
+ const touch={{
+  left:touchLeft,
+  top:touchTop,
+  width:tw,
+  height:th,
+  centerX:0.25*uw,
+  centerY:touchTop+th/2,
+ }};
+ const strip={{
+  left:hkLeft,
+  top:touchTop,
+  width:stripW,
+  height:th,
+  centerX:0.75*uw,
+  centerY:touch.centerY,
+ }};
+ const asmLeft=Math.min(touchLeft, hkLeft);
+ const asmTop=touchTop;
+ const asmRight=Math.max(touchLeft+tw, hkLeft+stripW);
+ const asmBottom=touchTop+th;
+ const assembly={{
+  left:asmLeft,
+  top:asmTop,
+  width:asmRight-asmLeft,
+  height:asmBottom-asmTop,
+  centerX:0.5*uw,
+  centerY:touch.centerY,
+ }};
+ return {{scale:s, touch, strip, assembly}};
+}}
+function layoutHardKeySplit(usableW, usableH, touchW, touchH, designW, designH, margin) {{
  const uw=Number(usableW)||0;
  const uh=Number(usableH)||0;
  const tw=Number(touchW)||0;
@@ -4485,58 +4682,53 @@ function computeHkUsableSplitLayout(usableW, usableH, touchW, touchH, designW, d
  const dh=Number(designH)||0;
  const m=margin==null ? 20 : Number(margin);
  if (uw<=0 || uh<=0 || tw<=0 || th<=0 || dw<=0 || dh<=0) return null;
- const stripW=th*dw/dh;
- const touchLeft1=0.25*uw-tw/2;
- const touchRight1=0.25*uw+tw/2;
- const hkLeft1=0.75*uw-stripW/2;
- const hkRight1=0.75*uw+stripW/2;
- const spanW1=Math.max(touchRight1, hkRight1)-Math.min(touchLeft1, hkLeft1);
+ const halfW=Math.max(1, (uw-2*m)/2);
  const fitW=Math.max(1, uw-2*m);
  const fitH=Math.max(1, uh-2*m);
- const candidates=[1];
+ const stripW0=th*dw/dh;
+ const touchL1=0.25*uw-tw/2;
+ const hkL1=0.75*uw-stripW0/2;
+ const spanW1=Math.max(touchL1+tw, hkL1+stripW0)-Math.min(touchL1, hkL1);
+ const candidates=[
+  containScale(tw, th, halfW, fitH),
+  containScale(stripW0, th, halfW, fitH),
+ ];
  if (spanW1>0) candidates.push(fitW/spanW1);
- if (th>0) candidates.push(fitH/th);
- const edgeRoom=0.25*uw-m;
- if (edgeRoom>0) {{
-  if (tw>0) candidates.push((2*edgeRoom)/tw);
-  if (stripW>0) candidates.push((2*edgeRoom)/stripW);
- }}
- const scale=Math.max(0, Math.min.apply(null, candidates));
+ const scale=Math.min.apply(null, candidates.filter(v=>Number.isFinite(v)&&v>0));
  if (!Number.isFinite(scale) || scale<=0) return null;
- return hkSplitLayoutAtScale(uw, uh, tw, th, dw, dh, scale);
+ const out=hardKeyBoxesAtScale(uw, uh, tw, th, dw, dh, scale);
+ out._usableW=uw;
+ out._usableH=uh;
+ out._touchW=tw;
+ out._touchH=th;
+ out._designW=dw;
+ out._designH=dh;
+ return out;
 }}
-function hkSplitLayoutAtScale(usableW, usableH, touchW, touchH, designW, designH, scale) {{
- const uw=Number(usableW)||0;
- const uh=Number(usableH)||0;
- const s=Number(scale)||0;
- const tw=Number(touchW)*s;
- const th=Number(touchH)*s;
- const stripW=th*Number(designW)/Number(designH);
- const touchTop=Math.max(0, (uh-th)/2);
- return {{
-  scale:s,
-  touchLeft:0.25*uw-tw/2,
-  touchTop,
-  touchWidth:tw,
-  touchHeight:th,
-  touchCenterX:0.25*uw,
-  hkLeft:0.75*uw-stripW/2,
-  hkTop:touchTop,
-  hkWidth:stripW,
-  hkHeight:th,
-  hkCenterX:0.75*uw,
- }};
+function layoutHardKeySplitAtScale(layout, scale) {{
+ if (!layout) return null;
+ const out=hardKeyBoxesAtScale(
+  layout._usableW, layout._usableH, layout._touchW, layout._touchH, layout._designW, layout._designH, scale
+ );
+ out._usableW=layout._usableW;
+ out._usableH=layout._usableH;
+ out._touchW=layout._touchW;
+ out._touchH=layout._touchH;
+ out._designW=layout._designW;
+ out._designH=layout._designH;
+ return out;
 }}
-function applyHkUsableSplitColumns(activePage, usableW, usableH, totalScale) {{
- const canvas=document.getElementById('rtiDeviceCanvas');
- if (!canvas||!activePage) return;
- const ts=hkTouchSourceSize();
- const touchW=Number(ts.width||0);
- const touchH=Number(ts.height||0);
- const designW=Number(canvas.dataset.hkDesignW||0);
- const designH=Number(canvas.dataset.hkDesignH||0);
- const pos=hkSplitLayoutAtScale(usableW, usableH, touchW, touchH, designW, designH, totalScale);
- if (!pos) return;
+function applyHardKeySplitLayout(activePage, pos) {{
+ if (!activePage||!pos||!pos.assembly) return;
+ const asm=pos.assembly;
+ const rel=(box)=>({{
+  left:Number(box.left)-asm.left,
+  top:Number(box.top)-asm.top,
+  width:Number(box.width),
+  height:Number(box.height),
+ }});
+ const touch=rel(pos.touch);
+ const strip=rel(pos.strip);
  const leftCol=activePage.querySelector('.hk-split-left');
  const rightCol=activePage.querySelector('.hk-split-right');
  const touchStack=activePage.querySelector('.hk-touch-stack');
@@ -4550,17 +4742,17 @@ function applyHkUsableSplitColumns(activePage, usableW, usableH, totalScale) {{
   el.style.right='auto';
   el.style.bottom='auto';
  }};
- place(leftCol, pos.touchLeft, 0, pos.touchWidth, pos.touchHeight);
- place(rightCol, pos.hkLeft, 0, pos.hkWidth, pos.hkHeight);
+ place(leftCol, touch.left, touch.top, touch.width, touch.height);
+ place(rightCol, strip.left, strip.top, strip.width, strip.height);
  if (touchStack) {{
-  touchStack.style.width=`${{pos.touchWidth}}px`;
-  touchStack.style.height=`${{pos.touchHeight}}px`;
+  touchStack.style.width=`${{touch.width}}px`;
+  touchStack.style.height=`${{touch.height}}px`;
  }}
- const frameW=Math.max(1, Math.floor(pos.hkWidth));
- const frameH=Math.max(1, Math.floor(pos.hkHeight));
- rightCol.style.setProperty('--frame-w', `${{frameW}}px`);
- rightCol.style.setProperty('--frame-h', `${{frameH}}px`);
+ const frameW=Math.max(1, Math.floor(strip.width));
+ const frameH=Math.max(1, Math.floor(strip.height));
  if (rightCol) {{
+  rightCol.style.setProperty('--frame-w', `${{frameW}}px`);
+  rightCol.style.setProperty('--frame-h', `${{frameH}}px`);
   const frame=rightCol.querySelector('.frame');
   if (frame) {{
    frame.style.setProperty('--frame-w', `${{frameW}}px`);
@@ -4569,6 +4761,16 @@ function applyHkUsableSplitColumns(activePage, usableW, usableH, totalScale) {{
    frame.style.removeProperty('transform-origin');
   }}
  }}
+}}
+function centerRtiCanvasOnHkAssembly(pos) {{
+ const rtiCanvas=document.getElementById('rtiCanvas');
+ if (!rtiCanvas||!pos||!pos.assembly) return;
+ const cx=Number(pos.assembly.centerX)||0;
+ const cy=Number(pos.assembly.centerY)||0;
+ const maxL=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth, 0);
+ const maxT=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight, 0);
+ rtiCanvas.scrollLeft=clamp(cx-(rtiCanvas.clientWidth/2), 0, maxL);
+ rtiCanvas.scrollTop=clamp(cy-(rtiCanvas.clientHeight/2), 0, maxT);
 }}
 function applyOrientationState() {{
  const short=currentOrientation==='landscape' ? 'l' : 'p';
@@ -4879,7 +5081,8 @@ function syncHeader() {{
   }}
   window.__sentinelTextZoomAction=textZoomAction;
   window.__sentinelSyncTextZoomControls=syncTextZoomResetText;
-  function applyHkTightClusterLayout(activePage) {{
+  function __applyHkTightClusterLayoutRemoved(activePage) {{
+   return;
    const canvas=document.getElementById('rtiDeviceCanvas');
    if (!canvas||!canvas.classList.contains('rti-device-canvas-hk')) return;
    canvas.querySelectorAll('.hk-split-right').forEach((zone)=>{{ zone.classList.remove('hk-tight-cluster'); }});
@@ -5010,6 +5213,7 @@ let fittedWidth=0;
 let fittedHeight=0;
 let offsetLeft=0;
 let offsetTop=0;
+let hkSplitPos=null;
 if (isHkDevice) {{
  const usableW=rtiCanvasWidth;
  const usableH=rtiCanvasHeight;
@@ -5018,36 +5222,33 @@ if (isHkDevice) {{
  const touchH=Number(ts.height||0);
  const designW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
  const designH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
- const baseLay=computeHkUsableSplitLayout(usableW, usableH, touchW, touchH, designW, designH, DEVICE_CANVAS_MARGIN);
+ const baseLay=layoutHardKeySplit(usableW, usableH, touchW, touchH, designW, designH, DEVICE_CANVAS_MARGIN);
  let baseScale=(baseLay && Number(baseLay.scale)>0) ? Number(baseLay.scale) : 1;
  if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) baseScale=Math.min(baseScale, 1);
  baseScale=Math.min(maxScale, Math.max(minScale, baseScale));
  totalScale=baseScale*zoomMul;
- fittedWidth=usableW;
- const posZoom=hkSplitLayoutAtScale(usableW, usableH, touchW, touchH, designW, designH, totalScale);
- const spanRight=posZoom ? Math.max(posZoom.touchLeft+posZoom.touchWidth, posZoom.hkLeft+posZoom.hkWidth) : fittedWidth;
- fittedHeight=posZoom ? posZoom.touchHeight : usableH;
- offsetLeft=0;
- offsetTop=posZoom ? posZoom.touchTop : 0;
- const contentWidth=Math.max(rtiCanvasWidth, spanRight);
- const contentHeight=Math.max(rtiCanvasHeight, offsetTop+fittedHeight);
+ hkSplitPos=layoutHardKeySplitAtScale(baseLay, totalScale);
+ const asm=(hkSplitPos && hkSplitPos.assembly) ? hkSplitPos.assembly : null;
+ fittedWidth=asm ? asm.width : usableW;
+ fittedHeight=asm ? asm.height : usableH;
+ offsetLeft=asm ? asm.left : 0;
+ offsetTop=asm ? asm.top : 0;
+ const contentWidth=Math.max(rtiCanvasWidth, asm ? (asm.left+asm.width) : rtiCanvasWidth);
+ const contentHeight=Math.max(rtiCanvasHeight, asm ? (asm.top+asm.height) : rtiCanvasHeight);
  rtiContent.style.width=`${{contentWidth}}px`;
  rtiContent.style.height=`${{contentHeight}}px`;
- rtiDeviceCanvas.style.left='0px';
+ rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
  rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
  rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
  rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
  rtiDeviceCanvas.style.setProperty('--sentinel-device-scale', String(totalScale));
 }} else {{
  const sourceSize=currentOrientationSize();
- const fitWidth=Math.max(rtiCanvasWidth-(DEVICE_CANVAS_MARGIN*2),1);
- const fitHeight=Math.max(rtiCanvasHeight-(DEVICE_CANVAS_MARGIN*2),1);
- const widthScale=fitWidth/sourceSize.width;
- const heightScale=fitHeight/sourceSize.height;
- let scale=Math.min(widthScale,heightScale);
- if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) scale=Math.min(scale,1);
- scale=Math.min(maxScale, Math.max(minScale, scale));
- totalScale=scale*zoomMul;
+ const touchLay=layoutTouchscreenDevice(rtiCanvasWidth, rtiCanvasHeight, sourceSize.width, sourceSize.height, DEVICE_CANVAS_MARGIN);
+ let baseScale=(touchLay && Number(touchLay.scale)>0) ? Number(touchLay.scale) : 1;
+ if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) baseScale=Math.min(baseScale, 1);
+ baseScale=Math.min(maxScale, Math.max(minScale, baseScale));
+ totalScale=baseScale*zoomMul;
  fittedWidth=sourceSize.width*totalScale;
  fittedHeight=sourceSize.height*totalScale;
  const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
@@ -5065,15 +5266,6 @@ if (isHkDevice) {{
  currentTotalScale=totalScale;
  currentDeviceLeft=offsetLeft;
  currentDeviceTop=offsetTop;
- if (_pendingZoomCenter) {{
-  const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
-  const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
-  const cx=Number(_pendingZoomCenter.centerX||0);
-  const cy=Number(_pendingZoomCenter.centerY||0);
-  rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(cx*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
-  rtiCanvas.scrollTop=clamp((currentDeviceTop+(cy*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
-  _pendingZoomCenter=null;
- }}
  rtiCanvas.classList.toggle('scroll-hover', Boolean(ZOOM_CONTROLS.scrollbars?.showOnHover) && currentZoomPercent > 100);
 
  if (orientationControls) {{
@@ -5154,8 +5346,21 @@ if (isHkDevice) {{
       if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
     }}
   }});
- if (isHkDevice && activePage) {{
-  applyHkUsableSplitColumns(activePage, rtiCanvasWidth, rtiCanvasHeight, totalScale);
+ if (isHkDevice && activePage && hkSplitPos) {{
+  applyHardKeySplitLayout(activePage, hkSplitPos);
+ }}
+ if (_pendingZoomCenter) {{
+  if (isHkDevice && hkSplitPos) {{
+   centerRtiCanvasOnHkAssembly(hkSplitPos);
+  }} else {{
+   const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
+   const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
+   const cx=Number(_pendingZoomCenter.centerX||0);
+   const cy=Number(_pendingZoomCenter.centerY||0);
+   rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(cx*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
+   rtiCanvas.scrollTop=clamp((currentDeviceTop+(cy*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
+  }}
+  _pendingZoomCenter=null;
  }}
  refreshButtonVisualStates();
  syncHeader();
@@ -6414,6 +6619,12 @@ def build_device_render_bundle(
                     "stripDesignWidth": int(hk_design_w),
                     "stripDesignHeight": int(hk_design_h),
                 }
+                size["height"] = _hard_key_layout_display_height(
+                    touch_w0,
+                    touch_h0,
+                    hk_design_w,
+                    hk_design_h,
+                )
             if active_orientation == "portrait":
                 res = orientation_state["sizes"]["portrait"]
             else:

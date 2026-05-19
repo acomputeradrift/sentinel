@@ -12,7 +12,7 @@ from sentinel.generation import render_core
 
 class HardKeysUsableSplitLayoutTest(unittest.TestCase):
     def test_centers_at_quarter_lines_of_usable_width(self) -> None:
-        lay = render_core._hard_key_usable_split_layout(
+        lay = render_core._layout_hard_key_split(
             1200,
             900,
             480,
@@ -22,22 +22,16 @@ class HardKeysUsableSplitLayoutTest(unittest.TestCase):
         )
         self.assertIsNotNone(lay)
         assert lay is not None
-        self.assertAlmostEqual(
-            lay["touchLeft"] + lay["touchWidth"] / 2.0,
-            lay["touchCenterX"],
-            places=3,
-        )
-        self.assertAlmostEqual(lay["touchCenterX"], 0.25 * 1200, places=3)
-        self.assertAlmostEqual(
-            lay["hkLeft"] + lay["hkWidth"] / 2.0,
-            lay["hkCenterX"],
-            places=3,
-        )
-        self.assertAlmostEqual(lay["hkCenterX"], 0.75 * 1200, places=3)
+        touch = lay["touch"]
+        strip = lay["strip"]
+        self.assertAlmostEqual(touch["left"] + touch["width"] / 2.0, touch["centerX"], places=3)
+        self.assertAlmostEqual(touch["centerX"], 0.25 * 1200, places=3)
+        self.assertAlmostEqual(strip["left"] + strip["width"] / 2.0, strip["centerX"], places=3)
+        self.assertAlmostEqual(strip["centerX"], 0.75 * 1200, places=3)
 
-    def test_fits_inside_margin_inset_box(self) -> None:
+    def test_fits_scaled_span_and_zone_caps(self) -> None:
         usable_w, usable_h = 1280, 900
-        lay = render_core._hard_key_usable_split_layout(
+        lay = render_core._layout_hard_key_split(
             usable_w,
             usable_h,
             480,
@@ -48,18 +42,18 @@ class HardKeysUsableSplitLayoutTest(unittest.TestCase):
         self.assertIsNotNone(lay)
         assert lay is not None
         margin = 20
-        left_edge = min(lay["touchLeft"], lay["hkLeft"])
-        right_edge = max(
-            lay["touchLeft"] + lay["touchWidth"],
-            lay["hkLeft"] + lay["hkWidth"],
-        )
-        self.assertGreaterEqual(left_edge, margin - 0.5)
-        self.assertLessEqual(right_edge, usable_w - margin + 0.5)
-        self.assertLessEqual(lay["touchHeight"], usable_h - 2 * margin + 0.5)
+        half_w = (usable_w - 2 * margin) / 2.0
+        fit_w = usable_w - 2 * margin
+        fit_h = usable_h - 2 * margin
+        asm = lay["assembly"]
+        self.assertLessEqual(asm["width"], fit_w + 0.5)
+        self.assertLessEqual(lay["touch"]["width"], half_w + 0.5)
+        self.assertLessEqual(lay["strip"]["width"], half_w + 0.5)
+        self.assertLessEqual(lay["touch"]["height"], fit_h + 0.5)
 
     def test_isr2_t4x_isr4_all_produce_layout(self) -> None:
         for design_w, design_h in ((468, 862), (608, 732), (602, 734)):
-            lay = render_core._hard_key_usable_split_layout(
+            lay = render_core._layout_hard_key_split(
                 1280,
                 900,
                 480,

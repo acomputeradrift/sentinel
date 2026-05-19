@@ -167,8 +167,8 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-touch-stack", html)
         self.assertRegex(html, r"class='hk-split-left'>")
         self.assertNotRegex(html, r"class='hk-split-left' style=")
-        self.assertIn("computeHkUsableSplitLayout", html)
-        self.assertIn("applyHkUsableSplitColumns", html)
+        self.assertIn("layoutHardKeySplit", html)
+        self.assertIn("applyHardKeySplitLayout", html)
 
     def test_payload_orientation_sizes_include_hard_key_layout(self) -> None:
         slot_lefts = list(range(128, 148))
@@ -205,9 +205,9 @@ class HardKeysSplitRenderTest(unittest.TestCase):
             app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
             project_stem="render_test",
         )
-        self.assertIn("computeHkUsableSplitLayout", html)
-        self.assertIn("applyHkUsableSplitColumns", html)
-        self.assertIn("hkSplitLayoutAtScale", html)
+        self.assertIn("layoutHardKeySplit", html)
+        self.assertIn("applyHardKeySplitLayout", html)
+        self.assertIn("layoutHardKeySplitAtScale", html)
         self.assertIn("var(--sentinel-device-frame-ring-width)", html)
 
     def test_hard_key_page_link_anchor_when_resolved_and_navigation_enabled(self) -> None:
