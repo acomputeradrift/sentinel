@@ -684,6 +684,21 @@ def _hard_key_strip_width_for_height(touch_h: int, hk_design_w: int, hk_design_h
     return max(1, int(round(hk_design_w * touch_h / hk_design_h)))
 
 
+def _hard_key_layout_display_height(
+    touch_w: int,
+    touch_h: int,
+    hk_design_w: int,
+    hk_design_h: int,
+) -> int:
+    """Logical device height for contain scaling when the strip is width-matched to touch."""
+    if touch_h <= 0:
+        return 1
+    if touch_w <= 0 or hk_design_w <= 0 or hk_design_h <= 0:
+        return max(1, int(touch_h))
+    strip_h_at_touch_w = max(1, int(round(touch_w * hk_design_h / hk_design_w)))
+    return max(int(touch_h), strip_h_at_touch_w)
+
+
 def _hard_key_quarter_band_layout(
     touch_w0: int,
     touch_h0: int,
@@ -4759,7 +4774,10 @@ function syncHeader() {{
     const ox=rr.left-fr2.left+rr.width/2;
     const oy=rr.top-fr2.top+rr.height/2;
     const leftW=touchEl.getBoundingClientRect().width;
-    const s=leftW/rr.width;
+    const zoneH=zone.getBoundingClientRect().height;
+    const sW=(leftW>0 && rr.width>0) ? (leftW/rr.width) : 0;
+    const sH=(zoneH>0 && rr.height>0) ? (zoneH/rr.height) : 0;
+    const s=Math.min(sW, sH);
     if (!Number.isFinite(s)||s<=0||!(leftW>0)) {{
      rim.remove();
      zone.classList.remove('hk-tight-cluster');
@@ -6233,6 +6251,12 @@ def build_device_render_bundle(
                 if lay is None:
                     continue
                 size["width"] = int(lay["virtual_w"])
+                size["height"] = _hard_key_layout_display_height(
+                    touch_w0,
+                    touch_h0,
+                    hk_design_w,
+                    hk_design_h,
+                )
                 size["hardKeyLayout"] = {
                     "touchSourceWidth": int(lay["touch_w"]),
                     "touchSourceHeight": int(lay["touch_h"]),

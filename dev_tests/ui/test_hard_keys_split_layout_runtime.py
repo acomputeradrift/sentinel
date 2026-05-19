@@ -24,6 +24,80 @@ def _make_hard_key_button(button_id: int, tag: str) -> dict:
     }
 
 
+def _isr2_project_data() -> dict:
+    """Minimal synthetic project_data that triggers ISR-2 split-layout rendering."""
+    hk_buttons = [
+        _make_hard_key_button(1, "Power"),
+        _make_hard_key_button(2, "Mute"),
+        _make_hard_key_button(3, "Menu"),
+    ]
+    hk_slots = [
+        {"buttonId": 1, "slotKey": 128},
+        {"buttonId": 2, "slotKey": 129},
+        {"buttonId": 3, "slotKey": 131},
+    ]
+    return {
+        "devices": [
+            {
+                "userFacing": {
+                    "displayName": "ISR-2 Test Device",
+                    "productModel": "isr2",
+                    "deviceUI": {
+                        "portrait": {
+                            "supported": True,
+                            "resolution": {"width": 480, "height": 854},
+                        },
+                        "landscape": {
+                            "supported": False,
+                            "resolution": {"width": 854, "height": 480},
+                        },
+                    },
+                    "pages": [
+                        {
+                            "pageName": "Page 1",
+                            "layers": [
+                                {
+                                    "layerName": "Screen Layer",
+                                    "layerOrder": 0,
+                                    "isKeypadLayer": False,
+                                    "buttonCategories": {
+                                        "screenLabels": [],
+                                        "hardButtons": [],
+                                        "screenButtons": [],
+                                    },
+                                    "viewports": [],
+                                },
+                                {
+                                    "layerName": "Hard Key Layer",
+                                    "layerOrder": 1,
+                                    "isKeypadLayer": True,
+                                    "hardKeyLayer": {"slots": hk_slots},
+                                    "buttonCategories": {
+                                        "screenLabels": [],
+                                        "hardButtons": hk_buttons,
+                                        "screenButtons": [],
+                                    },
+                                    "viewports": [],
+                                },
+                            ],
+                            "buttonCategories": {
+                                "screenLabels": [],
+                                "hardButtons": [],
+                                "screenButtons": [],
+                            },
+                            "viewports": [],
+                        }
+                    ],
+                },
+                "diagnostics": {
+                    "deviceId": 1,
+                    "pages": [{"pageId": 1, "pageName": "Page 1"}],
+                },
+            }
+        ]
+    }
+
+
 def _t4x_project_data() -> dict:
     """Minimal synthetic project_data that triggers T4x split-layout rendering."""
     hk_buttons = [
@@ -153,7 +227,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             if self._thread:
                 self._thread.join(timeout=1)
 
-    def _render_and_serve(self):
+    def _render_and_serve(self, project_data: dict | None = None):
         app_ui = {
             "layout": {
                 "appCanvas": {"mode": "browser-viewport"},
@@ -175,7 +249,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             "state": {},
             "layerPanel": {"enabled": False},
         }
-        project_data = _t4x_project_data()
+        project_data = project_data or _t4x_project_data()
         html = render_single_device_html(
             project_data,
             app_ui,
@@ -183,7 +257,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             device_index=0,
         )
         tmp_dir = Path(tempfile.mkdtemp(prefix="sentinel-hk-split-"))
-        html_path = tmp_dir / "t4x_test.html"
+        html_path = tmp_dir / "hk_split_test.html"
         html_path.write_text(html, encoding="utf-8")
 
         server = self._StaticServer(tmp_dir)
@@ -433,6 +507,74 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             self.assertNotEqual(result["touchShadow"], "none")
             self.assertEqual(result["rightBorderW"], "0px")
             self.assertNotEqual(result["rightShadow"], "none")
+        finally:
+            page.close()
+            server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_isr2_hard_key_layout_fits_inside_rti_canvas(self):
+        page, server, tmp_dir = self._render_and_serve(project_data=_isr2_project_data())
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const rti = document.getElementById('rtiCanvas');
+  const device = document.getElementById('rtiDeviceCanvas');
+  const activePage = document.querySelector('.device-page.active');
+  if (!rti || !device || !activePage) return {error: 'missing layout roots'};
+  const margin = 20;
+  const ur = rti.getBoundingClientRect();
+  const innerTop = ur.top + margin;
+  const innerBottom = ur.bottom - margin;
+  const innerLeft = ur.left + margin;
+  const innerRight = ur.right - margin;
+  const samples = [];
+  let overflowCount = 0;
+  const nodes = [
+    device,
+    activePage.querySelector('.hk-touch-stack'),
+    activePage.querySelector('.hk-split-right'),
+    activePage.querySelector('.hk-split-right .frame'),
+  ].filter(Boolean);
+  nodes.forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return;
+    const over =
+      r.top < innerTop - 2 ||
+      r.left < innerLeft - 2 ||
+      r.bottom > innerBottom + 2 ||
+      r.right > innerRight + 2;
+    if (over) {
+      overflowCount += 1;
+      if (samples.length < 6) {
+        samples.push({
+          cls: el.className,
+          top: r.top,
+          bottom: r.bottom,
+          innerTop,
+          innerBottom,
+        });
+      }
+    }
+  });
+  return {
+    hkModel: device.getAttribute('data-hk-model'),
+    deviceH: device.getBoundingClientRect().height,
+    touchH: activePage.querySelector('.hk-touch-stack')?.getBoundingClientRect().height || 0,
+    overflowCount,
+    samples,
+  };
+}
+"""
+            )
+            self.assertNotIn("error", result, msg=result.get("error", ""))
+            self.assertEqual(result["hkModel"], "isr2")
+            self.assertGreater(result["deviceH"], result["touchH"])
+            self.assertEqual(
+                result["overflowCount"],
+                0,
+                msg=f"ISR-2 layout overflow inside rtiCanvas margin: {result['samples']}",
+            )
         finally:
             page.close()
             server.stop()
