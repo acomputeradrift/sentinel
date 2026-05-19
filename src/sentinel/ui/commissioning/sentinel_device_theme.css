@@ -86,6 +86,7 @@
 
 .rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster .frame {
   background: var(--sentinel-hk-remote-surround-bg) !important;
+  overflow: visible !important;
 }
 
 .rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster .hk-cluster-rim {

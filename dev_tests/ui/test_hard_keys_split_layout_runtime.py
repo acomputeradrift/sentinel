@@ -474,7 +474,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_hk_outer_canvas_has_no_ring_touch_and_hard_key_columns_have_rings(self):
-        """Hard-key mode: no outer #rtiDeviceCanvas ring; black ring on touchscreen `.hk-touch-stack` and `.hk-split-right`."""
+        """Hard-key mode: no outer #rtiDeviceCanvas ring; touch column ring; strip uses tight cluster rim."""
         page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
@@ -486,16 +486,21 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
   if (!touch) return {error: 'no .hk-touch-stack'};
   const right = document.querySelector('.hk-split-right');
   if (!right) return {error: 'no .hk-split-right'};
+  const rim = right.querySelector('.hk-cluster-rim');
+  if (!rim) return {error: 'no .hk-cluster-rim'};
   const c = getComputedStyle(canvas);
   const t = getComputedStyle(touch);
   const r = getComputedStyle(right);
+  const rimCs = getComputedStyle(rim);
   return {
     canvasBorderW: c.borderTopWidth,
     canvasShadow: c.boxShadow,
     touchBorderW: t.borderTopWidth,
     touchShadow: t.boxShadow,
+    rightTight: right.classList.contains('hk-tight-cluster'),
     rightBorderW: r.borderTopWidth,
     rightShadow: r.boxShadow,
+    rimBorderW: rimCs.borderTopWidth,
   };
 }
 """
@@ -505,8 +510,58 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             self.assertEqual(result["canvasShadow"], "none")
             self.assertEqual(result["touchBorderW"], "0px")
             self.assertNotEqual(result["touchShadow"], "none")
-            self.assertEqual(result["rightBorderW"], "0px")
-            self.assertNotEqual(result["rightShadow"], "none")
+            self.assertTrue(result["rightTight"])
+            self.assertEqual(result["rightShadow"], "none")
+            self.assertEqual(result["rimBorderW"], "3px")
+        finally:
+            page.close()
+            server.stop()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def test_hk_strip_tight_cluster_rim_matches_button_hull(self):
+        page, server, tmp_dir = self._render_and_serve()
+        try:
+            result = page.evaluate(
+                """
+() => {
+  const right = document.querySelector('.hk-split-right');
+  const frame = right?.querySelector('.frame');
+  const rim = right?.querySelector('.hk-cluster-rim');
+  let boxes = frame ? [...frame.querySelectorAll('.box')].filter((b) => b.querySelector('.hk-btn-wrap')) : [];
+  if (!boxes.length && frame) boxes = [...frame.querySelectorAll('.box')];
+  if (!right || !frame || !rim || !boxes.length) return {error: 'missing strip layout nodes'};
+  let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
+  for (const el of boxes) {
+    const r = el.getBoundingClientRect();
+    minL = Math.min(minL, r.left);
+    minT = Math.min(minT, r.top);
+    maxR = Math.max(maxR, r.right);
+    maxB = Math.max(maxB, r.bottom);
+  }
+  const rr = rim.getBoundingClientRect();
+  const pad = 4;
+  const tol = 2.5;
+  const ringStroke = 3;
+  const expL = minL - pad - ringStroke;
+  const expT = minT - pad - ringStroke;
+  const expR = maxR + pad + ringStroke;
+  const expB = maxB + pad + ringStroke;
+  return {
+    errL: Math.abs(rr.left - expL),
+    errT: Math.abs(rr.top - expT),
+    errR: Math.abs(rr.right - expR),
+    errB: Math.abs(rr.bottom - expB),
+    tol,
+  };
+}
+"""
+            )
+            self.assertNotIn("error", result, msg=result.get("error", ""))
+            tol = result["tol"]
+            self.assertLessEqual(result["errL"], tol, msg=result)
+            self.assertLessEqual(result["errT"], tol, msg=result)
+            self.assertLessEqual(result["errR"], tol, msg=result)
+            self.assertLessEqual(result["errB"], tol, msg=result)
         finally:
             page.close()
             server.stop()

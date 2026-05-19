@@ -5227,45 +5227,36 @@ function syncHeader() {{
   }}
   window.__sentinelTextZoomAction=textZoomAction;
   window.__sentinelSyncTextZoomControls=syncTextZoomResetText;
-  function __applyHkTightClusterLayoutRemoved(activePage) {{
-   return;
+  function applyHkTightClusterLayout(activePage) {{
    const canvas=document.getElementById('rtiDeviceCanvas');
    if (!canvas||!canvas.classList.contains('rti-device-canvas-hk')) return;
    canvas.querySelectorAll('.hk-split-right').forEach((zone)=>{{ zone.classList.remove('hk-tight-cluster'); }});
    canvas.querySelectorAll('.hk-cluster-rim').forEach((el)=>{{ el.remove(); }});
-   canvas.querySelectorAll('.hk-split-right .frame').forEach((fr)=>{{
-    fr.style.removeProperty('transform');
-    fr.style.removeProperty('transform-origin');
-    delete fr.dataset.sentinelHkTightApplied;
-   }});
    if (!activePage) return;
-   const leftCol=activePage.querySelector('.hk-split-left');
-   const touchEl=leftCol ? (leftCol.querySelector('.hk-touch-stack')||leftCol) : null;
-   if (!touchEl) return;
    const HK_TIGHT_PAD=4;
    const ringStrokeRaw=getComputedStyle(document.documentElement).getPropertyValue('--sentinel-device-frame-ring-width').trim();
    const ringStroke=Math.max(0,parseFloat(ringStrokeRaw)||0)||3;
    activePage.querySelectorAll('.hk-split-right').forEach((zone)=>{{
     const frame=zone.querySelector('.frame');
     if (!frame) return;
-    const boxes=[...frame.querySelectorAll('.box')];
+    let boxes=[...frame.querySelectorAll('.box')].filter((b)=>b.querySelector('.hk-btn-wrap'));
+    if (!boxes.length) boxes=[...frame.querySelectorAll('.box')];
     if (!boxes.length) return;
-    zone.classList.add('hk-tight-cluster');
-    const fr=frame.getBoundingClientRect();
-    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    let minL=Infinity,minT=Infinity,maxR=-Infinity,maxB=-Infinity;
     for (const el of boxes) {{
      const r=el.getBoundingClientRect();
-     minX=Math.min(minX,r.left-fr.left);
-     minY=Math.min(minY,r.top-fr.top);
-     maxX=Math.max(maxX,r.right-fr.left);
-     maxY=Math.max(maxY,r.bottom-fr.top);
+     minL=Math.min(minL,r.left);
+     minT=Math.min(minT,r.top);
+     maxR=Math.max(maxR,r.right);
+     maxB=Math.max(maxB,r.bottom);
     }}
-    const uw=maxX-minX;
-    const uh=maxY-minY;
+    const uw=maxR-minL;
+    const uh=maxB-minT;
     if (!Number.isFinite(uw)||!Number.isFinite(uh)||uw<=0||uh<=0) {{
-     zone.classList.remove('hk-tight-cluster');
      return;
     }}
+    zone.classList.add('hk-tight-cluster');
+    const zr=zone.getBoundingClientRect();
     const innerW=uw+2*HK_TIGHT_PAD;
     const innerH=uh+2*HK_TIGHT_PAD;
     const rim=document.createElement('div');
@@ -5273,37 +5264,9 @@ function syncHeader() {{
     rim.setAttribute('aria-hidden','true');
     rim.style.cssText=
      'position:absolute;box-sizing:content-box;pointer-events:none;z-index:2147483647;'+
-     `left:${{minX-HK_TIGHT_PAD-ringStroke}}px;top:${{minY-HK_TIGHT_PAD-ringStroke}}px;`+
+     `left:${{minL-HK_TIGHT_PAD-ringStroke-zr.left}}px;top:${{minT-HK_TIGHT_PAD-ringStroke-zr.top}}px;`+
      `width:${{innerW}}px;height:${{innerH}}px;`;
-    frame.appendChild(rim);
-    const fr2=frame.getBoundingClientRect();
-    const rr=rim.getBoundingClientRect();
-    const ox=rr.left-fr2.left+rr.width/2;
-    const oy=rr.top-fr2.top+rr.height/2;
-    const leftW=touchEl.getBoundingClientRect().width;
-    const zoneH=zone.getBoundingClientRect().height;
-    const sW=(leftW>0 && rr.width>0) ? (leftW/rr.width) : 0;
-    const sH=(zoneH>0 && rr.height>0) ? (zoneH/rr.height) : 0;
-    const s=Math.min(sW, sH);
-    if (!Number.isFinite(s)||s<=0||!(leftW>0)) {{
-     rim.remove();
-     zone.classList.remove('hk-tight-cluster');
-     return;
-    }}
-    const scaleAroundRing='translate('+ox+'px,'+oy+'px) scale('+s+') translate('+(-ox)+'px,'+(-oy)+'px)';
-    frame.style.transformOrigin='0 0';
-    frame.style.transform=scaleAroundRing;
-    void frame.offsetHeight;
-    let top=Infinity,bot=-Infinity;
-    for (const el of frame.querySelectorAll('.box')) {{
-     const r=el.getBoundingClientRect();
-     top=Math.min(top,r.top);
-     bot=Math.max(bot,r.bottom);
-    }}
-    const z=zone.getBoundingClientRect();
-    const dy=z.top+z.height/2-(top+bot)/2;
-    frame.style.transform='translateY('+dy+'px) '+scaleAroundRing;
-    frame.dataset.sentinelHkTightApplied='1';
+    zone.appendChild(rim);
    }});
   }}
 function applyRtiLayout() {{
@@ -5515,6 +5478,7 @@ if (isHkDevice) {{
   }});
  if (isHkDevice && activePage && hkSplitPos) {{
   applyHardKeySplitLayout(activePage, hkSplitPos);
+  applyHkTightClusterLayout(activePage);
  }}
  if (_pendingZoomCenter) {{
   if (isHkDevice && hkSplitPos) {{
