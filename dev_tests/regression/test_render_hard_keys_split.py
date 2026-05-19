@@ -167,6 +167,7 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-touch-stack", html)
         self.assertRegex(html, r"class='hk-split-left'>")
         self.assertNotRegex(html, r"class='hk-split-left' style=")
+        self.assertIn("layoutHardKeyTouchColumn", html)
         self.assertIn("layoutHardKeySplit", html)
         self.assertIn("applyHardKeySplitLayout", html)
 
@@ -205,6 +206,7 @@ class HardKeysSplitRenderTest(unittest.TestCase):
             app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
             project_stem="render_test",
         )
+        self.assertIn("layoutHardKeyTouchColumn", html)
         self.assertIn("layoutHardKeySplit", html)
         self.assertIn("applyHardKeySplitLayout", html)
         self.assertIn("layoutHardKeySplitAtScale", html)
