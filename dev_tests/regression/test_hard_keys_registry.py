@@ -54,6 +54,10 @@ class HardKeysRegistryTest(unittest.TestCase):
         self.assertEqual(len(lbl), 34)
         lo, hi = isr2.slot_range
         self.assertEqual(sorted(lbl.values()), list(range(lo, hi + 1)))
+        body = isr2.template_html_path.read_text(encoding="utf-8")
+        self.assertIn('class="middle-row"', body)
+        self.assertIn("--dpad-ok-y:", body)
+        self.assertNotRegex(body, r'class="row"')
 
     def test_t4x_only_uses_dom_order_not_data_labels(self) -> None:
         from sentinel.generation.hard_keys import registry as hk

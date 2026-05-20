@@ -78,8 +78,11 @@
   background: var(--sentinel-hk-remote-surround-bg) !important;
 }
 
-/* HK template rows share class with testing-popup .row (filtered into shell); match surround. */
-.rti-device-canvas-hk .device-page .hk-split-right .frame > .row {
+/* Legacy ISR-2 .row leak + band rows: match surround if popup .row styles apply. */
+.rti-device-canvas-hk .device-page .hk-split-right .frame > .row,
+.rti-device-canvas-hk .device-page .hk-split-right .frame > .top-row,
+.rti-device-canvas-hk .device-page .hk-split-right .frame > .middle-row,
+.rti-device-canvas-hk .device-page .hk-split-right .frame > .main-row {
   border-color: var(--sentinel-hk-remote-surround-bg) !important;
   background-color: var(--sentinel-hk-remote-surround-bg) !important;
 }

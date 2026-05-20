@@ -25,6 +25,15 @@ def _identity(name: str) -> dict:
     return {"buttonIdentity": {"buttonTagName": name, "text": name, "buttonType": None}}
 
 
+def _isr2_slots_in_template_dom_order() -> tuple[int, ...]:
+    """ButtonLeft order when render walks template boxes (data-label map per box)."""
+    from sentinel.generation.hard_keys.registry import ISR2_SLOT_BY_DATA_LABEL, MODELS
+
+    tpl = MODELS["isr2"].template_html_path.read_text(encoding="utf-8")
+    labels = re.findall(r'data-label\s*=\s*"([^"]*)"', tpl, flags=re.IGNORECASE)
+    return tuple(ISR2_SLOT_BY_DATA_LABEL[lbl.strip()] for lbl in labels)
+
+
 def _hard_button(name: str, slot_key: int, button_id: int) -> dict:
     return {
         **_identity(name),
@@ -332,8 +341,6 @@ class HardKeysSplitRenderTest(unittest.TestCase):
 
     def test_isr2_injects_buttons_in_data_label_slot_order_not_sequential_order(self) -> None:
         """ISR-2 DOM order is not 128..161 consecutive; strip uses registry label → ButtonLeft map."""
-        from sentinel.generation.hard_keys.registry import ISR2_SLOT_BY_DATA_LABEL
-
         slot_lefts = list(range(128, 162))
         html = render_single_device_html(
             project_data=_project_data_with_hard_keys("isr2", slot_lefts),
@@ -344,7 +351,7 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertGreaterEqual(len(all_slots), 34)
         # Document may emit the active page strip twice (e.g. orientation shells); first strip order is canonical.
         slots_found = all_slots[:34]
-        expected = tuple(ISR2_SLOT_BY_DATA_LABEL.values())
+        expected = _isr2_slots_in_template_dom_order()
         self.assertEqual(tuple(slots_found), expected)
 
     def test_split_layout_emitted_for_isr4(self) -> None:
