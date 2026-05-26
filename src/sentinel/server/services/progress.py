@@ -270,7 +270,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
             cats = layer.get("buttonCategories", {})
             if not isinstance(cats, dict):
                 continue
-            for cat in ("screenLabels", "screenButtons", "hardButtons", "uiItems"):
+            for cat in ("screenLabels", "screenButtons", "hardButtons", "emptyTag", "uiItems"):
                 items = cats.get(cat, [])
                 if not isinstance(items, list):
                     continue
@@ -279,7 +279,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[dict[str, Any]]:
     cats = page.get("buttonCategories", {})
     if not isinstance(cats, dict):
         return out
-    for cat in ("screenLabels", "screenButtons", "hardButtons", "uiItems"):
+    for cat in ("screenLabels", "screenButtons", "hardButtons", "emptyTag", "uiItems"):
         items = cats.get(cat, [])
         if not isinstance(items, list):
             continue
@@ -468,7 +468,7 @@ def _derive_device_targets(project_data: dict[str, Any]) -> list[dict[str, Any]]
                         cats = uf_frame.get("buttonCategories", {})
                         if not isinstance(cats, dict):
                             continue
-                        for cat in ("screenLabels", "screenButtons", "hardButtons", "uiItems"):
+                        for cat in ("screenLabels", "screenButtons", "hardButtons", "emptyTag", "uiItems"):
                             uf_buttons = cats.get(cat, [])
                             if not isinstance(uf_buttons, list):
                                 continue

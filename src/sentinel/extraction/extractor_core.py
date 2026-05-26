@@ -454,6 +454,31 @@ def _build_macro_flag_summary_cache(rows: list[tuple[int, Any, Any]]) -> dict[in
     return out
 
 
+def _macro_ids_resolve_for_effective_source(
+    *,
+    macro_ids: list[int],
+    macro_non_empty_by_id: dict[int, bool],
+    macro_device_ids_by_macro: dict[int, set[int]],
+    effective_source_id: int | None,
+) -> bool:
+    """Return whether any non-empty macro resolves in the current source context.
+
+    Source-agnostic macros (no positive DeviceId on any step) count as meaningful
+    everywhere. Source-bound macros count only when one step targets the page's
+    effective source device.
+    """
+    for raw_macro_id in macro_ids:
+        macro_id = int(raw_macro_id or 0)
+        if macro_id <= 0 or not macro_non_empty_by_id.get(macro_id, False):
+            continue
+        device_ids = {int(v) for v in macro_device_ids_by_macro.get(macro_id, set()) if int(v) > 0}
+        if not device_ids:
+            return True
+        if effective_source_id is not None and int(effective_source_id) in device_ids:
+            return True
+    return False
+
+
 def _resolve_driver_action(
     cur: sqlite3.Cursor,
     macro_id: int,
@@ -1227,6 +1252,7 @@ def _resolve_button(
     button_text_tag_ids: set[int],
     macros_by_tag: dict[int, list[sqlite3.Row]],
     macro_non_empty_by_id: dict[int, bool],
+    macro_device_ids_by_macro: dict[int, set[int]],
     page_links_by_device_and_tag: dict[tuple[int, int], sqlite3.Row],
     page_links_by_tag: dict[int, sqlite3.Row],
     first_page_target_by_device_id: dict[int, tuple[int, str | None]],
@@ -1324,11 +1350,35 @@ def _resolve_button(
             if macro_id > 0 and macro_id not in explicit_macro_ids:
                 explicit_macro_ids.append(macro_id)
 
+    effective_room_id = (
+        int(layer_room_id) if layer_room_id is not None else (int(page_layer_room_id) if page_layer_room_id is not None else int(page_room_id))
+    )
+    effective_source_id = (
+        int(layer_source_id)
+        if layer_source_id is not None
+        else (int(page_layer_source_id) if page_layer_source_id is not None else (int(page_source_device_id) if page_source_device_id is not None else None))
+    )
+
     all_tag_macro_rows = macros_by_tag.get(tag_id, []) if tag_id > 0 else []
     scoped_tag_macro_rows = [m for m in all_tag_macro_rows if int(m["RoomId"] or 0) in {0, page_room_id}]
     tag_macro_rows = scoped_tag_macro_rows or all_tag_macro_rows
-    has_macros_target = bool(explicit_macro_ids)
-    has_macro_steps_target = any(macro_non_empty_by_id.get(int(m["MacroId"]), False) for m in tag_macro_rows)
+    candidate_macro_ids: list[int] = explicit_macro_ids[:]
+    for macro_row in tag_macro_rows:
+        macro_id = int(macro_row["MacroId"] or 0)
+        if macro_id > 0 and macro_id not in candidate_macro_ids:
+            candidate_macro_ids.append(macro_id)
+    has_macros_target = _macro_ids_resolve_for_effective_source(
+        macro_ids=explicit_macro_ids,
+        macro_non_empty_by_id=macro_non_empty_by_id,
+        macro_device_ids_by_macro=macro_device_ids_by_macro,
+        effective_source_id=effective_source_id,
+    )
+    has_macro_steps_target = _macro_ids_resolve_for_effective_source(
+        macro_ids=candidate_macro_ids,
+        macro_non_empty_by_id=macro_non_empty_by_id,
+        macro_device_ids_by_macro=macro_device_ids_by_macro,
+        effective_source_id=effective_source_id,
+    )
     resolved_macro_summaries: list[str] = []
     for macro_row in tag_macro_rows:
         macro_id = int(macro_row["MacroId"] or 0)
@@ -1389,12 +1439,6 @@ def _resolve_button(
                     "targetPageName": None,
                     "resolvedRoomId": (int(page_room_id) if int(page_room_id or 0) > 0 else None),
                 }
-
-    candidate_macro_ids: list[int] = explicit_macro_ids[:]
-    for macro_row in tag_macro_rows:
-        macro_id = int(macro_row["MacroId"] or 0)
-        if macro_id > 0 and macro_id not in candidate_macro_ids:
-            candidate_macro_ids.append(macro_id)
 
     if resolved_page_link is None:
         for macro_id in candidate_macro_ids:
@@ -1497,14 +1541,6 @@ def _resolve_button(
     if sl_h is not None and sl_h > 0:
         button_ui["listItemHeightPx"] = int(sl_h)
     page_name_resolved = str(page_name_by_page_id.get(int(page_id)) or "").strip()
-    effective_room_id = (
-        int(layer_room_id) if layer_room_id is not None else (int(page_layer_room_id) if page_layer_room_id is not None else int(page_room_id))
-    )
-    effective_source_id = (
-        int(layer_source_id)
-        if layer_source_id is not None
-        else (int(page_layer_source_id) if page_layer_source_id is not None else (int(page_source_device_id) if page_source_device_id is not None else None))
-    )
     effective_room_name = str(room_name_by_id.get(effective_room_id) or ("Global" if int(effective_room_id) == 0 else f"Room {effective_room_id}"))
     effective_source_name = ""
     if effective_source_id is not None:
@@ -1515,6 +1551,24 @@ def _resolve_button(
         effective_room_id=int(effective_room_id),
         tag_id=int(tag_id),
         macro_redirect_map=macro_redirect_map or {},
+    )
+    has_meaningful_tag_content = bool(
+        has_literal_text
+        or has_var_text
+        or reversed_enabled
+        or inactive_enabled
+        or visible_enabled
+        or value_enabled
+        or state_enabled
+        or command_enabled
+        or image_enabled
+        or list_enabled
+        or bitmap_enabled
+        or icon_enabled
+        or resolved_page_link is not None
+        or audio_scope is not None
+        or has_macros_target
+        or has_macro_steps_target
     )
 
     user_button = {
@@ -1658,15 +1712,19 @@ def _classify_user_button_category(
     raw_text: str,
     has_macros_target: bool,
     has_any_variable_target: bool,
+    has_meaningful_tag_content: bool = True,
 ) -> str:
+    tag_name = button.get("buttonIdentity", {}).get("buttonTagName")
+    if has_tag_field and _empty(tag_name):
+        return "emptyTag"
+    if has_tag_field and not has_meaningful_tag_content:
+        return "emptyTag"
     if _is_hard_button(button["buttonUI"]):
         return "hardButtons"
     if (not has_tag_field) and _empty(raw_text) and (not has_macros_target) and (not has_any_variable_target):
         return "uiItems"
     if _is_screen_label(button):
         return "screenLabels"
-    if has_tag_field and _empty(button.get("buttonIdentity", {}).get("buttonTagName")):
-        return "emptyTag"
     return "screenButtons"
 
 
@@ -1792,6 +1850,13 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
         macro_id: bool(step_types)
         for macro_id, step_types in macro_types_by_macro.items()
     }
+    macro_device_ids_by_macro: dict[int, set[int]] = defaultdict(set)
+    cur.execute("select MacroId, DeviceId from MacroStepsView where DeviceId is not null")
+    for row in cur.fetchall():
+        macro_id = int(row["MacroId"] or 0)
+        device_id = int(row["DeviceId"] or 0)
+        if macro_id > 0 and device_id > 0:
+            macro_device_ids_by_macro[macro_id].add(device_id)
     cur.execute(
         """
         select MacroId, FlagIndex, FlagType
@@ -2247,18 +2312,19 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         cur,
                         b,
                         device_id,
-                    tag_name_by_id,
-                    variables_by_tag,
-                    button_text_tag_ids,
-                    macros_by_tag,
-                    macro_non_empty_by_id,
-                    page_links_by_device_and_tag,
-                    page_links_by_tag,
-                    first_page_target_by_device_id,
-                    page_name_by_page_id,
-                    room_name_by_id,
-                    driver_name_by_device_id,
-                    macro_step_exact_page_by_macro,
+                        tag_name_by_id,
+                        variables_by_tag,
+                        button_text_tag_ids,
+                        macros_by_tag,
+                        macro_non_empty_by_id,
+                        macro_device_ids_by_macro,
+                        page_links_by_device_and_tag,
+                        page_links_by_tag,
+                        first_page_target_by_device_id,
+                        page_name_by_page_id,
+                        room_name_by_id,
+                        driver_name_by_device_id,
+                        macro_step_exact_page_by_macro,
                         macro_step_targets_by_macro,
                         room_event_targets_by_room,
                         select_rooms_by_macro,
@@ -2303,6 +2369,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             button_text_tag_ids,
                             macros_by_tag,
                             macro_non_empty_by_id,
+                            macro_device_ids_by_macro,
                             page_links_by_device_and_tag,
                             page_links_by_tag,
                             first_page_target_by_device_id,
@@ -2363,6 +2430,16 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                         raw_text=str(diag_button["identifiers"].get("text") or ""),
                         has_macros_target=bool(user_button["testTargets"].get("macros")),
                         has_any_variable_target=_has_any_variable_target(user_button),
+                        has_meaningful_tag_content=bool(
+                            user_button["testTargets"].get("pageLink")
+                            or user_button["testTargets"].get("text")
+                            or user_button["testTargets"].get("macros")
+                            or user_button["testTargets"].get("macroSteps")
+                            or _has_any_variable_target(user_button)
+                            or bool((user_button["testTargets"].get("graphics") or {}).get("bitmap"))
+                            or bool((user_button["testTargets"].get("graphics") or {}).get("icon"))
+                            or isinstance((user_button.get("apexScopeSource") or {}).get("audioScope"), dict)
+                        ),
                     )
                     layer_user["buttonCategories"][category].append(user_button)
                     if category == "uiItems":
@@ -2431,6 +2508,7 @@ def _resolve_viewport_frames(
     button_text_tag_ids: set[int],
     macros_by_tag: dict[int, list[sqlite3.Row]],
     macro_non_empty_by_id: dict[int, bool],
+    macro_device_ids_by_macro: dict[int, set[int]],
     page_links_by_device_and_tag: dict[tuple[int, int], sqlite3.Row],
     page_links_by_tag: dict[int, sqlite3.Row],
     first_page_target_by_device_id: dict[int, tuple[int, str | None]],
@@ -2508,18 +2586,19 @@ def _resolve_viewport_frames(
                 cur,
                 b,
                 current_device_id,
-                    tag_name_by_id,
-                    variables_by_tag,
-                    button_text_tag_ids,
-                    macros_by_tag,
-                    macro_non_empty_by_id,
-                    page_links_by_device_and_tag,
-                    page_links_by_tag,
-                    first_page_target_by_device_id,
-                    page_name_by_page_id,
-                    room_name_by_id,
-                    source_name_by_device_id,
-                    macro_step_exact_page_by_macro,
+                tag_name_by_id,
+                variables_by_tag,
+                button_text_tag_ids,
+                macros_by_tag,
+                macro_non_empty_by_id,
+                macro_device_ids_by_macro,
+                page_links_by_device_and_tag,
+                page_links_by_tag,
+                first_page_target_by_device_id,
+                page_name_by_page_id,
+                room_name_by_id,
+                source_name_by_device_id,
+                macro_step_exact_page_by_macro,
                 macro_step_targets_by_macro,
                 room_event_targets_by_room,
                 select_rooms_by_macro,
@@ -2557,6 +2636,16 @@ def _resolve_viewport_frames(
                 raw_text=str(diag_button["identifiers"].get("text") or ""),
                 has_macros_target=bool(user_button["testTargets"].get("macros")),
                 has_any_variable_target=_has_any_variable_target(user_button),
+                has_meaningful_tag_content=bool(
+                    user_button["testTargets"].get("pageLink")
+                    or user_button["testTargets"].get("text")
+                    or user_button["testTargets"].get("macros")
+                    or user_button["testTargets"].get("macroSteps")
+                    or _has_any_variable_target(user_button)
+                    or bool((user_button["testTargets"].get("graphics") or {}).get("bitmap"))
+                    or bool((user_button["testTargets"].get("graphics") or {}).get("icon"))
+                    or isinstance((user_button.get("apexScopeSource") or {}).get("audioScope"), dict)
+                ),
             )
             frame_user[frame_id]["buttonCategories"][category].append(user_button)
             layer_frames[frame_id]["buttonCategories"][category].append(user_button)

@@ -388,6 +388,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
         ("screenLabels", "Screen Label"),
         ("screenButtons", "Screen Button"),
         ("hardButtons", "Hard Button"),
+        ("emptyTag", "Empty Tag"),
         ("uiItems", "UI Item"),
     ]
     layers = _page_layers(page)
@@ -401,7 +402,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
             layer_items: list[tuple[dict[str, Any], str, int]] = []
             for rank, (cat, label) in enumerate(category_defs):
                 for btn in cats.get(cat, []):
-                    if cat != "uiItems" and _is_ui_only_button(btn):
+                    if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
                         continue
                     layer_items.append((btn, label, rank))
             layer_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
@@ -411,7 +412,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
     root_items: list[tuple[dict[str, Any], str, int]] = []
     for rank, (cat, label) in enumerate(category_defs):
         for btn in page.get("buttonCategories", {}).get(cat, []):
-            if cat != "uiItems" and _is_ui_only_button(btn):
+            if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
                 continue
             root_items.append((btn, label, rank))
     root_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
@@ -567,11 +568,12 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
                     ("screenLabels", "Screen Label"),
                     ("screenButtons", "Screen Button"),
                     ("hardButtons", "Hard Button"),
+                    ("emptyTag", "Empty Tag"),
                     ("uiItems", "UI Item"),
                 )
             ):
                 for btn in cats.get(cat, []):
-                    if cat != "uiItems" and _is_ui_only_button(btn):
+                    if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
                         continue
                     frame_items.append((btn, label, rank))
             frame_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
@@ -1166,13 +1168,12 @@ def _load_hard_key_template(model_key: str) -> tuple[str, str]:
     return (style, body)
 
 
-def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict[str, Any]) -> str:
+def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict[str, Any], category_label: str) -> str:
     identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
     identity_label = _button_identity_label(btn) if isinstance(btn, dict) else ""
-    label = "hardButtons"
-    category_key = _category_key_from_label(label)
+    category_key = _category_key_from_label(category_label)
     meta: dict[str, Any] = {
-        "category": label,
+        "category": category_label,
         "categoryKey": category_key,
         "identity": identity_label,
         "buttonType": identity.get("buttonType") or "",
@@ -1187,6 +1188,7 @@ def _render_hard_key_button(
     btn: dict[str, Any],
     *,
     slot: int,
+    category_label: str,
     variable_label: str,
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
@@ -1198,8 +1200,8 @@ def _render_hard_key_button(
         return ""
     identity_label = _button_identity_label(btn)
     tag_name = _button_tag_name(btn)
-    category_key = _category_key_from_label("hardButtons")
-    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui)
+    category_key = _category_key_from_label(category_label)
+    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui, category_label)
     link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
     return (
         f"<div class='btn-wrap hk-btn-wrap' "
@@ -1218,7 +1220,7 @@ def _augment_template_with_slots(
     body_html: str,
     *,
     model_key: str,
-    slot_buttons_by_left: dict[int, dict[str, Any]],
+    slot_buttons_by_left: dict[int, tuple[dict[str, Any], str]],
     variable_label: str,
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
@@ -1273,12 +1275,14 @@ def _augment_template_with_slots(
             if slot is None:
                 raise ValueError(f"Unknown data-label {dl!r} for model '{model_key}'")
             injected_slots.append(int(slot))
-            button = slot_buttons_by_left.get(int(slot))
-            if button is None:
+            button_entry = slot_buttons_by_left.get(int(slot))
+            if button_entry is None:
                 return full
+            button, category_label = button_entry
             btn_html = _render_hard_key_button(
                 button,
                 slot=int(slot),
+                category_label=category_label,
                 variable_label=variable_label,
                 app_ui=app_ui,
                 page_targets=page_targets,
@@ -1303,18 +1307,20 @@ def _augment_template_with_slots(
             except StopIteration:
                 return match.group(0)
             injected_slots.append(int(slot))
-            button = slot_buttons_by_left.get(int(slot))
+            button_entry = slot_buttons_by_left.get(int(slot))
             full = match.group(0)
             # Keep the template's opening tag byte-for-byte; only inject children before </div>.
             inner = re.match(r"^(<div\b[^>]+>)\s*(</div>)\s*$", full, flags=re.DOTALL | re.IGNORECASE)
             if not inner:
                 return full
             open_tag, close_tag = inner.group(1), inner.group(2)
-            if button is None:
+            if button_entry is None:
                 return full
+            button, category_label = button_entry
             btn_html = _render_hard_key_button(
                 button,
                 slot=int(slot),
+                category_label=category_label,
                 variable_label=variable_label,
                 app_ui=app_ui,
                 page_targets=page_targets,
@@ -1347,7 +1353,7 @@ def _render_hard_key_strip(
     *,
     model_key: str,
     hard_key_layer: dict[str, Any],
-    layer_hard_buttons: list[dict[str, Any]],
+    layer_hard_buttons: list[tuple[dict[str, Any], str]],
     variable_label: str,
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
@@ -1358,8 +1364,8 @@ def _render_hard_key_strip(
     _, body = _load_hard_key_template(model_key)
     if not body:
         return ""
-    button_by_id: dict[int, dict[str, Any]] = {}
-    for ub in layer_hard_buttons or []:
+    button_by_id: dict[int, tuple[dict[str, Any], str]] = {}
+    for ub, category_label in layer_hard_buttons or []:
         if not isinstance(ub, dict):
             continue
         scope = ub.get("apexScopeSource") if isinstance(ub.get("apexScopeSource"), dict) else {}
@@ -1367,20 +1373,20 @@ def _render_hard_key_strip(
         bid = bid_obj.get("buttonId")
         if bid is None:
             continue
-        button_by_id[int(bid)] = ub
+        button_by_id[int(bid)] = (ub, category_label)
 
-    slot_buttons_by_left: dict[int, dict[str, Any]] = {}
+    slot_buttons_by_left: dict[int, tuple[dict[str, Any], str]] = {}
     for slot in (hard_key_layer or {}).get("slots", []) or []:
         if not isinstance(slot, dict):
             continue
         bid = slot.get("buttonId")
         if bid is None:
             continue
-        button = button_by_id.get(int(bid))
-        if button is None:
+        button_entry = button_by_id.get(int(bid))
+        if button_entry is None:
             continue
         slot_key = int(slot.get("slotKey") or slot.get("buttonLeft") or 0)
-        slot_buttons_by_left[slot_key] = button
+        slot_buttons_by_left[slot_key] = button_entry
 
     augmented = _augment_template_with_slots(
         body,
@@ -1692,7 +1698,7 @@ def _room_list_row_slot_rects(
 
 
 def _max_button_order_for_page_layer(page: dict[str, Any], layer_key: str) -> int:
-    category_defs = ("screenLabels", "screenButtons", "hardButtons", "uiItems")
+    category_defs = ("screenLabels", "screenButtons", "hardButtons", "emptyTag", "uiItems")
     max_order = 0
     layers = _page_layers(page)
     if layers and layer_key.startswith("layer-"):
@@ -2800,10 +2806,12 @@ def _page_payload(
             hk_layer = layer.get("hardKeyLayer") if isinstance(layer.get("hardKeyLayer"), dict) else {}
             if not (hk_layer.get("slots") or hk_layer.get("gestures") or hk_layer.get("unmappedSlots")):
                 continue
-            hard_buttons = []
+            hard_buttons: list[tuple[dict[str, Any], str]] = []
             categories = layer.get("buttonCategories") if isinstance(layer.get("buttonCategories"), dict) else {}
             if isinstance(categories.get("hardButtons"), list):
-                hard_buttons = categories.get("hardButtons")
+                hard_buttons.extend((btn, "Hard Button") for btn in categories.get("hardButtons") if isinstance(btn, dict))
+            if isinstance(categories.get("emptyTag"), list):
+                hard_buttons.extend((btn, "Empty Tag") for btn in categories.get("emptyTag") if isinstance(btn, dict))
             hard_key_strip_html = _render_hard_key_strip(
                 model_key=model_key,
                 hard_key_layer=hk_layer,
