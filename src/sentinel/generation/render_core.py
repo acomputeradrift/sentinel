@@ -219,7 +219,10 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     out: list[str] = []
     if t.get("text"):
         out.append("Text")
-    if t.get("macros"):
+    audio_scope = (btn.get("apexScopeSource") or {}).get("audioScope")
+    if t.get("macros") or (
+        isinstance(audio_scope, dict) and audio_scope.get("wrapperDeviceId") is not None
+    ):
         out.append("System Macro")
     if t.get("macroSteps"):
         out.append("Macro Step")

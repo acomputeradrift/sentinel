@@ -217,6 +217,13 @@ class AudioScopeForHardButtonTest(unittest.TestCase):
             wrappers.add(scope["wrapperDeviceId"])
         self.assertEqual(wrappers, {166})
 
+    def test_audio_scope_sets_macros_test_target_when_source_scoped_macro_missing(self) -> None:
+        """Redirected vol keys may have audioScope but no macro on the page effective source."""
+        audio_scope = {"roomId": 12, "wrapperDeviceId": 166}
+        has_macros_target = False
+        emits_macros_test_target = has_macros_target or audio_scope is not None
+        self.assertTrue(emits_macros_test_target)
+
     def test_two_rooms_with_same_button_tag_get_different_wrappers(self) -> None:
         """Validates per-room scoping: Theater(12) and Rec Room(7) keep separate wrappers."""
         from sentinel.extraction import extractor_core

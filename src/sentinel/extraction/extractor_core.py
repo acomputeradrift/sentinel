@@ -1570,6 +1570,7 @@ def _resolve_button(
         or has_macros_target
         or has_macro_steps_target
     )
+    emits_macros_test_target = has_macros_target or audio_scope is not None
 
     user_button = {
         "buttonIdentity": {
@@ -1580,7 +1581,7 @@ def _resolve_button(
         "buttonUI": button_ui,
         "testTargets": {
             "text": has_literal_text,
-            "macros": has_macros_target,
+            "macros": emits_macros_test_target,
             "macroSteps": has_macro_steps_target,
             "variables": {
                 "Text": has_var_text,
