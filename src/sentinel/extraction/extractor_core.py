@@ -1603,6 +1603,7 @@ def _resolve_button(
         "apexScopeSource": {
             "page": {
                 "pageId": int(page_id),
+                "deviceId": int(current_device_id),
                 "roomId": int(page_room_id),
                 "sourceDeviceId": (int(page_source_device_id) if page_source_device_id is not None else None),
                 "rtiAddress": int(current_rti_address),

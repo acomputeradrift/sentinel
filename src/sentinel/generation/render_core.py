@@ -1181,6 +1181,8 @@ def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict
     }
     if isinstance(btn, dict) and isinstance(btn.get("apexScopeSource"), dict):
         meta["apexScopeSource"] = btn.get("apexScopeSource")
+    if isinstance(btn, dict) and isinstance(btn.get("resolvedPageLink"), dict):
+        meta["resolvedPageLink"] = btn.get("resolvedPageLink")
     return json.dumps(meta).replace("'", "&apos;")
 
 
@@ -1445,6 +1447,8 @@ def _render_button_control(
     }
     if isinstance(btn.get("apexScopeSource"), dict):
         meta["apexScopeSource"] = btn.get("apexScopeSource")
+    if isinstance(btn.get("resolvedPageLink"), dict):
+        meta["resolvedPageLink"] = btn.get("resolvedPageLink")
     meta_attr = json.dumps(meta).replace("'", "&apos;")
     visibility_attr = "1" if bool(oriented_ui.get("visible", True)) and "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
@@ -1764,6 +1768,7 @@ def _synthetic_room_list_row_button(
     row_index: int,
     page_id: Any,
     rti_address: Any,
+    device_id: Any,
     source_device_id: Any,
     primary_tag: str,
     primary_tag_id: int | None,
@@ -1827,7 +1832,13 @@ def _synthetic_room_list_row_button(
         },
         "resolvedPageLink": resolved if page_link_on else None,
         "apexScopeSource": {
-            "page": {"pageId": page_id, "roomId": room_id, "sourceDeviceId": source_device_id, "rtiAddress": rti_address},
+            "page": {
+                "pageId": page_id,
+                "deviceId": int(device_id) if device_id is not None else None,
+                "roomId": room_id,
+                "sourceDeviceId": source_device_id,
+                "rtiAddress": rti_address,
+            },
             "viewportLayer": {"layerId": 0, "sharedLayerId": 0, "roomId": None, "sourceId": None},
             "pageLayer": {"roomId": None, "sourceId": None},
             "button": {"buttonId": 1_000_000 + row_index, "buttonTagId": primary_tag_id},
@@ -1914,6 +1925,7 @@ def _synthetic_controller_room_list_rows_html(
             row_index=0,
             page_id=page_id,
             rti_address=rti_address,
+            device_id=diag_device_id,
             source_device_id=diag_device_id,
             primary_tag=tag0,
             primary_tag_id=tag_id0,
@@ -1956,6 +1968,7 @@ def _synthetic_controller_room_list_rows_html(
                 row_index=i,
                 page_id=page_id,
                 rti_address=rti_address,
+                device_id=diag_device_id,
                 source_device_id=diag_device_id,
                 primary_tag=tag_name,
                 primary_tag_id=tag_id,
@@ -2035,6 +2048,7 @@ def _synthetic_controller_room_list_rows_html(
         row_index=0,
         page_id=page_id,
         rti_address=rti_address,
+        device_id=diag_device_id,
         source_device_id=diag_device_id,
         primary_tag=tag0,
         primary_tag_id=tag_id0,
@@ -2087,6 +2101,7 @@ def _synthetic_controller_room_list_rows_html(
             row_index=i,
             page_id=page_id,
             rti_address=rti_address,
+            device_id=diag_device_id,
             source_device_id=diag_device_id,
             primary_tag=tag_name,
             primary_tag_id=tag_id,
@@ -3649,6 +3664,20 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
   const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
+    const resolvedPageLink = (m.resolvedPageLink && typeof m.resolvedPageLink === "object") ? m.resolvedPageLink : null;
+    const pageLinkPath = resolvedPageLink ? String(resolvedPageLink.resolutionPath || "").trim() : "";
+    const pageLinkDeviceId = pageScope.deviceId != null ? Number(pageScope.deviceId) : (deviceId != null ? Number(deviceId) : null);
+    if (lowerLabel === "page link" && pageLinkPath && pageLinkPath !== "macroStep" && pageLinkDeviceId != null && Number.isFinite(pageLinkDeviceId)) {{
+     const targetKey = `tt2_pagelink:${{pageLinkDeviceId}}:${{Number(buttonTagId)}}:Page Link`;
+     refs.pageLinkScope = "deviceTag";
+     refs.resolutionPath = pageLinkPath;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
@@ -6454,6 +6483,20 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
   const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
+    const resolvedPageLink = (m.resolvedPageLink && typeof m.resolvedPageLink === "object") ? m.resolvedPageLink : null;
+    const pageLinkPath = resolvedPageLink ? String(resolvedPageLink.resolutionPath || "").trim() : "";
+    const pageLinkDeviceId = pageScope.deviceId != null ? Number(pageScope.deviceId) : (deviceId != null ? Number(deviceId) : null);
+    if (lowerLabel === "page link" && pageLinkPath && pageLinkPath !== "macroStep" && pageLinkDeviceId != null && Number.isFinite(pageLinkDeviceId)) {{
+     const targetKey = `tt2_pagelink:${{pageLinkDeviceId}}:${{Number(buttonTagId)}}:Page Link`;
+     refs.pageLinkScope = "deviceTag";
+     refs.resolutionPath = pageLinkPath;
+     return {{
+      targetKey,
+      kind: scope,
+      targetName,
+      refs
+     }};
+    }}
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;

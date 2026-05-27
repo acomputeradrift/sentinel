@@ -228,6 +228,7 @@
                       "apexScopeSource": {
                         "page": {
                           "pageId": 0,
+                          "deviceId": 0,
                           "roomId": 0,
                           "sourceDeviceId": 0,
                           "rtiAddress": 0
@@ -365,6 +366,7 @@
                                   "apexScopeSource": {
                                     "page": {
                                       "pageId": 0,
+                                      "deviceId": 0,
                                       "roomId": 0,
                                       "sourceDeviceId": 0,
                                       "rtiAddress": 0

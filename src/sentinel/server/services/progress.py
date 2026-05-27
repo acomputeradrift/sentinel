@@ -102,6 +102,31 @@ def _normalize_target_name(label: str) -> str:
     return s
 
 
+def _is_page_link_target_label(label: str) -> bool:
+    return _normalize_target_name(label) == "Page Link"
+
+
+def _device_scoped_page_link_target_key(
+    *,
+    device_id: int | None,
+    button_tag_id: int | None,
+    label: str,
+    resolved_page_link: Any,
+) -> str | None:
+    """Tag-global page-link tests on one device (all resolution paths except macroStep)."""
+    if not _is_page_link_target_label(label):
+        return None
+    if not isinstance(resolved_page_link, dict):
+        return None
+    resolution_path = str(resolved_page_link.get("resolutionPath") or "").strip()
+    if not resolution_path or resolution_path == "macroStep":
+        return None
+    if device_id is None or button_tag_id is None:
+        return None
+    target_name = _normalize_target_name(label)
+    return f"tt2_pagelink:{int(device_id)}:{int(button_tag_id)}:{target_name}"
+
+
 def _scope_program_ref(*, label: str, bindings: dict[str, Any]) -> str:
     lower = str(label or "").strip().lower()
     macro_ids = bindings.get("macroIds")
@@ -159,6 +184,15 @@ def _scoped_target_key_from_button(*, button: dict[str, Any], label: str) -> str
         target_name = str(button.get("buttonCategory") or "").strip() or "Button"
 
     if button_tag_id is not None:
+        device_id = page.get("deviceId")
+        page_link_key = _device_scoped_page_link_target_key(
+            device_id=int(device_id) if device_id is not None else None,
+            button_tag_id=int(button_tag_id),
+            label=target_name,
+            resolved_page_link=button.get("resolvedPageLink"),
+        )
+        if page_link_key is not None:
+            return page_link_key
         if rti_address is None or effective_room_id is None or effective_source_id is None:
             return None
         scope_type = "GLOBAL" if int(effective_room_id) == 0 else "ROOM"
