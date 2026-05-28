@@ -88,8 +88,18 @@ Run-Step -Name "scp archive to remote" -Action {
   scp -o BatchMode=yes $ArchivePath "${RemoteHost}:${RemoteArchivePath}"
 }
 
+# Replace deploy: remove only application source under app root. Does not touch Postgres,
+# /opt/sentinel/venv, uploads/, generated/ (env paths), or other siblings under $RemoteAppRoot.
+Run-Step -Name "remove remote src tree before extract" -Action {
+  ssh -o BatchMode=yes $RemoteHost "sudo rm -rf ${RemoteAppRoot}/src && test ! -e ${RemoteAppRoot}/src && echo SRC_TREE_REMOVED"
+}
+
 Run-Step -Name "extract archive on remote" -Action {
   ssh -o BatchMode=yes $RemoteHost "sudo python3 -m zipfile -e $RemoteArchivePath $RemoteAppRoot"
+}
+
+Run-Step -Name "verify remote src tree exists" -Action {
+  ssh -o BatchMode=yes $RemoteHost "test -d ${RemoteAppRoot}/src/sentinel/server/app && echo SRC_TREE_OK"
 }
 
 if ($RequiredRemoteMarkers.Count -gt 0) {

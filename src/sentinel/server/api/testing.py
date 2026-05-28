@@ -105,7 +105,16 @@ def _app_event_broker(app) -> ws_broker.ProjectEventBroker:
     return broker
 
 
-def _build_test_result_event(*, rec) -> dict:
+def _recorded_by_tech_label(*, repo: Repository, recorded_by: dict[str, Any] | None) -> str:
+    if not isinstance(recorded_by, dict):
+        return ""
+    tech_link_id = recorded_by.get("techLinkId")
+    if not tech_link_id:
+        return ""
+    return str(repo.get_tech_link_label(techLinkId=str(tech_link_id)) or "").strip()
+
+
+def _build_test_result_event(*, rec, recorded_by_tech_label: str = "") -> dict:
     target_key = str(rec.target.get("targetKey") or "")
     return {
         "type": "test_result",
@@ -117,6 +126,7 @@ def _build_test_result_event(*, rec) -> dict:
         "kind": rec.target.get("kind") or rec.target.get("targetKind"),
         "refs": rec.target.get("refs"),
         "failNote": rec.failNote,
+        "recordedByTechLabel": str(recorded_by_tech_label or "").strip(),
     }
 
 
@@ -159,8 +169,17 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
     rows = list(latest.values())
     rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
     results: list[dict] = []
+    label_cache: dict[str, str] = {}
     for rec in rows:
         target = rec.target if isinstance(rec.target, dict) else {}
+        tech_label = ""
+        recorded_by = rec.recordedBy if isinstance(rec.recordedBy, dict) else {}
+        tech_link_id = recorded_by.get("techLinkId")
+        if tech_link_id:
+            cache_key = str(tech_link_id)
+            if cache_key not in label_cache:
+                label_cache[cache_key] = _recorded_by_tech_label(repo=repo, recorded_by=recorded_by)
+            tech_label = label_cache[cache_key]
         results.append(
             {
                 "targetKey": str(target.get("targetKey") or ""),
@@ -170,6 +189,7 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
                 "kind": target.get("kind") or target.get("targetKind"),
                 "refs": target.get("refs"),
                 "failNote": rec.failNote,
+                "recordedByTechLabel": tech_label,
             }
         )
     layer_locks = _build_layer_lock_rows(repo=repo, projectId=projectId)
@@ -525,7 +545,8 @@ def post_result(
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
 
-    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec))
+    tech_label = _recorded_by_tech_label(repo=repo, recorded_by=rec.recordedBy if isinstance(rec.recordedBy, dict) else {})
+    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec, recorded_by_tech_label=tech_label))
     _schedule_commissioning_rollups_refresh(app=request.app, project_id=rec.projectId)
 
     resp = _post_test_result_response(rec=rec)
@@ -755,7 +776,11 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                     )
                     await websocket.close(code=1008)
                     return
-                event = _build_test_result_event(rec=rec)
+                tech_label = _recorded_by_tech_label(
+                    repo=repo,
+                    recorded_by=rec.recordedBy if isinstance(rec.recordedBy, dict) else {},
+                )
+                event = _build_test_result_event(rec=rec, recorded_by_tech_label=tech_label)
                 broker.publish(projectId=rec.projectId, event=event)
                 _schedule_commissioning_rollups_refresh(app=websocket.app, project_id=rec.projectId)
                 log.info(

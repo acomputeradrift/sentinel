@@ -44,7 +44,7 @@
   },
   "header": {
     "enabled": true,
-    "titleTemplate": "{deviceName} - {pageName}",
+    "titleTemplate": "{clientName} -> {projectName} -> {deviceName} -> {pageName}",
     "placement": "top"
   },
   "appNavigation": {
@@ -137,7 +137,8 @@
   },
   "testingPopup": {
     "enabled": true,
-    "titleTemplate": "{category} Test - {identity}",
+    "titleTemplate": "{category} - {identity}",
+    "rowStatusLineTemplate": "Passed by {techLabel}: {timestamp}",
     "includeButtonTypeInTitle": true,
     "showIdentity": true,
     "variableLabelTemplate": "Variable - {variableType}",

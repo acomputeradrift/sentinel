@@ -61,6 +61,21 @@ Purpose: single local venv for **Sentinel package deps, FastAPI stack, and Playw
 
 Goal: deploy code **once**, without stale files, without a crash/restart loop, and without “it uploaded but the server is still old.”
 
+### What gets replaced on the droplet (and what does not)
+
+`deployment/deploy_from_head.ps1` performs a **replace deploy of application source only**:
+
+| Path / data | Touched by deploy? |
+|-------------|-------------------|
+| `/opt/sentinel/app/src/` | **Yes** — removed, then repopulated from `git archive HEAD src` |
+| PostgreSQL (all DB data) | **No** — not accessed by the deploy script |
+| `/opt/sentinel/venv/` | **No** |
+| `/opt/sentinel/app/uploads/` (if present) | **No** |
+| `SENTINEL_GENERATED_ROOT` / `SENTINEL_UPLOAD_ROOT` (env-configured dirs) | **No** |
+| Other siblings under `/opt/sentinel/app/` (e.g. legacy `dev_tests/`) | **No** — only `src/` is removed |
+
+**Why:** `zipfile -e` alone only overwrites paths that exist in the zip; files removed from git (e.g. a reverted migration) **stay on disk** and can still run at boot. Deleting `src/` before extract makes on-disk `src/` match `HEAD src` exactly.
+
 ### Why deploys feel slow or take multiple attempts
 
 - **`git archive` only sees commits.** If you zip before `git commit`, the droplet gets the **previous** `HEAD` revision while `scp`/`extract` “succeed”—you only notice after verification (or never).
@@ -93,7 +108,7 @@ Preferred (enforced) path:
 powershell -ExecutionPolicy Bypass -File deployment/deploy_from_head.ps1 -RequiredRemoteMarkers _synthetic_controller_room_list_rows_html
 ```
 
-This script enforces: clean tree gate, archive-from-`HEAD`, upload/extract, optional remote marker verification, restart, and health/route checks, with a full transcript at `temp/_deploy_capture.txt`.
+This script enforces: clean tree gate, archive-from-`HEAD`, upload, **remove `/opt/sentinel/app/src`**, extract, optional remote marker verification, restart, and health/route checks, with a full transcript at `temp/_deploy_capture.txt`.
 
 ```powershell
 # 0) From repo root — commit first (see Preflight step 1). Optional: $env:SENTINEL_DEPLOY_TIP = (git rev-parse --short HEAD)
@@ -104,7 +119,8 @@ git archive --format=zip -o sentinel_patch.zip HEAD src
 # 2) Upload
 scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip
 
-# 3) Extract (overwrite)
+# 3) Remove application source only, then extract (replace deploy — do not skip)
+ssh -o BatchMode=yes sentinelServer 'sudo rm -rf /opt/sentinel/app/src'
 ssh -o BatchMode=yes sentinelServer 'sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app'
 
 # 4) PRE-RESTART proof — replace the grep string when this deploy’s marker changes
@@ -129,7 +145,7 @@ Same as the script above, in words:
 
 1. Commit so `HEAD` matches intent; record `git rev-parse HEAD`; build archive; **confirm zip lists expected paths**.
 2. Copy archive to `/tmp/sentinel_patch.zip` on the droplet.
-3. Extract with overwrite into `/opt/sentinel/app`.
+3. **`sudo rm -rf /opt/sentinel/app/src`** then extract into `/opt/sentinel/app` (replace deploy; do not rely on zip overwrite alone).
 4. **Verify on-disk content** (grep marker, or `verify_deploy_hash.py` on the droplet — see below) **before** `systemctl restart`.
 5. Restart `sentinel.service`.
 6. Health check after a short sleep; retry on 502.
@@ -163,11 +179,12 @@ Validation note:
 - Treat this as expected during the first seconds; retry health check after a short delay before treating it as a failure.
 
 Known gotchas:
-- Avoid `rsync --delete` against `/opt/sentinel/app` (it can remove required modules and break imports).
+- **Do not** deploy with zip extract alone — always remove `/opt/sentinel/app/src` first (the script does this). Otherwise reverted files (e.g. old SQL migrations) remain and can crash boot.
+- Avoid `rsync --delete` against the **entire** `/opt/sentinel/app` (it can remove `uploads/` or other non-src data). Scoped delete of `src/` only is the supported replace step.
 - I initially did a bad deploy step by running copy/extract in parallel; that could extract an old zip.
 - I corrected it with a strict sequential redeploy and re-verified server file contents.
-- Repeated failure: extraction completed but did not overwrite an existing server file, leaving old runtime behavior active.
-- Prevention: force overwrite extraction + pre-restart source/hash verification is mandatory.
+- Repeated failure: extraction completed but did not remove stale paths (e.g. a reverted migration under `src/`), leaving old runtime behavior active.
+- Prevention: **`rm -rf /opt/sentinel/app/src` before extract** + pre-restart source/hash verification is mandatory.
 - Some droplets do not have `unzip` installed; do not assume `unzip -o` is available.
 - Preferred fallback when `unzip` is missing: `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`.
 - Windows PowerShell quoting for complex `ssh "...python -c ..."` commands is fragile; prefer simple remote commands (or script files) over nested one-liners.
@@ -201,8 +218,8 @@ Proven workaround:
 - Prefer `git archive` to create deployment zips (it has been reliable in this project).
 
 Fallback (only if zipping is not possible):
-- Use targeted copy of specific folders (example: deploy only `src/`), and avoid any “delete” behavior.
-- Do not use `rsync --delete` for deployment.
+- Use targeted copy of `src/` only, and still **remove `/opt/sentinel/app/src` first** before copying the new tree.
+- Do not use `rsync --delete` against the whole app root (protects `uploads/` and other non-src data).
 
 ## WebSocket support on the droplet
 

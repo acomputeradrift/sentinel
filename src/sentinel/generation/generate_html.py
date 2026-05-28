@@ -33,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--resolved-targets", default="", help="Optional path to <filename>_resolved_targets.json")
     p.add_argument("--app-ui", required=True, help="Path to app_ui_structure.json")
     p.add_argument("--out-dir", help="Output directory. Defaults to the project data file directory.")
+    p.add_argument("--client-name", default="", help="Commissioning client display name for generated titles.")
+    p.add_argument("--project-name", default="", help="Commissioning project display name for generated titles.")
     return p.parse_args()
 
 
@@ -110,7 +112,13 @@ def main() -> int:
         )
 
         _emit_progress(0)
-        home_html = render_project_home_html(project_data, app_ui, project_stem=project_data_path.stem)
+        home_html = render_project_home_html(
+            project_data,
+            app_ui,
+            project_stem=project_data_path.stem,
+            client_name=str(args.client_name or "").strip(),
+            project_name=str(args.project_name or "").strip(),
+        )
         home_out_path = out_dir / project_home_filename(project_data_path.stem)
         log.info(f"Writing html output: {home_out_path}")
         home_out_path.write_text(home_html, encoding="utf-8")
@@ -135,6 +143,8 @@ def main() -> int:
                 project_stem=project_data_path.stem,
                 device_index=device_index,
                 resolved_targets=resolved_targets,
+                client_name=str(args.client_name or "").strip(),
+                project_name=str(args.project_name or "").strip(),
             )
             html = str(bundle.get("html") or "")
             device_name = user.get("displayName", f"device-{device_index}")
