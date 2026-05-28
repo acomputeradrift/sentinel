@@ -19,6 +19,12 @@
 
 **Jamie field note (second deploy, `309e239`):** Device open delay **identical** to the two prior title attempts — titles/perf fix treated as **FAIL** for the latency requirement.
 
+**Jamie field note (main A/B, `06aca3c` on droplet):** After deploying **`main`**, device open is **instant**. **Conclusion:** whatever the titles branch introduced caused the slowdown; treat that as proven for future work (do not argue otherwise in this doc).
+
+**Branch outcome (2026-05-28):** All titles **feature code** removed — `titles` reset to `main` + this review doc only (`git reset --hard main` after doc commit `bbeb3df`). Remote `origin/titles` force-updated. **Redo titles from `main`**, using this file as the guide; do not cherry-pick the old titles commits wholesale.
+
+**Process mistake (`agents.md`):** “Commit review doc and agents.md, then revert titles” — only the review doc was committed before reset. `git reset --hard main` restored the **legacy long** `agents.md` from `main` and wiped the **short behavioral** copy. Fixed in `ab30f89` / `35c5e9c` (`Restore short behavioral agents.md`). **Before any `reset --hard`:** commit or stash the files Jamie names explicitly; never assume `main` has the right `agents.md`.
+
 ---
 
 ## What Jamie actually asked for (scope)
@@ -286,15 +292,15 @@ Use this order. **Stop** if a step fails its test.
 
 ---
 
-## Suggested fixes (try before full reimplementation)
+## Suggested fixes (historical — titles branch no longer deployed)
 
-If the titles branch is still deployed:
+These applied while titles code was still on the droplet; kept for the next attempt:
 
 1. **Regenerate Holtby** — fixes WS URL in generated JS (required once per deploy).
-2. **Revert `?runtime=source` to `FileResponse`** — restore device open speed; keep meta via generation or tiny injection.
-3. **Stop replaying `generation_phase` to technicians** — restore UI responsiveness after open.
+2. **Revert `?runtime=source` to `FileResponse`** — was tried in `309e239`; field open still slow — not sufficient alone.
+3. **Stop replaying `generation_phase` to technicians** — still required on next attempt.
 
-If (2)+(3) are approved, implement with `test_device_open_latency` and `test_testing_source_serve_latency` as gates.
+**Proven faster path today:** stay on **`main`** (or reimplement titles incrementally with per-step Holtby open test). Do not redeploy the old titles bundle as-is.
 
 ---
 
@@ -332,6 +338,8 @@ If T3 dominates, fixing server `read_text` again will not help; need a different
 
 - **Guide for reimplementation** — yes
 - **Locked project policy** — no; update after Jamie confirms
-- **Survives titles branch revert** — yes, if committed on `main` or `docs-only` commit separate from feature code
+- **Survives titles branch revert** — **done** — on `main` / `titles` at `bbeb3df`+ (`docs/reviews/titles-branch-review.md`); no titles `src/` on branch
+- **Current code state:** `main` and `titles` match for app code; droplet was on `main` (`06aca3c`) for A/B — fast open
+- **Next titles attempt:** new implementation from `main`; one area at a time; **mandatory** Holtby (or large-fixture) `deviceOpenMs` before deploy
 
-*Last updated: 2026-05-28 — third-pass postmortem (`309e239` deploy FAIL on latency), shell/DOMParser understanding, test-gate honesty table, checklist hardening.*
+*Last updated: 2026-05-28 — main A/B proof (instant open), branch scrapped, agents.md reset mistake, third-pass postmortem retained.*
