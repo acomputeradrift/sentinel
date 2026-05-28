@@ -48,6 +48,16 @@ def _require_project_for_user(repo: Repository, *, user_id: str, project_id: str
     return repo.get_project(projectId=project_id)
 
 
+def _commissioning_title_names(repo: Repository, *, project_id: str) -> tuple[str, str]:
+    proj = repo.get_project(projectId=project_id)
+    if proj is None:
+        return "", ""
+    client = repo.get_client(clientId=proj.clientId)
+    client_name = str(client.name if client is not None else "").strip()
+    project_name = str(proj.name or "").strip()
+    return client_name, project_name
+
+
 def _broker(request: Request) -> ws_broker.ProjectEventBroker:
     broker = getattr(request.app.state, "project_event_broker", None)
     if broker is None:
@@ -208,11 +218,14 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
     repo.record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
 
+    client_name, project_name = _commissioning_title_names(repo, project_id=projectId)
     try:
         generation = await asyncio.to_thread(
             pipeline.regenerate_project,
             projectId=projectId,
             apex_path=path,
+            client_name=client_name,
+            project_name=project_name,
             phase_hook=lambda phase, percent=0: _publish_generation_phase(
                 request,
                 projectId=projectId,
@@ -284,11 +297,14 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         raise http_error(404, code="UPLOAD_NOT_FOUND", message="Upload not found.")
     apex_path = candidates[0]
     generation: dict | None = None
+    client_name, project_name = _commissioning_title_names(repo, project_id=projectId)
     try:
         generation = await asyncio.to_thread(
             pipeline.regenerate_project,
             projectId=projectId,
             apex_path=apex_path,
+            client_name=client_name,
+            project_name=project_name,
             phase_hook=lambda phase, percent=0: _publish_generation_phase(
                 request,
                 projectId=projectId,

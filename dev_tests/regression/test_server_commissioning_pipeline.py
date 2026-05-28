@@ -305,7 +305,7 @@ class CommissioningPipelineTest(unittest.TestCase):
                 def publish_transient(self, *, projectId: str, event: dict) -> None:
                     published.append({"projectId": projectId, "event": dict(event or {})})
 
-            def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None):
+            def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = ""):
                 if callable(phase_hook):
                     phase_hook("extracting", 10.25)
                     phase_hook("extracting", 99.75)
@@ -357,7 +357,7 @@ class CommissioningPipelineTest(unittest.TestCase):
             apex_path = Path(td) / "sample.apex"
             _write_test_apex(apex_path)
 
-            def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None):
+            def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = ""):
                 if callable(phase_hook):
                     phase_hook("extracting", 100)
                     phase_hook("generating", 100)

@@ -167,7 +167,14 @@ def _run_subprocess_with_progress(*, args: list[str], cwd: Path, env: dict[str, 
             pass
 
 
-def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:
+def regenerate_project(
+    *,
+    projectId: str,
+    apex_path: Path,
+    phase_hook=None,
+    client_name: str = "",
+    project_name: str = "",
+) -> dict:
     with _ACTIVE_REGENERATES_LOCK:
         if projectId in _ACTIVE_REGENERATE_PROJECT_IDS:
             raise RuntimeError(f"Regenerate already in progress for projectId={projectId}")
@@ -221,17 +228,24 @@ def regenerate_project(*, projectId: str, apex_path: Path, phase_hook=None) -> d
 
         try:
             generate_t0 = time.perf_counter()
+            generate_args = [
+                _python_exe(),
+                str(generate),
+                "--project-data",
+                str(project_data),
+                "--app-ui",
+                str(app_ui),
+                "--out-dir",
+                str(stage_dir),
+            ]
+            client_display = str(client_name or "").strip()
+            project_display = str(project_name or "").strip()
+            if client_display:
+                generate_args.extend(["--client-name", client_display])
+            if project_display:
+                generate_args.extend(["--project-name", project_display])
             _run_subprocess_with_progress(
-                args=[
-                    _python_exe(),
-                    str(generate),
-                    "--project-data",
-                    str(project_data),
-                    "--app-ui",
-                    str(app_ui),
-                    "--out-dir",
-                    str(stage_dir),
-                ],
+                args=generate_args,
                 cwd=root,
                 env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONUNBUFFERED": "1"},
                 phase_hook=phase_hook,

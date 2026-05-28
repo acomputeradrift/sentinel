@@ -12,6 +12,43 @@ def load_json(path: Path) -> Any:
         return json.load(f)
 
 
+def _commissioning_meta_tags(*, client_name: str = "", project_name: str = "") -> str:
+    parts: list[str] = []
+    client = str(client_name or "").strip()
+    project = str(project_name or "").strip()
+    if client:
+        parts.append(f'<meta name="sentinel-client-name" content="{escape(client, quote=True)}">')
+    if project:
+        parts.append(f'<meta name="sentinel-project-name" content="{escape(project, quote=True)}">')
+    return "".join(parts)
+
+
+def format_page_header_title(
+    template: str,
+    *,
+    client_name: str,
+    project_name: str,
+    device_name: str,
+    page_name: str,
+) -> str:
+    out = str(template or "")
+    for key, value in (
+        ("{clientName}", client_name),
+        ("{projectName}", project_name),
+        ("{deviceName}", device_name),
+        ("{pageName}", page_name),
+    ):
+        out = out.replace(key, str(value or ""))
+    return out
+
+
+def format_row_status_line(tech_label: str, timestamp: str, *, template: str | None = None) -> str:
+    row_template = str(template or "Passed by {techLabel}: {timestamp}")
+    return (
+        row_template.replace("{techLabel}", str(tech_label or "").strip()).replace("{timestamp}", str(timestamp or "").strip())
+    )
+
+
 _SENTINEL_UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
@@ -2878,6 +2915,8 @@ def _render_document(
     hard_key_design_w: int = 0,
     hard_key_design_h: int = 0,
     device_profile_class: str = "",
+    client_name: str = "",
+    project_name: str = "",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -2898,8 +2937,9 @@ def _render_document(
         '<style data-sentinel-hard-key-template="1">\n' + _hk_css_stripped + "\n</style>" if _hk_css_stripped else ""
     )
     device_theme_css = _sentinel_device_theme_css()
+    commissioning_meta = _commissioning_meta_tags(client_name=client_name, project_name=project_name)
     return f"""<!doctype html>
-<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
+<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{commissioning_meta}<title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
 {device_theme_css}
@@ -3402,10 +3442,11 @@ function _applyTechPayload(payload) {{
       if (!targetKey) continue;
       const outcome = String(rec?.outcome || "").toUpperCase();
       const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      const techLabel=String(rec?.recordedByTechLabel || '');
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
       const rowUi = rowStatusByTargetKey.get(targetKey);
       if (rowUi) {{
-       setRowStatus(rowUi, outcome, at);
+       setRowStatus(rowUi, outcome, at, techLabel);
        applied += 1;
       }}
      }}
@@ -3430,12 +3471,13 @@ function _applyTechPayload(payload) {{
     if (!targetKey) return;
     const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
     const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+    const techLabel=String(payload?.recordedByTechLabel || '');
+    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
     const rowUi = rowStatusByTargetKey.get(targetKey);
     if (!rowUi) {{
      _logTechWs("row-miss", targetKey);
     }} else {{
-      setRowStatus(rowUi, outcome, at);
+      setRowStatus(rowUi, outcome, at, techLabel);
     }}
     refreshButtonVisualStates();
     if (pendingTargetKey && pendingTargetKey === targetKey) {{
@@ -3511,12 +3553,17 @@ function _connectTechWs() {{
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function formatRowStatusLine(techLabel, timestamp) {{
+  const template=(APP_UI.testingPopup && APP_UI.testingPopup.rowStatusLineTemplate) || 'Passed by {{techLabel}}: {{timestamp}}';
+  return template.replace('{{techLabel}}', String(techLabel || '').trim()).replace('{{timestamp}}', String(timestamp || '').trim());
+ }}
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
+  const techLabel=String(rowUi.recordedByTechLabel || '').trim();
   const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
   if (outcome === "PASS" && times.PASS) {{
-    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    rowUi.lastTestEl.textContent = formatRowStatusLine(techLabel, times.PASS);
     return;
   }}
   if (outcome === "FAIL" && times.FAIL) {{
@@ -3529,11 +3576,12 @@ function _connectTechWs() {{
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, recordedByTechLabel) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
+  if (recordedByTechLabel !== undefined) rowUi.recordedByTechLabel = String(recordedByTechLabel || '').trim();
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
   if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
   rowUi.currentOutcome = o;
@@ -3548,7 +3596,7 @@ function _connectTechWs() {{
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at);
+  setRowStatus(rowUi, outcome, at, rec.recordedByTechLabel);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -3917,7 +3965,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
     }}
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
-     pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+     pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
      rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
      clearPassAllQueue();
      setPostStatus('','');
@@ -5145,11 +5193,27 @@ function renderLayerPanel() {{
    applyViewportPopupLayerVisibility();
   }}
  }}
+function readCommissioningTitles() {{
+ const client=document.querySelector('meta[name="sentinel-client-name"]')?.getAttribute('content')||'';
+ const project=document.querySelector('meta[name="sentinel-project-name"]')?.getAttribute('content')||'';
+ return {{ clientName: client, projectName: project }};
+}}
 function syncHeader() {{
  const headerEl=document.querySelector('#topControls .header');
  if (!headerEl) return;
+ const titles=readCommissioningTitles();
+ const deviceName=PAGE_STATE[0]?.deviceName || '';
+ const pageName=activePageState().pageName || '';
  const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
- headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
+ if (titles.clientName || titles.projectName) {{
+  headerEl.textContent=titleTemplate
+   .replace('{{clientName}}', titles.clientName)
+   .replace('{{projectName}}', titles.projectName)
+   .replace('{{deviceName}}', deviceName)
+   .replace('{{pageName}}', pageName);
+ }} else {{
+  headerEl.textContent=`${{deviceName}} - ${{pageName}}`.trim();
+ }}
  syncSelectedRoomIndicator();
 }}
  function syncViewportControls() {{}}
@@ -5978,10 +6042,22 @@ def _count_label(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
 
-def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str) -> str:
+def render_project_home_html(
+    project_data: dict[str, Any],
+    app_ui: dict[str, Any],
+    project_stem: str,
+    *,
+    client_name: str = "",
+    project_name: str = "",
+) -> str:
     source = project_data.get("source", {})
     source_file = str(source.get("file") or project_stem)
-    project_title = Path(source_file).stem if source_file else project_stem
+    source_basename = Path(source_file).name if source_file else project_stem
+    client_display = str(client_name or "").strip()
+    project_display = str(project_name or "").strip()
+    if not project_display:
+        project_display = Path(source_file).stem if source_file else project_stem
+    page_title = project_display
     system_events = _event_section_items(project_data, "system")
     driver_events = _event_section_items(project_data, "driver")
     devices = project_data.get("devices", [])
@@ -6032,8 +6108,9 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
 
     app_json = json.dumps(app_ui)
     _ts_embed = _sentinel_test_status_embed_js()
+    commissioning_meta = _commissioning_meta_tags(client_name=client_display, project_name=project_display)
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{project_title}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{commissioning_meta}<title>{escape(page_title)}</title>
 <style>
 html,body{{margin:0;min-height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#eef3f7 0%,#dce7ef 100%);color:#183247;}}
@@ -6041,6 +6118,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-header{{margin-bottom:24px;padding:24px 28px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
 .home-kicker{{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5a7387;margin-bottom:10px;}}
 .home-title{{margin:0;font-size:32px;line-height:1.05;}}
+.home-title + .home-title{{margin-top:4px;}}
 .home-source{{margin-top:10px;font-size:14px;color:#4d6678;word-break:break-word;}}
 .home-section{{margin-top:28px;padding:22px 24px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
 .section-toggle{{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;box-sizing:border-box;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
@@ -6096,8 +6174,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <main class='home-shell'>
 <section class='home-header'>
 <div class='home-kicker'>Project Home</div>
-<h1 class='home-title'>{project_title}</h1>
-<div class='home-source'>{source_file}</div>
+<h1 class='home-title home-client-name'>{escape(client_display)}</h1>
+<h1 class='home-title home-project-name'>{escape(project_display)}</h1>
+<div class='home-source'>Current File: {escape(source_basename)}</div>
 </section>
 <section class='home-section'>
 <button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-system'>0%</span></button>
@@ -6236,10 +6315,11 @@ const APP_UI={app_json};
      if (!targetKey) continue;
      const outcome = String(rec?.outcome || "").toUpperCase();
      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     const techLabel=String(rec?.recordedByTechLabel || '');
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
      const rowUi = rowStatusByTargetKey.get(targetKey);
      if (rowUi) {{
-      setRowStatus(rowUi, outcome, at);
+      setRowStatus(rowUi, outcome, at, techLabel);
       applied += 1;
      }}
     }}
@@ -6256,10 +6336,11 @@ const APP_UI={app_json};
    if (!targetKey) return;
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+   const techLabel=String(payload?.recordedByTechLabel || '');
+   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
    const rowUi = rowStatusByTargetKey.get(targetKey);
    if (rowUi) {{
-    setRowStatus(rowUi, outcome, at);
+    setRowStatus(rowUi, outcome, at, techLabel);
    }}
     if (pendingTargetKey && pendingTargetKey === targetKey) {{
      _logTechWs("ack-match", targetKey);
@@ -6330,12 +6411,17 @@ const APP_UI={app_json};
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function formatRowStatusLine(techLabel, timestamp) {{
+  const template=(APP_UI.testingPopup && APP_UI.testingPopup.rowStatusLineTemplate) || 'Passed by {{techLabel}}: {{timestamp}}';
+  return template.replace('{{techLabel}}', String(techLabel || '').trim()).replace('{{timestamp}}', String(timestamp || '').trim());
+ }}
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
+  const techLabel=String(rowUi.recordedByTechLabel || '').trim();
   const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
   if (outcome === "PASS" && times.PASS) {{
-    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    rowUi.lastTestEl.textContent = formatRowStatusLine(techLabel, times.PASS);
     return;
   }}
   if (outcome === "FAIL" && times.FAIL) {{
@@ -6348,11 +6434,12 @@ const APP_UI={app_json};
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, recordedByTechLabel) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
+  if (recordedByTechLabel !== undefined) rowUi.recordedByTechLabel = String(recordedByTechLabel || '').trim();
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
   if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
   rowUi.currentOutcome = o;
@@ -6367,7 +6454,7 @@ const APP_UI={app_json};
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at);
+  setRowStatus(rowUi, outcome, at, rec.recordedByTechLabel);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -6724,7 +6811,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
    const popupCfg=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
    const suffix=(popupCfg.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
-   const titleTemplate=popupCfg.titleTemplate || '{{category}} Test - {{identity}}';
+   const titleTemplate=popupCfg.titleTemplate || '{{category}} - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=Array.isArray(m.targets) ? m.targets : [];
     rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
@@ -6750,6 +6837,9 @@ def build_device_render_bundle(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
+    *,
+    client_name: str = "",
+    project_name: str = "",
 ) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
@@ -6787,9 +6877,15 @@ def build_device_render_bundle(
         if ("iphone" in profile_name or "ipad" in profile_name)
         else "sentinel-device-profile-other"
     )
-    title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
+    title_template = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
-    header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
+    header = format_page_header_title(
+        title_template,
+        client_name=client_name,
+        project_name=project_name,
+        device_name=str(uf.get("displayName", "") or ""),
+        page_name=first_page_name,
+    )
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
     product_model_key = _hard_key_model_key(device)
@@ -6900,6 +6996,8 @@ def build_device_render_bundle(
         hard_key_design_w=hard_key_design_w,
         hard_key_design_h=hard_key_design_h,
         device_profile_class=device_profile_class,
+        client_name=client_name,
+        project_name=project_name,
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):
@@ -6937,6 +7035,9 @@ def render_single_device_html(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
+    *,
+    client_name: str = "",
+    project_name: str = "",
 ) -> str:
     bundle = build_device_render_bundle(
         project_data,
@@ -6944,6 +7045,8 @@ def render_single_device_html(
         project_stem,
         device_index=device_index,
         resolved_targets=resolved_targets,
+        client_name=client_name,
+        project_name=project_name,
     )
     return str(bundle.get("html") or "")
 
@@ -6954,6 +7057,9 @@ def build_device_payload(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
+    *,
+    client_name: str = "",
+    project_name: str = "",
 ) -> dict[str, Any]:
     bundle = build_device_render_bundle(
         project_data,
@@ -6961,6 +7067,8 @@ def build_device_payload(
         project_stem,
         device_index=device_index,
         resolved_targets=resolved_targets,
+        client_name=client_name,
+        project_name=project_name,
     )
     payload = bundle.get("payload")
     return payload if isinstance(payload, dict) else {}

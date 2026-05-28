@@ -33,7 +33,7 @@ class ServerRoutesSmokeTest(unittest.TestCase):
             calls: dict[str, object] = {"regen_called": False}
             original_regen = pipeline.regenerate_project
 
-            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:  # noqa: ARG001
+            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = "") -> dict:  # noqa: ARG001
                 calls["regen_called"] = True
                 if callable(phase_hook):
                     phase_hook("extracting", 100)

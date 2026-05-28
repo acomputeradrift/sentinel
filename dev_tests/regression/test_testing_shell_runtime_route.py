@@ -31,7 +31,7 @@ class TestingShellRuntimeRouteTest(unittest.TestCase):
 
             original_regen = pipeline.regenerate_project
 
-            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:  # noqa: ARG001
+            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = "") -> dict:  # noqa: ARG001
                 if callable(phase_hook):
                     phase_hook("extracting", 100)
                     phase_hook("generating", 100)
