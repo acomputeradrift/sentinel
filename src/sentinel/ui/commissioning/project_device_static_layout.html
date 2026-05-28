@@ -473,6 +473,21 @@
         });
       }
 
+      function copyCommissioningMeta(sourceDoc) {
+        const names = ["sentinel-client-name", "sentinel-project-name"];
+        names.forEach(function (name) {
+          const src = sourceDoc.querySelector('meta[name="' + name + '"]');
+          if (!src) return;
+          const existing = document.querySelector('meta[name="' + name + '"]');
+          if (existing) existing.remove();
+          const clone = document.createElement("meta");
+          clone.setAttribute("name", name);
+          clone.setAttribute("content", String(src.getAttribute("content") || ""));
+          clone.setAttribute("data-shell-commissioning-meta", "1");
+          document.head.appendChild(clone);
+        });
+      }
+
       function installSelectorAdapter() {
         const idMap = {
           topControls: "topControlsStatic",
@@ -724,6 +739,7 @@
           const sourceDoc = new DOMParser().parseFromString(html, "text/html");
           copyFilteredStyles(sourceDoc);
           copyAllowedHeadLinks(sourceDoc);
+          copyCommissioningMeta(sourceDoc);
           mountTopControls(sourceDoc);
           mountOrientation(sourceDoc);
           mountZoom(sourceDoc);

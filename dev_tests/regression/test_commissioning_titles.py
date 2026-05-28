@@ -136,6 +136,26 @@ class CommissioningTitlesTests(unittest.TestCase):
     self.assertIn("readCommissioningTitles", html)
     self.assertIn("formatRowStatusLine", html)
 
+  def test_syncHeader_uses_top_controls_get_element_by_id(self) -> None:
+    render_core_path = Path(__file__).resolve().parents[2] / "src" / "sentinel" / "generation" / "render_core.py"
+    text = render_core_path.read_text(encoding="utf-8")
+    self.assertIn("function syncHeader()", text)
+    self.assertIn("document.getElementById('topControls')", text)
+    self.assertIn("headerRoot.querySelector('.header')", text)
+
+  def test_shell_layout_copies_commissioning_meta(self) -> None:
+    shell_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "sentinel"
+        / "ui"
+        / "commissioning"
+        / "project_device_static_layout.html"
+    )
+    text = shell_path.read_text(encoding="utf-8")
+    self.assertIn("function copyCommissioningMeta(sourceDoc)", text)
+    self.assertIn("copyCommissioningMeta(sourceDoc);", text)
+
 
 if __name__ == "__main__":
   unittest.main()

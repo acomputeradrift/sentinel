@@ -5199,7 +5199,8 @@ function readCommissioningTitles() {{
  return {{ clientName: client, projectName: project }};
 }}
 function syncHeader() {{
- const headerEl=document.querySelector('#topControls .header');
+ const headerRoot=document.getElementById('topControls');
+ const headerEl=headerRoot ? headerRoot.querySelector('.header') : null;
  if (!headerEl) return;
  const titles=readCommissioningTitles();
  const deviceName=PAGE_STATE[0]?.deviceName || '';
