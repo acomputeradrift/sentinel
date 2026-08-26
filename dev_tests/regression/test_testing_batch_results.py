@@ -62,9 +62,27 @@ class TestingBatchResultsTest(unittest.TestCase):
         self.assertEqual(data["count"], 2)
         keys = [row["targetKey"] for row in data["results"]]
         self.assertEqual(keys, ["btn:1:2:3:Text", "btn:1:2:3:Page Link"])
+        self.assertTrue(data.get("batchId"))
+        self.assertEqual(data.get("source"), "GROUP")
+        batch_ids = {row.get("batchId") for row in data["results"]}
+        self.assertEqual(batch_ids, {data["batchId"]})
+        self.assertTrue(all(row.get("source") == "GROUP" for row in data["results"]))
 
         st = client.get(f"/api/v1/testing/{token}/target-status", params={"targetKey": "btn:1:2:3:Text"}).json()
         self.assertEqual(st["currentOutcome"], "PASS")
+
+        single = client.post(
+            f"/api/v1/testing/{token}/results",
+            json={
+                "outcome": "PASS",
+                "target": {"targetKey": "btn:9:9:9:Walked", "kind": "BUTTON", "targetName": "Walked", "refs": {}},
+            },
+        )
+        self.assertEqual(single.status_code, 200, single.text)
+        walked = single.json()
+        self.assertEqual(walked.get("source"), "SINGLE")
+        self.assertIsNone(walked.get("batchId"))
+        self.assertNotEqual(walked.get("batchId"), data["batchId"])
 
     def test_http_batch_fail_requires_note(self):
         client, _project_id, token = self._client_and_token()
@@ -125,17 +143,124 @@ class TestingBatchResultsTest(unittest.TestCase):
                     tech_msg.get("targetKeys"),
                     ["btn:1:2:3:Text", "event:9:Event Trigger"],
                 )
+                self.assertTrue(tech_msg.get("batchId"))
+                self.assertEqual(tech_msg.get("source"), "GROUP")
                 self.assertNotIn("progress", tech_msg)
                 self.assertIsInstance(tech_msg.get("seq"), int)
 
                 commission_msg = _recv_until(commission_ws, lambda m: m.get("type") == "test_results.batch")
                 self.assertEqual(commission_msg.get("count"), 2)
                 self.assertEqual(commission_msg.get("targetKeys"), tech_msg.get("targetKeys"))
+                self.assertEqual(commission_msg.get("batchId"), tech_msg.get("batchId"))
+                self.assertEqual(commission_msg.get("source"), "GROUP")
 
                 time.sleep(0.25)
                 roll = _recv_until(tech_ws, lambda m: m.get("type") == "commissioning_rollups")
                 self.assertIn("progress", roll)
                 self.assertIn("rollups", roll)
+
+    def test_snapshot_rebuild_keeps_group_pass_distinct_from_walked_singles(self):
+        from sentinel.server.api.commissioning_snapshots import activities_from_latest, commissioning_snapshot
+        from sentinel.server.services.repositories import TestResultRecord
+
+        recs = {
+            "btn:group:a": TestResultRecord(
+                testResultId="10",
+                projectId="p1",
+                recordedAtUtc="2026-08-26T12:00:00+00:00",
+                recordedBy={"role": "TECHNICIAN"},
+                target={"targetKey": "btn:group:a", "kind": "BUTTON", "targetName": "A", "refs": {}},
+                outcome="PASS",
+                failNote=None,
+                batchId="batch-aaa",
+                source="GROUP",
+            ),
+            "btn:group:b": TestResultRecord(
+                testResultId="11",
+                projectId="p1",
+                recordedAtUtc="2026-08-26T12:00:00+00:00",
+                recordedBy={"role": "TECHNICIAN"},
+                target={"targetKey": "btn:group:b", "kind": "BUTTON", "targetName": "B", "refs": {}},
+                outcome="PASS",
+                failNote=None,
+                batchId="batch-aaa",
+                source="GROUP",
+            ),
+            "btn:walked": TestResultRecord(
+                testResultId="12",
+                projectId="p1",
+                recordedAtUtc="2026-08-26T12:01:00+00:00",
+                recordedBy={"role": "TECHNICIAN"},
+                target={"targetKey": "btn:walked", "kind": "BUTTON", "targetName": "Walked", "refs": {}},
+                outcome="PASS",
+                failNote=None,
+                batchId=None,
+                source="SINGLE",
+            ),
+        }
+        acts = activities_from_latest(latest_results=recs)
+        batch_acts = [a for a in acts if a.get("type") == "test_results.batch"]
+        single_acts = [a for a in acts if a.get("type") == "test_result"]
+        self.assertEqual(len(batch_acts), 1)
+        self.assertEqual(batch_acts[0]["count"], 2)
+        self.assertEqual(batch_acts[0]["batchId"], "batch-aaa")
+        self.assertEqual(batch_acts[0]["source"], "GROUP")
+        self.assertEqual(sorted(batch_acts[0]["targetKeys"]), ["btn:group:a", "btn:group:b"])
+        self.assertEqual(batch_acts[0]["targetName"], "Group pass (2 targets)")
+        self.assertEqual(len(single_acts), 1)
+        self.assertEqual(single_acts[0]["targetKey"], "btn:walked")
+        self.assertEqual(single_acts[0]["source"], "SINGLE")
+        self.assertIsNone(single_acts[0].get("batchId"))
+
+        client, project_id, token = self._client_and_token()
+        walked = client.post(
+            f"/api/v1/testing/{token}/results",
+            json={
+                "outcome": "PASS",
+                "target": {"targetKey": "btn:walked:1", "kind": "BUTTON", "targetName": "Walked", "refs": {"deviceName": "A"}},
+            },
+        ).json()
+        grouped = client.post(
+            f"/api/v1/testing/{token}/results/batch",
+            json={
+                "outcome": "PASS",
+                "targets": [
+                    {"targetKey": "btn:group:1", "kind": "BUTTON", "targetName": "One", "refs": {"deviceName": "A"}},
+                    {"targetKey": "btn:group:2", "kind": "BUTTON", "targetName": "Two", "refs": {"deviceName": "A"}},
+                ],
+            },
+        ).json()
+        self.assertEqual(walked.get("source"), "SINGLE")
+        self.assertIsNone(walked.get("batchId"))
+        self.assertEqual(grouped.get("source"), "GROUP")
+        self.assertTrue(grouped.get("batchId"))
+
+        with client.websocket_connect(f"/api/v1/commissioning/projects/{project_id}/ws") as commission_ws:
+            snap = _recv_until(commission_ws, lambda m: m.get("type") == "commissioning_snapshot")
+        batch_acts = [a for a in snap.get("activities") or [] if a.get("type") == "test_results.batch"]
+        single_acts = [a for a in snap.get("activities") or [] if a.get("type") == "test_result"]
+        self.assertEqual(len(batch_acts), 1, snap.get("activities"))
+        self.assertEqual(batch_acts[0].get("count"), 2)
+        self.assertEqual(batch_acts[0].get("batchId"), grouped["batchId"])
+        self.assertEqual(batch_acts[0].get("source"), "GROUP")
+        self.assertEqual(batch_acts[0].get("targetName"), "Group pass (2 targets)")
+        self.assertEqual(len(single_acts), 1, snap.get("activities"))
+        self.assertEqual(single_acts[0].get("targetKey"), "btn:walked:1")
+        self.assertEqual(single_acts[0].get("source"), "SINGLE")
+
+        with client.websocket_connect(f"/api/v1/testing/{token}/ws") as tech_ws:
+            tech_snap = _recv_until(tech_ws, lambda m: m.get("type") == "testing_snapshot")
+        by_key = {str(r.get("targetKey") or ""): r for r in (tech_snap.get("results") or [])}
+        self.assertEqual(by_key["btn:group:1"].get("source"), "GROUP")
+        self.assertEqual(by_key["btn:group:1"].get("batchId"), grouped["batchId"])
+        self.assertEqual(by_key["btn:group:2"].get("batchId"), grouped["batchId"])
+        self.assertEqual(by_key["btn:walked:1"].get("source"), "SINGLE")
+        self.assertIsNone(by_key["btn:walked:1"].get("batchId"))
+
+        rebuilt = commissioning_snapshot(repo=client.app.state.repo, projectId=project_id)
+        rebuilt_batch = [a for a in rebuilt["activities"] if a.get("type") == "test_results.batch"]
+        self.assertEqual(len(rebuilt_batch), 1)
+        self.assertEqual(rebuilt_batch[0]["batchId"], grouped["batchId"])
 
 
 if __name__ == "__main__":

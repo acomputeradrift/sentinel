@@ -14,13 +14,13 @@ This document summarizes **stable JSON message types** exchanged over project-sc
 
 | type                    | Notes |
 |-------------------------|--------|
-| `commissioning_snapshot` | Includes `seq`, `projectId`, `progress`, `rollups`, `activities`, `fails`, `activeUpload`. |
+| `commissioning_snapshot` | Includes `seq`, `projectId`, `progress`, `rollups`, `activities`, `fails`, `activeUpload`. `activities` rebuild from latest-per-target: shared `batchId` collapses to one `test_results.batch` row (`Group pass (N targets)`); singles stay `test_result` with `source=SINGLE`. |
 | `replay.batch`         | `afterSeq`, `latestSeq`, `events[]` (each event includes `seq` when sourced from the broker ring buffer). |
 | `generation_phase`     | Transient progress; `status`, `percent`, optional `uploadId` / `originalFilename` / `activeUpload`. |
 | `generation`           | Terminal generation envelope (`status: READY`, etc.). |
 | `fail_tag_updated`     | Emitted after fail-tag mutation. |
 | `test_result`          | One recorded outcome; commissioning pies follow on `commissioning_rollups`. |
-| `test_results.batch`   | Group pass/fail: `count` plus `targetKeys[]`. Pies follow on `commissioning_rollups`. |
+| `test_results.batch`   | Group pass/fail: `count`, `targetKeys[]`, `batchId`, `source=GROUP`. Pies follow on `commissioning_rollups`. Snapshot rebuild uses the same `batchId` on stored rows. |
 | `keepalive`            | `{}` with `type: keepalive` only. |
 | `error`                | `code` such as `PROJECT_NOT_FOUND`, `UNKNOWN_MESSAGE`. |
 
@@ -34,9 +34,9 @@ Clients should apply broker events in **`seq` ascending** order and treat `commi
 
 | type                | Notes |
 |---------------------|--------|
-| `testing_snapshot`  | `seq`, `projectId`, `results[]` (latest-per-target projection). |
+| `testing_snapshot`  | `seq`, `projectId`, `results[]` (latest-per-target projection, including `batchId` and `source`). |
 | `test_result`       | Includes optional embedded `progress` and `rollups` for technician UI. |
-| `test_results.batch` | Compact ack after `test_result.submit_batch`: `outcome`, `count`, `targetKeys[]`. Does not embed per-row progress; `commissioning_rollups` follows. |
+| `test_results.batch` | Compact ack after `test_result.submit_batch`: `outcome`, `count`, `targetKeys[]`, `batchId`, `source`. Does not embed per-row progress; `commissioning_rollups` follows. |
 | `keepalive`         | Same as commissioning. |
 | `error`             | e.g. `TECH_LINK_REVOKED`. |
 

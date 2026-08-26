@@ -20,6 +20,25 @@ def new_token() -> str:
     return uuid4().hex
 
 
+TEST_RESULT_SOURCE_SINGLE = "SINGLE"
+TEST_RESULT_SOURCE_GROUP = "GROUP"
+
+
+def result_source(rec: Any, *, default: str | None = None) -> str:
+    raw = str(getattr(rec, "source", None) or "").strip().upper()
+    if raw:
+        return raw
+    if getattr(rec, "batchId", None):
+        return TEST_RESULT_SOURCE_GROUP
+    return default or TEST_RESULT_SOURCE_SINGLE
+
+
+def result_batch_id(rec: Any) -> str | None:
+    raw = getattr(rec, "batchId", None)
+    s = str(raw).strip() if raw is not None else ""
+    return s or None
+
+
 @dataclass(frozen=True)
 class Client:
     clientId: str
@@ -70,6 +89,8 @@ class TestResultRecord:
     target: dict[str, Any]
     outcome: str
     failNote: str | None
+    batchId: str | None = None
+    source: str = TEST_RESULT_SOURCE_SINGLE
 
 
 class Repository(Protocol):
@@ -348,6 +369,8 @@ class InMemoryRepository:
                 target=target,
                 outcome=outcome,
                 failNote=failNote,
+                batchId=None,
+                source=TEST_RESULT_SOURCE_SINGLE,
             )
             key = (tok.projectId, str(target.get("targetKey") or ""))
             self._results_by_project_target.setdefault(key, []).append(rec)
@@ -364,6 +387,7 @@ class InMemoryRepository:
     ) -> list[TestResultRecord]:
         tok = self.resolve_active_token(techToken=techToken)
         ts = utc_now()
+        batch_id = new_uuid()
         recs: list[TestResultRecord] = []
         with self._lock:
             for item in items:
@@ -380,6 +404,8 @@ class InMemoryRepository:
                     target=target,
                     outcome=outcome,
                     failNote=note_s or None,
+                    batchId=batch_id,
+                    source=TEST_RESULT_SOURCE_GROUP,
                 )
                 key = (tok.projectId, str(target.get("targetKey") or ""))
                 self._results_by_project_target.setdefault(key, []).append(rec)
@@ -696,6 +722,8 @@ class PostgresRepository:
             refs=dict(target.get("refs") or {}),
             outcome=outcome,
             fail_note=failNote,
+            batch_id=None,
+            source=TEST_RESULT_SOURCE_SINGLE,
         )
 
         return TestResultRecord(
@@ -706,6 +734,8 @@ class PostgresRepository:
             target=target,
             outcome=outcome,
             failNote=failNote,
+            batchId=None,
+            source=TEST_RESULT_SOURCE_SINGLE,
         )
 
     def append_test_results_batch(
@@ -717,12 +747,15 @@ class PostgresRepository:
     ) -> list[TestResultRecord]:
         tok = self.resolve_active_token(techToken=techToken)
         generation_run_id = self._q.ensure_generation_run(self._database_url, project_id=tok.projectId)
+        batch_id = new_uuid()
         rows = self._q.append_test_results_batch(
             self._database_url,
             project_id=tok.projectId,
             generation_run_id=generation_run_id,
             recorded_by_tech_link_id=tok.techLinkId,
             outcome=outcome,
+            batch_id=batch_id,
+            source=TEST_RESULT_SOURCE_GROUP,
             items=[
                 {
                     "target_key": str((item.get("target") or {}).get("targetKey") or ""),
@@ -746,6 +779,7 @@ class PostgresRepository:
                 recorded_str = str(recorded)
             else:
                 recorded_str = ts
+            row_batch = row.get("batchId")
             recs.append(
                 TestResultRecord(
                     testResultId=str(row.get("testResultId") or ""),
@@ -755,6 +789,8 @@ class PostgresRepository:
                     target=dict(item.get("target") or {}),
                     outcome=outcome,
                     failNote=item.get("failNote"),
+                    batchId=str(row_batch).strip() if row_batch else batch_id,
+                    source=str(row.get("source") or TEST_RESULT_SOURCE_GROUP),
                 )
             )
         return recs
@@ -769,8 +805,10 @@ class PostgresRepository:
             rows = self._db.fetch_all(
                 con,
                 "select distinct on (target_key) "
+                "test_result_id as \"testResultId\", "
                 "target_key as \"targetKey\", target_kind as \"targetKind\", target_name as \"targetName\", refs as \"refs\", "
-                "outcome, fail_note as \"failNote\", recorded_at_utc as \"recordedAtUtc\", recorded_by_role as \"recordedByRole\", recorded_by_tech_link_id as \"recordedByTechLinkId\" "
+                "outcome, fail_note as \"failNote\", recorded_at_utc as \"recordedAtUtc\", recorded_by_role as \"recordedByRole\", "
+                "recorded_by_tech_link_id as \"recordedByTechLinkId\", batch_id as \"batchId\", source as \"source\" "
                 "from test_results where project_id=%s order by target_key, recorded_at_utc desc, test_result_id desc",
                 (projectId,),
             )
@@ -789,14 +827,19 @@ class PostgresRepository:
                         refs_val = {}
                 target = {"targetKey": target_key, "kind": str(r.get("targetKind") or ""), "refs": refs_val, "targetName": str(r.get("targetName") or "")}
                 recorded_by = {"role": str(r.get("recordedByRole") or ""), "techLinkId": r.get("recordedByTechLinkId")}
+                batch_raw = r.get("batchId")
+                batch_id = str(batch_raw).strip() if batch_raw else None
+                source_raw = str(r.get("source") or "").strip().upper()
                 out[target_key] = TestResultRecord(
-                    testResultId=new_uuid(),
+                    testResultId=str(r.get("testResultId") or new_uuid()),
                     projectId=projectId,
                     recordedAtUtc=created_str,
                     recordedBy=recorded_by,
                     target=target,
                     outcome=str(r.get("outcome") or ""),
                     failNote=r.get("failNote"),
+                    batchId=batch_id or None,
+                    source=source_raw or (TEST_RESULT_SOURCE_GROUP if batch_id else TEST_RESULT_SOURCE_SINGLE),
                 )
             return out
         finally:

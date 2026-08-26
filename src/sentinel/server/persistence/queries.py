@@ -337,17 +337,20 @@ def append_test_result(
     refs: dict[str, Any],
     outcome: str,
     fail_note: str | None,
+    batch_id: str | None = None,
+    source: str = "SINGLE",
 ) -> str:
     test_result_id = _new_uuid()
     recorded_at = _utc_now()
+    source_s = str(source or "SINGLE").strip().upper() or "SINGLE"
     con = db.connect(database_url)
     try:
         cur = con.cursor()
         cur.execute(
             "insert into test_results "
             "(test_result_id, project_id, generation_run_id, recorded_at_utc, recorded_by_role, recorded_by_tech_link_id, "
-            "target_key, target_kind, target_name, refs, outcome, fail_note) "
-            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+            "target_key, target_kind, target_name, refs, outcome, fail_note, batch_id, source) "
+            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)",
             (
                 test_result_id,
                 project_id,
@@ -361,6 +364,8 @@ def append_test_result(
                 json.dumps(refs),
                 outcome,
                 fail_note,
+                batch_id,
+                source_s,
             ),
         )
         cur.execute(
@@ -384,9 +389,13 @@ def append_test_results_batch(
     recorded_by_tech_link_id: str | None,
     outcome: str,
     items: list[dict[str, Any]],
+    batch_id: str | None = None,
+    source: str = "GROUP",
 ) -> list[dict[str, Any]]:
-    """Insert many test_results in one connection/transaction. Shared recorded_at for the batch."""
+    """Insert many test_results in one connection/transaction. Shared recorded_at, batch_id, and source."""
     recorded_at = _utc_now()
+    batch_id = str(batch_id or "").strip() or _new_uuid()
+    source_s = str(source or "GROUP").strip().upper() or "GROUP"
     out: list[dict[str, Any]] = []
     con = db.connect(database_url)
     try:
@@ -397,8 +406,8 @@ def append_test_results_batch(
             cur.execute(
                 "insert into test_results "
                 "(test_result_id, project_id, generation_run_id, recorded_at_utc, recorded_by_role, recorded_by_tech_link_id, "
-                "target_key, target_kind, target_name, refs, outcome, fail_note) "
-                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+                "target_key, target_kind, target_name, refs, outcome, fail_note, batch_id, source) "
+                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)",
                 (
                     test_result_id,
                     project_id,
@@ -412,6 +421,8 @@ def append_test_results_batch(
                     json.dumps(item.get("refs") or {}),
                     outcome,
                     item.get("fail_note"),
+                    batch_id,
+                    source_s,
                 ),
             )
             cur.execute(
@@ -421,7 +432,15 @@ def append_test_results_batch(
                 "on conflict (project_id, target_key) do nothing",
                 (project_id, target_key, outcome, test_result_id, recorded_at),
             )
-            out.append({"testResultId": test_result_id, "targetKey": target_key, "recordedAtUtc": recorded_at})
+            out.append(
+                {
+                    "testResultId": test_result_id,
+                    "targetKey": target_key,
+                    "recordedAtUtc": recorded_at,
+                    "batchId": batch_id,
+                    "source": source_s,
+                }
+            )
         con.commit()
         return out
     finally:

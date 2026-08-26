@@ -53,3 +53,5 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         js = embed.read_text(encoding="utf-8")
         self.assertIn("test_result.submit_batch", js)
         self.assertIn("handleTestButtonClick", js)
+        self.assertIn("shiftKey", js)
+        self.assertIn("sentinelGroupMarquee", js)

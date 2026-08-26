@@ -210,12 +210,16 @@ Given an extracted `testTargets` structure:
   "recordedBy": { "role": "TECHNICIAN|PROGRAMMER", "techLinkId": "uuid|null" },
   "target": { "targetKey": "string", "kind": "EVENT|BUTTON|VIEWPORT_BUTTON", "refs": {}, "targetName": "string" },
   "outcome": "PASS|FAIL",
-  "failNote": "string|null"
+  "failNote": "string|null",
+  "batchId": "uuid|null",
+  "source": "SINGLE|GROUP"
 }
 ```
 
 Rule (normative):
 - If `outcome == "FAIL"`, `failNote` is required and non-empty. Reject with `error.code = FAIL_NOTE_REQUIRED`.
+- `source` and `batchId` are additive provenance. Per-control Pass/Fail and popup Pass All store `source=SINGLE` and `batchId=null`. Group pass (`POST .../results/batch` or WS `test_result.submit_batch`) stores `source=GROUP` and a shared `batchId` on every row in that submit.
+- Commissioning snapshot rebuild (`activities` on `commissioning_snapshot`) collapses latest rows that share a `batchId` into one `test_results.batch` activity so a reconnect still shows a group pass, not N walked singles.
 
 ## Derived current status + progress (normative)
 
@@ -393,7 +397,7 @@ Base: `/api/v1`
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
 - `POST /api/v1/testing/{techToken}/results` -> append a `TestResultRecord`
-- `POST /api/v1/testing/{techToken}/results/batch` -> append many `TestResultRecord`s in one request (same fail-note rule: FAIL requires a note on the batch or per target)
+- `POST /api/v1/testing/{techToken}/results/batch` -> append many `TestResultRecord`s in one request (same fail-note rule: FAIL requires a note on the batch or per target). Response includes shared `batchId` and `source=GROUP`.
 - `GET /api/v1/testing/{techToken}/target-status?targetKey=...` -> derived `TargetStatus`
 
 Future tech-scoped read endpoints may be added later, but they are not required for the current MVP contract.

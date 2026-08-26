@@ -443,6 +443,8 @@ function _asEventActivity(payload) {
     kind: String(payload?.kind || payload?.targetKind || payload?.data?.kind || payload?.data?.targetKind || ""),
     refs: _cloneValue(payload?.refs && typeof payload.refs === "object" ? payload.refs : payload?.data?.refs && typeof payload.data.refs === "object" ? payload.data.refs : {}),
     failNote: payload?.failNote == null ? null : String(payload.failNote),
+    batchId: payload?.batchId == null ? null : String(payload.batchId || ""),
+    source: String(payload?.source || "SINGLE").trim().toUpperCase() || "SINGLE",
   };
 }
 
@@ -562,11 +564,14 @@ function reduceProjectStore(prevState, payload) {
         recordedAtUtc: at,
         outcome,
         count,
+        targetKeys: keys.map((k) => String(k || "")),
         targetKey: "",
         targetName: `Group ${outcome === "FAIL" ? "fail" : "pass"} (${count} targets)`,
         kind: "",
         refs: {},
         failNote: null,
+        batchId: String(payload?.batchId || ""),
+        source: String(payload?.source || "GROUP").trim().toUpperCase() || "GROUP",
       },
       ...project.activities,
     ].slice(0, 50);

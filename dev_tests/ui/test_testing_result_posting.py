@@ -1474,6 +1474,88 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_shift_click_adds_to_group_without_opening_popup(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupShift"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".btn-wrap .test-btn").first.wait_for()
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass && window.__sentinelGroupPass.isGroupMode()")))
+            page.locator(".btn-wrap .test-btn").nth(0).click(modifiers=["Shift"])
+            self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            n0 = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertGreaterEqual(n0, 1)
+            page.locator(".btn-wrap .test-btn").nth(1).click(modifiers=["Shift"])
+            n1 = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertGreater(n1, n0)
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            page.locator(".btn-wrap .test-btn").nth(1).click(modifiers=["Shift"])
+            n2 = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertEqual(n2, n0)
+            page.click("#sentinelGroupPass")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page, 0)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            self.assertEqual(sent["outcome"], "PASS")
+            self.assertGreaterEqual(len(sent.get("targets") or []), 1)
+        finally:
+            server.stop()
+
+    def test_drag_select_adds_page_buttons_and_sends_batch(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupDrag"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator("#rtiDeviceCanvas").wait_for()
+            wraps = page.locator(".btn-wrap")
+            wraps.first.wait_for()
+            self.assertGreaterEqual(wraps.count(), 2)
+            b0 = wraps.nth(0).bounding_box()
+            b1 = wraps.nth(1).bounding_box()
+            canvas = page.locator("#rtiDeviceCanvas").bounding_box()
+            self.assertIsNotNone(b0)
+            self.assertIsNotNone(b1)
+            self.assertIsNotNone(canvas)
+            start_x = max(canvas["x"] + 2, min(b0["x"], b1["x"]) - 6)
+            start_y = max(canvas["y"] + 2, min(b0["y"], b1["y"]) - 6)
+            end_x = min(canvas["x"] + canvas["width"] - 2, max(b0["x"] + b0["width"], b1["x"] + b1["width"]) + 6)
+            end_y = min(canvas["y"] + canvas["height"] - 2, max(b0["y"] + b0["height"], b1["y"] + b1["height"]) + 6)
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(end_x, end_y, steps=16)
+            page.mouse.up()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            selected = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertGreaterEqual(selected, 2)
+            self.assertGreaterEqual(page.locator(".btn-wrap.is-group-selected").count(), 2)
+            page.click("#sentinelGroupPass")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page, 0)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            self.assertEqual(sent["outcome"], "PASS")
+            keys = [str((t or {}).get("targetKey") or "") for t in (sent.get("targets") or [])]
+            self.assertGreaterEqual(len(keys), 2)
+            self.assertEqual(len(keys), len(set(keys)))
+        finally:
+            server.stop()
+
     def test_testing_popup_uses_stable_hidden_until_hover_scroll_contract(self):
         from sentinel.generation.render_core import render_single_device_html, load_json
 

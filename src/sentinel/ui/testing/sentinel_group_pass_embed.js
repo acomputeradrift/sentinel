@@ -2,16 +2,19 @@
  * Technician group-pass chrome (project home + device pages).
  * Injected with test-status embed; pages call globalThis.__sentinelGroupPass.attach(...).
  *
- * Grouping model: an ephemeral session set of targetKeys. Fill it by tapping controls
- * and/or structural shortcuts (this page / this device / system events / driver events),
- * then Pass group in one WebSocket batch. Not persisted. Fail stays per-target.
+ * Grouping model: an ephemeral session set of targetKeys. Fill it by tapping controls,
+ * shift-click, rubber-band drag on a device page, and/or structural shortcuts
+ * (this page / this device / system events / driver events), then Pass group in one
+ * WebSocket batch. Not persisted. Fail stays per-target.
  */
 (function (global) {
   "use strict";
 
   const CONFIRM_AT = 25;
+  const DRAG_THRESHOLD_PX = 8;
   const STYLE_ID = "sentinel-group-pass-style";
   const BAR_ID = "sentinelGroupBar";
+  const MARQUEE_ID = "sentinelGroupMarquee";
 
   const CSS = [
     "body{padding-bottom:84px;}",
@@ -24,6 +27,8 @@
     "#" + BAR_ID + " .group-status{width:100%;font-size:12px;line-height:1.25;color:#274258;}",
     "#" + BAR_ID + " .group-status.is-error{color:#8f1f1f;}",
     "body.sentinel-group-mode .btn-wrap.is-group-selected{outline:3px solid #7c3aed;outline-offset:2px;}",
+    "#" + MARQUEE_ID + "{position:fixed;z-index:9400;pointer-events:none;box-sizing:border-box;border:1px dashed #7c3aed;background:rgba(124,58,237,.12);}",
+    "body.sentinel-group-dragging{user-select:none;}",
   ].join("\n");
 
   const selected = new Map();
@@ -31,6 +36,9 @@
   let posting = false;
   let opts = null;
   let bar = null;
+  let drag = null;
+  let swallowClick = false;
+  let dragListenersBound = false;
 
   function injectStyle() {
     if (document.getElementById(STYLE_ID)) return;
@@ -89,6 +97,12 @@
     else el.setAttribute("hidden", "hidden");
   }
 
+  function syncTogglePressed() {
+    if (!bar) return;
+    const toggle = bar.querySelector("#sentinelGroupToggle");
+    if (toggle) toggle.setAttribute("aria-pressed", groupMode ? "true" : "false");
+  }
+
   function updateChrome() {
     if (!bar) return;
     const n = selected.size;
@@ -118,7 +132,13 @@
       posting = false;
     }
     setStatus("", false);
+    syncTogglePressed();
     updateChrome();
+  }
+
+  function enterGroupMode() {
+    if (groupMode) return;
+    setGroupMode(true);
   }
 
   function addPayloads(payloads) {
@@ -231,11 +251,151 @@
   }
 
   function handleTestButtonClick(btn, evt) {
-    if (!groupMode) return false;
+    const shift = !!(evt && evt.shiftKey);
+    if (!groupMode && !shift) return false;
     if (evt && typeof evt.preventDefault === "function") evt.preventDefault();
     if (evt && typeof evt.stopPropagation === "function") evt.stopPropagation();
+    if (shift) enterGroupMode();
     toggleButton(btn);
     return true;
+  }
+
+  function overlayOpen() {
+    const ov = document.getElementById("ov");
+    return !!(ov && ov.classList && ov.classList.contains("open"));
+  }
+
+  function isChromeTarget(el) {
+    if (!el || !el.closest) return true;
+    if (el.closest("#" + BAR_ID)) return true;
+    if (el.closest("#" + MARQUEE_ID)) return true;
+    if (el.closest("#ov")) return true;
+    if (el.closest("#rtiDeviceCanvas") || el.closest("#rtiCanvas") || el.closest(".device-page")) return false;
+    return true;
+  }
+
+  function pageRoot() {
+    if (opts && typeof opts.activePageRoot === "function") {
+      const root = opts.activePageRoot();
+      if (root) return root;
+    }
+    return document.querySelector("#rtiDeviceCanvas") || document;
+  }
+
+  function marqueeEl() {
+    let el = document.getElementById(MARQUEE_ID);
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = MARQUEE_ID;
+    el.hidden = true;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function rectFromPoints(a, b) {
+    const left = Math.min(a.x, b.x);
+    const top = Math.min(a.y, b.y);
+    return { left: left, top: top, width: Math.abs(a.x - b.x), height: Math.abs(a.y - b.y) };
+  }
+
+  function paintMarquee(rect) {
+    const el = marqueeEl();
+    el.hidden = false;
+    el.style.left = rect.left + "px";
+    el.style.top = rect.top + "px";
+    el.style.width = rect.width + "px";
+    el.style.height = rect.height + "px";
+  }
+
+  function hideMarquee() {
+    const el = document.getElementById(MARQUEE_ID);
+    if (el) el.hidden = true;
+  }
+
+  function wrapsIntersecting(rect) {
+    const root = pageRoot();
+    const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
+    const hit = [];
+    for (let i = 0; i < wraps.length; i += 1) {
+      const box = wraps[i].getBoundingClientRect();
+      if (box.width <= 0 || box.height <= 0) continue;
+      const overlap = !(
+        box.right < rect.left ||
+        box.left > rect.left + rect.width ||
+        box.bottom < rect.top ||
+        box.top > rect.top + rect.height
+      );
+      if (overlap) hit.push(wraps[i]);
+    }
+    return hit;
+  }
+
+  function addWraps(wraps) {
+    let n = 0;
+    for (let i = 0; i < wraps.length; i += 1) {
+      const btn = wraps[i].querySelector(".test-btn");
+      if (btn) n += addPayloads(payloadsForButton(btn));
+    }
+    return n;
+  }
+
+  function endDrag() {
+    document.body.classList.remove("sentinel-group-dragging");
+    hideMarquee();
+    drag = null;
+  }
+
+  function onPointerDown(e) {
+    if (!opts || opts.surface !== "device") return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.shiftKey || posting || overlayOpen()) return;
+    if (isChromeTarget(e.target)) return;
+    drag = { x0: e.clientX, y0: e.clientY, active: false };
+  }
+
+  function onPointerMove(e) {
+    if (!drag) return;
+    const dx = e.clientX - drag.x0;
+    const dy = e.clientY - drag.y0;
+    if (!drag.active) {
+      if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+      drag.active = true;
+      document.body.classList.add("sentinel-group-dragging");
+      enterGroupMode();
+    }
+    if (e.cancelable && typeof e.preventDefault === "function") e.preventDefault();
+    paintMarquee(rectFromPoints({ x: drag.x0, y: drag.y0 }, { x: e.clientX, y: e.clientY }));
+  }
+
+  function onPointerUp(e) {
+    if (!drag) return;
+    const wasActive = drag.active;
+    const start = { x: drag.x0, y: drag.y0 };
+    endDrag();
+    if (!wasActive) return;
+    swallowClick = true;
+    if (e && e.cancelable && typeof e.preventDefault === "function") e.preventDefault();
+    const rect = rectFromPoints(start, { x: e.clientX, y: e.clientY });
+    const n = addWraps(wrapsIntersecting(rect));
+    setStatus(n ? "Added " + n + " from selection." : "No new targets in that region.", false);
+    updateChrome();
+  }
+
+  function onSwallowClick(e) {
+    if (!swallowClick) return;
+    swallowClick = false;
+    if (typeof e.preventDefault === "function") e.preventDefault();
+    if (typeof e.stopPropagation === "function") e.stopPropagation();
+  }
+
+  function bindDragSelect() {
+    if (dragListenersBound) return;
+    dragListenersBound = true;
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("pointercancel", onPointerUp, true);
+    document.addEventListener("click", onSwallowClick, true);
   }
 
   function mountBar() {
@@ -265,7 +425,6 @@
     });
     bar.querySelector("#sentinelGroupToggle").addEventListener("click", function () {
       setGroupMode(!groupMode);
-      bar.querySelector("#sentinelGroupToggle").setAttribute("aria-pressed", groupMode ? "true" : "false");
     });
     bar.querySelector("#sentinelGroupAddPage").addEventListener("click", addThisPage);
     bar.querySelector("#sentinelGroupAddDevice").addEventListener("click", addThisDevice);
@@ -279,7 +438,6 @@
     bar.querySelector("#sentinelGroupClear").addEventListener("click", clearGroup);
     bar.querySelector("#sentinelGroupDone").addEventListener("click", function () {
       setGroupMode(false);
-      bar.querySelector("#sentinelGroupToggle").setAttribute("aria-pressed", "false");
     });
   }
 
@@ -287,6 +445,7 @@
     opts = nextOpts && typeof nextOpts === "object" ? nextOpts : {};
     injectStyle();
     mountBar();
+    bindDragSelect();
     updateChrome();
   }
 

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import progress
-from sentinel.server.services.repositories import Repository
+from sentinel.server.services.repositories import Repository, result_batch_id, result_source
 
 log = logging.getLogger("uvicorn.error")
 
@@ -80,26 +80,65 @@ def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict)
     return out
 
 
+def _activity_from_single(*, rec) -> dict:
+    refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
+    return {
+        "type": "test_result",
+        "projectId": rec.projectId,
+        "recordedAtUtc": rec.recordedAtUtc,
+        "targetKey": str(rec.target.get("targetKey") or ""),
+        "outcome": rec.outcome,
+        "targetName": rec.target.get("targetName"),
+        "kind": rec.target.get("kind") or rec.target.get("targetKind"),
+        "refs": refs if isinstance(refs, dict) else {},
+        "failNote": rec.failNote,
+        "batchId": None,
+        "source": result_source(rec),
+    }
+
+
+def _activity_from_batch(*, recs: list) -> dict:
+    recs_sorted = sorted(recs, key=lambda r: str((r.target or {}).get("targetKey") or ""))
+    first = recs_sorted[0]
+    outcome = str(first.outcome or "").strip().upper()
+    count = len(recs_sorted)
+    keys = [str((r.target or {}).get("targetKey") or "") for r in recs_sorted]
+    verb = "fail" if outcome == "FAIL" else "pass"
+    return {
+        "type": "test_results.batch",
+        "projectId": first.projectId,
+        "recordedAtUtc": first.recordedAtUtc,
+        "outcome": outcome,
+        "count": count,
+        "targetKeys": keys,
+        "targetKey": "",
+        "targetName": f"Group {verb} ({count} targets)",
+        "kind": "",
+        "refs": {},
+        "failNote": None,
+        "batchId": result_batch_id(first),
+        "source": result_source(first),
+    }
+
+
 def activities_from_latest(*, latest_results: dict) -> list[dict]:
-    rows = list(latest_results.values())
-    rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
-    out: list[dict] = []
-    for rec in rows[:50]:
-        refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
-        out.append(
-            {
-                "type": "test_result",
-                "projectId": rec.projectId,
-                "recordedAtUtc": rec.recordedAtUtc,
-                "targetKey": str(rec.target.get("targetKey") or ""),
-                "outcome": rec.outcome,
-                "targetName": rec.target.get("targetName"),
-                "kind": rec.target.get("kind") or rec.target.get("targetKind"),
-                "refs": refs if isinstance(refs, dict) else {},
-                "failNote": rec.failNote,
-            }
-        )
-    return out
+    """Rebuild console activity from latest-per-target rows.
+
+    Rows that share a batch_id collapse to one ``test_results.batch`` activity so a
+    reconnect/snapshot still shows a group pass instead of N walked singles.
+    """
+    batches: dict[str, list] = {}
+    singles: list = []
+    for rec in latest_results.values():
+        batch_id = result_batch_id(rec)
+        if batch_id:
+            batches.setdefault(batch_id, []).append(rec)
+        else:
+            singles.append(rec)
+    out: list[dict] = [_activity_from_batch(recs=recs) for recs in batches.values()]
+    out.extend(_activity_from_single(rec=rec) for rec in singles)
+    out.sort(key=lambda a: (str(a.get("recordedAtUtc") or ""), str(a.get("batchId") or "")), reverse=True)
+    return out[:50]
 
 
 def active_upload_payload(*, repo: Repository, projectId: str) -> dict | None:
