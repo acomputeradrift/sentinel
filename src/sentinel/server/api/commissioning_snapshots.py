@@ -75,6 +75,8 @@ def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict)
                 "effectiveSourceName": refs.get("effectiveSourceName") if isinstance(refs, dict) else None,
                 "effectiveScopeNames": refs.get("effectiveScopeNames") if isinstance(refs, dict) else None,
                 "techName": tech_name,
+                "source": str(getattr(rec, "source", None) or "INDIVIDUAL"),
+                "sourceDetail": rec.sourceDetail if isinstance(getattr(rec, "sourceDetail", None), dict) else {},
             }
         )
     return out
@@ -97,6 +99,8 @@ def activities_from_latest(*, latest_results: dict) -> list[dict]:
                 "kind": rec.target.get("kind") or rec.target.get("targetKind"),
                 "refs": refs if isinstance(refs, dict) else {},
                 "failNote": rec.failNote,
+                "source": str(getattr(rec, "source", None) or "INDIVIDUAL"),
+                "sourceDetail": getattr(rec, "sourceDetail", None) if isinstance(getattr(rec, "sourceDetail", None), dict) else {},
             }
         )
     return out

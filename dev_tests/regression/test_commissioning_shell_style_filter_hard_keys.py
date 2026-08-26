@@ -54,6 +54,10 @@ _ALLOW_TOKENS: tuple[str, ...] = (
     ".n",
     ".actions",
     "textarea",
+    ".page-sel-marquee",
+    ".page-sel-bar",
+    ".page-sel-count",
+    ".page-sel-dragging",
 )
 
 _BLOCK_TOKENS: tuple[str, ...] = (
@@ -124,6 +128,12 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .box"))
         self.assertTrue(_shell_style_selector_allowed(".hk-split-right .frame"))
         self.assertTrue(_shell_style_selector_allowed(".hk-btn-wrap .test-btn"))
+
+    def test_page_selection_selectors_survive_filter(self) -> None:
+        self.assertTrue(_shell_style_selector_allowed(".page-sel-bar"))
+        self.assertTrue(_shell_style_selector_allowed(".page-sel-marquee.is-on"))
+        self.assertTrue(_shell_style_selector_allowed(".btn-wrap.is-page-selected"))
+        self.assertTrue(_shell_style_selector_allowed(".page-sel-bar button:disabled"))
 
     def test_testing_popup_selectors_survive_filter(self) -> None:
         self.assertTrue(_shell_style_selector_allowed(".ov"))

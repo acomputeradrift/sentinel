@@ -275,6 +275,73 @@ body {
   cursor: not-allowed;
 }
 
+.page-sel-marquee {
+  position: fixed;
+  border: 1px dashed #2d5f81;
+  background: rgba(45, 95, 129, 0.12);
+  pointer-events: none;
+  z-index: 9998;
+  display: none;
+  box-sizing: border-box;
+}
+
+.page-sel-marquee.is-on {
+  display: block;
+}
+
+.page-sel-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  background: #f8fbfe;
+  border: 1px solid #a9bccd;
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(20, 50, 75, 0.18);
+  color: #14324b;
+  font-size: 13px;
+}
+
+.page-sel-bar.is-on {
+  display: flex;
+}
+
+.page-sel-bar button {
+  border: 1px solid #a9bccd;
+  background: #f7fbff;
+  border-radius: 10px;
+  padding: 6px 16px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  color: #14324b;
+}
+
+.page-sel-bar button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.page-sel-count {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.btn-wrap.is-page-selected {
+  outline: 2px solid #2d5f81;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 2px rgba(45, 95, 129, 0.25);
+}
+
+.page-sel-dragging {
+  user-select: none;
+}
+
 #rows {
   margin-top: 12px;
   flex: 1;

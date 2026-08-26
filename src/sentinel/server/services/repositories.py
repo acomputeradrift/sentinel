@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import threading
 from pathlib import Path
 from typing import Any, Protocol
@@ -70,6 +71,8 @@ class TestResultRecord:
     target: dict[str, Any]
     outcome: str
     failNote: str | None
+    source: str = "INDIVIDUAL"
+    sourceDetail: dict[str, Any] | None = None
 
 
 class Repository(Protocol):
@@ -112,7 +115,16 @@ class Repository(Protocol):
         target: dict[str, Any],
         outcome: str,
         failNote: str | None,
+        source: str = "INDIVIDUAL",
+        sourceDetail: dict[str, Any] | None = None,
     ) -> TestResultRecord: ...
+
+    def append_test_results(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+    ) -> list[TestResultRecord]: ...
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]: ...
 
@@ -326,26 +338,60 @@ class InMemoryRepository:
         target: dict[str, Any],
         outcome: str,
         failNote: str | None,
+        source: str = "INDIVIDUAL",
+        sourceDetail: dict[str, Any] | None = None,
     ) -> TestResultRecord:
+        recs = self.append_test_results(
+            techToken=techToken,
+            items=[
+                {
+                    "target": target,
+                    "outcome": outcome,
+                    "failNote": failNote,
+                    "source": source,
+                    "sourceDetail": sourceDetail,
+                }
+            ],
+        )
+        return recs[0]
+
+    def append_test_results(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+    ) -> list[TestResultRecord]:
         tok = self.resolve_active_token(techToken=techToken)
+        from sentinel.server.services.test_result_source import normalize_source_detail, normalize_test_result_source
+
+        out: list[TestResultRecord] = []
         with self._lock:
-            self._next_test_result_id += 1
-            tr_id = str(self._next_test_result_id)
             ts = utc_now()
-            rec = TestResultRecord(
-                testResultId=tr_id,
-                projectId=tok.projectId,
-                recordedAtUtc=ts,
-                recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
-                target=target,
-                outcome=outcome,
-                failNote=failNote,
-            )
-            key = (tok.projectId, str(target.get("targetKey") or ""))
-            self._results_by_project_target.setdefault(key, []).append(rec)
-            if key not in self._first_outcome_by_project_target:
-                self._first_outcome_by_project_target[key] = str(outcome or "").strip().upper()
-        return rec
+            for item in items:
+                target = dict(item.get("target") or {})
+                outcome = str(item.get("outcome") or "").strip().upper()
+                fail_note = item.get("failNote")
+                source = normalize_test_result_source(item.get("source"))
+                source_detail = normalize_source_detail(item.get("sourceDetail"))
+                self._next_test_result_id += 1
+                tr_id = str(self._next_test_result_id)
+                rec = TestResultRecord(
+                    testResultId=tr_id,
+                    projectId=tok.projectId,
+                    recordedAtUtc=ts,
+                    recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+                    target=target,
+                    outcome=outcome,
+                    failNote=fail_note,
+                    source=source,
+                    sourceDetail=source_detail,
+                )
+                key = (tok.projectId, str(target.get("targetKey") or ""))
+                self._results_by_project_target.setdefault(key, []).append(rec)
+                if key not in self._first_outcome_by_project_target:
+                    self._first_outcome_by_project_target[key] = str(outcome or "").strip().upper()
+                out.append(rec)
+        return out
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
         tok = self.resolve_active_token(techToken=techToken)
@@ -640,32 +686,86 @@ class PostgresRepository:
         target: dict[str, Any],
         outcome: str,
         failNote: str | None,
+        source: str = "INDIVIDUAL",
+        sourceDetail: dict[str, Any] | None = None,
     ) -> TestResultRecord:
+        recs = self.append_test_results(
+            techToken=techToken,
+            items=[
+                {
+                    "target": target,
+                    "outcome": outcome,
+                    "failNote": failNote,
+                    "source": source,
+                    "sourceDetail": sourceDetail,
+                }
+            ],
+        )
+        return recs[0]
+
+    def append_test_results(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+    ) -> list[TestResultRecord]:
+        from sentinel.server.services.test_result_source import normalize_source_detail, normalize_test_result_source
+
         tok = self.resolve_active_token(techToken=techToken)
         generation_run_id = self._q.ensure_generation_run(self._database_url, project_id=tok.projectId)
-
-        test_result_id = self._q.append_test_result(
+        query_items: list[dict[str, Any]] = []
+        normalized: list[dict[str, Any]] = []
+        ts = utc_now()
+        for item in items:
+            target = dict(item.get("target") or {})
+            outcome = str(item.get("outcome") or "").strip().upper()
+            fail_note = item.get("failNote")
+            source = normalize_test_result_source(item.get("source"))
+            source_detail = normalize_source_detail(item.get("sourceDetail"))
+            query_items.append(
+                {
+                    "target_key": str(target.get("targetKey") or ""),
+                    "target_kind": str(target.get("kind") or target.get("targetKind") or ""),
+                    "target_name": str(target.get("targetName") or ""),
+                    "refs": dict(target.get("refs") or {}),
+                    "outcome": outcome,
+                    "fail_note": fail_note,
+                    "source": source,
+                    "source_detail": source_detail,
+                }
+            )
+            normalized.append(
+                {
+                    "target": target,
+                    "outcome": outcome,
+                    "failNote": fail_note,
+                    "source": source,
+                    "sourceDetail": source_detail,
+                }
+            )
+        ids = self._q.append_test_results(
             self._database_url,
             project_id=tok.projectId,
             generation_run_id=generation_run_id,
             recorded_by_tech_link_id=tok.techLinkId,
-            target_key=str(target.get("targetKey") or ""),
-            target_kind=str(target.get("kind") or target.get("targetKind") or ""),
-            target_name=str(target.get("targetName") or ""),
-            refs=dict(target.get("refs") or {}),
-            outcome=outcome,
-            fail_note=failNote,
+            items=query_items,
         )
-
-        return TestResultRecord(
-            testResultId=str(test_result_id),
-            projectId=tok.projectId,
-            recordedAtUtc=utc_now(),
-            recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
-            target=target,
-            outcome=outcome,
-            failNote=failNote,
-        )
+        out: list[TestResultRecord] = []
+        for test_result_id, item in zip(ids, normalized, strict=False):
+            out.append(
+                TestResultRecord(
+                    testResultId=str(test_result_id),
+                    projectId=tok.projectId,
+                    recordedAtUtc=ts,
+                    recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+                    target=item["target"],
+                    outcome=item["outcome"],
+                    failNote=item["failNote"],
+                    source=item["source"],
+                    sourceDetail=item["sourceDetail"],
+                )
+            )
+        return out
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
         tok = self.resolve_active_token(techToken=techToken)
@@ -678,7 +778,8 @@ class PostgresRepository:
                 con,
                 "select distinct on (target_key) "
                 "target_key as \"targetKey\", target_kind as \"targetKind\", target_name as \"targetName\", refs as \"refs\", "
-                "outcome, fail_note as \"failNote\", recorded_at_utc as \"recordedAtUtc\", recorded_by_role as \"recordedByRole\", recorded_by_tech_link_id as \"recordedByTechLinkId\" "
+                "outcome, fail_note as \"failNote\", recorded_at_utc as \"recordedAtUtc\", recorded_by_role as \"recordedByRole\", "
+                "recorded_by_tech_link_id as \"recordedByTechLinkId\", source as \"source\", source_detail as \"sourceDetail\" "
                 "from test_results where project_id=%s order by target_key, recorded_at_utc desc, test_result_id desc",
                 (projectId,),
             )
@@ -690,11 +791,17 @@ class PostgresRepository:
                 refs_val = r.get("refs") or {}
                 if isinstance(refs_val, str):
                     try:
-                        import json as _json
-
-                        refs_val = _json.loads(refs_val)
+                        refs_val = json.loads(refs_val)
                     except Exception:
                         refs_val = {}
+                source_detail = r.get("sourceDetail") or {}
+                if isinstance(source_detail, str):
+                    try:
+                        source_detail = json.loads(source_detail)
+                    except Exception:
+                        source_detail = {}
+                if not isinstance(source_detail, dict):
+                    source_detail = {}
                 target = {"targetKey": target_key, "kind": str(r.get("targetKind") or ""), "refs": refs_val, "targetName": str(r.get("targetName") or "")}
                 recorded_by = {"role": str(r.get("recordedByRole") or ""), "techLinkId": r.get("recordedByTechLinkId")}
                 out[target_key] = TestResultRecord(
@@ -705,6 +812,8 @@ class PostgresRepository:
                     target=target,
                     outcome=str(r.get("outcome") or ""),
                     failNote=r.get("failNote"),
+                    source=str(r.get("source") or "INDIVIDUAL"),
+                    sourceDetail=source_detail,
                 )
             return out
         finally:

@@ -309,7 +309,7 @@
       }
 
       function mountPopups(sourceDoc) {
-        ["vpPopup", "ov"].forEach(function (id) {
+        ["vpPopup", "ov", "pageSelBar", "pageSelMarquee"].forEach(function (id) {
           const src = sourceDoc.getElementById(id);
           if (!src) return;
           const existing = document.getElementById(id);
@@ -341,7 +341,11 @@
           /* Hard-key split chrome from embedded device stylesheet (not template tag): slot anchoring + invisible hit targets */
           ".hk-split-right .",
           ".hk-touch-stack",
-          ".hk-btn-wrap"
+          ".hk-btn-wrap",
+          ".page-sel-marquee",
+          ".page-sel-bar",
+          ".page-sel-count",
+          ".page-sel-dragging"
         ];
         const hardKeyAllowTokens = [
           ".rti-device-canvas-hk",
