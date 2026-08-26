@@ -1399,7 +1399,8 @@ class TestingResultPostingTest(unittest.TestCase):
             self._wait_for_ws_outbox(page, min_posts=2)
             sent1 = self._ws_payload(page, 1)
             self.assertEqual(sent1["type"], "test_result.submit")
-            self.assertEqual(sent1["outcome"], "PASS")
+            # Group pass already marked these PASS, so the existing Pass button toggles to UNTESTED.
+            self.assertEqual(sent1["outcome"], "UNTESTED")
         finally:
             server.stop()
 
