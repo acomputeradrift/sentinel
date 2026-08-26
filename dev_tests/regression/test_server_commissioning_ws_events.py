@@ -232,10 +232,19 @@ class CommissioningWsEventsTest(unittest.TestCase):
         except Exception:  # pragma: no cover
             raise unittest.SkipTest("starlette is not installed")
 
+        def _walk(routes):
+            for r in routes or []:
+                yield r
+                orig = getattr(r, "original_router", None)
+                nested = getattr(orig, "routes", None) if orig is not None else getattr(r, "routes", None)
+                if nested:
+                    yield from _walk(nested)
+
         ws_routes = [
             r
-            for r in getattr(app.router, "routes", [])
-            if isinstance(r, WebSocketRoute) and getattr(r, "path", None) == "/api/v1/commissioning/projects/{projectId}/ws"
+            for r in _walk(getattr(app.router, "routes", []))
+            if isinstance(r, WebSocketRoute)
+            and getattr(r, "path", None) == "/api/v1/commissioning/projects/{projectId}/ws"
         ]
         self.assertEqual(len(ws_routes), 1, "Expected exactly one commissioning project websocket route.")
 
@@ -336,7 +345,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
         p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
         project_id = p["projectId"]
 
-        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"name": "Onsite"}).json()
         tech_token = str(tech.get("techUrl") or "").split("/")[-1]
         self.assertTrue(tech_token, "Expected tech token from techUrl.")
 
@@ -380,7 +389,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
         c = client.post("/api/v1/commissioning/clients", json={"name": "Client A"}).json()
         p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
         project_id = p["projectId"]
-        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"name": "Onsite"}).json()
         tech_token = str(tech.get("techUrl") or "").split("/")[-1]
         self.assertTrue(tech_token, "Expected tech token from techUrl.")
 
@@ -429,7 +438,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
         p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
         project_id = p["projectId"]
 
-        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"name": "Onsite"}).json()
         tech_token = str(tech.get("techUrl") or "").split("/")[-1]
         self.assertTrue(tech_token, "Expected tech token from techUrl.")
 
@@ -497,7 +506,7 @@ class CommissioningWsEventsTest(unittest.TestCase):
         p = client.post(f"/api/v1/commissioning/clients/{c['clientId']}/projects", json={"name": "Project A"}).json()
         project_id = p["projectId"]
 
-        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={}).json()
+        tech = client.post(f"/api/v1/commissioning/projects/{project_id}/tech-links", json={"name": "Onsite"}).json()
         tech_token = str(tech.get("techUrl") or "").split("/")[-1]
         self.assertTrue(tech_token, "Expected tech token from techUrl.")
 
