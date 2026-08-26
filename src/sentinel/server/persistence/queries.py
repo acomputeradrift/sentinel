@@ -337,41 +337,79 @@ def append_test_result(
     refs: dict[str, Any],
     outcome: str,
     fail_note: str | None,
+    source: str = "INDIVIDUAL",
+    source_detail: dict[str, Any] | None = None,
 ) -> str:
-    test_result_id = _new_uuid()
+    ids = append_test_results(
+        database_url,
+        project_id=project_id,
+        generation_run_id=generation_run_id,
+        recorded_by_tech_link_id=recorded_by_tech_link_id,
+        items=[
+            {
+                "target_key": target_key,
+                "target_kind": target_kind,
+                "target_name": target_name,
+                "refs": refs,
+                "outcome": outcome,
+                "fail_note": fail_note,
+                "source": source,
+                "source_detail": source_detail,
+            }
+        ],
+    )
+    return ids[0]
+
+
+def append_test_results(
+    database_url: str,
+    *,
+    project_id: str,
+    generation_run_id: str | None,
+    recorded_by_tech_link_id: str | None,
+    items: list[dict[str, Any]],
+) -> list[str]:
     recorded_at = _utc_now()
+    ids: list[str] = []
     con = db.connect(database_url)
     try:
         cur = con.cursor()
-        cur.execute(
-            "insert into test_results "
-            "(test_result_id, project_id, generation_run_id, recorded_at_utc, recorded_by_role, recorded_by_tech_link_id, "
-            "target_key, target_kind, target_name, refs, outcome, fail_note) "
-            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
-            (
-                test_result_id,
-                project_id,
-                generation_run_id,
-                recorded_at,
-                "TECHNICIAN",
-                recorded_by_tech_link_id,
-                target_key,
-                target_kind,
-                target_name,
-                json.dumps(refs),
-                outcome,
-                fail_note,
-            ),
-        )
-        cur.execute(
-            "insert into target_first_test_outcomes "
-            "(project_id, target_key, first_outcome, first_test_result_id, first_recorded_at_utc) "
-            "values (%s,%s,%s,%s,%s) "
-            "on conflict (project_id, target_key) do nothing",
-            (project_id, target_key, outcome, test_result_id, recorded_at),
-        )
+        for item in items:
+            test_result_id = _new_uuid()
+            ids.append(test_result_id)
+            source = str(item.get("source") or "INDIVIDUAL")
+            detail = item.get("source_detail") if isinstance(item.get("source_detail"), dict) else {}
+            cur.execute(
+                "insert into test_results "
+                "(test_result_id, project_id, generation_run_id, recorded_at_utc, recorded_by_role, recorded_by_tech_link_id, "
+                "target_key, target_kind, target_name, refs, outcome, fail_note, source, source_detail) "
+                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s::jsonb)",
+                (
+                    test_result_id,
+                    project_id,
+                    generation_run_id,
+                    recorded_at,
+                    "TECHNICIAN",
+                    recorded_by_tech_link_id,
+                    str(item.get("target_key") or ""),
+                    str(item.get("target_kind") or ""),
+                    str(item.get("target_name") or ""),
+                    json.dumps(item.get("refs") or {}),
+                    str(item.get("outcome") or ""),
+                    item.get("fail_note"),
+                    source,
+                    json.dumps(detail or {}),
+                ),
+            )
+            cur.execute(
+                "insert into target_first_test_outcomes "
+                "(project_id, target_key, first_outcome, first_test_result_id, first_recorded_at_utc) "
+                "values (%s,%s,%s,%s,%s) "
+                "on conflict (project_id, target_key) do nothing",
+                (project_id, str(item.get("target_key") or ""), str(item.get("outcome") or ""), test_result_id, recorded_at),
+            )
         con.commit()
-        return test_result_id
+        return ids
     finally:
         con.close()
 
@@ -412,6 +450,8 @@ def list_latest_target_statuses(database_url: str, *, project_id: str) -> list[d
             "  tr.target_kind as \"targetKind\", "
             "  tr.target_name as \"targetName\", "
             "  tr.refs as \"refs\", "
+            "  tr.source as \"source\", "
+            "  tr.source_detail as \"sourceDetail\", "
             "  tr.recorded_by_tech_link_id as \"recordedByTechLinkId\", "
             "  tl.label as \"recordedByTechLabel\" "
             "from test_results tr "
@@ -443,6 +483,8 @@ def list_latest_failed_targets(database_url: str, *, project_id: str) -> list[di
             "    tr.target_kind as \"targetKind\", "
             "    tr.target_name as \"targetName\", "
             "    tr.refs as \"refs\", "
+            "    tr.source as \"source\", "
+            "    tr.source_detail as \"sourceDetail\", "
             "    tr.recorded_by_tech_link_id as \"recordedByTechLinkId\", "
             "    tl.label as \"recordedByTechLabel\" "
             "  from test_results tr "

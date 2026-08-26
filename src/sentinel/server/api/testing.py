@@ -20,10 +20,15 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 
 from sentinel.server.api.errors import http_error
-from sentinel.server.api.schemas import PostReadyBaselineBody, PostTestResultBody
+from sentinel.server.api.schemas import PostReadyBaselineBody, PostTestResultBatchBody, PostTestResultBody
 from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import ws_broker
-from sentinel.server.services.repositories import Repository
+from sentinel.server.services.repositories import Repository, TestResultRecord
+from sentinel.server.services.test_result_source import (
+    TEST_RESULT_BATCH_MAX,
+    normalize_source_detail,
+    normalize_test_result_source,
+)
 
 
 router = APIRouter(tags=["testing"])
@@ -105,6 +110,17 @@ def _app_event_broker(app) -> ws_broker.ProjectEventBroker:
     return broker
 
 
+def _source_from_rec(rec: TestResultRecord) -> str:
+    try:
+        return normalize_test_result_source(getattr(rec, "source", None))
+    except ValueError:
+        return "INDIVIDUAL"
+
+
+def _source_detail_from_rec(rec: TestResultRecord) -> dict[str, Any]:
+    return normalize_source_detail(getattr(rec, "sourceDetail", None))
+
+
 def _build_test_result_event(*, rec) -> dict:
     target_key = str(rec.target.get("targetKey") or "")
     return {
@@ -117,6 +133,8 @@ def _build_test_result_event(*, rec) -> dict:
         "kind": rec.target.get("kind") or rec.target.get("targetKind"),
         "refs": rec.target.get("refs"),
         "failNote": rec.failNote,
+        "source": _source_from_rec(rec),
+        "sourceDetail": _source_detail_from_rec(rec),
     }
 
 
@@ -170,6 +188,8 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
                 "kind": target.get("kind") or target.get("targetKind"),
                 "refs": target.get("refs"),
                 "failNote": rec.failNote,
+                "source": _source_from_rec(rec),
+                "sourceDetail": _source_detail_from_rec(rec),
             }
         )
     layer_locks = _build_layer_lock_rows(repo=repo, projectId=projectId)
@@ -482,7 +502,35 @@ def _post_test_result_response(*, rec) -> dict:
         "target": rec.target,
         "outcome": rec.outcome,
         "failNote": rec.failNote,
+        "source": _source_from_rec(rec),
+        "sourceDetail": _source_detail_from_rec(rec),
     }
+
+
+def _append_from_body(*, repo: Repository, techToken: str, body: PostTestResultBody) -> TestResultRecord:
+    fail_note = body.fail_note_normalized()
+    if body.outcome == "FAIL" and not str(fail_note or "").strip():
+        raise http_error(400, code="FAIL_NOTE_REQUIRED", message="Fail note is required when outcome is FAIL.")
+    target = body.target.model_dump(mode="python", exclude_none=False)
+    if target.get("kind") is None and target.get("targetKind"):
+        target["kind"] = target["targetKind"]
+    try:
+        return repo.append_test_result(
+            techToken=techToken,
+            target=target,
+            outcome=body.outcome,
+            failNote=fail_note,
+            source=body.source_normalized(),
+            sourceDetail=body.source_detail_normalized(),
+        )
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+
+def _publish_test_result(*, broker, rec: TestResultRecord, app, schedule_rollups: bool = True) -> None:
+    broker.publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec))
+    if schedule_rollups:
+        _schedule_commissioning_rollups_refresh(app=app, project_id=rec.projectId)
 
 
 @router.post("/api/v1/testing/{techToken}/results")
@@ -511,27 +559,55 @@ def post_result(
         if cached is not None:
             return dict(cached)
 
-    target = body.target.model_dump(mode="python", exclude_none=False)
-    if target.get("kind") is None and target.get("targetKind"):
-        target["kind"] = target["targetKind"]
-
-    try:
-        rec = repo.append_test_result(
-            techToken=techToken,
-            target=target,
-            outcome=body.outcome,
-            failNote=fail_note,
-        )
-    except KeyError:
-        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
-
-    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec))
-    _schedule_commissioning_rollups_refresh(app=request.app, project_id=rec.projectId)
+    rec = _append_from_body(repo=repo, techToken=techToken, body=body)
+    _publish_test_result(broker=_broker(request), rec=rec, app=request.app)
 
     resp = _post_test_result_response(rec=rec)
     if ikey:
         repo.put_idempotency_response(scope=f"post_test_result:{techToken}", key=ikey, response=resp)
     return resp
+
+
+@router.post("/api/v1/testing/{techToken}/results-batch")
+def post_results_batch(request: Request, techToken: str, payload: dict) -> dict:
+    try:
+        body = PostTestResultBatchBody.model_validate(payload or {})
+    except ValidationError:
+        raise http_error(400, code="VALIDATION_ERROR", message="Invalid test result batch payload.")
+
+    repo = _repo(request)
+    items: list[dict[str, Any]] = []
+    for row in body.results:
+        fail_note = row.fail_note_normalized()
+        if row.outcome == "FAIL" and not str(fail_note or "").strip():
+            raise http_error(400, code="FAIL_NOTE_REQUIRED", message="Fail note is required when outcome is FAIL.")
+        target = row.target.model_dump(mode="python", exclude_none=False)
+        if target.get("kind") is None and target.get("targetKind"):
+            target["kind"] = target["targetKind"]
+        items.append(
+            {
+                "target": target,
+                "outcome": row.outcome,
+                "failNote": fail_note,
+                "source": row.source_normalized(),
+                "sourceDetail": row.source_detail_normalized(),
+            }
+        )
+    try:
+        recs = repo.append_test_results(techToken=techToken, items=items)
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+    broker = _broker(request)
+    project_id = recs[0].projectId if recs else ""
+    for rec in recs:
+        broker.publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec))
+    if project_id:
+        _schedule_commissioning_rollups_refresh(app=request.app, project_id=project_id)
+    return {
+        "accepted": len(recs),
+        "results": [_post_test_result_response(rec=rec) for rec in recs],
+    }
 
 
 @router.websocket("/api/v1/testing/{techToken}/ws")
@@ -712,6 +788,94 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                         ),
                     )
                     continue
+                if msg_type == "test_result.submit_batch":
+                    raw_results = payload.get("results")
+                    if not isinstance(raw_results, list) or not raw_results:
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "results must be a non-empty list."}),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        continue
+                    if len(raw_results) > TEST_RESULT_BATCH_MAX:
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps(
+                                {
+                                    "type": "error",
+                                    "code": "VALIDATION_ERROR",
+                                    "message": f"Batch exceeds {TEST_RESULT_BATCH_MAX} results.",
+                                }
+                            ),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        continue
+                    batch_items: list[dict[str, Any]] = []
+                    batch_error = None
+                    for raw_item in raw_results:
+                        if not isinstance(raw_item, dict):
+                            batch_error = ("VALIDATION_ERROR", "Each result must be an object.")
+                            break
+                        try:
+                            row = PostTestResultBody.model_validate(raw_item)
+                        except ValidationError:
+                            batch_error = ("VALIDATION_ERROR", "Invalid test result payload.")
+                            break
+                        fail_note = row.fail_note_normalized()
+                        if row.outcome == "FAIL" and not str(fail_note or "").strip():
+                            batch_error = ("FAIL_NOTE_REQUIRED", "Fail note is required when outcome is FAIL.")
+                            break
+                        target = row.target.model_dump(mode="python", exclude_none=False)
+                        if target.get("kind") is None and target.get("targetKind"):
+                            target["kind"] = target["targetKind"]
+                        batch_items.append(
+                            {
+                                "target": target,
+                                "outcome": row.outcome,
+                                "failNote": fail_note,
+                                "source": row.source_normalized(),
+                                "sourceDetail": row.source_detail_normalized(),
+                            }
+                        )
+                    if batch_error is not None:
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps({"type": "error", "code": batch_error[0], "message": batch_error[1]}),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        continue
+                    try:
+                        recs = repo.append_test_results(techToken=techToken, items=batch_items)
+                    except KeyError:
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        await websocket.close(code=1008)
+                        return
+                    for rec in recs:
+                        event = _build_test_result_event(rec=rec)
+                        broker.publish(projectId=rec.projectId, event=event)
+                    if recs:
+                        _schedule_commissioning_rollups_refresh(app=websocket.app, project_id=recs[0].projectId)
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps(
+                            {
+                                "type": "test_result.submit_batch.ok",
+                                "accepted": len(recs),
+                                "testResultIds": [str(r.testResultId) for r in recs],
+                            }
+                        ),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
+                    continue
                 if msg_type not in ("test_result.submit", "test_result"):
                     await _send_text_or_fail(
                         websocket=websocket,
@@ -740,11 +904,24 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                     )
                     continue
                 try:
+                    source = normalize_test_result_source(payload.get("source"))
+                    source_detail = normalize_source_detail(payload.get("sourceDetail"))
+                except ValueError:
+                    await _send_text_or_fail(
+                        websocket=websocket,
+                        text=json.dumps({"type": "error", "code": "VALIDATION_ERROR", "message": "Invalid source."}),
+                        project_id=project_id,
+                        tech_token=techToken,
+                    )
+                    continue
+                try:
                     rec = repo.append_test_result(
                         techToken=techToken,
                         target=target,
                         outcome=outcome,
                         failNote=(str(fail_note).strip() if fail_note is not None else None),
+                        source=source,
+                        sourceDetail=source_detail,
                     )
                 except KeyError:
                     await _send_text_or_fail(
@@ -759,10 +936,11 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                 broker.publish(projectId=rec.projectId, event=event)
                 _schedule_commissioning_rollups_refresh(app=websocket.app, project_id=rec.projectId)
                 log.info(
-                    "[testing-ws] publish projectId=%s targetKey=%s outcome=%s broker_id=%s",
+                    "[testing-ws] publish projectId=%s targetKey=%s outcome=%s source=%s broker_id=%s",
                     rec.projectId,
                     str(event.get("targetKey") or ""),
                     str(event.get("outcome") or ""),
+                    str(event.get("source") or ""),
                     id(broker),
                 )
             finally:

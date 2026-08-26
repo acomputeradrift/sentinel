@@ -348,8 +348,16 @@ function normalizeEventMessage(ev) {
     buttonName: String(refs?.buttonName || ""),
     testTarget: String(data?.targetName || ""),
     passFail: rawOutcome === "PASS" ? "Pass" : rawOutcome === "FAIL" ? "Fail" : "",
+    recordedVia: recordedViaLabel(data?.source || refs?.source),
     targetKey,
   };
+}
+
+function recordedViaLabel(raw) {
+  const key = String(raw || "").trim().toUpperCase();
+  if (key === "SELECTION_PASS_ALL") return "Selection Pass All";
+  if (key === "BUTTON_PASS_ALL") return "Button Pass All";
+  return "Individual";
 }
 
 function appendActivityRow(msg) {
@@ -366,6 +374,7 @@ function appendActivityRow(msg) {
   const tdButton = document.createElement("td");
   const tdTarget = document.createElement("td");
   const tdStatus = document.createElement("td");
+  const tdHow = document.createElement("td");
 
   tdTime.className = "mono";
   tdDevice.className = "mono";
@@ -385,6 +394,9 @@ function appendActivityRow(msg) {
   const st = String(msg.passFail || "").trim();
   tdStatus.textContent = st;
   tdStatus.dataset.status = st.toUpperCase();
+  tdHow.className = "mono";
+  tdHow.textContent = String(msg.recordedVia || "Individual");
+  tdHow.title = String(msg.recordedVia || "Individual");
 
   tr.appendChild(tdTime);
   tr.appendChild(tdDevice);
@@ -394,6 +406,7 @@ function appendActivityRow(msg) {
   tr.appendChild(tdButton);
   tr.appendChild(tdTarget);
   tr.appendChild(tdStatus);
+  tr.appendChild(tdHow);
 
   body.appendChild(tr);
 
@@ -443,6 +456,14 @@ function _asEventActivity(payload) {
     kind: String(payload?.kind || payload?.targetKind || payload?.data?.kind || payload?.data?.targetKind || ""),
     refs: _cloneValue(payload?.refs && typeof payload.refs === "object" ? payload.refs : payload?.data?.refs && typeof payload.data.refs === "object" ? payload.data.refs : {}),
     failNote: payload?.failNote == null ? null : String(payload.failNote),
+    source: String(payload?.source || payload?.data?.source || "INDIVIDUAL"),
+    sourceDetail: _cloneValue(
+      payload?.sourceDetail && typeof payload.sourceDetail === "object"
+        ? payload.sourceDetail
+        : payload?.data?.sourceDetail && typeof payload.data.sourceDetail === "object"
+          ? payload.data.sourceDetail
+          : {}
+    ),
   };
 }
 
@@ -917,6 +938,7 @@ function _sortCommissionRows(rows) {
     else if (key === "viewport") cmp = _commissionCompareText(a?.viewport, b?.viewport, direction);
     else if (key === "buttonName") cmp = _commissionCompareText(a?.buttonName, b?.buttonName, direction);
     else if (key === "testTarget") cmp = _commissionCompareText(a?.testTarget || a?.targetKey, b?.testTarget || b?.targetKey, direction);
+    else if (key === "recordedVia") cmp = _commissionCompareText(a?.recordedVia, b?.recordedVia, direction);
     if (cmp !== 0) return cmp;
     return Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0);
   });

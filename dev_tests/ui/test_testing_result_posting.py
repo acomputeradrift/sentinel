@@ -1010,6 +1010,7 @@ class TestingResultPostingTest(unittest.TestCase):
             self._wait_for_ws_outbox(page, min_posts=1)
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
+            self.assertEqual(sent.get("source") or "INDIVIDUAL", "INDIVIDUAL")
             self.assertEqual(sent["target"]["targetKey"], "tt2:2:ROOM:23:74:20:macro:3122:System Macro")
         finally:
             server.stop()
@@ -1113,6 +1114,7 @@ class TestingResultPostingTest(unittest.TestCase):
                 sent0,
             )
             self.assertEqual(sent0["outcome"], "PASS")
+            self.assertEqual(sent0.get("source"), "BUTTON_PASS_ALL")
             self._wait_for_ws_outbox(page, min_posts=2)
             sent1 = self._ws_payload(page, 1)
             self.assertEqual(sent1["outcome"], "PASS")
@@ -1930,5 +1932,164 @@ class TestingResultPostingTest(unittest.TestCase):
             sent = self._ws_payload(page)
             self.assertEqual(sent["outcome"], "PASS")
             self.assertEqual(sent["target"]["targetKey"], "vpbtn:81:513:990:48551:Text")
+        finally:
+            server.stop()
+
+    def _two_button_device_html(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        screen_buttons = []
+        diag_buttons = []
+        ui_items = []
+        for i, left in enumerate((10, 160), start=1):
+            button_id = 48550 + i
+            screen_buttons.append(
+                {
+                    "buttonIdentity": {"buttonTagName": f"BTN-{i}", "text": f"Button {i}", "buttonType": None},
+                    "buttonUI": {
+                        "fontSize": 10,
+                        "orientations": {
+                            "portrait": {
+                                "visible": True,
+                                "coordinates": {"top": 20, "left": left, "height": 44, "width": 120},
+                            }
+                        },
+                    },
+                    "testTargets": {
+                        "text": True,
+                        "macros": False,
+                        "macroSteps": False,
+                        "variables": {},
+                        "pageLink": {"enabled": False},
+                    },
+                }
+            )
+            diag_buttons.append(
+                {
+                    "buttonId": button_id,
+                    "buttonTagName": f"BTN-{i}",
+                    "identifiers": {"text": f"Button {i}"},
+                    "testTargets": {},
+                }
+            )
+            ui_items.append({"buttonId": button_id})
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": screen_buttons,
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": ui_items,
+                                "buttons": diag_buttons,
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        html = render_single_device_html(project_data, app_ui, "unittest", device_index=0)
+        self.assertIn("id='pageSelBar'", html)
+        self.assertIn("test_result.submit_batch", html)
+        return html
+
+    def test_shift_click_selects_buttons_then_pass_all_sends_batch(self):
+        html = self._two_button_device_html()
+        token = "techTokenPageSelShift"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page(viewport={"width": 1200, "height": 900})
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.wait_for_selector(".device-page.active .btn-wrap .test-btn")
+            btns = page.locator(".device-page.active .btn-wrap .test-btn")
+            self.assertGreaterEqual(btns.count(), 2)
+            btns.nth(0).click(modifiers=["Shift"])
+            self.assertEqual(page.locator(".btn-wrap.is-page-selected").count(), 1)
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            btns.nth(1).click(modifiers=["Shift"])
+            self.assertEqual(page.locator(".btn-wrap.is-page-selected").count(), 2)
+            btns.nth(0).click(modifiers=["Shift"])
+            self.assertEqual(page.locator(".btn-wrap.is-page-selected").count(), 1)
+            btns.nth(0).click(modifiers=["Shift"])
+            self.assertEqual(page.locator(".btn-wrap.is-page-selected").count(), 2)
+            page.click("#pageSelPassAll")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            results = sent.get("results") or []
+            self.assertGreaterEqual(len(results), 2)
+            keys = {str((row.get("target") or {}).get("targetKey") or "") for row in results}
+            self.assertGreaterEqual(len(keys), 2)
+            for row in results:
+                self.assertEqual(row.get("outcome"), "PASS")
+                self.assertEqual(row.get("source"), "SELECTION_PASS_ALL")
+                detail = row.get("sourceDetail") or {}
+                self.assertEqual(detail.get("pageName"), "Home")
+                self.assertEqual(detail.get("pageId"), 513)
+                self.assertGreaterEqual(int(detail.get("buttonCount") or 0), 2)
+            btns.nth(0).click()
+            self.assertTrue(page.locator("#ov").evaluate("el => el.classList.contains('open')"))
+        finally:
+            server.stop()
+
+    def test_drag_select_region_then_pass_all_sends_batch(self):
+        html = self._two_button_device_html()
+        token = "techTokenPageSelDrag"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page(viewport={"width": 1200, "height": 900})
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.wait_for_selector(".device-page.active .btn-wrap .test-btn")
+            wraps = page.locator(".device-page.active .btn-wrap")
+            self.assertGreaterEqual(wraps.count(), 2)
+            a = wraps.nth(0).bounding_box()
+            b = wraps.nth(1).bounding_box()
+            self.assertIsNotNone(a)
+            self.assertIsNotNone(b)
+            page.mouse.move(a["x"] + 6, a["y"] + 6)
+            page.mouse.down()
+            page.mouse.move(b["x"] + b["width"] - 6, b["y"] + b["height"] - 6, steps=12)
+            page.mouse.up()
+            self.assertEqual(page.locator(".btn-wrap.is-page-selected").count(), 2)
+            page.click("#pageSelPassAll")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            results = sent.get("results") or []
+            self.assertGreaterEqual(len(results), 2)
+            self.assertTrue(all(row.get("source") == "SELECTION_PASS_ALL" for row in results))
         finally:
             server.stop()

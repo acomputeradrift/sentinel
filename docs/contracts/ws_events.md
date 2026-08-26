@@ -38,3 +38,7 @@ Clients should apply broker events in **`seq` ascending** order and treat `commi
 | `error`             | e.g. `TECH_LINK_REVOKED`. |
 
 Technician HTTP `POST /api/v1/testing/{techToken}/results` accepts optional header **`Idempotency-Key`**; duplicate keys return the first stored JSON body without inserting a second row.
+
+Optional provenance fields on submit (and on recorded `test_result` events): `source` (`INDIVIDUAL` default, `BUTTON_PASS_ALL`, `SELECTION_PASS_ALL`) and `sourceDetail` (object). History is append-only; each row keeps the source it was recorded with.
+
+Batch: client may send `test_result.submit_batch` with `results[]` (same item shape as a single submit, max 4000). Server appends all rows, publishes one `test_result` per item (console live progress), then replies `test_result.submit_batch.ok` on that socket. HTTP `POST /api/v1/testing/{techToken}/results-batch` is the same payload over HTTP.

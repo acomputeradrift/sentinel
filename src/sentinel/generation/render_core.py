@@ -19,6 +19,10 @@ def _sentinel_test_status_embed_js() -> str:
     return (_SENTINEL_UI_DIR / "testing" / "sentinel_test_status_embed.js").read_text(encoding="utf-8")
 
 
+def _sentinel_page_selection_js() -> str:
+    return (_SENTINEL_UI_DIR / "testing" / "sentinel_page_selection.js").read_text(encoding="utf-8")
+
+
 def _sentinel_device_theme_css() -> str:
     return (_SENTINEL_UI_DIR / "testing" / "sentinel_device_theme.css").read_text(encoding="utf-8")
 
@@ -2544,6 +2548,7 @@ def _render_document(
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
     _ts_embed = _sentinel_test_status_embed_js()
+    _page_sel_embed = _sentinel_page_selection_js()
     _hk_css_stripped = (hard_key_style_css or "").strip()
     _hard_key_template_style_tag = (
         '<style data-sentinel-hard-key-template="1">\n' + _hk_css_stripped + "\n</style>" if _hk_css_stripped else ""
@@ -2683,6 +2688,15 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .post-status.is-error{{background:#fdeeee;border-color:#d05555;color:#8f1f1f;}}
  #close{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;display:block;margin-top:12px;margin-left:auto;margin-right:2px;}}
  #close:disabled{{opacity:.55;cursor:not-allowed;}}
+ .page-sel-marquee{{position:fixed;border:1px dashed #2d5f81;background:rgba(45,95,129,.12);pointer-events:none;z-index:9998;display:none;box-sizing:border-box;}}
+ .page-sel-marquee.is-on{{display:block;}}
+ .page-sel-bar{{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;display:none;align-items:center;gap:10px;background:#f8fbfe;border:1px solid #a9bccd;border-radius:12px;padding:8px 12px;box-shadow:0 8px 24px rgba(20,50,75,.18);color:#14324b;font-size:13px;}}
+ .page-sel-bar.is-on{{display:flex;}}
+ .page-sel-bar button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+ .page-sel-bar button:disabled{{opacity:.55;cursor:not-allowed;}}
+ .page-sel-count{{font-weight:700;white-space:nowrap;}}
+ .btn-wrap.is-page-selected{{outline:2px solid #2d5f81;outline-offset:1px;box-shadow:0 0 0 2px rgba(45,95,129,.25);}}
+ .page-sel-dragging{{user-select:none;}}
  .rti-device-canvas-hk .device-page{{display:none;position:relative;}}
  .rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;min-height:0;max-height:100%;overflow:visible;box-sizing:border-box;}}
  .rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;bottom:0;height:auto;display:flex;align-items:center;justify-content:center;overflow:visible;z-index:1;}}
@@ -2701,6 +2715,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  <div class='rti-canvas' id='rtiCanvas'><div class='vp-overlay' id='vpOverlay' hidden></div><div class='rti-content' id='rtiContent'><div class='rti-device-canvas{(" rti-device-canvas-hk" if hard_key_model_key else "")}' id='rtiDeviceCanvas'{(f" data-hk-model='{hard_key_model_key}' data-hk-design-w='{int(hard_key_design_w)}' data-hk-design-h='{int(hard_key_design_h)}'" if hard_key_model_key else "")}>{body_markup}</div></div></div></div>
  <div class='vp-popup' id='vpPopup' hidden><div class='vp-popup-panel' id='vpPopupPanel' role='dialog' aria-modal='true' aria-label='Viewport viewer'><button class='vp-popup-close' id='vpPopupClose' type='button' aria-label='Close viewport viewer'>&times;</button><button class='vp-popup-nav vp-popup-prev' id='vpPopupPrev' type='button' aria-label='Previous frame'>&lsaquo;</button><button class='vp-popup-nav vp-popup-next' id='vpPopupNext' type='button' aria-label='Next frame'>&rsaquo;</button><button class='vp-popup-nav vp-popup-up' id='vpPopupUp' type='button' aria-label='Scroll up'>&uarr;</button><button class='vp-popup-nav vp-popup-down' id='vpPopupDown' type='button' aria-label='Scroll down'>&darr;</button><div class='vp-popup-indicator vp-indicator' id='vpPopupIndicator'></div><div class='vp-popup-scroller' id='vpPopupScroller'><div class='vp-popup-scrollpad' id='vpPopupScrollpad'><div class='vp-popup-stage' id='vpPopupStage'></div></div></div></div></div>
  <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
+ <div class='page-sel-bar' id='pageSelBar' hidden><span class='page-sel-count' id='pageSelCount'>0 buttons selected</span><button id='pageSelPassAll' type='button'>Pass All</button><button id='pageSelClear' type='button'>Clear</button></div>
+ <div class='page-sel-marquee' id='pageSelMarquee' hidden></div>
 <script>
 {_ts_embed}
 const APP_UI={app_json};
@@ -3020,8 +3036,9 @@ function _applyTechPayload(payload) {{
      const code = payload?.code;
      const message = payload?.message;
      const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-     if (pendingTargetKey || isPosting) {{
+     if (pendingTargetKey || isPosting || window.__pageSelPendingBatch) {{
       setPosting(false);
+      window.__pageSelPendingBatch = false;
       setPostStatus(`Error: ${{msg}}`, "error");
       drainPassAllQueue();
      }} else {{
@@ -3076,6 +3093,14 @@ function _applyTechPayload(payload) {{
      return;
     }}
     if (t === "commissioning_rollups") return;
+    if (t === "test_result.submit_batch.ok") {{
+     window.__pageSelPendingBatch = false;
+     pendingTargetKey = null;
+     setPosting(false);
+     setPostStatus("", "");
+     refreshButtonVisualStates();
+     return;
+    }}
     if (t !== "test_result.recorded" && t !== "test_result") return;
     const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
     if (!targetKey) return;
@@ -3422,7 +3447,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    return;
   }}
   const ctx = passAllContext || {{ ctxBtn: null, meta: {{}} }};
-  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.rowUi || null);
+  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.rowUi || null, false, ctx.source || "BUTTON_PASS_ALL", ctx.sourceDetail || null);
   if (!passAllQueue.length) passAllContext = null;
  }}
  function queuePassAll(ctxBtn, meta) {{
@@ -3438,7 +3463,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    passAllQueue.push({{ label, rowUi }});
   }});
   if (!passAllQueue.length) return;
-  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m }};
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m, source: "BUTTON_PASS_ALL", sourceDetail: {{ buttonCount: 1, targetCount: passAllQueue.length }} }};
   drainPassAllQueue();
  }}
 
@@ -3455,11 +3480,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    failBtn.disabled = isPosting || !note;
   }});
   if (passAllBtn) passAllBtn.disabled=isPosting;
+  const selPass=document.getElementById('pageSelPassAll');
+  if (selPass) selPass.disabled=isPosting;
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
 
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert, source, sourceDetail) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -3481,11 +3508,15 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    return;
   }}
 
+  const resolvedSource = String(isRevert ? "INDIVIDUAL" : (source || (passAllContext && passAllContext.source) || "INDIVIDUAL")).trim().toUpperCase() || "INDIVIDUAL";
+  const resolvedDetail = (sourceDetail && typeof sourceDetail === "object") ? sourceDetail : ((passAllContext && passAllContext.sourceDetail) || {{}});
   const payload={{
     type:"test_result.submit",
     target:{{targetKey:target.targetKey,kind:target.kind,refs:{{...(target.refs||{{}}), ...(isRevert ? {{ revertedFrom: "PASS" }} : {{}})}},targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
-    failNote:note
+    failNote:note,
+    source: resolvedSource,
+    sourceDetail: resolvedDetail
   }};
   _logTechWs("expect", target.targetKey);
   setPosting(true);
@@ -3537,7 +3568,12 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   scope.querySelectorAll('.test-btn').forEach(b=>{{
    if (b.dataset.boundTestBtn) return;
    b.dataset.boundTestBtn='1';
-   b.addEventListener('click',()=>{{
+   b.addEventListener('click',(e)=>{{
+    if (e.shiftKey || window.__pageSelSuppressClick) {{
+     e.preventDefault();
+     e.stopPropagation();
+     return;
+    }}
     const wrap=b.closest('.btn-wrap');
     if (wrap && String(wrap.dataset.syntheticRoomList || '') === '1') {{
       setSelectedRoom(wrap.dataset.syntheticRoomId);
@@ -5231,6 +5267,7 @@ if (popupNext) popupNext.addEventListener('click',()=>{{
   renderViewportPopup();
  }}
 }});
+{_page_sel_embed}
 </script></body></html>"""
 
 
@@ -6008,7 +6045,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    return;
   }}
   const ctx = passAllContext || {{ ctxBtn: null, meta: {{}} }};
-  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.rowUi || null);
+  postResultWs(ctx.ctxBtn || null, ctx.meta || {{}}, next.label, "PASS", null, next.rowUi || null, false, ctx.source || "BUTTON_PASS_ALL", ctx.sourceDetail || null);
   if (!passAllQueue.length) passAllContext = null;
  }}
  function queuePassAll(ctxBtn, meta) {{
@@ -6024,7 +6061,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    passAllQueue.push({{ label: label, rowUi: rowUi }});
   }});
   if (!passAllQueue.length) return;
-  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m }};
+  passAllContext = {{ ctxBtn: ctxBtn || null, meta: m, source: "BUTTON_PASS_ALL", sourceDetail: {{ buttonCount: 1, targetCount: passAllQueue.length }} }};
   drainPassAllQueue();
  }}
  function setPosting(on) {{
@@ -6040,6 +6077,8 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    failBtn.disabled = isPosting || !note;
   }});
   if (passAllBtn) passAllBtn.disabled=isPosting;
+  const selPass=document.getElementById('pageSelPassAll');
+  if (selPass) selPass.disabled=isPosting;
   const closeBtn=document.getElementById('close');
   if (closeBtn) closeBtn.disabled=isPosting;
  }}
@@ -6052,7 +6091,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   else section.setAttribute("hidden", "hidden");
   btn.setAttribute("aria-expanded", isHidden ? "true" : "false");
  }}
- async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert) {{
+ async function postResultWs(ctxBtn, meta, targetLabel, outcome, failNote, rowUi, isRevert, source, sourceDetail) {{
   const techToken=techTokenFromLocation();
   if (!techToken) {{
    _logTechWs("blocked:no-token");
@@ -6074,11 +6113,15 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    return;
   }}
 
+  const resolvedSource = String(isRevert ? "INDIVIDUAL" : (source || (passAllContext && passAllContext.source) || "INDIVIDUAL")).trim().toUpperCase() || "INDIVIDUAL";
+  const resolvedDetail = (sourceDetail && typeof sourceDetail === "object") ? sourceDetail : ((passAllContext && passAllContext.sourceDetail) || {{}});
   const payload={{
     type:"test_result.submit",
     target:{{targetKey:target.targetKey,kind:target.kind,refs:{{...(target.refs||{{}}), ...(isRevert ? {{ revertedFrom: "PASS" }} : {{}})}},targetName:target.targetName}},
     outcome:String(outcome||'').toUpperCase(),
-    failNote:note
+    failNote:note,
+    source: resolvedSource,
+    sourceDetail: resolvedDetail
   }};
   _logTechWs("expect", target.targetKey);
   setPosting(true);
