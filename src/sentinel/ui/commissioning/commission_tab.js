@@ -545,6 +545,34 @@ function reduceProjectStore(prevState, payload) {
     return state;
   }
 
+  if (t === "test_results.batch") {
+    const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
+    const outcome = String(payload?.outcome || "").trim().toUpperCase();
+    const at = String(payload?.recordedAtUtc || payload?.tsUtc || "");
+    const count = Number(payload?.count || keys.length) || keys.length;
+    for (const rawKey of keys) {
+      const targetKey = String(rawKey || "").trim();
+      if (!targetKey) continue;
+      project.fails = _upsertFailRecord(project.fails, { targetKey, outcome, recordedAtUtc: at });
+    }
+    project.activities = [
+      {
+        type: "test_results.batch",
+        projectId,
+        recordedAtUtc: at,
+        outcome,
+        count,
+        targetKey: "",
+        targetName: `Group ${outcome === "FAIL" ? "fail" : "pass"} (${count} targets)`,
+        kind: "",
+        refs: {},
+        failNote: null,
+      },
+      ...project.activities,
+    ].slice(0, 50);
+    return state;
+  }
+
   return state;
 }
 

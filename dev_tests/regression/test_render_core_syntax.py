@@ -41,3 +41,15 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         text = render_core.read_text(encoding="utf-8")
         self.assertIn("--sentinel-device-button-radius-base", text)
         self.assertIn("--sentinel-device-button-radius", text)
+
+    def test_group_pass_embed_is_injected(self):
+        root = Path(__file__).resolve().parents[2]
+        render_core = root / "src" / "sentinel" / "generation" / "render_core.py"
+        embed = root / "src" / "sentinel" / "ui" / "testing" / "sentinel_group_pass_embed.js"
+        self.assertTrue(embed.exists(), f"Missing file: {embed}")
+        text = render_core.read_text(encoding="utf-8")
+        self.assertIn("def _sentinel_group_pass_embed_js()", text)
+        self.assertIn("{_group_embed}", text)
+        js = embed.read_text(encoding="utf-8")
+        self.assertIn("test_result.submit_batch", js)
+        self.assertIn("handleTestButtonClick", js)

@@ -19,6 +19,8 @@ This document summarizes **stable JSON message types** exchanged over project-sc
 | `generation_phase`     | Transient progress; `status`, `percent`, optional `uploadId` / `originalFilename` / `activeUpload`. |
 | `generation`           | Terminal generation envelope (`status: READY`, etc.). |
 | `fail_tag_updated`     | Emitted after fail-tag mutation. |
+| `test_result`          | One recorded outcome; commissioning pies follow on `commissioning_rollups`. |
+| `test_results.batch`   | Group pass/fail: `count` plus `targetKeys[]`. Pies follow on `commissioning_rollups`. |
 | `keepalive`            | `{}` with `type: keepalive` only. |
 | `error`                | `code` such as `PROJECT_NOT_FOUND`, `UNKNOWN_MESSAGE`. |
 
@@ -34,7 +36,15 @@ Clients should apply broker events in **`seq` ascending** order and treat `commi
 |---------------------|--------|
 | `testing_snapshot`  | `seq`, `projectId`, `results[]` (latest-per-target projection). |
 | `test_result`       | Includes optional embedded `progress` and `rollups` for technician UI. |
+| `test_results.batch` | Compact ack after `test_result.submit_batch`: `outcome`, `count`, `targetKeys[]`. Does not embed per-row progress; `commissioning_rollups` follows. |
 | `keepalive`         | Same as commissioning. |
 | `error`             | e.g. `TECH_LINK_REVOKED`. |
 
 Technician HTTP `POST /api/v1/testing/{techToken}/results` accepts optional header **`Idempotency-Key`**; duplicate keys return the first stored JSON body without inserting a second row.
+
+Technician client → server on the same testing socket:
+
+| type | Fields | Purpose |
+|------|--------|---------|
+| `test_result.submit` | `target`, `outcome`, optional `failNote` | Record one result. |
+| `test_result.submit_batch` | `targets[]`, `outcome`, optional `failNote` | Record many results in one message (group pass). FAIL still requires a note. |

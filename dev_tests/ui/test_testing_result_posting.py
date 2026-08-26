@@ -217,6 +217,8 @@ class TestingResultPostingTest(unittest.TestCase):
         self.assertEqual(html.count("function _connectTechWs"), 1, "Expected a single _connectTechWs definition")
         self.assertIn("lastAppliedSeq", html)
         self.assertIn("sync.request", html)
+        self.assertIn("__sentinelGroupPass", html)
+        self.assertIn("test_result.submit_batch", html)
         self.assertNotIn("await fetch(", html, "HTML should not contain top-level await fetch fallback")
 
     def _install_fake_ws(self, page) -> None:  # noqa: ANN001
@@ -1274,6 +1276,200 @@ class TestingResultPostingTest(unittest.TestCase):
             sent2 = self._ws_payload(page, 2)
             self.assertEqual(sent2["outcome"], "UNTESTED")
             self.assertEqual(sent2["target"]["refs"].get("revertedFrom"), "PASS")
+        finally:
+            server.stop()
+
+    def _two_button_device_project(self) -> dict:
+        def _btn(tag: str, text: str, top: int, button_id: int) -> tuple[dict, dict]:
+            uf = {
+                "buttonIdentity": {"buttonTagName": tag, "text": text, "buttonType": None},
+                "buttonUI": {
+                    "fontSize": 10,
+                    "orientations": {
+                        "portrait": {"visible": True, "coordinates": {"top": top, "left": 10, "height": 44, "width": 120}}
+                    },
+                },
+                "testTargets": {
+                    "text": True,
+                    "macros": False,
+                    "macroSteps": False,
+                    "variables": {},
+                    "pageLink": {"enabled": False},
+                },
+            }
+            diag = {"buttonId": button_id, "buttonTagName": tag, "identifiers": {"text": text}, "testTargets": {}}
+            return uf, diag
+
+        a_uf, a_diag = _btn("BTN-A", "Button A", 10, 48551)
+        b_uf, b_diag = _btn("BTN-B", "Button B", 70, 48552)
+        return {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [a_uf, b_uf],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}, {"buttonId": 48552}],
+                                "buttons": [a_diag, b_diag],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+    def test_group_add_page_sends_one_batch_pass_and_popup_still_works(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
+
+        token = "techTokenGroupPass"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            self.assertEqual(page.locator("#sentinelGroupBar").count(), 1)
+            page.click("#sentinelGroupToggle")
+            page.click("#sentinelGroupAddPage")
+            selected = page.evaluate("() => window.__sentinelGroupPass && window.__sentinelGroupPass.selectedCount()")
+            self.assertGreaterEqual(int(selected or 0), 2)
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            page.click("#sentinelGroupPass")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page, 0)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            self.assertEqual(sent["outcome"], "PASS")
+            keys = [str((t or {}).get("targetKey") or "") for t in (sent.get("targets") or [])]
+            self.assertGreaterEqual(len(keys), 2)
+            self.assertEqual(len(keys), len(set(keys)))
+
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_results.batch",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-30T01:02:03Z",
+  outcome: payload.outcome,
+  count: (payload.targets || []).length,
+  targetKeys: (payload.targets || []).map((t) => t.targetKey)
+})
+""",
+                sent,
+            )
+            page.wait_for_timeout(50)
+            selected_after = page.evaluate("() => window.__sentinelGroupPass && window.__sentinelGroupPass.selectedCount()")
+            self.assertEqual(int(selected_after or 0), 0)
+
+            page.click("#sentinelGroupDone")
+            page.locator(".btn-wrap .test-btn").first.click()
+            self.assertEqual(page.locator("#ov.open").count(), 1)
+            page.locator("#rows .row .actions button").first.click()
+            self._wait_for_ws_outbox(page, min_posts=2)
+            sent1 = self._ws_payload(page, 1)
+            self.assertEqual(sent1["type"], "test_result.submit")
+            self.assertEqual(sent1["outcome"], "PASS")
+        finally:
+            server.stop()
+
+    def test_group_tap_selects_controls_without_opening_popup(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupTap"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click("#sentinelGroupToggle")
+            btns = page.locator(".btn-wrap .test-btn")
+            self.assertGreaterEqual(btns.count(), 2)
+            btns.nth(0).click()
+            btns.nth(1).click()
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            self.assertGreaterEqual(
+                int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0),
+                2,
+            )
+            self.assertGreaterEqual(page.locator(".btn-wrap.is-group-selected").count(), 2)
+        finally:
+            server.stop()
+
+    def test_home_group_add_system_events_sends_batch(self):
+        from sentinel.generation.render_core import render_project_home_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "events": {
+                "system": [
+                    {
+                        "diagnostics": {"eventId": 126},
+                        "userFacing": {"description": "Event A", "testTargets": {"Trigger": True}},
+                    },
+                    {
+                        "diagnostics": {"eventId": 127},
+                        "userFacing": {"description": "Event B", "testTargets": {"Trigger": True}},
+                    },
+                ],
+                "driver": [],
+            },
+            "devices": [],
+        }
+        html = render_project_home_html(project_data, app_ui, "unittest")
+        self._assert_ws_helpers_present(html)
+        token = "techTokenHomeGroup"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click("#sentinelGroupToggle")
+            page.click("#sentinelGroupAddSystem")
+            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 2)
+            page.click("#sentinelGroupPass")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page, 0)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            self.assertEqual(sent["outcome"], "PASS")
+            keys = [str((t or {}).get("targetKey") or "") for t in (sent.get("targets") or [])]
+            self.assertIn("event:126:Event Trigger", keys)
+            self.assertIn("event:127:Event Trigger", keys)
         finally:
             server.stop()
 

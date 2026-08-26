@@ -376,6 +376,58 @@ def append_test_result(
         con.close()
 
 
+def append_test_results_batch(
+    database_url: str,
+    *,
+    project_id: str,
+    generation_run_id: str | None,
+    recorded_by_tech_link_id: str | None,
+    outcome: str,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Insert many test_results in one connection/transaction. Shared recorded_at for the batch."""
+    recorded_at = _utc_now()
+    out: list[dict[str, Any]] = []
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        for item in items:
+            test_result_id = _new_uuid()
+            target_key = str(item.get("target_key") or "")
+            cur.execute(
+                "insert into test_results "
+                "(test_result_id, project_id, generation_run_id, recorded_at_utc, recorded_by_role, recorded_by_tech_link_id, "
+                "target_key, target_kind, target_name, refs, outcome, fail_note) "
+                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+                (
+                    test_result_id,
+                    project_id,
+                    generation_run_id,
+                    recorded_at,
+                    "TECHNICIAN",
+                    recorded_by_tech_link_id,
+                    target_key,
+                    str(item.get("target_kind") or ""),
+                    str(item.get("target_name") or ""),
+                    json.dumps(item.get("refs") or {}),
+                    outcome,
+                    item.get("fail_note"),
+                ),
+            )
+            cur.execute(
+                "insert into target_first_test_outcomes "
+                "(project_id, target_key, first_outcome, first_test_result_id, first_recorded_at_utc) "
+                "values (%s,%s,%s,%s,%s) "
+                "on conflict (project_id, target_key) do nothing",
+                (project_id, target_key, outcome, test_result_id, recorded_at),
+            )
+            out.append({"testResultId": test_result_id, "targetKey": target_key, "recordedAtUtc": recorded_at})
+        con.commit()
+        return out
+    finally:
+        con.close()
+
+
 def get_target_status(database_url: str, *, project_id: str, target_key: str) -> dict[str, Any]:
     con = db.connect(database_url)
     try:

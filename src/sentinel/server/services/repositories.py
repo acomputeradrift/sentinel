@@ -114,6 +114,14 @@ class Repository(Protocol):
         failNote: str | None,
     ) -> TestResultRecord: ...
 
+    def append_test_results_batch(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+        outcome: str,
+    ) -> list[TestResultRecord]: ...
+
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]: ...
 
     def get_latest_results_for_project(self, *, projectId: str) -> dict[str, TestResultRecord]: ...
@@ -346,6 +354,39 @@ class InMemoryRepository:
             if key not in self._first_outcome_by_project_target:
                 self._first_outcome_by_project_target[key] = str(outcome or "").strip().upper()
         return rec
+
+    def append_test_results_batch(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+        outcome: str,
+    ) -> list[TestResultRecord]:
+        tok = self.resolve_active_token(techToken=techToken)
+        ts = utc_now()
+        recs: list[TestResultRecord] = []
+        with self._lock:
+            for item in items:
+                target = dict(item.get("target") or {})
+                note = item.get("failNote")
+                note_s = str(note).strip() if note is not None else None
+                self._next_test_result_id += 1
+                tr_id = str(self._next_test_result_id)
+                rec = TestResultRecord(
+                    testResultId=tr_id,
+                    projectId=tok.projectId,
+                    recordedAtUtc=ts,
+                    recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+                    target=target,
+                    outcome=outcome,
+                    failNote=note_s or None,
+                )
+                key = (tok.projectId, str(target.get("targetKey") or ""))
+                self._results_by_project_target.setdefault(key, []).append(rec)
+                if key not in self._first_outcome_by_project_target:
+                    self._first_outcome_by_project_target[key] = str(outcome or "").strip().upper()
+                recs.append(rec)
+        return recs
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
         tok = self.resolve_active_token(techToken=techToken)
@@ -666,6 +707,57 @@ class PostgresRepository:
             outcome=outcome,
             failNote=failNote,
         )
+
+    def append_test_results_batch(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+        outcome: str,
+    ) -> list[TestResultRecord]:
+        tok = self.resolve_active_token(techToken=techToken)
+        generation_run_id = self._q.ensure_generation_run(self._database_url, project_id=tok.projectId)
+        rows = self._q.append_test_results_batch(
+            self._database_url,
+            project_id=tok.projectId,
+            generation_run_id=generation_run_id,
+            recorded_by_tech_link_id=tok.techLinkId,
+            outcome=outcome,
+            items=[
+                {
+                    "target_key": str((item.get("target") or {}).get("targetKey") or ""),
+                    "target_kind": str(
+                        (item.get("target") or {}).get("kind") or (item.get("target") or {}).get("targetKind") or ""
+                    ),
+                    "target_name": str((item.get("target") or {}).get("targetName") or ""),
+                    "refs": dict((item.get("target") or {}).get("refs") or {}),
+                    "fail_note": item.get("failNote"),
+                }
+                for item in items
+            ],
+        )
+        ts = utc_now()
+        recs: list[TestResultRecord] = []
+        for row, item in zip(rows, items):
+            recorded = row.get("recordedAtUtc")
+            if hasattr(recorded, "isoformat"):
+                recorded_str = recorded.isoformat()
+            elif recorded:
+                recorded_str = str(recorded)
+            else:
+                recorded_str = ts
+            recs.append(
+                TestResultRecord(
+                    testResultId=str(row.get("testResultId") or ""),
+                    projectId=tok.projectId,
+                    recordedAtUtc=recorded_str,
+                    recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+                    target=dict(item.get("target") or {}),
+                    outcome=outcome,
+                    failNote=item.get("failNote"),
+                )
+            )
+        return recs
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
         tok = self.resolve_active_token(techToken=techToken)

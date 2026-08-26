@@ -19,6 +19,10 @@ def _sentinel_test_status_embed_js() -> str:
     return (_SENTINEL_UI_DIR / "testing" / "sentinel_test_status_embed.js").read_text(encoding="utf-8")
 
 
+def _sentinel_group_pass_embed_js() -> str:
+    return (_SENTINEL_UI_DIR / "testing" / "sentinel_group_pass_embed.js").read_text(encoding="utf-8")
+
+
 def _sentinel_device_theme_css() -> str:
     return (_SENTINEL_UI_DIR / "testing" / "sentinel_device_theme.css").read_text(encoding="utf-8")
 
@@ -2544,6 +2548,7 @@ def _render_document(
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
     _ts_embed = _sentinel_test_status_embed_js()
+    _group_embed = _sentinel_group_pass_embed_js()
     _hk_css_stripped = (hard_key_style_css or "").strip()
     _hard_key_template_style_tag = (
         '<style data-sentinel-hard-key-template="1">\n' + _hk_css_stripped + "\n</style>" if _hk_css_stripped else ""
@@ -2703,6 +2708,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 {_ts_embed}
+{_group_embed}
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
@@ -2742,6 +2748,7 @@ let selectedRoomId=null;
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
 let pendingTargetKey=null;
+let pendingBatchPass=false;
 let techLastAppliedSeq=0;
 let passAllQueue=[];
 let passAllContext=null;
@@ -3020,9 +3027,13 @@ function _applyTechPayload(payload) {{
      const code = payload?.code;
      const message = payload?.message;
      const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-     if (pendingTargetKey || isPosting) {{
+     if (pendingTargetKey || pendingBatchPass || isPosting) {{
       setPosting(false);
       setPostStatus(`Error: ${{msg}}`, "error");
+      if (pendingBatchPass) {{
+       pendingBatchPass = false;
+       if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, msg);
+      }}
       drainPassAllQueue();
      }} else {{
       _logTechWs("error-msg", msg);
@@ -3076,6 +3087,27 @@ function _applyTechPayload(payload) {{
      return;
     }}
     if (t === "commissioning_rollups") return;
+    if (t === "test_results.batch") {{
+     const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
+     const outcome = String(payload?.outcome || "PASS").toUpperCase();
+     const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+     for (const k of keys) {{
+      const targetKey = String(k || "").trim();
+      if (!targetKey) continue;
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      const rowUi = rowStatusByTargetKey.get(targetKey);
+      if (rowUi) setRowStatus(rowUi, outcome, at);
+     }}
+     refreshButtonVisualStates();
+     if (pendingBatchPass) {{
+      _logTechWs("ack-batch", keys.length);
+      pendingBatchPass = false;
+      setPosting(false);
+      setPostStatus("", "");
+      if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(true);
+     }}
+     return;
+    }}
     if (t !== "test_result.recorded" && t !== "test_result") return;
     const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
     if (!targetKey) return;
@@ -3142,6 +3174,10 @@ function _connectTechWs() {{
     _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
     setPosting(false);
     if (pendingTargetKey) setRowInlineError(pendingTargetKey, "websocket not connected");
+    if (pendingBatchPass) {{
+     pendingBatchPass = false;
+     if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, "websocket not connected");
+    }}
     setPostStatus("", "");
     return;
    }}
@@ -3537,11 +3573,12 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   scope.querySelectorAll('.test-btn').forEach(b=>{{
    if (b.dataset.boundTestBtn) return;
    b.dataset.boundTestBtn='1';
-   b.addEventListener('click',()=>{{
+   b.addEventListener('click',(e)=>{{
     const wrap=b.closest('.btn-wrap');
     if (wrap && String(wrap.dataset.syntheticRoomList || '') === '1') {{
       setSelectedRoom(wrap.dataset.syntheticRoomId);
     }}
+    if (globalThis.__sentinelGroupPass && globalThis.__sentinelGroupPass.handleTestButtonClick(b, e)) return;
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
@@ -3574,6 +3611,22 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
 bindTestButtonClicks(document);
 bindViewportBoxClicks(document);
  _connectTechWs();
+ if (globalThis.__sentinelGroupPass) {{
+  globalThis.__sentinelGroupPass.attach({{
+   surface: "device",
+   buildTargetPayload: buildTargetPayload,
+   sendWs: _sendTechWs,
+   refreshVisuals: refreshButtonVisualStates,
+   materializeActivePage: function() {{ if (typeof ensurePageMaterialized === "function") ensurePageMaterialized(activePageIndex); }},
+   materializeAllPages: function() {{
+    if (!Array.isArray(PAGE_STATE) || typeof ensurePageMaterialized !== "function") return;
+    for (let i = 0; i < PAGE_STATE.length; i++) ensurePageMaterialized(i);
+   }},
+   activePageRoot: function() {{ return document.querySelector(".device-page.active") || document.querySelector(".device-page"); }},
+   onPostingChange: setPosting,
+   setPendingBatch: function(on) {{ pendingBatchPass = !!on; }}
+  }});
+ }}
 document.getElementById('close').addEventListener('click',()=>{{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
  function activePageEl() {{
@@ -5450,6 +5503,7 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
 
     app_json = json.dumps(app_ui)
     _ts_embed = _sentinel_test_status_embed_js()
+    _group_embed = _sentinel_group_pass_embed_js()
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{project_title}</title>
 <style>
@@ -5533,6 +5587,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 {_ts_embed}
+{_group_embed}
 const APP_UI={app_json};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus'),passAllBtn=document.getElementById('passAll');
  let isPosting=false;
@@ -5541,6 +5596,7 @@ const APP_UI={app_json};
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
+ let pendingBatchPass=false;
  let techLastAppliedSeq=0;
  let passAllQueue=[];
  let passAllContext=null;
@@ -5627,6 +5683,10 @@ const APP_UI={app_json};
       const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
       setPosting(false);
       if (pendingTargetKey) setRowInlineError(pendingTargetKey, msg);
+      if (pendingBatchPass) {{
+       pendingBatchPass = false;
+       if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, msg);
+      }}
       setPostStatus("", "");
       drainPassAllQueue();
       return;
@@ -5667,6 +5727,27 @@ const APP_UI={app_json};
    }}
    if (t === "commissioning_rollups") {{
     updateHomeSectionPercents(payload?.progress);
+    return;
+   }}
+   if (t === "test_results.batch") {{
+    const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
+    const outcome = String(payload?.outcome || "PASS").toUpperCase();
+    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+    for (const k of keys) {{
+     const targetKey = String(k || "").trim();
+     if (!targetKey) continue;
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     const rowUi = rowStatusByTargetKey.get(targetKey);
+     if (rowUi) setRowStatus(rowUi, outcome, at);
+    }}
+    refreshHomeEventVisualStates();
+    if (pendingBatchPass) {{
+     _logTechWs("ack-batch", keys.length);
+     pendingBatchPass = false;
+     setPosting(false);
+     setPostStatus("", "");
+     if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(true);
+    }}
     return;
    }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
@@ -5728,6 +5809,10 @@ const APP_UI={app_json};
      _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
      setPosting(false);
      if (pendingTargetKey) setRowInlineError(pendingTargetKey, "websocket not connected");
+     if (pendingBatchPass) {{
+      pendingBatchPass = false;
+      if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, "websocket not connected");
+     }}
      setPostStatus("", "");
      return;
     }}
@@ -6114,7 +6199,8 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }});
  }}
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
-  b.addEventListener('click', function(){{
+  b.addEventListener('click', function(e){{
+   if (globalThis.__sentinelGroupPass && globalThis.__sentinelGroupPass.handleTestButtonClick(b, e)) return;
    const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
    const popupCfg=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
    const suffix=(popupCfg.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
@@ -6135,6 +6221,16 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }});
  }});
 _connectTechWs();
+if (globalThis.__sentinelGroupPass) {{
+ globalThis.__sentinelGroupPass.attach({{
+  surface: "home",
+  buildTargetPayload: buildTargetPayload,
+  sendWs: _sendTechWs,
+  refreshVisuals: refreshHomeEventVisualStates,
+  onPostingChange: setPosting,
+  setPendingBatch: function(on) {{ pendingBatchPass = !!on; }}
+ }});
+}}
 document.getElementById('close').addEventListener('click', function(){{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click', function(e){{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
 </script></body></html>"""

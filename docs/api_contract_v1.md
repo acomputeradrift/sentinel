@@ -393,6 +393,7 @@ Base: `/api/v1`
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
 - `POST /api/v1/testing/{techToken}/results` -> append a `TestResultRecord`
+- `POST /api/v1/testing/{techToken}/results/batch` -> append many `TestResultRecord`s in one request (same fail-note rule: FAIL requires a note on the batch or per target)
 - `GET /api/v1/testing/{techToken}/target-status?targetKey=...` -> derived `TargetStatus`
 
 Future tech-scoped read endpoints may be added later, but they are not required for the current MVP contract.
