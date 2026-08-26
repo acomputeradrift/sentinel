@@ -43,6 +43,26 @@ class PostTestResultBody(BaseModel):
         return s or None
 
 
+class PostTestResultsBatchBody(BaseModel):
+    targets: list[TestResultTargetIn] = Field(min_length=1)
+    outcome: str = Field(min_length=1)
+    failNote: str | None = None
+
+    @field_validator("outcome")
+    @classmethod
+    def normalize_outcome(cls, v: str) -> str:
+        u = str(v or "").strip().upper()
+        if u not in ("PASS", "FAIL", "UNTESTED"):
+            raise ValueError("outcome must be PASS, FAIL, or UNTESTED")
+        return u
+
+    def fail_note_normalized(self) -> str | None:
+        if self.failNote is None:
+            return None
+        s = str(self.failNote).strip()
+        return s or None
+
+
 class PostReadyBaselineBody(BaseModel):
     readySec: float = Field(ge=0)
 
