@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import progress
-from sentinel.server.services.repositories import Repository, result_batch_id, result_source
+from sentinel.server.services.repositories import Repository, result_batch_id, result_source, tech_name_from_recorded_by
 
 log = logging.getLogger("uvicorn.error")
 
@@ -45,8 +45,8 @@ def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict)
             continue
         refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
         recorded_by = rec.recordedBy if isinstance(rec.recordedBy, dict) else {}
-        tech_name = ""
-        if isinstance(refs, dict):
+        tech_name = tech_name_from_recorded_by(recorded_by)
+        if not tech_name and isinstance(refs, dict):
             tech_name = str(refs.get("techName") or "").strip()
         if not tech_name:
             tech_name = str(
@@ -80,6 +80,11 @@ def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict)
     return out
 
 
+def _activity_who(*, rec) -> dict:
+    recorded_by = rec.recordedBy if isinstance(getattr(rec, "recordedBy", None), dict) else {}
+    return {"recordedBy": recorded_by, "techName": tech_name_from_recorded_by(recorded_by)}
+
+
 def _activity_from_single(*, rec) -> dict:
     refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
     return {
@@ -94,6 +99,7 @@ def _activity_from_single(*, rec) -> dict:
         "failNote": rec.failNote,
         "batchId": None,
         "source": result_source(rec),
+        **_activity_who(rec=rec),
     }
 
 
@@ -118,6 +124,7 @@ def _activity_from_batch(*, recs: list) -> dict:
         "failNote": None,
         "batchId": result_batch_id(first),
         "source": result_source(first),
+        **_activity_who(rec=first),
     }
 
 

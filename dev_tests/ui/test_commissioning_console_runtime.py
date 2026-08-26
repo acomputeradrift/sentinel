@@ -200,6 +200,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "fails_fetch_count": 0,
             "rollups_fetch_count": 0,
             "clear_tests_count": 0,
+            "company_technicians": [],
         }
 
         def is_blue_rgb(value: str) -> bool:
@@ -215,6 +216,39 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 headers={"Content-Type": "application/json"},
                 body=json.dumps(payload),
             )
+
+        def handle_technicians(route, request):
+            if request.method == "GET":
+                fulfill_json(
+                    route,
+                    {
+                        "companyId": "company-1",
+                        "companyName": "Jamie",
+                        "technicians": list(state.get("company_technicians") or []),
+                    },
+                )
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                name = str(data.get("name") or "").strip()
+                existing = [
+                    t
+                    for t in state.get("company_technicians") or []
+                    if str(t.get("name") or "").strip().lower() == name.lower()
+                ]
+                if existing:
+                    fulfill_json(route, existing[0])
+                    return
+                tech = {
+                    "technicianId": f"tech-{len(state.get('company_technicians') or []) + 1}",
+                    "companyId": "company-1",
+                    "name": name,
+                    "createdAtUtc": "2026-03-21T00:00:00Z",
+                }
+                state.setdefault("company_technicians", []).append(tech)
+                fulfill_json(route, tech)
+                return
+            route.fulfill(status=405, body="method not allowed")
 
         def handle_clients(route, request):
             if request.method == "GET":
@@ -321,16 +355,37 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 created_at_utc = f"2026-03-21 00:0{state['tech_link_counter']}:00Z"
                 link = {
                     "techLinkId": tech_link_id,
-                    "label": data.get("label") or "Onsite Tech",
+                    "technicianId": f"tech-{state['tech_link_counter']}",
+                    "name": data.get("name") or data.get("label") or "Onsite Tech",
+                    "label": data.get("name") or data.get("label") or "Onsite Tech",
                     "techUrl": "/testing/token-abc",
                     "createdAtUtc": created_at_utc,
                     "revokedAtUtc": None,
                 }
                 state["tech_links_by_project"].setdefault(project_id, []).append(link)
+                names = {str(t.get("name") or "") for t in state.get("company_technicians") or []}
+                if link["name"] not in names:
+                    state.setdefault("company_technicians", []).append(
+                        {
+                            "technicianId": link["technicianId"],
+                            "companyId": "company-1",
+                            "name": link["name"],
+                            "createdAtUtc": created_at_utc,
+                        }
+                    )
                 proj = state["projects_by_id"].get(project_id)
                 if proj is not None:
                     proj["activeTechLinkIds"] = [item["techLinkId"] for item in state["tech_links_by_project"][project_id] if not item.get("revokedAtUtc")]
-                fulfill_json(route, {"techLinkId": tech_link_id, "techUrl": link["techUrl"], "label": link["label"]})
+                fulfill_json(
+                    route,
+                    {
+                        "techLinkId": tech_link_id,
+                        "technicianId": link["technicianId"],
+                        "name": link["name"],
+                        "label": link["label"],
+                        "techUrl": link["techUrl"],
+                    },
+                )
                 return
 
             if request.method in {"DELETE", "POST"} and "/tech-links/" in path:
@@ -457,6 +512,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 },
             )
 
+        page.route("**/api/v1/commissioning/technicians", handle_technicians)
         page.route("**/api/v1/commissioning/clients", handle_clients)
         page.route("**/api/v1/commissioning/clients/*/projects", handle_projects_create_and_list)
         page.route("**/api/v1/commissioning/projects/*", handle_project_detail)
@@ -786,11 +842,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Regenerate")).to_have_count(0)
 
         page.get_by_role("button", name="Tech Links").click()
-        page.get_by_label("Tech label").fill("   ")
+        page.get_by_label("Technician name").fill("   ")
         page.get_by_role("button", name="Create tech link").click()
-        expect(page.locator("#techLinkStatus")).to_contain_text("Tech label is required.")
+        expect(page.locator("#techLinkStatus")).to_contain_text("Technician name is required.")
         self.assertEqual(int(state.get("tech_link_counter") or 0), 0)
-        page.get_by_label("Tech label").fill("Onsite Tech")
+        page.get_by_label("Technician name").fill("Onsite Tech")
         expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
         page.get_by_role("button", name="Create tech link").click()
         expect(page.get_by_test_id("tech-url").first).to_contain_text("/testing/token-abc?runtime=shell")
@@ -804,13 +860,13 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(row_actions).to_have_count(2)
         expect(row_actions.nth(0)).to_have_text("Open")
         expect(row_actions.nth(1)).to_have_text("Revoke")
-        expect(page.locator("#panel-tech-links")).to_contain_text("Onsite Tech")
+        expect(page.locator("#techLinksBody")).to_contain_text("Onsite Tech")
         expect(page.locator("#panel-tech-links")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
         expect(page.get_by_role("button", name="Revoke")).to_be_visible()
         page.get_by_role("button", name="Revoke").click()
-        expect(page.locator("#panel-tech-links")).not_to_contain_text("Onsite Tech")
+        expect(page.locator("#techLinksBody")).not_to_contain_text("Onsite Tech")
         expect(page.locator("#techLinkStatus")).to_have_text("")
-        page.get_by_label("Tech label").fill("Remote Tech")
+        page.get_by_label("Technician name").fill("Remote Tech")
         page.get_by_role("button", name="Create tech link").click()
         expect(page.locator("#panel-tech-links")).to_contain_text("Remote Tech")
 

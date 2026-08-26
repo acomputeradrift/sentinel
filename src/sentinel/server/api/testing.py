@@ -23,7 +23,7 @@ from sentinel.server.api.errors import http_error
 from sentinel.server.api.schemas import PostReadyBaselineBody, PostTestResultBody, PostTestResultsBatchBody
 from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import ws_broker
-from sentinel.server.services.repositories import Repository, result_batch_id, result_source
+from sentinel.server.services.repositories import Repository, result_batch_id, result_source, tech_name_from_recorded_by
 
 
 router = APIRouter(tags=["testing"])
@@ -110,6 +110,11 @@ def _result_provenance(*, rec) -> dict[str, Any]:
     return {"batchId": result_batch_id(rec), "source": result_source(rec)}
 
 
+def _result_who(*, rec) -> dict[str, Any]:
+    recorded_by = rec.recordedBy if isinstance(getattr(rec, "recordedBy", None), dict) else {}
+    return {"recordedBy": recorded_by, "techName": tech_name_from_recorded_by(recorded_by)}
+
+
 def _build_test_result_event(*, rec) -> dict:
     target_key = str(rec.target.get("targetKey") or "")
     return {
@@ -123,6 +128,7 @@ def _build_test_result_event(*, rec) -> dict:
         "refs": rec.target.get("refs"),
         "failNote": rec.failNote,
         **_result_provenance(rec=rec),
+        **_result_who(rec=rec),
     }
 
 
@@ -177,6 +183,7 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
                 "refs": target.get("refs"),
                 "failNote": rec.failNote,
                 **_result_provenance(rec=rec),
+                **_result_who(rec=rec),
             }
         )
     layer_locks = _build_layer_lock_rows(repo=repo, projectId=projectId)
@@ -490,6 +497,7 @@ def _post_test_result_response(*, rec) -> dict:
         "outcome": rec.outcome,
         "failNote": rec.failNote,
         **_result_provenance(rec=rec),
+        **_result_who(rec=rec),
     }
 
 
@@ -503,6 +511,7 @@ def _build_test_results_batch_event(*, recs: list, outcome: str) -> dict:
         "count": len(recs),
         "targetKeys": [str((r.target or {}).get("targetKey") or "") for r in recs],
         **_result_provenance(rec=first),
+        **_result_who(rec=first),
     }
 
 
@@ -628,6 +637,7 @@ def post_results_batch(request: Request, techToken: str, payload: dict) -> dict:
 
     first = recs[0]
     provenance = _result_provenance(rec=first)
+    who = _result_who(rec=first)
     return {
         "projectId": first.projectId,
         "recordedAtUtc": first.recordedAtUtc,
@@ -635,12 +645,14 @@ def post_results_batch(request: Request, techToken: str, payload: dict) -> dict:
         "count": len(recs),
         "batchId": provenance["batchId"],
         "source": provenance["source"],
+        **who,
         "results": [
             {
                 "testResultId": r.testResultId,
                 "targetKey": str((r.target or {}).get("targetKey") or ""),
                 "batchId": result_batch_id(r) or provenance["batchId"],
                 "source": result_source(r),
+                **_result_who(rec=r),
             }
             for r in recs
         ],
