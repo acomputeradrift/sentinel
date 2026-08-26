@@ -348,6 +348,7 @@ function normalizeEventMessage(ev) {
     buttonName: String(refs?.buttonName || ""),
     testTarget: String(data?.targetName || ""),
     passFail: rawOutcome === "PASS" ? "Pass" : rawOutcome === "FAIL" ? "Fail" : "",
+    who: String(data?.techName || data?.recordedBy?.name || ""),
     targetKey,
   };
 }
@@ -366,6 +367,7 @@ function appendActivityRow(msg) {
   const tdButton = document.createElement("td");
   const tdTarget = document.createElement("td");
   const tdStatus = document.createElement("td");
+  const tdWho = document.createElement("td");
 
   tdTime.className = "mono";
   tdDevice.className = "mono";
@@ -373,6 +375,7 @@ function appendActivityRow(msg) {
   tdButton.className = "mono";
   tdTarget.className = "mono";
   tdStatus.className = "mono status-cell";
+  tdWho.className = "mono";
 
   tdTime.textContent = msg.timestamp || "";
   tdTime.title = String(msg.timestampRaw || msg.timestamp || "");
@@ -385,6 +388,7 @@ function appendActivityRow(msg) {
   const st = String(msg.passFail || "").trim();
   tdStatus.textContent = st;
   tdStatus.dataset.status = st.toUpperCase();
+  tdWho.textContent = msg.who || "";
 
   tr.appendChild(tdTime);
   tr.appendChild(tdDevice);
@@ -394,6 +398,7 @@ function appendActivityRow(msg) {
   tr.appendChild(tdButton);
   tr.appendChild(tdTarget);
   tr.appendChild(tdStatus);
+  tr.appendChild(tdWho);
 
   body.appendChild(tr);
 
@@ -445,6 +450,8 @@ function _asEventActivity(payload) {
     failNote: payload?.failNote == null ? null : String(payload.failNote),
     batchId: payload?.batchId == null ? null : String(payload.batchId || ""),
     source: String(payload?.source || "SINGLE").trim().toUpperCase() || "SINGLE",
+    recordedBy: payload?.recordedBy && typeof payload.recordedBy === "object" ? _cloneValue(payload.recordedBy) : {},
+    techName: String(payload?.techName || payload?.recordedBy?.name || "").trim(),
   };
 }
 
@@ -482,7 +489,7 @@ function _upsertFailRecord(fails, payload) {
     effectiveRoomName: String(refs?.effectiveRoomName || prev?.effectiveRoomName || ""),
     effectiveSourceName: String(refs?.effectiveSourceName || prev?.effectiveSourceName || ""),
     effectiveScopeNames: String(refs?.effectiveScopeNames || prev?.effectiveScopeNames || ""),
-    techName: String(refs?.techName || prev?.techName || ""),
+    techName: String(payload?.techName || payload?.recordedBy?.name || refs?.techName || prev?.techName || ""),
   };
   if (idx >= 0) existing[idx] = next;
   else existing.unshift(next);
@@ -572,6 +579,8 @@ function reduceProjectStore(prevState, payload) {
         failNote: null,
         batchId: String(payload?.batchId || ""),
         source: String(payload?.source || "GROUP").trim().toUpperCase() || "GROUP",
+        recordedBy: payload?.recordedBy && typeof payload.recordedBy === "object" ? _cloneValue(payload.recordedBy) : {},
+        techName: String(payload?.techName || payload?.recordedBy?.name || "").trim(),
       },
       ...project.activities,
     ].slice(0, 50);
@@ -950,6 +959,7 @@ function _sortCommissionRows(rows) {
     else if (key === "viewport") cmp = _commissionCompareText(a?.viewport, b?.viewport, direction);
     else if (key === "buttonName") cmp = _commissionCompareText(a?.buttonName, b?.buttonName, direction);
     else if (key === "testTarget") cmp = _commissionCompareText(a?.testTarget || a?.targetKey, b?.testTarget || b?.targetKey, direction);
+    else if (key === "who") cmp = _commissionCompareText(a?.who, b?.who, direction);
     if (cmp !== 0) return cmp;
     return Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0);
   });

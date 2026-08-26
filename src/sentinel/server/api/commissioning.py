@@ -18,7 +18,11 @@ from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import pipeline
 from sentinel.server.services import progress
 from sentinel.server.services import ws_broker
-from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+from sentinel.server.services.commissioning_user import (
+    COMMISSIONING_STUB_COMPANY_ID,
+    COMMISSIONING_STUB_COMPANY_NAME,
+    COMMISSIONING_STUB_USER_ID,
+)
 from sentinel.server.services.repositories import Repository
 
 
@@ -46,6 +50,64 @@ def _require_project_for_user(repo: Repository, *, user_id: str, project_id: str
     if not _project_owned_by_user(repo, user_id=user_id, project_id=project_id):
         raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
     return repo.get_project(projectId=project_id)
+
+
+def _technician_payload(tech) -> dict:
+    created = tech.createdAtUtc
+    created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+    return {
+        "technicianId": tech.technicianId,
+        "companyId": COMMISSIONING_STUB_COMPANY_ID,
+        "name": tech.name,
+        "createdAtUtc": created_str,
+    }
+
+
+def _tech_link_payload(link, *, techUrl: str = "") -> dict:
+    name = str(link.label or "").strip()
+    return {
+        "techLinkId": link.techLinkId,
+        "technicianId": link.technicianId,
+        "name": name,
+        "label": name or link.label,
+        "createdAtUtc": link.createdAtUtc,
+        "techUrl": techUrl,
+    }
+
+
+def _map_tech_key_error(exc: KeyError, *, default_code: str, default_message: str) -> None:
+    code = str(exc).strip("'")
+    if code == "TECHNICIAN_NAME_REQUIRED":
+        raise http_error(400, code="TECHNICIAN_NAME_REQUIRED", message="Technician name is required.")
+    if code == "TECHNICIAN_NOT_FOUND":
+        raise http_error(404, code="TECHNICIAN_NOT_FOUND", message="Technician not found.")
+    if code == "PROJECT_NOT_FOUND":
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    raise http_error(400, code=default_code, message=default_message)
+
+
+@router.get("/technicians")
+def list_technicians(request: Request) -> dict:
+    uid = _commissioning_user_id(request)
+    techs = _repo(request).list_technicians(userId=uid)
+    return {
+        "companyId": COMMISSIONING_STUB_COMPANY_ID,
+        "companyName": COMMISSIONING_STUB_COMPANY_NAME,
+        "technicians": [_technician_payload(t) for t in techs],
+    }
+
+
+@router.post("/technicians")
+def create_technician(request: Request, payload: dict) -> dict:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise http_error(400, code="TECHNICIAN_NAME_REQUIRED", message="Technician name is required.")
+    try:
+        tech = _repo(request).create_technician(userId=_commissioning_user_id(request), name=name)
+    except KeyError as e:
+        _map_tech_key_error(e, default_code="TECHNICIAN_NAME_REQUIRED", default_message="Technician name is required.")
+        raise
+    return _technician_payload(tech)
 
 
 def _broker(request: Request) -> ws_broker.ProjectEventBroker:
@@ -143,9 +205,23 @@ def create_project(request: Request, clientId: str, payload: dict) -> dict:
 def create_tech_link(request: Request, projectId: str, payload: dict) -> dict:
     repo = _repo(request)
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
-    label = payload.get("label")
-    link, token = repo.create_tech_link(projectId=projectId, label=str(label) if label is not None else None)
-    return {"techLinkId": link.techLinkId, "techUrl": f"/testing/{token.techToken}"}
+    technician_id = str((payload or {}).get("technicianId") or "").strip() or None
+    name = str((payload or {}).get("name") or (payload or {}).get("label") or "").strip() or None
+    if not technician_id and not name:
+        raise http_error(400, code="TECHNICIAN_NAME_REQUIRED", message="Technician name is required.")
+    try:
+        link, token = repo.create_tech_link(
+            projectId=projectId,
+            label=name,
+            technicianId=technician_id,
+        )
+    except KeyError as e:
+        _map_tech_key_error(e, default_code="TECHNICIAN_NAME_REQUIRED", default_message="Technician name is required.")
+        raise
+    return {
+        **_tech_link_payload(link, techUrl=f"/testing/{token.techToken}"),
+        "techUrl": f"/testing/{token.techToken}",
+    }
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/rotate")
@@ -165,7 +241,7 @@ def list_active_tech_links(request: Request, projectId: str) -> list[dict]:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     links = repo.list_active_tech_links(projectId=projectId)
     # Read-only list endpoint: do not rotate/revoke tokens as a side effect.
-    return [{"techLinkId": l.techLinkId, "label": l.label, "createdAtUtc": l.createdAtUtc, "techUrl": ""} for l in links]
+    return [_tech_link_payload(l, techUrl="") for l in links]
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/revoke")
