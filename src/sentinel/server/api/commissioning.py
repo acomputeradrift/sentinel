@@ -17,6 +17,7 @@ from sentinel.server.api.commissioning_project_ws import run_commissioning_proje
 from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import pipeline
 from sentinel.server.services import progress
+from sentinel.server.services import testing_types
 from sentinel.server.services import ws_broker
 from sentinel.server.services.commissioning_user import (
     COMMISSIONING_STUB_COMPANY_ID,
@@ -465,7 +466,9 @@ def project_progress(request: Request, projectId: str) -> dict:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     latest = repo.get_latest_results_for_project(projectId=projectId)
     try:
-        return progress.commissioning_progress(projectId=projectId, latest_results=latest)
+        return progress.commissioning_progress_for_project(
+            repo=repo, projectId=projectId, latest_results=latest
+        )
     except FileNotFoundError:
         raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
 
@@ -476,12 +479,76 @@ def project_rollups(request: Request, projectId: str) -> dict:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     latest = repo.get_latest_results_for_project(projectId=projectId)
     try:
-        prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
+        prog = progress.commissioning_progress_for_project(
+            repo=repo, projectId=projectId, latest_results=latest
+        )
     except FileNotFoundError:
         raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
     return commissioning_rollups.rollups_payload(
         repo=repo, projectId=projectId, latest_results=latest, progress_payload=prog
     )
+
+
+def _testing_type_settings_payload(*, repo: Repository, projectId: str) -> dict:
+    disabled = repo.get_testing_type_disabled(projectId=projectId)
+    return testing_types.settings_payload(project_id=projectId, disabled_types=disabled)
+
+
+def _publish_testing_type_settings(request: Request, *, projectId: str, payload: dict) -> None:
+    event = {
+        "type": "testing_type_settings",
+        "projectId": projectId,
+        **payload,
+    }
+    try:
+        _broker(request).publish(projectId=projectId, event=event)
+    except Exception:
+        log.exception("[commissioning-ws] publish:testing-type-settings-failed projectId=%s", projectId)
+    try:
+        prog, rollups = commissioning_rollups.compute_progress_and_testing_rollups(
+            repo=_repo(request), projectId=projectId
+        )
+        if prog is not None:
+            _broker(request).publish(
+                projectId=projectId,
+                event={
+                    "type": "commissioning_rollups",
+                    "projectId": projectId,
+                    "progress": prog,
+                    "rollups": rollups,
+                },
+            )
+    except Exception:
+        log.exception("[commissioning-ws] publish:testing-type-rollups-failed projectId=%s", projectId)
+
+
+@router.get("/projects/{projectId}/testing-types")
+def get_testing_types(request: Request, projectId: str) -> dict:
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    return _testing_type_settings_payload(repo=repo, projectId=projectId)
+
+
+@router.put("/projects/{projectId}/testing-types")
+def put_testing_types(request: Request, projectId: str, payload: dict) -> dict:
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    raw_disabled = payload.get("disabledTypes")
+    if raw_disabled is None and isinstance(payload.get("types"), list):
+        raw_disabled = [
+            str(row.get("id") or "").strip()
+            for row in payload.get("types") or []
+            if isinstance(row, dict) and row.get("enabled") is False
+        ]
+    try:
+        disabled = repo.set_testing_type_disabled(
+            projectId=projectId, disabledTypes=list(raw_disabled or [])
+        )
+    except KeyError:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    out = testing_types.settings_payload(project_id=projectId, disabled_types=disabled)
+    _publish_testing_type_settings(request, projectId=projectId, payload=out)
+    return out
 
 
 @router.get("/projects/{projectId}/events")

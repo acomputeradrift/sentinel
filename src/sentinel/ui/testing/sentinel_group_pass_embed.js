@@ -57,9 +57,14 @@
       meta = {};
     }
     const labels = Array.isArray(meta.targets) ? meta.targets : [];
+    const filter =
+      global.__sentinelTestStatus && typeof global.__sentinelTestStatus.filterWorkTargets === "function"
+        ? global.__sentinelTestStatus.filterWorkTargets
+        : null;
+    const workLabels = filter ? filter(meta) : labels;
     const out = [];
-    for (let i = 0; i < labels.length; i += 1) {
-      const t = opts.buildTargetPayload(btn, meta, labels[i]);
+    for (let i = 0; i < workLabels.length; i += 1) {
+      const t = opts.buildTargetPayload(btn, meta, workLabels[i]);
       if (t && t.targetKey) out.push(t);
     }
     return out;
@@ -441,6 +446,28 @@
     });
   }
 
+  function pruneDisabled() {
+    if (!global.__sentinelTestStatus || typeof global.__sentinelTestStatus.isWorkLabelEnabled !== "function") {
+      return;
+    }
+    const keep = [];
+    selected.forEach(function (t) {
+      const label = t && t.targetName ? t.targetName : "";
+      const kind = t && t.kind ? t.kind : "";
+      if (global.__sentinelTestStatus.isWorkLabelEnabled(label, kind)) keep.push(t);
+    });
+    if (keep.length === selected.size) {
+      updateChrome();
+      return;
+    }
+    selected.clear();
+    keep.forEach(function (t) {
+      const key = String(t && t.targetKey ? t.targetKey : "").trim();
+      if (key) selected.set(key, t);
+    });
+    updateChrome();
+  }
+
   function attach(nextOpts) {
     opts = nextOpts && typeof nextOpts === "object" ? nextOpts : {};
     injectStyle();
@@ -453,6 +480,7 @@
     attach: attach,
     handleTestButtonClick: handleTestButtonClick,
     onBatchAck: onBatchAck,
+    pruneDisabled: pruneDisabled,
     isGroupMode: function () {
       return groupMode;
     },

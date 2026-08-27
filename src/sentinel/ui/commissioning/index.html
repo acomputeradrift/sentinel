@@ -42,6 +42,7 @@
           <button id="tab-commission" class="tab" type="button" aria-selected="false" data-tab="commission">Commissioning</button>
           <button id="tab-diagnostics" class="tab" type="button" aria-selected="false" data-tab="diagnostics">Diagnostics</button>
           <button id="tab-file" class="tab" type="button" aria-selected="false" data-tab="file">File</button>
+          <button id="tab-settings" class="tab" type="button" aria-selected="false" data-tab="settings">Settings</button>
           <button id="tab-tech-links" class="tab" type="button" aria-selected="false" data-tab="tech-links">Tech Links</button>
           <button id="tab-reports" class="tab" type="button" aria-selected="false" data-tab="reports">Reports</button>
           <button id="tab-clear-tests" class="tab" type="button" aria-selected="false" data-tab="clear-tests">Clear Tests</button>
@@ -73,6 +74,20 @@
                   </div>
                   <div class="status" data-testid="upload-status" id="uploadStatus"></div>
                 </div>
+              </div>
+            </section>
+          </section>
+
+          <section id="panel-settings" class="panel" hidden>
+            <section class="card">
+              <h2>Settings</h2>
+              <p class="sub" id="settingsHintNoProject">Select a client and project in the header.</p>
+              <div id="settingsPanelBody" hidden>
+                <p class="sub" id="settingsHint">
+                  Each extracted test type can be required or left out of the job. Off keeps the control drawn on the technician page so the remote still looks real, but that type is not work: it is excluded from progress, pies, popups, and group pass. Results are not auto-passed.
+                </p>
+                <div id="settingsTypeStatus" class="status" role="status"></div>
+                <div id="settingsTypeGroups" data-testid="settings-type-groups"></div>
               </div>
             </section>
           </section>
@@ -421,5 +436,7 @@
     <script src="./commission_tab.js"></script>
     <!-- diagnostics-tab:js -->
     <script src="./diagnostics_tab.js"></script>
+    <!-- settings-tab:js -->
+    <script src="./settings_tab.js"></script>
   </body>
 </html>

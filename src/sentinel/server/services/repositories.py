@@ -200,6 +200,10 @@ class Repository(Protocol):
 
     def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None: ...
 
+    def get_testing_type_disabled(self, *, projectId: str) -> list[str]: ...
+
+    def set_testing_type_disabled(self, *, projectId: str, disabledTypes: list[str]) -> list[str]: ...
+
 
 class InMemoryRepository:
     def __init__(self) -> None:
@@ -220,6 +224,7 @@ class InMemoryRepository:
         self._first_outcome_by_project_target: dict[tuple[str, str], str] = {}
         # Monotonic ids for in-memory test results (matches Postgres test_result_id ordering).
         self._next_test_result_id = 0
+        self._testing_type_disabled_by_project: dict[str, list[str]] = {}
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -634,6 +639,22 @@ class InMemoryRepository:
     def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None:
         with self._lock:
             self._idempotency[(str(scope), str(key))] = dict(response)
+
+    def get_testing_type_disabled(self, *, projectId: str) -> list[str]:
+        with self._lock:
+            if str(projectId) not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            return list(self._testing_type_disabled_by_project.get(str(projectId)) or [])
+
+    def set_testing_type_disabled(self, *, projectId: str, disabledTypes: list[str]) -> list[str]:
+        from sentinel.server.services import testing_types
+
+        cleaned = testing_types.normalize_disabled_types(disabledTypes)
+        with self._lock:
+            if str(projectId) not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            self._testing_type_disabled_by_project[str(projectId)] = list(cleaned)
+            return list(cleaned)
 
 
 class PostgresRepository:
@@ -1112,4 +1133,16 @@ class PostgresRepository:
 
     def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None:
         self._q.put_idempotency_response(self._database_url, scope=str(scope), idempotency_key=str(key), response=response)
+
+    def get_testing_type_disabled(self, *, projectId: str) -> list[str]:
+        if self.get_project(projectId=projectId) is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        return self._q.get_testing_type_disabled(self._database_url, project_id=projectId)
+
+    def set_testing_type_disabled(self, *, projectId: str, disabledTypes: list[str]) -> list[str]:
+        if self.get_project(projectId=projectId) is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        return self._q.set_testing_type_disabled(
+            self._database_url, project_id=projectId, disabled_types=disabledTypes
+        )
 

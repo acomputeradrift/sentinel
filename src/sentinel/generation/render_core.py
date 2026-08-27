@@ -3056,6 +3056,9 @@ function _applyTechPayload(payload) {{
      techLastAppliedSeq = seq;
     }}
     if (t === "testing_snapshot") {{
+     if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+      globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+     }}
      const results = Array.isArray(payload?.results) ? payload.results : [];
      const layerLocks = Array.isArray(payload?.layerLocks) ? payload.layerLocks : [];
      let applied = 0;
@@ -3087,6 +3090,13 @@ function _applyTechPayload(payload) {{
      return;
     }}
     if (t === "commissioning_rollups") return;
+    if (t === "testing_type_settings") {{
+     if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+      globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+     }}
+     refreshButtonVisualStates();
+     return;
+    }}
     if (t === "test_results.batch") {{
      const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
      const outcome = String(payload?.outcome || "PASS").toUpperCase();
@@ -3568,6 +3578,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
+ function workTargets(meta) {{
+  if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.filterWorkTargets === "function") {{
+   return globalThis.__sentinelTestStatus.filterWorkTargets(meta || {{}});
+  }}
+  const m = (meta && typeof meta === "object") ? meta : {{}};
+  return Array.isArray(m.targets) ? m.targets : [];
+ }}
  function bindTestButtonClicks(root) {{
   const scope=root||document;
   scope.querySelectorAll('.test-btn').forEach(b=>{{
@@ -3582,11 +3599,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     const targets = workTargets(m);
+     rows.innerHTML=targets.map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
      clearPassAllQueue();
      setPostStatus('','');
      if (passAllBtn) {{
-      const targets = Array.isArray(m.targets) ? m.targets : [];
       const showPassAll = targets.length > 1;
       passAllBtn.hidden = !showPassAll;
       passAllBtn.disabled = !showPassAll;
@@ -5707,6 +5724,9 @@ const APP_UI={app_json};
     techLastAppliedSeq = seq;
    }}
    if (t === "testing_snapshot") {{
+    if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+     globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+    }}
     const results = Array.isArray(payload?.results) ? payload.results : [];
     let applied = 0;
     for (const rec of results) {{
@@ -5727,6 +5747,13 @@ const APP_UI={app_json};
    }}
    if (t === "commissioning_rollups") {{
     updateHomeSectionPercents(payload?.progress);
+    return;
+   }}
+   if (t === "testing_type_settings") {{
+    if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+     globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+    }}
+    refreshHomeEventVisualStates();
     return;
    }}
    if (t === "test_results.batch") {{
@@ -6198,6 +6225,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
+ function workTargets(meta) {{
+  if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.filterWorkTargets === "function") {{
+   return globalThis.__sentinelTestStatus.filterWorkTargets(meta || {{}});
+  }}
+  const m = (meta && typeof meta === "object") ? meta : {{}};
+  return Array.isArray(m.targets) ? m.targets : [];
+ }}
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
   b.addEventListener('click', function(e){{
    if (globalThis.__sentinelGroupPass && globalThis.__sentinelGroupPass.handleTestButtonClick(b, e)) return;
@@ -6206,7 +6240,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const suffix=(popupCfg.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
    const titleTemplate=popupCfg.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-   const targets=Array.isArray(m.targets) ? m.targets : [];
+   const targets=workTargets(m);
     rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
     clearPassAllQueue();
     setPostStatus('','');

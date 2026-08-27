@@ -880,3 +880,34 @@ button.danger {
   vertical-align: middle;
 }
 
+.settings-type-group {
+  margin: 16px 0 20px;
+}
+
+.settings-type-group h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.settings-type-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 16px;
+}
+
+.settings-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.settings-type-row input {
+  margin: 0;
+}
+
+.settings-family-row {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+

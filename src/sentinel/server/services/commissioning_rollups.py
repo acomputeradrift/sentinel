@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from sentinel.server.services import progress
+from sentinel.server.services import testing_types
 from sentinel.server.services.repositories import Repository, TestResultRecord
 
 _log = logging.getLogger("uvicorn.error")
@@ -14,9 +15,11 @@ def failure_breakdown_for_latest(
     repo: Repository,
     projectId: str,
     latest_results: dict[str, TestResultRecord],
+    disabled_types: set[str] | frozenset[str] | list[str] | None = None,
 ) -> tuple[int, dict[str, int], dict[str, int]]:
     """Returns (total_fail_rows, by_target_name, by_tag) for current FAIL outcomes."""
     tags = repo.get_fail_tags_for_project(projectId=projectId)
+    disabled = testing_types.normalize_disabled_types(list(disabled_types or []))
     by_target: dict[str, int] = {}
     by_tag = {"NOT_STARTED": 0, "IN_PROGRESS": 0, "DONE": 0}
     total = 0
@@ -26,6 +29,8 @@ def failure_breakdown_for_latest(
         target = rec.target if isinstance(rec.target, dict) else {}
         target_key = str(target.get("targetKey") or "").strip()
         if not target_key:
+            continue
+        if not testing_types.is_target_key_enabled(target_key, disabled):
             continue
         total += 1
         name = str(target.get("targetName") or "").strip() or "(unknown)"
@@ -46,8 +51,9 @@ def rollups_payload(
 ) -> dict[str, Any]:
     """Commissioning HTTP / snapshot rollups shape (includes nested counts)."""
     first_time_fail_targets = repo.count_first_time_fail_targets(projectId=projectId)
+    disabled = testing_types.disabled_types_from_repo(repo, projectId)
     total, by_target, by_tag = failure_breakdown_for_latest(
-        repo=repo, projectId=projectId, latest_results=latest_results
+        repo=repo, projectId=projectId, latest_results=latest_results, disabled_types=disabled
     )
     return {
         "projectId": projectId,
@@ -69,7 +75,9 @@ def compute_progress_and_testing_rollups(
     """
     try:
         latest = repo.get_latest_results_for_project(projectId=projectId)
-        prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
+        prog = progress.commissioning_progress_for_project(
+            repo=repo, projectId=projectId, latest_results=latest
+        )
     except FileNotFoundError:
         _log.info("[rollups] project-model-missing projectId=%s", projectId)
         return None, None
@@ -78,7 +86,10 @@ def compute_progress_and_testing_rollups(
         return None, None
 
     total, by_target, by_tag = failure_breakdown_for_latest(
-        repo=repo, projectId=projectId, latest_results=latest
+        repo=repo,
+        projectId=projectId,
+        latest_results=latest,
+        disabled_types=testing_types.disabled_types_from_repo(repo, projectId),
     )
     rollups = {
         "projectId": projectId,

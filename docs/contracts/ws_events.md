@@ -14,13 +14,14 @@ This document summarizes **stable JSON message types** exchanged over project-sc
 
 | type                    | Notes |
 |-------------------------|--------|
-| `commissioning_snapshot` | Includes `seq`, `projectId`, `progress`, `rollups`, `activities`, `fails`, `activeUpload`. `activities` rebuild from latest-per-target: shared `batchId` collapses to one `test_results.batch` row (`Group pass (N targets)`); singles stay `test_result` with `source=SINGLE`. |
+| `commissioning_snapshot` | Includes `seq`, `projectId`, `progress`, `rollups`, `activities`, `fails`, `activeUpload`, `testingTypeSettings`. `activities` rebuild from latest-per-target: shared `batchId` collapses to one `test_results.batch` row (`Group pass (N targets)`); singles stay `test_result` with `source=SINGLE`. Progress/fails/pies exclude disabled testing types. |
 | `replay.batch`         | `afterSeq`, `latestSeq`, `events[]` (each event includes `seq` when sourced from the broker ring buffer). |
 | `generation_phase`     | Transient progress; `status`, `percent`, optional `uploadId` / `originalFilename` / `activeUpload`. |
 | `generation`           | Terminal generation envelope (`status: READY`, etc.). |
 | `fail_tag_updated`     | Emitted after fail-tag mutation. |
 | `test_result`          | One recorded outcome; commissioning pies follow on `commissioning_rollups`. |
 | `test_results.batch`   | Group pass/fail: `count`, `targetKeys[]`, `batchId`, `source=GROUP`. Pies follow on `commissioning_rollups`. Snapshot rebuild uses the same `batchId` on stored rows. |
+| `testing_type_settings` | Per-project type toggles: `disabledTypes[]`, `types[]`, `offBehavior=exclude`. Followed by `commissioning_rollups` so pies match. |
 | `keepalive`            | `{}` with `type: keepalive` only. |
 | `error`                | `code` such as `PROJECT_NOT_FOUND`, `UNKNOWN_MESSAGE`. |
 
@@ -34,9 +35,10 @@ Clients should apply broker events in **`seq` ascending** order and treat `commi
 
 | type                | Notes |
 |---------------------|--------|
-| `testing_snapshot`  | `seq`, `projectId`, `results[]` (latest-per-target projection, including `batchId` and `source`). |
+| `testing_snapshot`  | `seq`, `projectId`, `results[]` (latest-per-target projection, including `batchId` and `source`), `testingTypeSettings` (`disabledTypes[]`; missing means all types ON). |
 | `test_result`       | Includes optional embedded `progress` and `rollups` for technician UI. |
 | `test_results.batch` | Compact ack after `test_result.submit_batch`: `outcome`, `count`, `targetKeys[]`, `batchId`, `source`. Does not embed per-row progress; `commissioning_rollups` follows. |
+| `testing_type_settings` | Same payload as commissioning; technician pages drop disabled types from popups, group select, and pass/fail rings without hiding drawn controls. |
 | `keepalive`         | Same as commissioning. |
 | `error`             | e.g. `TECH_LINK_REVOKED`. |
 
