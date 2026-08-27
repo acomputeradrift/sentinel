@@ -254,6 +254,7 @@ Tie-breaker rule:
 Progress is computed from:
 1) the **latest active extracted model** for the project (defines the set of expected targets), and
 2) the derived per-target current state above.
+3) optional per-project **testing-type settings**. Disabled types are **excluded** from the required/progress set (not auto-passed). Historical rows stay in append-only audit; they do not count toward pies, popups, or group pass while the type is off. Default is all types ON (today’s required set).
 
 Definitions:
 - `totalTargets`: count of expected targets for the scope (project, device, or events section).
@@ -422,6 +423,12 @@ Named technicians live under the commissioning operator (the company stub user u
 - `GET /api/v1/commissioning/projects/{projectId}/progress` -> derived `ProjectProgress` for the commissioning console (device + event-section rollups; page detail optional/future)
 - `GET /api/v1/commissioning/projects/{projectId}/fails` -> current fail/task-list projection for the commissioning console
   - each row is a `FailItem`
+- `GET /api/v1/commissioning/projects/{projectId}/testing-types` -> catalog of extracted target types with `enabled` (default all true) and `disabledTypes[]`
+- `PUT /api/v1/commissioning/projects/{projectId}/testing-types`
+  - req: `{ "disabledTypes": ["button:Bitmap"] }` (unknown ids ignored)
+  - also accepts `{ "types": [{ "id": "button:Bitmap", "enabled": false }] }`
+  - resp: same shape as GET
+  - Off-behavior is `exclude` (not auto-pass). Controls remain drawn on generated technician pages.
 
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact

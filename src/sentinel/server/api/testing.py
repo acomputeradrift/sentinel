@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from sentinel.server.api.errors import http_error
 from sentinel.server.api.schemas import PostReadyBaselineBody, PostTestResultBody, PostTestResultsBatchBody
 from sentinel.server.services import commissioning_rollups
+from sentinel.server.services import testing_types
 from sentinel.server.services import ws_broker
 from sentinel.server.services.repositories import Repository, result_batch_id, result_source, tech_name_from_recorded_by
 
@@ -187,12 +188,16 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
             }
         )
     layer_locks = _build_layer_lock_rows(repo=repo, projectId=projectId)
+    settings = testing_types.settings_payload(
+        project_id=projectId, disabled_types=testing_types.disabled_types_from_repo(repo, projectId)
+    )
     return {
         "type": "testing_snapshot",
         "seq": int(seq or 0),
         "projectId": projectId,
         "results": results,
         "layerLocks": layer_locks,
+        "testingTypeSettings": settings,
     }
 
 

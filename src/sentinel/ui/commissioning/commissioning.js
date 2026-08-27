@@ -90,7 +90,7 @@ function _safeStorageSetJsonObject(key, obj) {
 }
 
 function setActiveTab(tabName) {
-  const tabs = ["commission", "diagnostics", "file", "tech-links", "reports", "clear-tests"];
+  const tabs = ["commission", "diagnostics", "file", "settings", "tech-links", "reports", "clear-tests"];
   for (const t of tabs) {
     const btn = document.getElementById(`tab-${t}`);
     const panel = document.getElementById(`panel-${t}`);
@@ -196,6 +196,10 @@ function updateManageVisibility() {
   if (fh) fh.hidden = hasProject;
   const th = document.getElementById("techHintNoProject");
   if (th) th.hidden = hasProject;
+  const settingsBody = document.getElementById("settingsPanelBody");
+  if (settingsBody) settingsBody.hidden = !hasProject;
+  const sh = document.getElementById("settingsHintNoProject");
+  if (sh) sh.hidden = hasProject;
   if (!hasProject) resetProjectDetailsUi();
 }
 
@@ -997,6 +1001,12 @@ async function run() {
   $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
   $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
   $("tab-file").addEventListener("click", () => setActiveTab("file"));
+  $("tab-settings").addEventListener("click", () => {
+    setActiveTab("settings");
+    if (typeof window.__sentinelLoadTestingTypeSettings === "function") {
+      void window.__sentinelLoadTestingTypeSettings();
+    }
+  });
   $("tab-tech-links").addEventListener("click", () => {
     setActiveTab("tech-links");
     void loadCompanyTechnicians();

@@ -811,3 +811,49 @@ def put_idempotency_response(database_url: str, *, scope: str, idempotency_key: 
         con.commit()
     finally:
         con.close()
+
+
+def _parse_disabled_types(raw: Any) -> list[str]:
+    from sentinel.server.services import testing_types
+
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = [raw]
+    return testing_types.normalize_disabled_types(raw)
+
+
+def get_testing_type_disabled(database_url: str, *, project_id: str) -> list[str]:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select disabled_types as \"disabledTypes\" from project_testing_type_settings where project_id=%s",
+            (project_id,),
+        )
+        if not row:
+            return []
+        return _parse_disabled_types(row.get("disabledTypes"))
+    finally:
+        con.close()
+
+
+def set_testing_type_disabled(database_url: str, *, project_id: str, disabled_types: list[str]) -> list[str]:
+    from sentinel.server.services import testing_types
+
+    cleaned = testing_types.normalize_disabled_types(disabled_types)
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "insert into project_testing_type_settings (project_id, disabled_types, updated_at_utc) "
+            "values (%s, %s::jsonb, %s) "
+            "on conflict (project_id) do update set disabled_types = excluded.disabled_types, "
+            "updated_at_utc = excluded.updated_at_utc",
+            (project_id, json.dumps(cleaned), _utc_now()),
+        )
+        con.commit()
+        return list(cleaned)
+    finally:
+        con.close()

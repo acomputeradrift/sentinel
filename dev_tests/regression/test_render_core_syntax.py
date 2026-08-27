@@ -55,3 +55,8 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         self.assertIn("handleTestButtonClick", js)
         self.assertIn("shiftKey", js)
         self.assertIn("sentinelGroupMarquee", js)
+        self.assertIn("pruneDisabled", js)
+        status_js = (root / "src" / "sentinel" / "ui" / "testing" / "sentinel_test_status_embed.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("filterWorkTargets", status_js)
