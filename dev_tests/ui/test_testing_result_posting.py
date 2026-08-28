@@ -1552,6 +1552,55 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_select_multiple_buttons_lives_in_left_device_panel_not_top_chrome(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        panel = (
+            '<aside id="deviceViewControlsCanvas">'
+            '<div class="deviceViewControlsContent">'
+            '<section class="viewControlGroup" aria-label="Select Multiple Buttons">'
+            '<button class="selectMultipleButtonsBtn" id="sentinelGroupToggle" type="button" '
+            'aria-pressed="false" aria-label="Select Multiple Buttons">Select Multiple Buttons</button>'
+            "</section>"
+            '<section class="viewControlGroup" aria-label="Device Zoom">'
+            "<h3 class=\"viewControlLabel\">Device Zoom</h3>"
+            "</section>"
+            '<section class="viewControlGroup" aria-label="Text Zoom">'
+            "<h3 class=\"viewControlLabel\">Text Zoom</h3>"
+            "</section>"
+            "</div></aside>"
+        )
+        html = html.replace("<body>", "<body>" + panel, 1)
+        token = "techTokenSelectPanel"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            loc = page.evaluate(
+                """() => {
+                  const t = document.getElementById("sentinelGroupToggle");
+                  const header = document.getElementById("topControls") || document.getElementById("topControlsStatic");
+                  return {
+                    text: String((t && t.textContent) || "").trim(),
+                    inLeft: !!(t && t.closest(".deviceViewControlsContent")),
+                    inTop: !!(t && header && header.contains(t)),
+                    deviceZoom: !!document.querySelector('.deviceViewControlsContent h3.viewControlLabel'),
+                    labels: Array.from(document.querySelectorAll(".deviceViewControlsContent h3.viewControlLabel")).map((el) => String(el.textContent || "").trim()),
+                  };
+                }"""
+            )
+            self.assertEqual(loc["text"], "Select Multiple Buttons")
+            self.assertTrue(loc["inLeft"])
+            self.assertFalse(loc["inTop"])
+            self.assertEqual(loc["labels"], ["Device Zoom", "Text Zoom"])
+            self.assertEqual(page.locator("#topControls #sentinelGroupToggle").count(), 0)
+        finally:
+            server.stop()
+
     def test_group_tap_selects_controls_without_opening_popup(self):
         from sentinel.generation.render_core import render_single_device_html, load_json
 
