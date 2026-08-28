@@ -1568,6 +1568,12 @@ class TestingResultPostingTest(unittest.TestCase):
             btns.nth(1).click()
             self.assertEqual(page.locator("#ov.open").count(), 0)
             self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            box = page.locator("#sentinelGroupActions").bounding_box()
+            vp = page.viewport_size
+            self.assertIsNotNone(box)
+            self.assertIsNotNone(vp)
+            self.assertAlmostEqual(box["x"] + box["width"] / 2, vp["width"] / 2, delta=8)
+            self.assertAlmostEqual(box["y"] + box["height"] / 2, vp["height"] / 2, delta=8)
             self.assertGreaterEqual(
                 int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0),
                 2,

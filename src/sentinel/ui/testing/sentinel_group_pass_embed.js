@@ -24,7 +24,7 @@
     "#" + CLUSTER_ID + "{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;}",
     ".home-header{position:relative;padding-right:140px;box-sizing:border-box;}",
     ".home-header #" + TOGGLE_ID + "{position:absolute;top:24px;right:28px;}",
-    "#" + ACTIONS_ID + "{position:fixed;z-index:9500;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;min-width:220px;max-width:min(360px,calc(100vw - 24px));max-height:min(50vh,420px);overflow:auto;padding:12px;border:1px solid #b9cad8;border-radius:16px;background:rgba(247,251,255,.98);box-shadow:0 10px 30px rgba(20,50,75,.16);font-family:Segoe UI,Tahoma,sans-serif;color:#14324b;}",
+    "#" + ACTIONS_ID + "{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9500;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;min-width:220px;max-width:min(360px,calc(100vw - 24px));max-height:min(50vh,420px);overflow:auto;padding:12px;border:1px solid #b9cad8;border-radius:16px;background:rgba(247,251,255,.98);box-shadow:0 10px 30px rgba(20,50,75,.16);font-family:Segoe UI,Tahoma,sans-serif;color:#14324b;}",
     "#" + ACTIONS_ID + "[hidden]{display:none !important;}",
     "#" + ACTIONS_ID + " button{border:1px solid #a9bccd;background:#f7fbff;border-radius:12px;min-height:44px;padding:10px 14px;font-size:15px;line-height:1.1;cursor:pointer;color:#14324b;width:100%;}",
     "#" + ACTIONS_ID + " button:disabled{opacity:.55;cursor:not-allowed;}",
@@ -128,30 +128,9 @@
 
   function positionActions() {
     if (!actions || actions.hidden) return;
-    const gap = 8;
-    let top = 12;
-    let left = 12;
-    if (toggle) {
-      const r = toggle.getBoundingClientRect();
-      top = r.bottom + gap;
-      left = r.left;
-    }
-    const w = actions.offsetWidth || 220;
-    const h = actions.offsetHeight || 200;
-    const vw = window.innerWidth || 0;
-    const vh = window.innerHeight || 0;
-    if (left + w + 12 > vw) left = Math.max(12, vw - w - 12);
-    if (left < 12) left = 12;
-    if (top + h + 12 > vh) {
-      if (toggle) {
-        const r = toggle.getBoundingClientRect();
-        top = Math.max(12, r.top - h - gap);
-      } else {
-        top = Math.max(12, vh - h - 12);
-      }
-    }
-    actions.style.top = top + "px";
-    actions.style.left = left + "px";
+    actions.style.top = "50%";
+    actions.style.left = "50%";
+    actions.style.transform = "translate(-50%, -50%)";
   }
 
   function updateChrome() {

@@ -59,6 +59,7 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         self.assertIn("sentinelGroupMarquee", js)
         self.assertIn("sentinelGroupActions", js)
         self.assertIn("touch-action:none", js)
+        self.assertIn("translate(-50%, -50%)", js)
         self.assertNotIn("sentinelGroupBar", js)
         self.assertNotIn("padding-bottom:84px", js)
         self.assertIn("pruneDisabled", js)
