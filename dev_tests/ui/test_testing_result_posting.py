@@ -1279,6 +1279,146 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def _viewport_child_device_project(self) -> dict:
+        child_uf = {
+            "buttonIdentity": {"buttonTagName": "ALL-OFF", "text": "All Off", "buttonType": None},
+            "buttonUI": {
+                "fontSize": 10,
+                "orientations": {
+                    "portrait": {
+                        "visible": True,
+                        "coordinates": {"top": 12, "left": 12, "height": 50, "width": 240},
+                    }
+                },
+            },
+            "testTargets": {
+                "text": True,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "pageLink": {"enabled": False},
+            },
+        }
+        page_uf = {
+            "buttonIdentity": {"buttonTagName": "PAGE-BTN", "text": "Page Btn", "buttonType": None},
+            "buttonUI": {
+                "fontSize": 10,
+                "orientations": {
+                    "portrait": {
+                        "visible": True,
+                        "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120},
+                    }
+                },
+            },
+            "testTargets": {
+                "text": True,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "pageLink": {"enabled": False},
+            },
+        }
+        return {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [page_uf],
+                                        },
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 990},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {
+                                                            "visible": True,
+                                                            "coordinates": {
+                                                                "top": 80,
+                                                                "left": 20,
+                                                                "height": 300,
+                                                                "width": 420,
+                                                            },
+                                                        }
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [child_uf],
+                                                                },
+                                                            }
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48550}],
+                                "buttons": [
+                                    {
+                                        "buttonId": 48550,
+                                        "buttonTagName": "PAGE-BTN",
+                                        "identifiers": {"text": "Page Btn"},
+                                        "testTargets": {},
+                                    }
+                                ],
+                                "viewports": [
+                                    {
+                                        "viewportButtonId": 990,
+                                        "frames": [
+                                            {
+                                                "frameId": 0,
+                                                "buttons": [
+                                                    {
+                                                        "buttonId": 48551,
+                                                        "buttonTagName": "ALL-OFF",
+                                                        "identifiers": {"text": "All Off"},
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
     def _two_button_device_project(self) -> dict:
         def _btn(tag: str, text: str, top: int, button_id: int) -> tuple[dict, dict]:
             uf = {
@@ -1360,8 +1500,13 @@ class TestingResultPostingTest(unittest.TestCase):
             page = self._browser.new_page()
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
-            self.assertEqual(page.locator("#sentinelGroupBar").count(), 1)
+            self.assertEqual(page.locator("#sentinelGroupBar").count(), 0)
+            self.assertEqual(page.locator("#topControls #sentinelGroupToggle").count(), 1)
+            self.assertEqual(page.locator("#sentinelGroupToggle").inner_text().strip(), "Select")
             page.click("#sentinelGroupToggle")
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            page.locator(".btn-wrap .test-btn").first.click()
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
             page.click("#sentinelGroupAddPage")
             selected = page.evaluate("() => window.__sentinelGroupPass && window.__sentinelGroupPass.selectedCount()")
             self.assertGreaterEqual(int(selected or 0), 2)
@@ -1422,6 +1567,7 @@ class TestingResultPostingTest(unittest.TestCase):
             btns.nth(0).click()
             btns.nth(1).click()
             self.assertEqual(page.locator("#ov.open").count(), 0)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
             self.assertGreaterEqual(
                 int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0),
                 2,
@@ -1460,7 +1606,11 @@ class TestingResultPostingTest(unittest.TestCase):
             page = self._browser.new_page()
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            self.assertEqual(page.locator(".home-header #sentinelGroupToggle").count(), 1)
             page.click("#sentinelGroupToggle")
+            page.click("button.section-toggle[data-target='system-events']")
+            page.locator("#system-events .test-btn").first.click()
+            self.assertEqual(page.locator("#ov.open").count(), 0)
             page.click("#sentinelGroupAddSystem")
             self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 2)
             page.click("#sentinelGroupPass")
@@ -1500,6 +1650,7 @@ class TestingResultPostingTest(unittest.TestCase):
             page.locator(".btn-wrap .test-btn").nth(1).click(modifiers=["Shift"])
             n2 = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
             self.assertEqual(n2, n0)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
             page.click("#sentinelGroupPass")
             self._wait_for_ws_outbox(page, min_posts=1)
             sent = self._ws_payload(page, 0)
@@ -1522,6 +1673,11 @@ class TestingResultPostingTest(unittest.TestCase):
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
             page.locator("#rtiDeviceCanvas").wait_for()
+            page.click("#sentinelGroupToggle")
+            self.assertEqual(
+                page.evaluate("() => getComputedStyle(document.getElementById('rtiCanvas')).touchAction"),
+                "none",
+            )
             wraps = page.locator(".btn-wrap")
             wraps.first.wait_for()
             self.assertGreaterEqual(wraps.count(), 2)
@@ -1538,10 +1694,12 @@ class TestingResultPostingTest(unittest.TestCase):
             page.mouse.move(start_x, start_y)
             page.mouse.down()
             page.mouse.move(end_x, end_y, steps=16)
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
             page.mouse.up()
             page.wait_for_timeout(50)
             self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
             self.assertEqual(page.locator("#ov.open").count(), 0)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
             selected = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
             self.assertGreaterEqual(selected, 2)
             self.assertGreaterEqual(page.locator(".btn-wrap.is-group-selected").count(), 2)
@@ -1553,6 +1711,126 @@ class TestingResultPostingTest(unittest.TestCase):
             keys = [str((t or {}).get("targetKey") or "") for t in (sent.get("targets") or [])]
             self.assertGreaterEqual(len(keys), 2)
             self.assertEqual(len(keys), len(set(keys)))
+        finally:
+            server.stop()
+
+    def test_drag_without_select_does_not_group(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupDragOff"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator("#rtiDeviceCanvas").wait_for()
+            wraps = page.locator(".btn-wrap")
+            wraps.first.wait_for()
+            b0 = wraps.nth(0).bounding_box()
+            b1 = wraps.nth(1).bounding_box()
+            canvas = page.locator("#rtiDeviceCanvas").bounding_box()
+            self.assertIsNotNone(b0)
+            self.assertIsNotNone(b1)
+            self.assertIsNotNone(canvas)
+            start_x = max(canvas["x"] + 2, min(b0["x"], b1["x"]) - 6)
+            start_y = max(canvas["y"] + 2, min(b0["y"], b1["y"]) - 6)
+            end_x = min(canvas["x"] + canvas["width"] - 2, max(b0["x"] + b0["width"], b1["x"] + b1["width"]) + 6)
+            end_y = min(canvas["y"] + canvas["height"] - 2, max(b0["y"] + b0["height"], b1["y"] + b1["height"]) + 6)
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(end_x, end_y, steps=16)
+            page.mouse.up()
+            page.wait_for_timeout(50)
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+        finally:
+            server.stop()
+
+    def test_shift_drag_turns_select_on_and_adds_targets(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupShiftDrag"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator("#rtiDeviceCanvas").wait_for()
+            wraps = page.locator(".btn-wrap")
+            wraps.first.wait_for()
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            b0 = wraps.nth(0).bounding_box()
+            b1 = wraps.nth(1).bounding_box()
+            canvas = page.locator("#rtiDeviceCanvas").bounding_box()
+            self.assertIsNotNone(b0)
+            self.assertIsNotNone(b1)
+            self.assertIsNotNone(canvas)
+            start_x = max(canvas["x"] + 2, min(b0["x"], b1["x"]) - 6)
+            start_y = max(canvas["y"] + 2, min(b0["y"], b1["y"]) - 6)
+            end_x = min(canvas["x"] + canvas["width"] - 2, max(b0["x"] + b0["width"], b1["x"] + b1["width"]) + 6)
+            end_y = min(canvas["y"] + canvas["height"] - 2, max(b0["y"] + b0["height"], b1["y"] + b1["height"]) + 6)
+            page.keyboard.down("Shift")
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(end_x, end_y, steps=16)
+            page.mouse.up()
+            page.keyboard.up("Shift")
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 2)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
+    def test_select_on_viewport_selects_children_without_entering_mode(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._viewport_child_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupViewport"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.wait_for()
+            page.click("#sentinelGroupToggle")
+            page.locator(".vp-box").first.click()
+            self.assertFalse(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            self.assertEqual(page.locator("#vpPopup:not([hidden])").count(), 0)
+            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 1)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
+    def test_select_off_viewport_still_enters_mode(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._viewport_child_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupViewportOff"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.wait_for()
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            page.locator(".vp-box").first.click()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
         finally:
             server.stop()
 

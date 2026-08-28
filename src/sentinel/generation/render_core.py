@@ -3619,7 +3619,13 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   scope.querySelectorAll('.vp-box').forEach(el=>{{
    if (el.dataset.boundVpClick) return;
    el.dataset.boundVpClick='1';
-   el.addEventListener('click', ()=>{{
+   el.addEventListener('click', (e)=>{{
+    if (globalThis.__sentinelGroupPass && globalThis.__sentinelGroupPass.isGroupMode()) {{
+     if (typeof globalThis.__sentinelGroupPass.handleViewportBoxClick === "function") {{
+      globalThis.__sentinelGroupPass.handleViewportBoxClick(el, e);
+     }}
+     return;
+    }}
     if (viewportMode.active) return;
     enterViewportMode(el.dataset.vp);
    }});
