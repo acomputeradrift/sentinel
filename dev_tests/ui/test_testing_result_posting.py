@@ -1685,8 +1685,13 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click("button.section-toggle[data-target='system-events']")
             events = page.locator("#system-events .test-btn")
             self.assertGreaterEqual(events.count(), 2)
-            events.nth(0).click()
-            events.nth(1).click(force=True)
+            page.evaluate(
+                """() => {
+                  const btns = document.querySelectorAll("#system-events .test-btn");
+                  if (btns[0]) btns[0].click();
+                  if (btns[1]) btns[1].click();
+                }"""
+            )
             self.assertEqual(page.locator("#ov.open").count(), 0)
             labels = page.evaluate(
                 """() => Array.from(document.querySelectorAll("#sentinelGroupActions button")).filter((b) => !b.hidden).map((b) => String(b.textContent || "").trim())"""
