@@ -2,10 +2,10 @@
  * Technician group-pass chrome (project home + device pages).
  * Injected with test-status embed; pages call globalThis.__sentinelGroupPass.attach(...).
  *
- * Grouping model: an ephemeral session set of targetKeys. Fill it by tapping Select
- * (iPad) then tapping controls / a viewport / rubber-band dragging, or via desktop
- * shift-click / shift-drag, then Pass group in one WebSocket batch. Not persisted.
- * Fail stays per-target.
+ * Grouping model: an ephemeral session set of targetKeys. Fill it by tapping
+ * Select Multiple Buttons (iPad) then tapping controls / a viewport / rubber-band
+ * dragging, or via desktop shift-click / shift-drag, then Pass selected in one
+ * WebSocket batch. Not persisted. Fail stays per-target.
  */
 (function (global) {
   "use strict";
@@ -19,10 +19,10 @@
   const CLUSTER_ID = "sentinelGroupToggleCluster";
 
   const CSS = [
-    "#" + TOGGLE_ID + "{display:inline-flex;align-items:center;justify-content:center;min-width:96px;height:40px;padding:0 16px;border-radius:14px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:14px;font-weight:700;cursor:pointer;box-sizing:border-box;white-space:nowrap;flex-shrink:0;font-family:Segoe UI,Tahoma,sans-serif;}",
+    "#" + TOGGLE_ID + "{display:inline-flex;align-items:center;justify-content:center;min-width:96px;max-width:120px;min-height:44px;height:auto;padding:8px 10px;border-radius:12px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:12px;font-weight:700;cursor:pointer;box-sizing:border-box;white-space:normal;text-align:center;line-height:1.2;flex-shrink:0;font-family:Segoe UI,Tahoma,sans-serif;}",
     "#" + TOGGLE_ID + ".is-active{background:#29445a;color:#fff;border-color:#29445a;}",
     "#" + CLUSTER_ID + "{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;}",
-    ".home-header{position:relative;padding-right:140px;box-sizing:border-box;}",
+    ".home-header{position:relative;padding-right:160px;box-sizing:border-box;}",
     ".home-header #" + TOGGLE_ID + "{position:absolute;top:24px;right:28px;}",
     "#" + ACTIONS_ID + "{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9500;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;min-width:220px;max-width:min(360px,calc(100vw - 24px));max-height:min(50vh,420px);overflow:auto;padding:12px;border:1px solid #b9cad8;border-radius:16px;background:rgba(247,251,255,.98);box-shadow:0 10px 30px rgba(20,50,75,.16);font-family:Segoe UI,Tahoma,sans-serif;color:#14324b;}",
     "#" + ACTIONS_ID + "[hidden]{display:none !important;}",
@@ -147,7 +147,7 @@
           btn.disabled = posting || n < 1;
           return;
         }
-        if (btn.id === "sentinelGroupDone") {
+        if (btn.id === "sentinelGroupCancel") {
           btn.disabled = posting;
           return;
         }
@@ -215,37 +215,51 @@
     return Array.prototype.slice.call(root.querySelectorAll(".test-btn"));
   }
 
-  function addButtons(btns, label) {
+  function addButtons(btns) {
     let n = 0;
     for (let i = 0; i < btns.length; i += 1) {
       n += addPayloads(payloadsForButton(btns[i]));
     }
-    setStatus(n ? "Added " + n + " from " + label + "." : "No new targets in " + label + ".", false);
-    updateChrome();
+    return n;
   }
 
-  function addThisPage() {
+  function replaceSelectionFromButtons(btns) {
+    selected.clear();
+    return addButtons(btns);
+  }
+
+  function passThisPage() {
+    if (posting || !opts) return;
     if (typeof opts.materializeActivePage === "function") opts.materializeActivePage();
     const root = typeof opts.activePageRoot === "function" ? opts.activePageRoot() : null;
-    addButtons(buttonsInRoot(root), "this page");
+    const n = replaceSelectionFromButtons(buttonsInRoot(root));
+    if (!n) {
+      setStatus("No targets on this page.", false);
+      updateChrome();
+      return;
+    }
+    passSelected();
   }
 
-  function addThisDevice() {
+  function passThisDevice() {
+    if (posting || !opts) return;
     if (typeof opts.materializeAllPages === "function") opts.materializeAllPages();
-    addButtons(buttonsInRoot(document.querySelector("#rtiDeviceCanvas") || document), "this device");
+    const n = replaceSelectionFromButtons(buttonsInRoot(document.querySelector("#rtiDeviceCanvas") || document));
+    if (!n) {
+      setStatus("No targets on this device.", false);
+      updateChrome();
+      return;
+    }
+    passSelected();
   }
 
-  function addSection(id, label) {
-    addButtons(buttonsInRoot(document.getElementById(id)), label);
-  }
-
-  function clearGroup() {
+  function cancelSelection() {
     selected.clear();
     setStatus("", false);
-    updateChrome();
+    setGroupMode(false);
   }
 
-  function passGroup() {
+  function passSelected() {
     if (posting || !opts || typeof opts.sendWs !== "function") return;
     const targets = [];
     selected.forEach(function (t) {
@@ -277,12 +291,13 @@
     if (typeof opts.setPendingBatch === "function") opts.setPendingBatch(false);
     if (ok) {
       selected.clear();
-      setStatus("Group passed.", false);
+      setStatus("", false);
       if (typeof opts.refreshVisuals === "function") opts.refreshVisuals();
+      setGroupMode(false);
     } else {
-      setStatus(String(message || "Group pass failed."), true);
+      setStatus(String(message || "Pass failed."), true);
+      updateChrome();
     }
-    updateChrome();
   }
 
   function handleTestButtonClick(btn, evt) {
@@ -307,7 +322,9 @@
     if (el.closest("#" + ACTIONS_ID)) return true;
     if (el.closest("#" + MARQUEE_ID)) return true;
     if (el.closest("#ov")) return true;
-    if (el.closest("#topControls") || el.closest("#zoomControls") || el.closest("#orientationControls")) return true;
+    if (el.closest("#topControls") || el.closest("#topControlsStatic")) return true;
+    if (el.closest("#zoomControls") || el.closest("#zoomControlsStatic") || el.closest("#orientationControls")) return true;
+    if (el.closest("#deviceViewControlsCanvas") || el.closest(".deviceViewControlsContent")) return true;
     if (el.closest("#layerControls") || el.closest("#vpPopup")) return true;
     if (el.closest("#rtiDeviceCanvas") || el.closest("#rtiCanvas") || el.closest(".device-page")) return false;
     return true;
@@ -494,41 +511,65 @@
     });
   }
 
+  function placeToggle(el) {
+    const panel = document.querySelector(".deviceViewControlsContent");
+    if (panel) {
+      let group = panel.querySelector('[aria-label="Select Multiple Buttons"]');
+      if (!group) {
+        group = document.createElement("section");
+        group.className = "viewControlGroup";
+        group.setAttribute("aria-label", "Select Multiple Buttons");
+        panel.insertBefore(group, panel.firstChild);
+      }
+      if (!el.parentNode || el.parentNode !== group) group.appendChild(el);
+      return;
+    }
+    const orient = document.getElementById("orientationControls");
+    if (orient) {
+      orient.insertBefore(el, orient.firstChild);
+      return;
+    }
+    const zoom = document.getElementById("zoomControls") || document.getElementById("zoomControlsStatic");
+    if (zoom && zoom.parentNode) {
+      zoom.parentNode.insertBefore(el, zoom);
+      return;
+    }
+    const header = document.querySelector(".home-header");
+    if (header) {
+      header.appendChild(el);
+      return;
+    }
+    document.body.appendChild(el);
+  }
+
+  function bindToggle(el) {
+    if (!el || el.dataset.boundSelectToggle) return;
+    el.dataset.boundSelectToggle = "1";
+    el.addEventListener("click", function () {
+      setGroupMode(!groupMode);
+    });
+  }
+
   function mountToggle() {
     const existing = document.getElementById(TOGGLE_ID);
     if (existing) {
       toggle = existing;
+      if (!String(toggle.textContent || "").trim()) toggle.textContent = "Select Multiple Buttons";
+      bindToggle(toggle);
+      if (toggle.closest && toggle.closest("#topControls, #topControlsStatic")) {
+        placeToggle(toggle);
+      }
       return;
     }
     toggle = document.createElement("button");
     toggle.type = "button";
     toggle.id = TOGGLE_ID;
-    toggle.textContent = "Select";
+    toggle.className = "selectMultipleButtonsBtn";
+    toggle.textContent = "Select Multiple Buttons";
     toggle.setAttribute("aria-pressed", "false");
-    toggle.setAttribute("aria-label", "Select targets");
-    const top = document.getElementById("topControls");
-    if (top) {
-      let cluster = document.getElementById(CLUSTER_ID);
-      if (!cluster) {
-        cluster = document.createElement("div");
-        cluster.id = CLUSTER_ID;
-        const home = top.querySelector(".project-home-link");
-        if (home && home.parentNode) {
-          home.parentNode.insertBefore(cluster, home);
-          cluster.appendChild(home);
-        } else {
-          top.insertBefore(cluster, top.firstChild);
-        }
-      }
-      cluster.appendChild(toggle);
-    } else {
-      const header = document.querySelector(".home-header");
-      if (header) header.appendChild(toggle);
-      else document.body.appendChild(toggle);
-    }
-    toggle.addEventListener("click", function () {
-      setGroupMode(!groupMode);
-    });
+    toggle.setAttribute("aria-label", "Select Multiple Buttons");
+    placeToggle(toggle);
+    bindToggle(toggle);
   }
 
   function mountActions() {
@@ -541,35 +582,23 @@
     actions.id = ACTIONS_ID;
     actions.hidden = true;
     actions.setAttribute("role", "dialog");
-    actions.setAttribute("aria-label", "Group actions");
+    actions.setAttribute("aria-label", "Selection actions");
     actions.innerHTML =
       '<div class="group-count">0 targets</div>' +
-      '<button type="button" id="sentinelGroupPass" class="group-pass" disabled>Pass group</button>' +
-      '<button type="button" id="sentinelGroupAddPage" data-surface="device">Add this page</button>' +
-      '<button type="button" id="sentinelGroupAddDevice" data-surface="device">Add this device</button>' +
-      '<button type="button" id="sentinelGroupAddSystem" data-surface="home">Add system events</button>' +
-      '<button type="button" id="sentinelGroupAddDriver" data-surface="home">Add driver events</button>' +
-      '<button type="button" id="sentinelGroupClear">Clear</button>' +
-      '<button type="button" id="sentinelGroupDone">Done</button>' +
+      '<button type="button" id="sentinelGroupPass" class="group-pass" disabled>Pass selected</button>' +
+      '<button type="button" id="sentinelGroupPassPage" data-surface="device">Pass this page</button>' +
+      '<button type="button" id="sentinelGroupPassDevice" data-surface="device">Pass this device</button>' +
+      '<button type="button" id="sentinelGroupCancel">Cancel</button>' +
       '<div class="group-status" hidden></div>';
     document.body.appendChild(actions);
     const surface = opts && opts.surface === "home" ? "home" : "device";
     actions.querySelectorAll("[data-surface]").forEach(function (el) {
       el.hidden = el.getAttribute("data-surface") !== surface;
     });
-    actions.querySelector("#sentinelGroupAddPage").addEventListener("click", addThisPage);
-    actions.querySelector("#sentinelGroupAddDevice").addEventListener("click", addThisDevice);
-    actions.querySelector("#sentinelGroupAddSystem").addEventListener("click", function () {
-      addSection("system-events", "system events");
-    });
-    actions.querySelector("#sentinelGroupAddDriver").addEventListener("click", function () {
-      addSection("driver-events", "driver events");
-    });
-    actions.querySelector("#sentinelGroupPass").addEventListener("click", passGroup);
-    actions.querySelector("#sentinelGroupClear").addEventListener("click", clearGroup);
-    actions.querySelector("#sentinelGroupDone").addEventListener("click", function () {
-      setGroupMode(false);
-    });
+    actions.querySelector("#sentinelGroupPassPage").addEventListener("click", passThisPage);
+    actions.querySelector("#sentinelGroupPassDevice").addEventListener("click", passThisDevice);
+    actions.querySelector("#sentinelGroupPass").addEventListener("click", passSelected);
+    actions.querySelector("#sentinelGroupCancel").addEventListener("click", cancelSelection);
   }
 
   function pruneDisabled() {

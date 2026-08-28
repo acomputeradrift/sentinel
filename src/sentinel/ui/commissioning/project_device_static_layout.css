@@ -552,6 +552,35 @@ body {
   line-height: 1;
 }
 
+.selectMultipleButtonsBtn {
+  min-width: 96px;
+  max-width: 120px;
+  min-height: 44px;
+  height: auto;
+  border-radius: 12px;
+  border: 2px solid #f0a126;
+  background: transparent;
+  color: #29445a;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: Segoe UI, Tahoma, sans-serif;
+  line-height: 1.2;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  text-align: center;
+  white-space: normal;
+}
+
+.selectMultipleButtonsBtn.is-active {
+  background: #29445a;
+  color: #fff;
+  border-color: #29445a;
+}
+
 .staticZoomControls {
   display: flex;
   align-items: center;

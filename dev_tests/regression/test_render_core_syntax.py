@@ -60,10 +60,25 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         self.assertIn("sentinelGroupActions", js)
         self.assertIn("touch-action:none", js)
         self.assertIn("translate(-50%, -50%)", js)
+        self.assertIn("Pass selected", js)
+        self.assertIn("Pass this page", js)
+        self.assertIn("Pass this device", js)
+        self.assertIn("Select Multiple Buttons", js)
+        self.assertNotIn("Pass group", js)
+        self.assertNotIn("Add this page", js)
+        self.assertNotIn("Add this device", js)
         self.assertNotIn("sentinelGroupBar", js)
         self.assertNotIn("padding-bottom:84px", js)
         self.assertIn("pruneDisabled", js)
-        self.assertIn('textContent = "Select"', js)
+        self.assertIn('textContent = "Select Multiple Buttons"', js)
+        shell = (root / "src" / "sentinel" / "ui" / "commissioning" / "project_device_static_layout.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Select Multiple Buttons", shell)
+        self.assertIn(">Device Zoom</h3>", shell)
+        self.assertIn(">Text Zoom</h3>", shell)
+        self.assertNotIn(">Device</h3>", shell)
+        self.assertNotIn(">Text</h3>", shell)
         status_js = (root / "src" / "sentinel" / "ui" / "testing" / "sentinel_test_status_embed.js").read_text(
             encoding="utf-8"
         )
