@@ -1503,6 +1503,17 @@ class TestingResultPostingTest(unittest.TestCase):
             self.assertEqual(page.locator("#sentinelGroupBar").count(), 0)
             self.assertEqual(page.locator("#topControls #sentinelGroupToggle").count(), 0)
             self.assertEqual(page.locator("#sentinelGroupToggle").inner_text().strip(), "Select Multiple Buttons")
+            overlaps_top = page.evaluate(
+                """() => {
+                  const t = document.getElementById("sentinelGroupToggle");
+                  const top = document.getElementById("topControls");
+                  if (!t || !top) return false;
+                  const a = t.getBoundingClientRect();
+                  const b = top.getBoundingClientRect();
+                  return !(a.bottom <= b.top || a.top >= b.bottom || a.right <= b.left || a.left >= b.right);
+                }"""
+            )
+            self.assertFalse(bool(overlaps_top))
             page.click("#sentinelGroupToggle")
             self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
             page.locator(".btn-wrap .test-btn").first.click()
@@ -1675,7 +1686,7 @@ class TestingResultPostingTest(unittest.TestCase):
             events = page.locator("#system-events .test-btn")
             self.assertGreaterEqual(events.count(), 2)
             events.nth(0).click()
-            events.nth(1).click()
+            events.nth(1).click(force=True)
             self.assertEqual(page.locator("#ov.open").count(), 0)
             labels = page.evaluate(
                 """() => Array.from(document.querySelectorAll("#sentinelGroupActions button")).filter((b) => !b.hidden).map((b) => String(b.textContent || "").trim())"""

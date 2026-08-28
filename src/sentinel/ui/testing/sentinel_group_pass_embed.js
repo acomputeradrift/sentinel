@@ -21,6 +21,7 @@
   const CSS = [
     "#" + TOGGLE_ID + "{display:inline-flex;align-items:center;justify-content:center;min-width:96px;max-width:120px;min-height:44px;height:auto;padding:8px 10px;border-radius:12px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:12px;font-weight:700;cursor:pointer;box-sizing:border-box;white-space:normal;text-align:center;line-height:1.2;flex-shrink:0;font-family:Segoe UI,Tahoma,sans-serif;}",
     "#" + TOGGLE_ID + ".is-active{background:#29445a;color:#fff;border-color:#29445a;}",
+    "#appCanvas > #" + TOGGLE_ID + "{position:absolute;z-index:31;}",
     "#" + CLUSTER_ID + "{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;}",
     ".home-header{position:relative;padding-right:160px;box-sizing:border-box;}",
     ".home-header #" + TOGGLE_ID + "{position:absolute;top:24px;right:28px;}",
@@ -507,8 +508,26 @@
     document.addEventListener("gesturestart", onGesturePrevent, cap);
     document.addEventListener("gesturechange", onGesturePrevent, cap);
     window.addEventListener("resize", function () {
+      syncGeneratedTogglePosition();
       if (actions && !actions.hidden) positionActions();
     });
+  }
+
+  function syncGeneratedTogglePosition() {
+    if (!toggle) return;
+    if (toggle.closest(".deviceViewControlsContent") || toggle.closest(".home-header")) return;
+    const zoom = document.getElementById("zoomControls");
+    const canvas = document.getElementById("appCanvas");
+    const topControls = document.getElementById("topControls");
+    if (!zoom || !canvas || toggle.parentNode !== canvas) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const zoomRect = zoom.getBoundingClientRect();
+    const headerBottom = topControls ? topControls.getBoundingClientRect().bottom : canvasRect.top;
+    const left = Math.max(8, zoomRect.left - canvasRect.left);
+    const belowZoom = zoomRect.bottom - canvasRect.top + 8;
+    const belowHeader = headerBottom - canvasRect.top + 8;
+    toggle.style.left = left + "px";
+    toggle.style.top = Math.max(belowZoom, belowHeader) + "px";
   }
 
   function placeToggle(el) {
@@ -524,19 +543,20 @@
       if (!el.parentNode || el.parentNode !== group) group.appendChild(el);
       return;
     }
-    const orient = document.getElementById("orientationControls");
-    if (orient) {
-      orient.insertBefore(el, orient.firstChild);
-      return;
-    }
-    const zoom = document.getElementById("zoomControls") || document.getElementById("zoomControlsStatic");
-    if (zoom && zoom.parentNode) {
-      zoom.parentNode.insertBefore(el, zoom);
-      return;
-    }
     const header = document.querySelector(".home-header");
     if (header) {
       header.appendChild(el);
+      return;
+    }
+    const canvas = document.getElementById("appCanvas");
+    const zoom = document.getElementById("zoomControls") || document.getElementById("zoomControlsStatic");
+    if (canvas && zoom && zoom.parentNode === canvas) {
+      if (el.parentNode !== canvas) canvas.appendChild(el);
+      syncGeneratedTogglePosition();
+      return;
+    }
+    if (zoom && zoom.parentNode) {
+      zoom.parentNode.insertBefore(el, zoom);
       return;
     }
     document.body.appendChild(el);
@@ -630,6 +650,8 @@
     mountActions();
     bindDragSelect();
     updateChrome();
+    syncGeneratedTogglePosition();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncGeneratedTogglePosition);
   }
 
   global.__sentinelGroupPass = {
