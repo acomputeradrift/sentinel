@@ -1,0 +1,12 @@
+---
+description: Read CONTINUITY.md first; update it in place at session end (local + cloud/Grokbot)
+alwaysApply: true
+---
+
+# Continuity handoff
+
+- **Start:** Read `CONTINUITY.md` before searching the repo for SSH, deploy, droplet IP, or “what branch is live.”
+- **Do not** re-read `bootstrap.md` or hunt `docs/` unless a **Pointers** row in `CONTINUITY.md` applies to this task.
+- **End (local and cloud/Grokbot):** If HEAD, live URL, SSH, deploy method, or open work changed, edit `CONTINUITY.md` in place. Bump `Updated`. Replace stale bullets. Do not append a session log.
+- Never put secrets or private keys in `CONTINUITY.md`.
+- Keep `CONTINUITY.md` short. It is state, not policy (`AGENTS.md` is policy).
