@@ -100,7 +100,7 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 - **Updated:** 2026-08-30
 - **Branch:** `cursor/select-group-chrome-ff08`
-- **Repo HEAD:** `02e79fe` (Mac = GitHub, 0 ahead / 0 behind)
+- **Repo HEAD:** `7c1ab07` (Mac = GitHub, 0 ahead / 0 behind)
 - **Droplet HEAD:** `02e79fe` at `/opt/sentinel/app` — service `active`
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
 - **Open:** Technician Select/group chrome is on this branch (PR 6).
