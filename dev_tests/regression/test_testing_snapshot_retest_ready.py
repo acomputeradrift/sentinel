@@ -71,6 +71,10 @@ class TestingSnapshotRetestReadyTest(unittest.TestCase):
             snap = _recv_until(tech_ws, lambda m: m.get("type") == "testing_snapshot")
         by_key = {str(r.get("targetKey") or ""): r for r in (snap.get("results") or [])}
         self.assertTrue(by_key["btn:1:2:3:Lights"].get("retestReady"))
+        ready_at = str(by_key["btn:1:2:3:Lights"].get("retestReadyAt") or "").strip()
+        self.assertTrue(ready_at)
+        fail_at = str(by_key["btn:1:2:3:Lights"].get("recordedAtUtc") or "").strip()
+        self.assertNotEqual(ready_at, fail_at)
 
     def test_fail_without_complete_is_not_retest_ready(self):
         client, _project_id, token = self._client_and_token()
@@ -90,6 +94,7 @@ class TestingSnapshotRetestReadyTest(unittest.TestCase):
             snap = _recv_until(tech_ws, lambda m: m.get("type") == "testing_snapshot")
         by_key = {str(r.get("targetKey") or ""): r for r in (snap.get("results") or [])}
         self.assertFalse(bool(by_key["btn:1:2:3:Shade"].get("retestReady")))
+        self.assertFalse(bool(str(by_key["btn:1:2:3:Shade"].get("retestReadyAt") or "").strip()))
 
     def test_status_embed_defines_magenta_retest_trim(self):
         embed = (ROOT / "src" / "sentinel" / "ui" / "testing" / "sentinel_test_status_embed.js").read_text(
@@ -102,3 +107,25 @@ class TestingSnapshotRetestReadyTest(unittest.TestCase):
         )
         self.assertIn("--sentinel-trim-retest", theme)
         self.assertIn("#c026d3", theme)
+
+    def test_home_entry_event_fills_match_device_select_color(self):
+        embed = (ROOT / "src" / "sentinel" / "ui" / "testing" / "sentinel_test_status_embed.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('systemEvents: "var(--sentinel-fill-system-event, #1e5f86)"', embed)
+        self.assertIn('driverEvents: "var(--sentinel-fill-driver-event, #1e5f86)"', embed)
+        theme = (ROOT / "src" / "sentinel" / "ui" / "testing" / "sentinel_device_theme.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--sentinel-fill-system-event: #1e5f86;", theme)
+        self.assertIn("--sentinel-fill-driver-event: #1e5f86;", theme)
+        render = (ROOT / "src" / "sentinel" / "generation" / "render_core.py").read_text(encoding="utf-8")
+        self.assertIn("background:#1e5f86", render)
+        self.assertIn("--btn-fill-color:#1e5f86", render)
+
+    def test_dialogue_retest_uses_magenta_fail_and_complete_copy(self):
+        render = (ROOT / "src" / "sentinel" / "generation" / "render_core.py").read_text(encoding="utf-8")
+        self.assertIn("is-retest-ready", render)
+        self.assertIn("Ready for retest", render)
+        self.assertIn("retestReadyAt", render)
+        self.assertGreaterEqual(render.count(".actions button.is-fail-active.is-retest-ready"), 2)

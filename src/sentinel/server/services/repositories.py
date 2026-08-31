@@ -186,6 +186,8 @@ class Repository(Protocol):
 
     def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]: ...
 
+    def get_fail_tag_updated_at_for_project(self, *, projectId: str) -> dict[str, str]: ...
+
     def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None: ...
 
     def list_layer_lock_states_for_project(self, *, projectId: str, scopeKey: str | None = None) -> list[dict[str, Any]]: ...
@@ -218,6 +220,7 @@ class InMemoryRepository:
         self._active_upload_by_project: dict[str, str] = {}
         self._results_by_project_target: dict[tuple[str, str], list[TestResultRecord]] = {}
         self._fail_tags_by_project_target: dict[tuple[str, str], str] = {}
+        self._fail_tag_times_by_project_target: dict[tuple[str, str], str] = {}
         self._layer_locks_by_project_scope_layer: dict[tuple[str, str, str], dict[str, Any]] = {}
         self._idempotency: dict[tuple[str, str], dict[str, Any]] = {}
         # First recorded outcome per (projectId, targetKey); mirrors Postgres target_first_test_outcomes.
@@ -568,6 +571,7 @@ class InMemoryRepository:
             if projectId not in self._projects:
                 raise KeyError("PROJECT_NOT_FOUND")
             self._fail_tags_by_project_target[(projectId, targetKey)] = tag
+            self._fail_tag_times_by_project_target[(projectId, targetKey)] = utc_now()
 
     def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]:
         with self._lock:
@@ -575,6 +579,14 @@ class InMemoryRepository:
             for (pid, target_key), tag in self._fail_tags_by_project_target.items():
                 if pid == projectId:
                     out[target_key] = tag
+            return out
+
+    def get_fail_tag_updated_at_for_project(self, *, projectId: str) -> dict[str, str]:
+        with self._lock:
+            out: dict[str, str] = {}
+            for (pid, target_key), at in self._fail_tag_times_by_project_target.items():
+                if pid == projectId:
+                    out[target_key] = at
             return out
 
     def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None:
@@ -628,6 +640,9 @@ class InMemoryRepository:
             drop_tag_keys = [key for key in self._fail_tags_by_project_target.keys() if key[0] == projectId]
             for key in drop_tag_keys:
                 self._fail_tags_by_project_target.pop(key, None)
+            drop_tag_time_keys = [key for key in self._fail_tag_times_by_project_target.keys() if key[0] == projectId]
+            for key in drop_tag_time_keys:
+                self._fail_tag_times_by_project_target.pop(key, None)
             drop_lock_keys = [key for key in self._layer_locks_by_project_scope_layer.keys() if key[0] == projectId]
             for key in drop_lock_keys:
                 self._layer_locks_by_project_scope_layer.pop(key, None)
@@ -1090,6 +1105,16 @@ class PostgresRepository:
         out: dict[str, str] = {}
         for r in rows:
             out[str(r.get("targetKey") or "")] = str(r.get("tag") or "")
+        return out
+
+    def get_fail_tag_updated_at_for_project(self, *, projectId: str) -> dict[str, str]:
+        rows = self._q.list_fail_tags_for_project(self._database_url, project_id=projectId)
+        out: dict[str, str] = {}
+        for r in rows:
+            key = str(r.get("targetKey") or "")
+            at = str(r.get("updatedAtUtc") or "").strip()
+            if key and at:
+                out[key] = at
         return out
 
     def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None:

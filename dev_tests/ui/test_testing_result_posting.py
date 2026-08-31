@@ -1901,6 +1901,17 @@ class TestingResultPostingTest(unittest.TestCase):
             self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
             self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 1)
             self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            stack = page.evaluate(
+                """() => {
+                  const actions = document.getElementById("sentinelGroupActions");
+                  const popup = document.getElementById("vpPopup");
+                  return {
+                    actions: parseInt(getComputedStyle(actions).zIndex, 10),
+                    popup: parseInt(getComputedStyle(popup).zIndex, 10),
+                  };
+                }"""
+            )
+            self.assertGreater(int(stack["actions"]), int(stack["popup"]))
             self.assertEqual(page.locator("#ov.open").count(), 0)
         finally:
             server.stop()

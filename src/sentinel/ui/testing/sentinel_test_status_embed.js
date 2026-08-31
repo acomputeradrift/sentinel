@@ -11,8 +11,8 @@
     hardButtons: "var(--sentinel-fill-hard-button, #2c6fb7)",
     uiItems: "var(--sentinel-fill-ui-item, #a7a9ac)",
     emptyTag: "var(--sentinel-fill-empty-tag, #ef4444)",
-    systemEvents: "var(--sentinel-fill-system-event, #58585a)",
-    driverEvents: "var(--sentinel-fill-driver-event, #2c6fb7)",
+    systemEvents: "var(--sentinel-fill-system-event, #1e5f86)",
+    driverEvents: "var(--sentinel-fill-driver-event, #1e5f86)",
   };
 
   const STATE_TRIM = {

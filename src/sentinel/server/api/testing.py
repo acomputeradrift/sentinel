@@ -170,6 +170,7 @@ def _build_layer_lock_state_event(
 def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -> dict:
     latest = repo.get_latest_results_for_project(projectId=projectId)
     tags = repo.get_fail_tags_for_project(projectId=projectId)
+    tag_times = repo.get_fail_tag_updated_at_for_project(projectId=projectId)
     rows = list(latest.values())
     rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
     results: list[dict] = []
@@ -177,6 +178,7 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
         target = rec.target if isinstance(rec.target, dict) else {}
         target_key = str(target.get("targetKey") or "")
         outcome = str(rec.outcome or "").upper()
+        retest_ready = outcome == "FAIL" and str(tags.get(target_key) or "").upper() == "DONE"
         results.append(
             {
                 "targetKey": target_key,
@@ -186,7 +188,8 @@ def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -
                 "kind": target.get("kind") or target.get("targetKind"),
                 "refs": target.get("refs"),
                 "failNote": rec.failNote,
-                "retestReady": outcome == "FAIL" and str(tags.get(target_key) or "").upper() == "DONE",
+                "retestReady": retest_ready,
+                "retestReadyAt": str(tag_times.get(target_key) or "") if retest_ready else "",
                 **_result_provenance(rec=rec),
                 **_result_who(rec=rec),
             }

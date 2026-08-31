@@ -98,7 +98,7 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 - **Repo HEAD:** `9d7e1eb` (Mac = GitHub; doc update may be one commit ahead)
 - **Droplet HEAD:** `9d7e1eb` at `/opt/sentinel/app` — service `active`
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** Group pass / viewport / retest-ring ship is live. Deploy path is now GitHub pull on the droplet.
+- **Open:** Retest dialogue, home entry color `#1e5f86`, and viewport pass-box above the viewport are on this branch; not deployed.
 - **Next:** continue from this file; do not rediscover SSH/droplets or the product.
 
 ---

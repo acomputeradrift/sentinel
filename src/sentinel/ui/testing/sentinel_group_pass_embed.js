@@ -25,7 +25,7 @@
     "#" + CLUSTER_ID + "{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;}",
     ".home-header{position:relative;padding-right:160px;box-sizing:border-box;}",
     ".home-header #" + TOGGLE_ID + "{position:absolute;top:24px;right:28px;}",
-    "#" + ACTIONS_ID + "{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9500;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;min-width:220px;max-width:min(360px,calc(100vw - 24px));max-height:min(50vh,420px);overflow:auto;padding:12px;border:1px solid #b9cad8;border-radius:16px;background:rgba(247,251,255,.98);box-shadow:0 10px 30px rgba(20,50,75,.16);font-family:Segoe UI,Tahoma,sans-serif;color:#14324b;}",
+    "#" + ACTIONS_ID + "{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:11000;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;min-width:220px;max-width:min(360px,calc(100vw - 24px));max-height:min(50vh,420px);overflow:auto;padding:12px;border:1px solid #b9cad8;border-radius:16px;background:rgba(247,251,255,.98);box-shadow:0 10px 30px rgba(20,50,75,.16);font-family:Segoe UI,Tahoma,sans-serif;color:#14324b;}",
     "#" + ACTIONS_ID + "[hidden]{display:none !important;}",
     "#" + ACTIONS_ID + " button{border:1px solid #a9bccd;background:#f7fbff;border-radius:12px;min-height:44px;padding:10px 14px;font-size:15px;line-height:1.1;cursor:pointer;color:#14324b;width:100%;}",
     "#" + ACTIONS_ID + " button:disabled{opacity:.55;cursor:not-allowed;}",
@@ -35,7 +35,7 @@
     "#" + ACTIONS_ID + " .group-status.is-error{color:#8f1f1f;}",
     "body.sentinel-group-mode .btn-wrap.is-group-selected{outline:3px solid #7c3aed;outline-offset:2px;}",
     "body.sentinel-group-mode #rtiCanvas,body.sentinel-group-mode #rtiDeviceCanvas,body.sentinel-group-mode .device-page{touch-action:none;}",
-    "#" + MARQUEE_ID + "{position:fixed;z-index:9400;pointer-events:none;box-sizing:border-box;border:1px dashed #7c3aed;background:rgba(124,58,237,.12);}",
+    "#" + MARQUEE_ID + "{position:fixed;z-index:10900;pointer-events:none;box-sizing:border-box;border:1px dashed #7c3aed;background:rgba(124,58,237,.12);}",
     "body.sentinel-group-dragging{user-select:none;}",
   ].join("\n");
 

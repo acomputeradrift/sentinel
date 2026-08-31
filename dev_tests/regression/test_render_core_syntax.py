@@ -58,6 +58,8 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         self.assertIn("shiftKey", js)
         self.assertIn("sentinelGroupMarquee", js)
         self.assertIn("sentinelGroupActions", js)
+        self.assertIn("z-index:11000", js)
+        self.assertNotIn("z-index:9500", js)
         self.assertIn("touch-action:none", js)
         self.assertIn("translate(-50%, -50%)", js)
         self.assertIn("Pass selected", js)

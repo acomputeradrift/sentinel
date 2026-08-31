@@ -2680,6 +2680,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
@@ -3067,10 +3068,10 @@ function _applyTechPayload(payload) {{
       if (!targetKey) continue;
       const outcome = String(rec?.outcome || "").toUpperCase();
       const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady }});
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady, retestReadyAt: String(rec?.retestReadyAt || "") }});
       const rowUi = rowStatusByTargetKey.get(targetKey);
       if (rowUi) {{
-       setRowStatus(rowUi, outcome, at);
+       setRowStatus(rowUi, outcome, at, !!rec?.retestReady, rec?.retestReadyAt);
        applied += 1;
       }}
      }}
@@ -3124,7 +3125,10 @@ function _applyTechPayload(payload) {{
      const prev = statusByTargetKey.get(tagKey) || {{}};
      const prevOutcome = String(prev.outcome || "").toUpperCase();
      const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
-     statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready }});
+     const readyAt = ready ? String(payload?.recordedAtUtc || "") : "";
+     statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready, retestReadyAt: readyAt }});
+     const rowUi = rowStatusByTargetKey.get(tagKey);
+     if (rowUi) setRowStatus(rowUi, prev.outcome || "", prev.recordedAtUtc || "", ready, readyAt);
      refreshButtonVisualStates();
      return;
     }}
@@ -3226,6 +3230,10 @@ function _connectTechWs() {{
     rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
     return;
   }}
+  if (outcome === "FAIL" && rowUi.retestReady) {{
+    rowUi.lastTestEl.textContent = times.RETEST ? `Ready for retest: ${{times.RETEST}}` : "Ready for retest";
+    return;
+  }}
   if (outcome === "FAIL" && times.FAIL) {{
     rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
     return;
@@ -3236,15 +3244,26 @@ function _connectTechWs() {{
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, retestReady, retestReadyAt) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  const ready = !!retestReady && o === "FAIL";
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
-  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.failBtn) {{
+    rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+    rowUi.failBtn.classList.toggle("is-retest-ready", ready);
+  }}
   rowUi.currentOutcome = o;
+  rowUi.retestReady = ready;
   if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  if (ready) {{
+    const readyAt = formatLastTestUtc(retestReadyAt);
+    if (readyAt) rowUi.statusTimes.RETEST = readyAt;
+  }} else {{
+    delete rowUi.statusTimes.RETEST;
+  }}
   _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
@@ -3255,7 +3274,7 @@ function _connectTechWs() {{
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at);
+  setRowStatus(rowUi, outcome, at, !!rec.retestReady, rec.retestReadyAt);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -5588,6 +5607,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
@@ -5750,10 +5770,10 @@ const APP_UI={app_json};
      if (!targetKey) continue;
      const outcome = String(rec?.outcome || "").toUpperCase();
      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady }});
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady, retestReadyAt: String(rec?.retestReadyAt || "") }});
      const rowUi = rowStatusByTargetKey.get(targetKey);
      if (rowUi) {{
-      setRowStatus(rowUi, outcome, at);
+      setRowStatus(rowUi, outcome, at, !!rec?.retestReady, rec?.retestReadyAt);
       applied += 1;
      }}
     }}
@@ -5799,7 +5819,10 @@ const APP_UI={app_json};
     const prev = statusByTargetKey.get(tagKey) || {{}};
     const prevOutcome = String(prev.outcome || "").toUpperCase();
     const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
-    statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready }});
+    const readyAt = ready ? String(payload?.recordedAtUtc || "") : "";
+    statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready, retestReadyAt: readyAt }});
+    const rowUi = rowStatusByTargetKey.get(tagKey);
+    if (rowUi) setRowStatus(rowUi, prev.outcome || "", prev.recordedAtUtc || "", ready, readyAt);
     refreshHomeEventVisualStates();
     return;
    }}
@@ -5894,6 +5917,10 @@ const APP_UI={app_json};
     rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
     return;
   }}
+  if (outcome === "FAIL" && rowUi.retestReady) {{
+    rowUi.lastTestEl.textContent = times.RETEST ? `Ready for retest: ${{times.RETEST}}` : "Ready for retest";
+    return;
+  }}
   if (outcome === "FAIL" && times.FAIL) {{
     rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
     return;
@@ -5904,15 +5931,26 @@ const APP_UI={app_json};
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, retestReady, retestReadyAt) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  const ready = !!retestReady && o === "FAIL";
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
-  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.failBtn) {{
+    rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+    rowUi.failBtn.classList.toggle("is-retest-ready", ready);
+  }}
   rowUi.currentOutcome = o;
+  rowUi.retestReady = ready;
   if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  if (ready) {{
+    const readyAt = formatLastTestUtc(retestReadyAt);
+    if (readyAt) rowUi.statusTimes.RETEST = readyAt;
+  }} else {{
+    delete rowUi.statusTimes.RETEST;
+  }}
   _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
@@ -5923,7 +5961,7 @@ const APP_UI={app_json};
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at);
+  setRowStatus(rowUi, outcome, at, !!rec.retestReady, rec.retestReadyAt);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
