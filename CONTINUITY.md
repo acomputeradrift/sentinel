@@ -42,8 +42,7 @@ Commissioning + technician field-testing for RTI projects. Ingest an `.apex` fil
 | Device testing architecture | `docs/architecture/device_testing_architecture.md` |
 | Live-update / no-strand (not a deploy script) | `docs/architecture/live_update_no_strand_strategy.md` |
 | Official deploy + local/droplet workflow | `docs/directives/dev_environment_and_workflow.md` |
-| Deploy commit/archive rules | `.cursor/rules/deploy-commit-scope.mdc` |
-| Only automated deploy entrypoint | `deployment/deploy_from_head.ps1` |
+| Deploy “Jamie said deploy” | `.cursor/rules/deploy-commit-scope.mdc` |
 | Testing philosophy + local execution | `docs/directives/testing_strategy.md` |
 | API v1 contract (additive) | `docs/api_contract_v1.md` |
 | Data contracts | `docs/data_contracts.md` |
@@ -86,11 +85,7 @@ Commissioning + technician field-testing for RTI projects. Ingest an `.apex` fil
 
 ## Deploy
 
-**Source of truth:** `docs/directives/dev_environment_and_workflow.md`. **Only automated entrypoint:** `deployment/deploy_from_head.ps1` (`git archive HEAD src` — **only `src/`** reaches the droplet). After the script, read `temp/_deploy_capture.txt`; success is `RESULT:SUCCESS`. Do not write ad-hoc scp/ssh/Task deploy pipelines.
-
-When Jamie says **deploy**: commit the full release set (`src/`, `dev_tests/`, `pyproject.toml`, `docs/`, tracked `devtools/`, policy files) — not venvs, `generated/`, `uploads/`, or `*.egg-info/`. Then run that documented script, including `-RequiredRemoteMarkers` when the doc lists it.
-
-Last ship (2026-08-30) was an **explicit exception**: clone/pull this branch on the droplet, restart `sentinel.service`. Use `git archive` when Jamie said `deploy`. Use pull only when Jamie said pull. Do not invent a third path.
+**Source of truth:** `docs/directives/dev_environment_and_workflow.md`. Official path: commit + push, then on the droplet `git fetch` + `reset --hard origin/<branch>` in `/opt/sentinel/app`, prove `HEAD` and a marker, restart `sentinel.service`. Keep `uploads/`. Do not use `git archive` / `scp` / `deployment/deploy_from_head.ps1` unless Jamie asks for that old path.
 
 Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh sentinelServer`.
 
@@ -98,12 +93,12 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 ## Now
 
-- **Updated:** 2026-08-30
+- **Updated:** 2026-08-31
 - **Branch:** `cursor/select-group-chrome-ff08`
-- **Repo HEAD:** `7c1ab07` (Mac = GitHub, 0 ahead / 0 behind)
-- **Droplet HEAD:** `02e79fe` at `/opt/sentinel/app` — service `active`
+- **Repo HEAD:** `9d7e1eb` (Mac = GitHub; doc update may be one commit ahead)
+- **Droplet HEAD:** `9d7e1eb` at `/opt/sentinel/app` — service `active`
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** Group pass now lists each test in commissioning; events have no Select Multiple; group pass works inside viewports; Complete-after-fail uses a magenta retest ring. Not deployed.
+- **Open:** Group pass / viewport / retest-ring ship is live. Deploy path is now GitHub pull on the droplet.
 - **Next:** continue from this file; do not rediscover SSH/droplets or the product.
 
 ---
@@ -125,7 +120,7 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 - Reuse one SSH key for both droplets.
 - Ask Jamie to run tests to “verify.”
 - Commit `.tmp_apex_env/`, `generated/`, or `uploads/`.
-- Use `git archive` when Jamie said pull on the server; do not use ad-hoc pull when Jamie said `deploy`.
+- Use `git archive` / `scp` / `deploy_from_head.ps1` unless Jamie explicitly asks for that old path.
 - Assume pytest, in-process extract, or that `events.py` does work.
 - Assume `create_app()` always hits Postgres (InMemory if no `DATABASE_URL`).
 - Refactor WS + snapshot + rollups separately without tracing end-to-end message order.
