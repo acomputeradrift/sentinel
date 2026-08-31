@@ -19,6 +19,7 @@
     pass: "var(--sentinel-trim-pass, #39b54a)",
     partial: "var(--sentinel-trim-partial, #fcb040)",
     fail: "var(--sentinel-trim-fail, #ef4444)",
+    retest: "var(--sentinel-trim-retest, #c026d3)",
     untested: "var(--sentinel-trim-untested, transparent)",
   };
 
@@ -137,6 +138,7 @@
     }
     let passCount = 0;
     let failCount = 0;
+    let retestCount = 0;
     let recordedCount = 0;
     for (const label of targets) {
       const target = buildTargetPayload(ctxBtn, m, label);
@@ -147,9 +149,15 @@
       if (outcome !== "PASS" && outcome !== "FAIL") continue;
       recordedCount += 1;
       if (outcome === "PASS") passCount += 1;
-      if (outcome === "FAIL") failCount += 1;
+      if (outcome === "FAIL") {
+        failCount += 1;
+        if (rec.retestReady) retestCount += 1;
+      }
     }
     if (failCount > 0) {
+      if (retestCount > 0) {
+        return { stateKey: "retest", passCount, targetCount: targets.length };
+      }
       return { stateKey: "fail", passCount, targetCount: targets.length };
     }
     if (recordedCount === 0) {

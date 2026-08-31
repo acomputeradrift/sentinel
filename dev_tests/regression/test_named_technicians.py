@@ -252,15 +252,18 @@ class NamedTechnicianHandoffTest(unittest.TestCase):
             snap = _recv_until(ws, lambda m: m.get("type") == "commissioning_snapshot")
         batch_acts = [a for a in snap.get("activities") or [] if a.get("type") == "test_results.batch"]
         single_acts = [a for a in snap.get("activities") or [] if a.get("type") == "test_result"]
-        self.assertEqual(len(batch_acts), 1, snap.get("activities"))
-        self.assertEqual(batch_acts[0].get("source"), "GROUP")
-        self.assertEqual(batch_acts[0].get("batchId"), data["batchId"])
-        self.assertEqual(batch_acts[0].get("techName"), "Riley")
-        self.assertEqual((batch_acts[0].get("recordedBy") or {}).get("name"), "Riley")
-        self.assertEqual((batch_acts[0].get("recordedBy") or {}).get("technicianId"), link["technicianId"])
-        self.assertEqual(len(single_acts), 1)
-        self.assertEqual(single_acts[0].get("techName"), "Riley")
-        self.assertEqual(single_acts[0].get("source"), "SINGLE")
+        self.assertEqual(batch_acts, [], snap.get("activities"))
+        self.assertEqual(len(single_acts), 3, snap.get("activities"))
+        by_key = {a.get("targetKey"): a for a in single_acts}
+        self.assertEqual(by_key["btn:1:2:3:One"].get("source"), "GROUP")
+        self.assertEqual(by_key["btn:1:2:3:One"].get("batchId"), data["batchId"])
+        self.assertEqual(by_key["btn:1:2:3:One"].get("techName"), "Riley")
+        self.assertEqual((by_key["btn:1:2:3:One"].get("recordedBy") or {}).get("name"), "Riley")
+        self.assertEqual((by_key["btn:1:2:3:One"].get("recordedBy") or {}).get("technicianId"), link["technicianId"])
+        self.assertEqual(by_key["btn:1:2:3:Two"].get("source"), "GROUP")
+        self.assertEqual(by_key["btn:1:2:3:Two"].get("techName"), "Riley")
+        self.assertEqual(by_key["btn:9:9:9:Walked"].get("source"), "SINGLE")
+        self.assertEqual(by_key["btn:9:9:9:Walked"].get("techName"), "Riley")
 
     def test_who_survives_reupload_and_handoff_the_next_day(self):
         TestClient = _require_fastapi()

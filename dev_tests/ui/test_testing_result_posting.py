@@ -1649,7 +1649,7 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
-    def test_home_group_add_system_events_sends_batch(self):
+    def test_home_events_have_no_select_multiple_and_keep_pass_all(self):
         from sentinel.generation.render_core import render_project_home_html, load_json
 
         app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
@@ -1672,39 +1672,20 @@ class TestingResultPostingTest(unittest.TestCase):
         }
         html = render_project_home_html(project_data, app_ui, "unittest")
         self._assert_ws_helpers_present(html)
-        token = "techTokenHomeGroup"
+        token = "techTokenHomeEvents"
         server = _CaptureServer(html_by_path={f"/testing/{token}": html})
         port = server.start()
         try:
             page = self._browser.new_page()
             self._install_fake_ws(page)
             page.goto(f"http://127.0.0.1:{port}/testing/{token}")
-            self.assertEqual(page.locator(".home-header #sentinelGroupToggle").count(), 1)
-            self.assertEqual(page.locator("#sentinelGroupToggle").inner_text().strip(), "Select Multiple Buttons")
-            page.click("#sentinelGroupToggle")
+            self.assertEqual(page.locator("#sentinelGroupToggle").count(), 0)
             page.click("button.section-toggle[data-target='system-events']")
             events = page.locator("#system-events .test-btn")
             self.assertGreaterEqual(events.count(), 2)
-            page.evaluate(
-                """() => {
-                  const btns = document.querySelectorAll("#system-events .test-btn");
-                  if (btns[0]) btns[0].click();
-                  if (btns[1]) btns[1].click();
-                }"""
-            )
-            self.assertEqual(page.locator("#ov.open").count(), 0)
-            labels = page.evaluate(
-                """() => Array.from(document.querySelectorAll("#sentinelGroupActions button")).filter((b) => !b.hidden).map((b) => String(b.textContent || "").trim())"""
-            )
-            self.assertEqual(labels, ["Pass selected", "Cancel"])
-            page.click("#sentinelGroupPass")
-            self._wait_for_ws_outbox(page, min_posts=1)
-            sent = self._ws_payload(page, 0)
-            self.assertEqual(sent["type"], "test_result.submit_batch")
-            self.assertEqual(sent["outcome"], "PASS")
-            keys = [str((t or {}).get("targetKey") or "") for t in (sent.get("targets") or [])]
-            self.assertIn("event:126:Event Trigger", keys)
-            self.assertIn("event:127:Event Trigger", keys)
+            events.first.click()
+            page.locator("#ov.open").wait_for()
+            self.assertEqual(page.locator("#passAll").count(), 1)
         finally:
             server.stop()
 
@@ -1891,6 +1872,33 @@ class TestingResultPostingTest(unittest.TestCase):
             page.locator(".vp-box").first.click()
             self.assertFalse(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
             self.assertEqual(page.locator("#vpPopup:not([hidden])").count(), 0)
+            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 1)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
+    def test_group_pass_selects_buttons_inside_open_viewport(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._viewport_child_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupViewportInside"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.wait_for()
+            page.locator(".vp-box").first.click()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            page.click("#sentinelGroupToggle")
+            popup_btn = page.locator(".vp-popup-stage .test-btn, .vp-popup-vcontent .test-btn").first
+            popup_btn.wait_for()
+            popup_btn.click()
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
             self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 1)
             self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
             self.assertEqual(page.locator("#ov.open").count(), 0)

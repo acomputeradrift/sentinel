@@ -326,6 +326,7 @@
     if (el.closest("#topControls") || el.closest("#topControlsStatic")) return true;
     if (el.closest("#zoomControls") || el.closest("#zoomControlsStatic") || el.closest("#orientationControls")) return true;
     if (el.closest("#deviceViewControlsCanvas") || el.closest(".deviceViewControlsContent")) return true;
+    if (el.closest(".vp-popup-stage") || el.closest(".vp-popup-vcontent")) return false;
     if (el.closest("#layerControls") || el.closest("#vpPopup")) return true;
     if (el.closest("#rtiDeviceCanvas") || el.closest("#rtiCanvas") || el.closest(".device-page")) return false;
     return true;
@@ -337,6 +338,15 @@
       if (root) return root;
     }
     return document.querySelector("#rtiDeviceCanvas") || document;
+  }
+
+  function selectionRoots() {
+    const roots = [pageRoot()];
+    if (document.body && document.body.classList && document.body.classList.contains("viewport-mode")) {
+      const stage = document.querySelector(".vp-popup-vcontent") || document.querySelector(".vp-popup-stage");
+      if (stage) roots.push(stage);
+    }
+    return roots.filter(Boolean);
   }
 
   function marqueeEl() {
@@ -370,19 +380,25 @@
   }
 
   function wrapsIntersecting(rect) {
-    const root = pageRoot();
-    const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
     const hit = [];
-    for (let i = 0; i < wraps.length; i += 1) {
-      const box = wraps[i].getBoundingClientRect();
-      if (box.width <= 0 || box.height <= 0) continue;
-      const overlap = !(
-        box.right < rect.left ||
-        box.left > rect.left + rect.width ||
-        box.bottom < rect.top ||
-        box.top > rect.top + rect.height
-      );
-      if (overlap) hit.push(wraps[i]);
+    const seen = new Set();
+    const roots = selectionRoots();
+    for (let r = 0; r < roots.length; r += 1) {
+      const root = roots[r];
+      const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
+      for (let i = 0; i < wraps.length; i += 1) {
+        if (seen.has(wraps[i])) continue;
+        seen.add(wraps[i]);
+        const box = wraps[i].getBoundingClientRect();
+        if (box.width <= 0 || box.height <= 0) continue;
+        const overlap = !(
+          box.right < rect.left ||
+          box.left > rect.left + rect.width ||
+          box.bottom < rect.top ||
+          box.top > rect.top + rect.height
+        );
+        if (overlap) hit.push(wraps[i]);
+      }
     }
     return hit;
   }
@@ -397,12 +413,18 @@
   }
 
   function wrapsForViewport(vpIndex) {
-    const root = pageRoot();
-    const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
     const hit = [];
+    const seen = new Set();
     const want = String(vpIndex);
-    for (let i = 0; i < wraps.length; i += 1) {
-      if (String(wraps[i].getAttribute("data-vp") || "") === want) hit.push(wraps[i]);
+    const roots = selectionRoots();
+    for (let r = 0; r < roots.length; r += 1) {
+      const root = roots[r];
+      const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
+      for (let i = 0; i < wraps.length; i += 1) {
+        if (seen.has(wraps[i])) continue;
+        seen.add(wraps[i]);
+        if (String(wraps[i].getAttribute("data-vp") || "") === want) hit.push(wraps[i]);
+      }
     }
     return hit;
   }

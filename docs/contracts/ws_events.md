@@ -14,7 +14,7 @@ This document summarizes **stable JSON message types** exchanged over project-sc
 
 | type                    | Notes |
 |-------------------------|--------|
-| `commissioning_snapshot` | Includes `seq`, `projectId`, `progress`, `rollups`, `activities`, `fails`, `activeUpload`, `testingTypeSettings`. `activities` rebuild from latest-per-target: shared `batchId` collapses to one `test_results.batch` row (`Group pass (N targets)`); singles stay `test_result` with `source=SINGLE`. Progress/fails/pies exclude disabled testing types. |
+| `commissioning_snapshot` | Includes `seq`, `projectId`, `progress`, `rollups`, `activities`, `fails`, `activeUpload`, `testingTypeSettings`. `activities` rebuild from latest-per-target as individual `test_result` rows. Group-pass items keep `batchId` / `source=GROUP` for reports. Progress/fails/pies exclude disabled testing types. |
 | `replay.batch`         | `afterSeq`, `latestSeq`, `events[]` (each event includes `seq` when sourced from the broker ring buffer). |
 | `generation_phase`     | Transient progress; `status`, `percent`, optional `uploadId` / `originalFilename` / `activeUpload`. |
 | `generation`           | Terminal generation envelope (`status: READY`, etc.). |
@@ -37,7 +37,7 @@ Clients should apply broker events in **`seq` ascending** order and treat `commi
 |---------------------|--------|
 | `testing_snapshot`  | `seq`, `projectId`, `results[]` (latest-per-target projection, including `batchId` and `source`), `testingTypeSettings` (`disabledTypes[]`; missing means all types ON). |
 | `test_result`       | Includes optional embedded `progress` and `rollups` for technician UI. |
-| `test_results.batch` | Compact ack after `test_result.submit_batch`: `outcome`, `count`, `targetKeys[]`, `batchId`, `source`. Does not embed per-row progress; `commissioning_rollups` follows. |
+| `test_results.batch` | Compact ack after `test_result.submit_batch`: `outcome`, `count`, `targetKeys[]`, `results[]`, `batchId`, `source`. Commissioning Live Status fans each result into its own row. Does not embed per-row progress; `commissioning_rollups` follows. |
 | `testing_type_settings` | Same payload as commissioning; technician pages drop disabled types from popups, group select, and pass/fail rings without hiding drawn controls. |
 | `keepalive`         | Same as commissioning. |
 | `error`             | e.g. `TECH_LINK_REVOKED`. |

@@ -9,6 +9,7 @@
   --sentinel-trim-pass: #39b54a;
   --sentinel-trim-partial: #fcb040;
   --sentinel-trim-fail: #ef4444;
+  --sentinel-trim-retest: #c026d3;
   --sentinel-trim-untested: transparent;
   --sentinel-device-frame-bg: #eaecec;
   /* Hard-key remote column + .frame: matches commissioning .projectDeviceStaticLayout */

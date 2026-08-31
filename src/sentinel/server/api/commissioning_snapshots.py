@@ -103,54 +103,20 @@ def _activity_from_single(*, rec) -> dict:
         "kind": rec.target.get("kind") or rec.target.get("targetKind"),
         "refs": refs if isinstance(refs, dict) else {},
         "failNote": rec.failNote,
-        "batchId": None,
+        "batchId": result_batch_id(rec),
         "source": result_source(rec),
         **_activity_who(rec=rec),
-    }
-
-
-def _activity_from_batch(*, recs: list) -> dict:
-    recs_sorted = sorted(recs, key=lambda r: str((r.target or {}).get("targetKey") or ""))
-    first = recs_sorted[0]
-    outcome = str(first.outcome or "").strip().upper()
-    count = len(recs_sorted)
-    keys = [str((r.target or {}).get("targetKey") or "") for r in recs_sorted]
-    verb = "fail" if outcome == "FAIL" else "pass"
-    return {
-        "type": "test_results.batch",
-        "projectId": first.projectId,
-        "recordedAtUtc": first.recordedAtUtc,
-        "outcome": outcome,
-        "count": count,
-        "targetKeys": keys,
-        "targetKey": "",
-        "targetName": f"Group {verb} ({count} targets)",
-        "kind": "",
-        "refs": {},
-        "failNote": None,
-        "batchId": result_batch_id(first),
-        "source": result_source(first),
-        **_activity_who(rec=first),
     }
 
 
 def activities_from_latest(*, latest_results: dict) -> list[dict]:
     """Rebuild console activity from latest-per-target rows.
 
-    Rows that share a batch_id collapse to one ``test_results.batch`` activity so a
-    reconnect/snapshot still shows a group pass instead of N walked singles.
+    Each target is its own ``test_result`` row, including group-pass items.
+    ``batchId`` / ``source=GROUP`` stay on those rows for reports.
     """
-    batches: dict[str, list] = {}
-    singles: list = []
-    for rec in latest_results.values():
-        batch_id = result_batch_id(rec)
-        if batch_id:
-            batches.setdefault(batch_id, []).append(rec)
-        else:
-            singles.append(rec)
-    out: list[dict] = [_activity_from_batch(recs=recs) for recs in batches.values()]
-    out.extend(_activity_from_single(rec=rec) for rec in singles)
-    out.sort(key=lambda a: (str(a.get("recordedAtUtc") or ""), str(a.get("batchId") or "")), reverse=True)
+    out: list[dict] = [_activity_from_single(rec=rec) for rec in latest_results.values()]
+    out.sort(key=lambda a: (str(a.get("recordedAtUtc") or ""), str(a.get("targetKey") or "")), reverse=True)
     return out[:50]
 
 

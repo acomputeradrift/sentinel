@@ -201,16 +201,18 @@ class TestingBatchResultsTest(unittest.TestCase):
         acts = activities_from_latest(latest_results=recs)
         batch_acts = [a for a in acts if a.get("type") == "test_results.batch"]
         single_acts = [a for a in acts if a.get("type") == "test_result"]
-        self.assertEqual(len(batch_acts), 1)
-        self.assertEqual(batch_acts[0]["count"], 2)
-        self.assertEqual(batch_acts[0]["batchId"], "batch-aaa")
-        self.assertEqual(batch_acts[0]["source"], "GROUP")
-        self.assertEqual(sorted(batch_acts[0]["targetKeys"]), ["btn:group:a", "btn:group:b"])
-        self.assertEqual(batch_acts[0]["targetName"], "Group pass (2 targets)")
-        self.assertEqual(len(single_acts), 1)
-        self.assertEqual(single_acts[0]["targetKey"], "btn:walked")
-        self.assertEqual(single_acts[0]["source"], "SINGLE")
-        self.assertIsNone(single_acts[0].get("batchId"))
+        self.assertEqual(batch_acts, [])
+        self.assertEqual(len(single_acts), 3)
+        by_key = {a.get("targetKey"): a for a in single_acts}
+        self.assertEqual(by_key["btn:group:a"]["targetName"], "A")
+        self.assertEqual(by_key["btn:group:a"]["source"], "GROUP")
+        self.assertEqual(by_key["btn:group:a"]["batchId"], "batch-aaa")
+        self.assertEqual(by_key["btn:group:b"]["targetName"], "B")
+        self.assertEqual(by_key["btn:group:b"]["source"], "GROUP")
+        self.assertEqual(by_key["btn:group:b"]["batchId"], "batch-aaa")
+        self.assertEqual(by_key["btn:walked"]["targetName"], "Walked")
+        self.assertEqual(by_key["btn:walked"]["source"], "SINGLE")
+        self.assertIsNone(by_key["btn:walked"].get("batchId"))
 
         client, project_id, token = self._client_and_token()
         walked = client.post(
@@ -239,14 +241,16 @@ class TestingBatchResultsTest(unittest.TestCase):
             snap = _recv_until(commission_ws, lambda m: m.get("type") == "commissioning_snapshot")
         batch_acts = [a for a in snap.get("activities") or [] if a.get("type") == "test_results.batch"]
         single_acts = [a for a in snap.get("activities") or [] if a.get("type") == "test_result"]
-        self.assertEqual(len(batch_acts), 1, snap.get("activities"))
-        self.assertEqual(batch_acts[0].get("count"), 2)
-        self.assertEqual(batch_acts[0].get("batchId"), grouped["batchId"])
-        self.assertEqual(batch_acts[0].get("source"), "GROUP")
-        self.assertEqual(batch_acts[0].get("targetName"), "Group pass (2 targets)")
-        self.assertEqual(len(single_acts), 1, snap.get("activities"))
-        self.assertEqual(single_acts[0].get("targetKey"), "btn:walked:1")
-        self.assertEqual(single_acts[0].get("source"), "SINGLE")
+        self.assertEqual(batch_acts, [], snap.get("activities"))
+        self.assertEqual(len(single_acts), 3, snap.get("activities"))
+        by_key = {a.get("targetKey"): a for a in single_acts}
+        self.assertEqual(by_key["btn:group:1"].get("targetName"), "One")
+        self.assertEqual(by_key["btn:group:1"].get("source"), "GROUP")
+        self.assertEqual(by_key["btn:group:1"].get("batchId"), grouped["batchId"])
+        self.assertEqual(by_key["btn:group:2"].get("targetName"), "Two")
+        self.assertEqual(by_key["btn:group:2"].get("batchId"), grouped["batchId"])
+        self.assertEqual(by_key["btn:walked:1"].get("targetKey"), "btn:walked:1")
+        self.assertEqual(by_key["btn:walked:1"].get("source"), "SINGLE")
 
         with client.websocket_connect(f"/api/v1/testing/{token}/ws") as tech_ws:
             tech_snap = _recv_until(tech_ws, lambda m: m.get("type") == "testing_snapshot")
@@ -259,8 +263,12 @@ class TestingBatchResultsTest(unittest.TestCase):
 
         rebuilt = commissioning_snapshot(repo=client.app.state.repo, projectId=project_id)
         rebuilt_batch = [a for a in rebuilt["activities"] if a.get("type") == "test_results.batch"]
-        self.assertEqual(len(rebuilt_batch), 1)
-        self.assertEqual(rebuilt_batch[0]["batchId"], grouped["batchId"])
+        rebuilt_singles = [a for a in rebuilt["activities"] if a.get("type") == "test_result"]
+        self.assertEqual(rebuilt_batch, [])
+        self.assertEqual(len(rebuilt_singles), 3)
+        rebuilt_by_key = {a.get("targetKey"): a for a in rebuilt_singles}
+        self.assertEqual(rebuilt_by_key["btn:group:1"]["batchId"], grouped["batchId"])
+        self.assertEqual(rebuilt_by_key["btn:group:1"]["source"], "GROUP")
 
 
 if __name__ == "__main__":

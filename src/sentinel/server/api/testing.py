@@ -169,20 +169,24 @@ def _build_layer_lock_state_event(
 
 def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -> dict:
     latest = repo.get_latest_results_for_project(projectId=projectId)
+    tags = repo.get_fail_tags_for_project(projectId=projectId)
     rows = list(latest.values())
     rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
     results: list[dict] = []
     for rec in rows:
         target = rec.target if isinstance(rec.target, dict) else {}
+        target_key = str(target.get("targetKey") or "")
+        outcome = str(rec.outcome or "").upper()
         results.append(
             {
-                "targetKey": str(target.get("targetKey") or ""),
-                "outcome": str(rec.outcome or "").upper(),
+                "targetKey": target_key,
+                "outcome": outcome,
                 "recordedAtUtc": rec.recordedAtUtc,
                 "targetName": target.get("targetName"),
                 "kind": target.get("kind") or target.get("targetKind"),
                 "refs": target.get("refs"),
                 "failNote": rec.failNote,
+                "retestReady": outcome == "FAIL" and str(tags.get(target_key) or "").upper() == "DONE",
                 **_result_provenance(rec=rec),
                 **_result_who(rec=rec),
             }
@@ -515,6 +519,7 @@ def _build_test_results_batch_event(*, recs: list, outcome: str) -> dict:
         "outcome": str(outcome or "").strip().upper(),
         "count": len(recs),
         "targetKeys": [str((r.target or {}).get("targetKey") or "") for r in recs],
+        "results": [_post_test_result_response(rec=r) for r in recs],
         **_result_provenance(rec=first),
         **_result_who(rec=first),
     }

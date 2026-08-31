@@ -3067,7 +3067,7 @@ function _applyTechPayload(payload) {{
       if (!targetKey) continue;
       const outcome = String(rec?.outcome || "").toUpperCase();
       const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady }});
       const rowUi = rowStatusByTargetKey.get(targetKey);
       if (rowUi) {{
        setRowStatus(rowUi, outcome, at);
@@ -3104,7 +3104,7 @@ function _applyTechPayload(payload) {{
      for (const k of keys) {{
       const targetKey = String(k || "").trim();
       if (!targetKey) continue;
-      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
       const rowUi = rowStatusByTargetKey.get(targetKey);
       if (rowUi) setRowStatus(rowUi, outcome, at);
      }}
@@ -3118,12 +3118,22 @@ function _applyTechPayload(payload) {{
      }}
      return;
     }}
+    if (t === "fail_tag_updated") {{
+     const tagKey = String(payload?.targetKey || "");
+     if (!tagKey) return;
+     const prev = statusByTargetKey.get(tagKey) || {{}};
+     const prevOutcome = String(prev.outcome || "").toUpperCase();
+     const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
+     statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready }});
+     refreshButtonVisualStates();
+     return;
+    }}
     if (t !== "test_result.recorded" && t !== "test_result") return;
     const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
     if (!targetKey) return;
     const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
     const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
     const rowUi = rowStatusByTargetKey.get(targetKey);
     if (!rowUi) {{
      _logTechWs("row-miss", targetKey);
@@ -5740,7 +5750,7 @@ const APP_UI={app_json};
      if (!targetKey) continue;
      const outcome = String(rec?.outcome || "").toUpperCase();
      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady }});
      const rowUi = rowStatusByTargetKey.get(targetKey);
      if (rowUi) {{
       setRowStatus(rowUi, outcome, at);
@@ -5769,7 +5779,7 @@ const APP_UI={app_json};
     for (const k of keys) {{
      const targetKey = String(k || "").trim();
      if (!targetKey) continue;
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
      const rowUi = rowStatusByTargetKey.get(targetKey);
      if (rowUi) setRowStatus(rowUi, outcome, at);
     }}
@@ -5783,12 +5793,22 @@ const APP_UI={app_json};
     }}
     return;
    }}
+   if (t === "fail_tag_updated") {{
+    const tagKey = String(payload?.targetKey || "");
+    if (!tagKey) return;
+    const prev = statusByTargetKey.get(tagKey) || {{}};
+    const prevOutcome = String(prev.outcome || "").toUpperCase();
+    const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
+    statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready }});
+    refreshHomeEventVisualStates();
+    return;
+   }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
    const rowUi = rowStatusByTargetKey.get(targetKey);
    if (rowUi) {{
     setRowStatus(rowUi, outcome, at);
@@ -6261,16 +6281,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }});
  }});
 _connectTechWs();
-if (globalThis.__sentinelGroupPass) {{
- globalThis.__sentinelGroupPass.attach({{
-  surface: "home",
-  buildTargetPayload: buildTargetPayload,
-  sendWs: _sendTechWs,
-  refreshVisuals: refreshHomeEventVisualStates,
-  onPostingChange: setPosting,
-  setPendingBatch: function(on) {{ pendingBatchPass = !!on; }}
- }});
-}}
 document.getElementById('close').addEventListener('click', function(){{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click', function(e){{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
 </script></body></html>"""
