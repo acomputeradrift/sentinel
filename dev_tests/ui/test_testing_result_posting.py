@@ -1855,7 +1855,7 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
-    def test_select_on_viewport_selects_children_without_entering_mode(self):
+    def test_select_on_viewport_opens_mode_without_selecting_children(self):
         from sentinel.generation.render_core import render_single_device_html, load_json
 
         app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
@@ -1870,10 +1870,9 @@ class TestingResultPostingTest(unittest.TestCase):
             page.locator(".vp-box").first.wait_for()
             page.click("#sentinelGroupToggle")
             page.locator(".vp-box").first.click()
-            self.assertFalse(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
-            self.assertEqual(page.locator("#vpPopup:not([hidden])").count(), 0)
-            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 1)
-            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
             self.assertEqual(page.locator("#ov.open").count(), 0)
         finally:
             server.stop()

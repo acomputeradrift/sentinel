@@ -3649,12 +3649,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    if (el.dataset.boundVpClick) return;
    el.dataset.boundVpClick='1';
    el.addEventListener('click', (e)=>{{
-    if (globalThis.__sentinelGroupPass && globalThis.__sentinelGroupPass.isGroupMode()) {{
-     if (typeof globalThis.__sentinelGroupPass.handleViewportBoxClick === "function") {{
-      globalThis.__sentinelGroupPass.handleViewportBoxClick(el, e);
-     }}
-     return;
-    }}
     if (viewportMode.active) return;
     enterViewportMode(el.dataset.vp);
    }});
@@ -5582,7 +5576,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .btn-wrap--home-event .test-btn{{width:100%;margin:0;font:inherit;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:0;background:var(--btn-fill-color);color:#fff;box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);font-size:15px;line-height:1.35;text-align:left;cursor:pointer;white-space:normal;}}
 .btn-wrap--home-event:hover .test-btn{{filter:brightness(1.05);}}
 .btn-wrap--home-event .btn-pass-total{{display:none !important;visibility:hidden !important;}}
-.device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
+.device-row{{background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;}}
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px;z-index:10000;}}
 .ov.open{{display:flex;}}

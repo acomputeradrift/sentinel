@@ -213,7 +213,7 @@
 
   function buttonsInRoot(root) {
     if (!root || !root.querySelectorAll) return [];
-    return Array.prototype.slice.call(root.querySelectorAll(".test-btn"));
+    return Array.prototype.slice.call(root.querySelectorAll(".test-btn")).filter(isSelectableTarget);
   }
 
   function addButtons(btns) {
@@ -304,6 +304,7 @@
   function handleTestButtonClick(btn, evt) {
     const shift = !!(evt && evt.shiftKey);
     if (!groupMode && !shift) return false;
+    if (!isSelectableTarget(btn)) return false;
     if (evt && typeof evt.preventDefault === "function") evt.preventDefault();
     if (evt && typeof evt.stopPropagation === "function") evt.stopPropagation();
     if (shift) enterGroupMode();
@@ -379,6 +380,30 @@
     if (el) el.hidden = true;
   }
 
+  function inViewportPopup(el) {
+    return !!(el && el.closest && (el.closest(".vp-popup-stage") || el.closest(".vp-popup-vcontent")));
+  }
+
+  function isViewportChild(el) {
+    if (!el) return false;
+    if (el.classList && el.classList.contains("vp-btn")) return true;
+    const wrap = el.closest ? el.closest(".btn-wrap") : el;
+    if (wrap && wrap.classList && wrap.classList.contains("vp-btn")) return true;
+    if (wrap && wrap.getAttribute && String(wrap.getAttribute("data-vp") || "").trim()) return true;
+    return false;
+  }
+
+  function isViewportMode() {
+    return !!(document.body && document.body.classList && document.body.classList.contains("viewport-mode"));
+  }
+
+  function isSelectableTarget(el) {
+    if (!el) return false;
+    if (inViewportPopup(el)) return isViewportMode();
+    if (isViewportChild(el)) return false;
+    return true;
+  }
+
   function wrapsIntersecting(rect) {
     const hit = [];
     const seen = new Set();
@@ -389,6 +414,7 @@
       for (let i = 0; i < wraps.length; i += 1) {
         if (seen.has(wraps[i])) continue;
         seen.add(wraps[i]);
+        if (!isSelectableTarget(wraps[i])) continue;
         const box = wraps[i].getBoundingClientRect();
         if (box.width <= 0 || box.height <= 0) continue;
         const overlap = !(
@@ -423,22 +449,15 @@
       for (let i = 0; i < wraps.length; i += 1) {
         if (seen.has(wraps[i])) continue;
         seen.add(wraps[i]);
+        if (!isSelectableTarget(wraps[i])) continue;
         if (String(wraps[i].getAttribute("data-vp") || "") === want) hit.push(wraps[i]);
       }
     }
     return hit;
   }
 
-  function handleViewportBoxClick(box, evt) {
-    const shift = !!(evt && evt.shiftKey);
-    if (!groupMode && !shift) return false;
-    if (evt && typeof evt.preventDefault === "function") evt.preventDefault();
-    if (evt && typeof evt.stopPropagation === "function") evt.stopPropagation();
-    if (shift) enterGroupMode();
-    const n = addWraps(wrapsForViewport(box && box.getAttribute ? box.getAttribute("data-vp") : ""));
-    setStatus(n ? "Added " + n + " from viewport." : "No new targets in that viewport.", false);
-    updateChrome();
-    return true;
+  function handleViewportBoxClick(_box, _evt) {
+    return false;
   }
 
   function endDrag() {
@@ -507,7 +526,6 @@
     }
     const box = e.target && e.target.closest ? e.target.closest(".vp-box") : null;
     if (!box) return;
-    if (handleViewportBoxClick(box, e)) return;
   }
 
   function onGesturePrevent(e) {

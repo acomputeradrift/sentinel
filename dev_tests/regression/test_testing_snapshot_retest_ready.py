@@ -122,6 +122,8 @@ class TestingSnapshotRetestReadyTest(unittest.TestCase):
         render = (ROOT / "src" / "sentinel" / "generation" / "render_core.py").read_text(encoding="utf-8")
         self.assertIn("background:#1e5f86", render)
         self.assertIn("--btn-fill-color:#1e5f86", render)
+        self.assertNotIn(".device-row{{background:#29445a", render)
+        self.assertNotIn(".device-row{background:#29445a", render)
 
     def test_dialogue_retest_uses_magenta_fail_and_complete_copy(self):
         render = (ROOT / "src" / "sentinel" / "generation" / "render_core.py").read_text(encoding="utf-8")

@@ -93,12 +93,12 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 ## Now
 
-- **Updated:** 2026-08-31
+- **Updated:** 2026-09-01
 - **Branch:** `cursor/select-group-chrome-ff08`
-- **Repo HEAD:** `cec3bd9` (Mac = GitHub)
-- **Droplet HEAD:** `cec3bd9` at `/opt/sentinel/app` — service `active`
+- **Repo HEAD:** `1264fa2` (Mac = GitHub; this ship not pushed yet)
+- **Droplet HEAD:** `1264fa2` at `/opt/sentinel/app` — service `active`
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** Retest dialogue, home entry `#1e5f86`, and viewport pass-box z-index are live. Existing technician pages need a regenerate to pick up generated HTML.
+- **Open:** Device rows match event `#1e5f86`. Select Multiple on the base page no longer grabs viewport buttons; open viewport mode first, then select inside. Not deployed. Existing technician pages need a regenerate.
 - **Next:** continue from this file; do not rediscover SSH/droplets or the product.
 
 ---
