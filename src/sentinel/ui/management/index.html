@@ -61,6 +61,26 @@
           <ul id="technicianRoster" class="roster" data-testid="technician-roster"></ul>
         </section>
 
+        <section class="card" id="testPassCard">
+          <h2>Start new test pass</h2>
+          <p class="sub">History stays. Current derived state becomes untested. Type the project name to confirm. Field techs never see this control.</p>
+          <p class="sub" id="testPassHint">Select a project to start a new test pass.</p>
+          <div id="testPassBodyWrap" hidden>
+            <div class="row">
+              <label class="field grow">
+                <span>Type project name to confirm</span>
+                <input id="testPassConfirmName" type="text" autocomplete="off" />
+              </label>
+              <label class="field grow">
+                <span>Reason (optional)</span>
+                <input id="testPassReason" type="text" autocomplete="off" />
+              </label>
+              <button id="startTestPassBtn" class="danger" type="button">Start new test pass</button>
+            </div>
+            <div id="testPassStatus" class="status" role="status"></div>
+          </div>
+        </section>
+
         <section class="card" id="techLinksCard">
           <h2>Tech links</h2>
           <p class="sub" id="techLinksHint">Select a project to issue or reuse the one active link per technician.</p>

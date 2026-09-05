@@ -198,7 +198,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "progress_fetch_count": 0,
             "fails_fetch_count": 0,
             "rollups_fetch_count": 0,
-            "clear_tests_count": 0,
+            "clear_tests_count": 0,  # kept for older mock traces; Clear Tests tab is gone
             "company_technicians": [],
         }
 
@@ -1140,14 +1140,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="File").click()
         expect(page.locator("#panel-file")).to_be_visible()
-        page.get_by_role("button", name="Clear Tests").click()
-        expect(page.locator("#panel-clear-tests")).to_be_visible()
-        page.get_by_role("button", name="Clear tests for this project").click()
-        self.assertEqual(int(state.get("clear_tests_count") or 0), 1)
-        page.get_by_role("button", name="Commissioning").click()
-        expect(page.locator("#commissionActivityBody tr")).to_have_count(0)
+        expect(page.get_by_role("button", name="Clear Tests")).to_have_count(0)
+        expect(page.locator("#panel-clear-tests")).to_have_count(0)
+        expect(page.get_by_role("button", name="Clear tests for this project")).to_have_count(0)
         page.get_by_role("button", name="Diagnostics").click()
-        expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(0)
 
         # Tab switches inside same project should not force diagnostics consumer close churn.
         self.assertFalse(

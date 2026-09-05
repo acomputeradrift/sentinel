@@ -90,7 +90,7 @@ function _safeStorageSetJsonObject(key, obj) {
 }
 
 function setActiveTab(tabName) {
-  const tabs = ["commission", "diagnostics", "file", "settings", "tech-links", "reports", "clear-tests"];
+  const tabs = ["commission", "diagnostics", "file", "settings", "tech-links", "reports"];
   for (const t of tabs) {
     const btn = document.getElementById(`tab-${t}`);
     const panel = document.getElementById(`panel-${t}`);
@@ -864,20 +864,6 @@ async function loadCompanyTechnicians() {
   }
 }
 
-async function clearTestsForProject() {
-  const projectId = String(currentProjectId() || "").trim();
-  if (!projectId) return;
-  const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/clear-tests`), {
-    method: "POST",
-  });
-  const store = window.__sentinelProjectStore;
-  if (out && typeof out === "object" && store && typeof store.dispatch === "function") {
-    store.dispatch(out);
-  }
-  const uploadStatus = document.getElementById("uploadStatus");
-  if (uploadStatus) uploadStatus.textContent = "Cleared tests for this project.";
-}
-
 async function run() {
   window.__sentinelCommissioningHydrating = true;
   const modalClientStatusEl = document.getElementById("modalNewClientStatus");
@@ -969,9 +955,6 @@ async function run() {
     void loadTechLinks();
   });
   $("tab-reports").addEventListener("click", () => setActiveTab("reports"));
-  $("tab-clear-tests").addEventListener("click", () => setActiveTab("clear-tests"));
-  const clearTestsBtn = document.getElementById("clearTestsBtn");
-  if (clearTestsBtn) clearTestsBtn.addEventListener("click", () => safe(clearTestsForProject, $("uploadStatus")));
 
   window.addEventListener("hashchange", () => {
     void safe(refreshClients, null);

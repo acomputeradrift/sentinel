@@ -190,6 +190,82 @@ class ManagementRuntimeTest(unittest.TestCase):
         expect(page.locator("[data-testid='tech-url']")).to_have_count(1)
         page.close()
 
+    def test_management_start_new_pass_confirms_project_name(self):
+        from playwright.sync_api import expect
 
-if __name__ == "__main__":
-    unittest.main()
+        page = self._browser.new_page()
+        state: dict[str, object] = {
+            "clients": [{"clientId": "client-1", "name": "Acme", "createdAtUtc": "2026-03-21T00:00:00Z"}],
+            "projects": [
+                {
+                    "projectId": "proj-1",
+                    "clientId": "client-1",
+                    "name": "Job One",
+                    "status": "READY",
+                    "createdAtUtc": "2026-03-21T00:00:00Z",
+                }
+            ],
+            "pass_posts": [],
+        }
+
+        def fulfill_json(route, body, status=200):
+            route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
+
+        def handle_clients(route, request):
+            fulfill_json(route, state["clients"])
+
+        def handle_projects(route, request):
+            fulfill_json(route, state["projects"])
+
+        def handle_technicians(route, request):
+            fulfill_json(route, {"companyId": "company-1", "companyName": "Jamie", "technicians": []})
+
+        def handle_tech_links(route, request):
+            fulfill_json(route, [])
+
+        def handle_test_passes(route, request):
+            data = json.loads(request.post_data or "{}")
+            state["pass_posts"].append(data)
+            confirm = str(data.get("confirmName") or "").strip()
+            if confirm != "Job One":
+                fulfill_json(
+                    route,
+                    {"error": {"code": "CONFIRM_NAME_MISMATCH", "message": "Project name does not match."}},
+                    status=400,
+                )
+                return
+            fulfill_json(
+                route,
+                {
+                    "type": "commissioning_snapshot",
+                    "projectId": "proj-1",
+                    "testPassId": "pass-1",
+                    "startedAtUtc": "2026-03-21T01:00:00Z",
+                    "reason": data.get("reason"),
+                },
+            )
+
+        page.route("**/api/v1/commissioning/clients", handle_clients)
+        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
+        page.route("**/api/v1/commissioning/technicians", handle_technicians)
+        page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
+        page.route("**/api/v1/commissioning/projects/*/test-passes", handle_test_passes)
+
+        url = f"{self._static.base_url}/src/sentinel/ui/management/index.html"
+        page.goto(url)
+        expect(page.get_by_role("heading", name="Start new test pass")).to_be_visible()
+        page.locator("#clientSelect").select_option(value="client-1")
+        page.locator("#projectSelect").select_option(value="proj-1")
+        expect(page.locator("#testPassBodyWrap")).to_be_visible()
+
+        page.locator("#testPassConfirmName").fill("Wrong Name")
+        page.locator("#testPassReason").fill("retest after firmware")
+        page.locator("#startTestPassBtn").click()
+        expect(page.locator("#testPassStatus")).to_contain_text("Project name does not match.")
+        self.assertEqual(state["pass_posts"], [])
+
+        page.locator("#testPassConfirmName").fill("Job One")
+        page.locator("#startTestPassBtn").click()
+        expect(page.locator("#testPassStatus")).to_contain_text("New test pass started")
+        self.assertEqual(state["pass_posts"], [{"confirmName": "Job One", "reason": "retest after firmware"}])
+        page.close()

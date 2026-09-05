@@ -73,6 +73,12 @@ function currentProjectId() {
   return v;
 }
 
+function currentProject() {
+  const projectId = currentProjectId();
+  if (!projectId) return null;
+  return state.projects.find((p) => String(p.projectId || "") === projectId) || null;
+}
+
 function fillSelect(selectEl, items, getValue, getLabel, placeholder, extra) {
   selectEl.innerHTML = "";
   const ph = document.createElement("option");
@@ -195,6 +201,8 @@ function updateContextVisibility() {
   const hasProject = !!currentProjectId();
   $("techLinksBodyWrap").hidden = !hasProject;
   $("techLinksHint").hidden = hasProject;
+  $("testPassBodyWrap").hidden = !hasProject;
+  $("testPassHint").hidden = hasProject;
 }
 
 async function loadClients() {
@@ -330,6 +338,31 @@ async function rotateLink(link) {
   await loadTechLinks();
 }
 
+async function startNewTestPass() {
+  const project = currentProject();
+  if (!project) return;
+  const confirmName = $("testPassConfirmName").value.trim();
+  const reason = $("testPassReason").value.trim();
+  if (!confirmName) {
+    setStatus($("testPassStatus"), "Type the project name to confirm.");
+    return;
+  }
+  if (confirmName !== String(project.name || "").trim()) {
+    setStatus($("testPassStatus"), "Project name does not match.");
+    return;
+  }
+  const body = { confirmName };
+  if (reason) body.reason = reason;
+  await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(project.projectId)}/test-passes`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  $("testPassConfirmName").value = "";
+  $("testPassReason").value = "";
+  setStatus($("testPassStatus"), "New test pass started.");
+}
+
 async function revokeLink(link) {
   const projectId = currentProjectId();
   if (!projectId || !link?.techLinkId) return;
@@ -376,6 +409,9 @@ async function run() {
   });
   $("issueTechLinkBtn").addEventListener("click", () => {
     void issueOrReuseLink().catch((e) => setStatus($("techLinkStatus"), String(e?.message || e)));
+  });
+  $("startTestPassBtn").addEventListener("click", () => {
+    void startNewTestPass().catch((e) => setStatus($("testPassStatus"), String(e?.message || e)));
   });
   try {
     await loadClients();
