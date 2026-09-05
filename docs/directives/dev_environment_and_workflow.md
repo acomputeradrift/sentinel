@@ -59,99 +59,57 @@ Purpose: single local venv for **Sentinel package deps, FastAPI stack, and Playw
 
 ## Safe deployment workflow (recommended)
 
-Goal: deploy code **once**, without stale files, without a crash/restart loop, and without “it uploaded but the server is still old.”
+Goal: deploy the **pushed GitHub commit** onto the droplet once, then restart. `/opt/sentinel/app` is a git checkout. Do **not** use `git archive` / `scp` / `deploy_from_head.ps1` unless Jamie explicitly asks for that old path.
 
-### What gets replaced on the droplet (and what does not)
+### Why deploys fail
 
-`deployment/deploy_from_head.ps1` performs a **replace deploy of application source only**:
+- **Pulling before push.** The droplet can only see commits that are on GitHub.
+- **Skipping pre-restart checks.** If the on-disk `HEAD` is not the intended hash, do not restart.
+- **502 immediately after restart** is normal for a few seconds. Retry health with `curl --max-time`.
 
-| Path / data | Touched by deploy? |
-|-------------|-------------------|
-| `/opt/sentinel/app/src/` | **Yes** — removed, then repopulated from `git archive HEAD src` |
-| PostgreSQL (all DB data) | **No** — not accessed by the deploy script |
-| `/opt/sentinel/venv/` | **No** |
-| `/opt/sentinel/app/uploads/` (if present) | **No** |
-| `SENTINEL_GENERATED_ROOT` / `SENTINEL_UPLOAD_ROOT` (env-configured dirs) | **No** |
-| Other siblings under `/opt/sentinel/app/` (e.g. legacy `dev_tests/`) | **No** — only `src/` is removed |
+### Preflight (local)
 
-**Why:** `zipfile -e` alone only overwrites paths that exist in the zip; files removed from git (e.g. a reverted migration) **stay on disk** and can still run at boot. Deleting `src/` before extract makes on-disk `src/` match `HEAD src` exactly.
+1. **Commit** the full release set (`src/`, `dev_tests/`, `pyproject.toml`, `docs/`, tracked `devtools/`, policy files). Do not commit `.tmp_apex_env/`, `generated/`, `uploads/`, or `*.egg-info/`.
+2. `git status` — working tree clean.
+3. `git rev-parse HEAD` — this is the hash you will deploy.
+4. `git push` so `origin/<branch>` matches that hash.
 
-### Why deploys feel slow or take multiple attempts
+### One-shot deploy (Mac local agent — `ssh sentinelServer`)
 
-- **`git archive` only sees commits.** If you zip before `git commit`, the droplet gets the **previous** `HEAD` revision while `scp`/`extract` “succeed”—you only notice after verification (or never).
-- **Skipping pre-restart checks.** If Postgres migrations or import errors occur at boot, `systemctl` restart-loops; you burn time in `journalctl` instead of one `grep` on extracted files before restart.
-- **502 immediately after restart** is normal for a few seconds (Uvicorn behind nginx). Retry with `curl --max-time` instead of treating the first 502 as a failed deploy.
+Cloud/Grokbot VMs cannot see Jamie’s Mac SSH keys. Local Mac agents can.
 
-### Preflight (local — do this before `scp`)
-
-1. **Commit** — `git add` / `git commit` everything you intend to deploy. **`git archive` only packs committed files**; uncommitted edits never reach the zip. (Avoid blind `git add src`; see Known gotchas for `egg-info`.)
-2. `git status` — working tree clean (or you explicitly accept no further changes before archiving).
-3. `git rev-parse HEAD` — copy the hash into chat / ticket (**this is what you are deploying**).
-4. `git archive --format=zip -o sentinel_patch.zip HEAD src`
-5. **Prove the zip contains new bits** (pick a path you changed in this commit):
-   - PowerShell: `python -m zipfile -l sentinel_patch.zip | Select-String "sentinel/server/persistence/queries.py"`
-   - If the member is missing or looks wrong, **stop** — fix commit/archive, do not `scp` yet.
-
-Reliability note (agent + PowerShell + **UNC/SMB workspace** where command stdout can be missing or delayed):
-- Redirect command output to a **UTF-8** file and read it back before proceeding. Avoid raw `*>>` to the same file as mixed `Out-File -Encoding utf8` writes — PowerShell can otherwise mix **UTF-16** into the log and Cursor’s Read tool may report “binary.” `deployment/deploy_from_head.ps1` sets console UTF-8 and writes step output with `Out-File -Encoding utf8` only.
-- **SMB latency:** after a heavy command or a large write to the repo path, wait briefly (e.g. 1–2s) before **Read** on a capture file so the share has flushed.
-- **Cursor `CI=1`:** if the agent shell inherits `CI`, it can interact badly with some tools; for long local commands you can clear it first (PowerShell: `$env:CI = $null`).
-- Treat empty command output from the agent terminal as **unknown**, not success — prefer reading the capture file on disk.
-
-### One-shot deploy (PowerShell — strict order, no `&&`)
-
-Run **one line at a time** (or a single script block where each step must succeed). Use `ssh -o BatchMode=yes` so a missing key does not hang waiting for a password.
-
-Preferred (enforced) path:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File deployment/deploy_from_head.ps1 -RequiredRemoteMarkers _synthetic_controller_room_list_rows_html
+```
+ssh -o BatchMode=yes sentinelServer 'sudo git -c safe.directory=/opt/sentinel/app -C /opt/sentinel/app fetch origin'
+ssh -o BatchMode=yes sentinelServer 'sudo git -c safe.directory=/opt/sentinel/app -C /opt/sentinel/app reset --hard origin/<branch>'
+ssh -o BatchMode=yes sentinelServer 'sudo git -c safe.directory=/opt/sentinel/app -C /opt/sentinel/app rev-parse HEAD'
 ```
 
-This script enforces: clean tree gate, archive-from-`HEAD`, upload, **remove `/opt/sentinel/app/src`**, extract, optional remote marker verification, restart, and health/route checks, with a full transcript at `temp/_deploy_capture.txt`.
+Replace `<branch>` with the branch you just pushed. Confirm the printed hash equals local `HEAD`. Then prove a marker from this commit is on disk (example):
 
-```powershell
-# 0) From repo root — commit first (see Preflight step 1). Optional: $env:SENTINEL_DEPLOY_TIP = (git rev-parse --short HEAD)
+```
+ssh -o BatchMode=yes sentinelServer 'grep -q retestReady /opt/sentinel/app/src/sentinel/server/api/testing.py && echo DEPLOY_OK'
+```
 
-# 1) Archive (only committed files under src/)
-git archive --format=zip -o sentinel_patch.zip HEAD src
+If that fails, **do not restart**. Then:
 
-# 2) Upload
-scp sentinel_patch.zip sentinelServer:/tmp/sentinel_patch.zip
-
-# 3) Remove application source only, then extract (replace deploy — do not skip)
-ssh -o BatchMode=yes sentinelServer 'sudo rm -rf /opt/sentinel/app/src'
-ssh -o BatchMode=yes sentinelServer 'sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app'
-
-# 4) PRE-RESTART proof — replace the grep string when this deploy’s marker changes
-ssh -o BatchMode=yes sentinelServer 'test -f /opt/sentinel/app/src/sentinel/server/persistence/db.py && grep -q _split_sql_migration_statements /opt/sentinel/app/src/sentinel/server/persistence/db.py && echo DEPLOY_OK'
-
-# 5) Restart (needs passwordless sudo for systemctl, or run from an interactive root shell)
+```
 ssh -o BatchMode=yes sentinelServer 'sudo -n systemctl restart sentinel'
-
-# 6) Warm-up + health (retry 502 a few times)
-Start-Sleep -Seconds 6
+sleep 6
 ssh -o BatchMode=yes sentinelServer 'curl -sS --max-time 10 http://127.0.0.1/health'
-
-# 7) Route check (nginx → app)
 ssh -o BatchMode=yes sentinelServer 'curl -sS --max-time 10 -I http://127.0.0.1/commissioning/ | head -n 5'
 ```
 
-If step **4** fails, **do not restart** — re-archive, re-copy, re-extract until it passes (or fix the marker/grep).
+Keep `uploads/` on the droplet. Do not `git clean` it away.
 
 ### Mandatory deployment sequence (no parallelization)
 
-Same as the script above, in words:
-
-1. Commit so `HEAD` matches intent; record `git rev-parse HEAD`; build archive; **confirm zip lists expected paths**.
-2. Copy archive to `/tmp/sentinel_patch.zip` on the droplet.
-3. **`sudo rm -rf /opt/sentinel/app/src`** then extract into `/opt/sentinel/app` (replace deploy; do not rely on zip overwrite alone).
-4. **Verify on-disk content** (grep marker, or `verify_deploy_hash.py` on the droplet — see below) **before** `systemctl restart`.
+1. Commit and push so GitHub `HEAD` matches intent.
+2. `fetch` + `reset --hard` to `origin/<branch>` on `/opt/sentinel/app`.
+3. Confirm remote `rev-parse HEAD` matches the hash you pushed.
+4. **Verify on-disk content** (grep a marker from this commit) **before** `systemctl restart`.
 5. Restart `sentinel.service`.
 6. Health check after a short sleep; retry on 502.
-7. Route-level check (`/commissioning/` or equivalent).
-
-Do not run copy, extract, and restart in parallel, and **do not restart before step 4 passes**.
+7. Route-level check (`/commissioning/`).
 
 **Route-level verification (proven on 2026-04-12):** after health is OK, from the droplet check the commissioning UI path (served via nginx → app), for example:
 
@@ -179,12 +137,11 @@ Validation note:
 - Treat this as expected during the first seconds; retry health check after a short delay before treating it as a failure.
 
 Known gotchas:
-- **Do not** deploy with zip extract alone — always remove `/opt/sentinel/app/src` first (the script does this). Otherwise reverted files (e.g. old SQL migrations) remain and can crash boot.
-- Avoid `rsync --delete` against the **entire** `/opt/sentinel/app` (it can remove `uploads/` or other non-src data). Scoped delete of `src/` only is the supported replace step.
+- Avoid `rsync --delete` against `/opt/sentinel/app` (it can remove required modules and break imports).
 - I initially did a bad deploy step by running copy/extract in parallel; that could extract an old zip.
 - I corrected it with a strict sequential redeploy and re-verified server file contents.
-- Repeated failure: extraction completed but did not remove stale paths (e.g. a reverted migration under `src/`), leaving old runtime behavior active.
-- Prevention: **`rm -rf /opt/sentinel/app/src` before extract** + pre-restart source/hash verification is mandatory.
+- Repeated failure: extraction completed but did not overwrite an existing server file, leaving old runtime behavior active.
+- Prevention: force overwrite extraction + pre-restart source/hash verification is mandatory.
 - Some droplets do not have `unzip` installed; do not assume `unzip -o` is available.
 - Preferred fallback when `unzip` is missing: `sudo python3 -m zipfile -e /tmp/sentinel_patch.zip /opt/sentinel/app`.
 - Windows PowerShell quoting for complex `ssh "...python -c ..."` commands is fragile; prefer simple remote commands (or script files) over nested one-liners.
@@ -194,32 +151,8 @@ Known gotchas:
   3) `ssh sentinelServer "python3 /tmp/codex_remote_probe.py"`
   4) Cleanup both sides: `ssh sentinelServer "rm -f /tmp/codex_remote_probe.py"` and `Remove-Item -Force .tmp_remote_probe.py`
 - Do not use inline PowerShell heredoc/one-liner remote Python payloads over `ssh` for deploy verification steps.
-- **`pip install -e .` / editable installs** can create `src/sentinel.egg-info/` (and similar). Do **not** commit those into `git archive HEAD src` deploys—they are build metadata, not application source. They are listed in `.gitignore`; if they were ever committed, remove them from the index with `git rm -r --cached src/sentinel.egg-info` and commit once.
+- **`pip install -e .` / editable installs** can create `src/sentinel.egg-info/` (and similar). Do **not** commit them. They are listed in `.gitignore`.
 - **SQL migrations:** `apply_migrations` runs each `*.sql` file using a **comment- and string-aware** splitter (skips `--` line comments, respects `'...'` literals including `''` escapes). Prefer keeping migrations simple; avoid PostgreSQL **dollar-quoted** bodies in migration files unless we extend the splitter.
-
-### Optional: `verify_deploy_hash.py` (strongest pre-restart proof)
-
-Path: `deployment/verify_deploy_hash.py` — compares SHA-256 of a zip member to the extracted file on disk. **Copy it to the droplet** (or `scp` to `/tmp/`), run **after extract, before restart**:
-
-```powershell
-scp deployment/verify_deploy_hash.py sentinelServer:/tmp/verify_deploy_hash.py
-ssh -o BatchMode=yes sentinelServer 'python3 /tmp/verify_deploy_hash.py --member src/sentinel/server/persistence/db.py --deployed /opt/sentinel/app/src/sentinel/server/persistence/db.py'
-```
-
-Adjust `--member` / `--deployed` to a file you changed. Exit code `0` means zip and disk match. Defaults: `--help` on the droplet.
-
-### If zip creation is blocked locally
-
-In some environments, the command runner/policy layer may block zip creation via:
-- `Compress-Archive`
-- `python -m zipfile`
-
-Proven workaround:
-- Prefer `git archive` to create deployment zips (it has been reliable in this project).
-
-Fallback (only if zipping is not possible):
-- Use targeted copy of `src/` only, and still **remove `/opt/sentinel/app/src` first** before copying the new tree.
-- Do not use `rsync --delete` against the whole app root (protects `uploads/` and other non-src data).
 
 ## WebSocket support on the droplet
 

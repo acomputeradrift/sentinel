@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 
 from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import progress
-from sentinel.server.services.repositories import Repository
+from sentinel.server.services import testing_types
+from sentinel.server.services.repositories import Repository, result_batch_id, result_source, tech_name_from_recorded_by
 
 log = logging.getLogger("uvicorn.error")
 
@@ -13,7 +14,9 @@ log = logging.getLogger("uvicorn.error")
 def safe_progress(*, repo: Repository, projectId: str) -> dict:
     try:
         latest = repo.get_latest_results_for_project(projectId=projectId)
-        return progress.commissioning_progress(projectId=projectId, latest_results=latest)
+        return progress.commissioning_progress_for_project(
+            repo=repo, projectId=projectId, latest_results=latest
+        )
     except Exception:
         log.exception("[commissioning-ws] progress:compute-failed projectId=%s", projectId)
         return {
@@ -36,6 +39,7 @@ def safe_progress(*, repo: Repository, projectId: str) -> dict:
 
 def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict) -> list[dict]:
     tags = repo.get_fail_tags_for_project(projectId=projectId)
+    disabled = testing_types.disabled_types_from_repo(repo, projectId)
     fails = [rec for rec in latest_results.values() if rec.outcome == "FAIL"]
     fails.sort(key=lambda r: r.recordedAtUtc, reverse=True)
     out: list[dict] = []
@@ -43,10 +47,12 @@ def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict)
         target_key = str(rec.target.get("targetKey") or "")
         if not target_key:
             continue
+        if not testing_types.is_target_key_enabled(target_key, disabled):
+            continue
         refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
         recorded_by = rec.recordedBy if isinstance(rec.recordedBy, dict) else {}
-        tech_name = ""
-        if isinstance(refs, dict):
+        tech_name = tech_name_from_recorded_by(recorded_by)
+        if not tech_name and isinstance(refs, dict):
             tech_name = str(refs.get("techName") or "").strip()
         if not tech_name:
             tech_name = str(
@@ -80,26 +86,38 @@ def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict)
     return out
 
 
+def _activity_who(*, rec) -> dict:
+    recorded_by = rec.recordedBy if isinstance(getattr(rec, "recordedBy", None), dict) else {}
+    return {"recordedBy": recorded_by, "techName": tech_name_from_recorded_by(recorded_by)}
+
+
+def _activity_from_single(*, rec) -> dict:
+    refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
+    return {
+        "type": "test_result",
+        "projectId": rec.projectId,
+        "recordedAtUtc": rec.recordedAtUtc,
+        "targetKey": str(rec.target.get("targetKey") or ""),
+        "outcome": rec.outcome,
+        "targetName": rec.target.get("targetName"),
+        "kind": rec.target.get("kind") or rec.target.get("targetKind"),
+        "refs": refs if isinstance(refs, dict) else {},
+        "failNote": rec.failNote,
+        "batchId": result_batch_id(rec),
+        "source": result_source(rec),
+        **_activity_who(rec=rec),
+    }
+
+
 def activities_from_latest(*, latest_results: dict) -> list[dict]:
-    rows = list(latest_results.values())
-    rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
-    out: list[dict] = []
-    for rec in rows[:50]:
-        refs = rec.target.get("refs") if isinstance(rec.target.get("refs"), dict) else {}
-        out.append(
-            {
-                "type": "test_result",
-                "projectId": rec.projectId,
-                "recordedAtUtc": rec.recordedAtUtc,
-                "targetKey": str(rec.target.get("targetKey") or ""),
-                "outcome": rec.outcome,
-                "targetName": rec.target.get("targetName"),
-                "kind": rec.target.get("kind") or rec.target.get("targetKind"),
-                "refs": refs if isinstance(refs, dict) else {},
-                "failNote": rec.failNote,
-            }
-        )
-    return out
+    """Rebuild console activity from latest-per-target rows.
+
+    Each target is its own ``test_result`` row, including group-pass items.
+    ``batchId`` / ``source=GROUP`` stay on those rows for reports.
+    """
+    out: list[dict] = [_activity_from_single(rec=rec) for rec in latest_results.values()]
+    out.sort(key=lambda a: (str(a.get("recordedAtUtc") or ""), str(a.get("targetKey") or "")), reverse=True)
+    return out[:50]
 
 
 def active_upload_payload(*, repo: Repository, projectId: str) -> dict | None:
@@ -147,6 +165,9 @@ def commissioning_snapshot(*, repo: Repository, projectId: str, seq: int = 0) ->
     rollups = commissioning_rollups.rollups_payload(
         repo=repo, projectId=projectId, latest_results=latest, progress_payload=progress_payload
     )
+    settings = testing_types.settings_payload(
+        project_id=projectId, disabled_types=testing_types.disabled_types_from_repo(repo, projectId)
+    )
     return {
         "type": "commissioning_snapshot",
         "seq": int(seq or 0),
@@ -157,4 +178,5 @@ def commissioning_snapshot(*, repo: Repository, projectId: str, seq: int = 0) ->
         "activities": activities_from_latest(latest_results=latest),
         "fails": fails_from_latest(repo=repo, projectId=projectId, latest_results=latest),
         "activeUpload": active_upload_payload(repo=repo, projectId=projectId),
+        "testingTypeSettings": settings,
     }

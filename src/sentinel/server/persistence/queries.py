@@ -14,6 +14,10 @@ class DuplicateClientNameError(ValueError):
     pass
 
 
+class DuplicateTechnicianNameError(ValueError):
+    pass
+
+
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -69,6 +73,87 @@ def get_client(database_url: str, *, client_id: str) -> dict[str, Any] | None:
             "from clients where client_id=%s",
             (client_id,),
         )
+    finally:
+        con.close()
+
+
+def list_technicians_for_user(database_url: str, *, user_id: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select technician_id as \"technicianId\", user_id as \"userId\", name, "
+            "created_at_utc as \"createdAtUtc\" from technicians where user_id=%s "
+            "order by created_at_utc asc, name asc",
+            (user_id,),
+        )
+    finally:
+        con.close()
+
+
+def get_technician(database_url: str, *, technician_id: str) -> dict[str, Any] | None:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_one(
+            con,
+            "select technician_id as \"technicianId\", user_id as \"userId\", name, "
+            "created_at_utc as \"createdAtUtc\" from technicians where technician_id=%s",
+            (technician_id,),
+        )
+    finally:
+        con.close()
+
+
+def find_technician_by_name(database_url: str, *, user_id: str, name: str) -> dict[str, Any] | None:
+    wanted = str(name or "").strip()
+    if not wanted:
+        return None
+    con = db.connect(database_url)
+    try:
+        return db.fetch_one(
+            con,
+            "select technician_id as \"technicianId\", user_id as \"userId\", name, "
+            "created_at_utc as \"createdAtUtc\" from technicians "
+            "where user_id=%s and lower(name)=lower(%s)",
+            (user_id, wanted),
+        )
+    finally:
+        con.close()
+
+
+def create_technician(database_url: str, *, user_id: str, name: str) -> dict[str, Any]:
+    wanted = str(name or "").strip()
+    if not wanted:
+        raise KeyError("TECHNICIAN_NAME_REQUIRED")
+    existing = find_technician_by_name(database_url, user_id=user_id, name=wanted)
+    if existing is not None:
+        return existing
+    technician_id = _new_uuid()
+    created_at = _utc_now()
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        try:
+            cur.execute(
+                "insert into technicians (technician_id, user_id, name, created_at_utc) values (%s, %s, %s, %s)",
+                (technician_id, user_id, wanted, created_at),
+            )
+        except Exception as e:
+            msg = str(e)
+            if "technicians_user_id_name_ci_uq" in msg:
+                con.rollback()
+                found = find_technician_by_name(database_url, user_id=user_id, name=wanted)
+                if found is not None:
+                    return found
+                raise DuplicateTechnicianNameError(wanted) from e
+            raise
+        con.commit()
+        return {
+            "technicianId": technician_id,
+            "userId": user_id,
+            "name": wanted,
+            "createdAtUtc": created_at,
+        }
     finally:
         con.close()
 
@@ -205,18 +290,27 @@ def prune_project_uploads_keep_latest_two(database_url: str, *, project_id: str)
         con.close()
 
 
-def create_tech_link(database_url: str, *, project_id: str, label: str | None) -> dict[str, Any]:
+def create_tech_link(
+    database_url: str, *, project_id: str, label: str | None, technician_id: str | None = None
+) -> dict[str, Any]:
     tech_link_id = _new_uuid()
     created_at = _utc_now()
     con = db.connect(database_url)
     try:
         cur = con.cursor()
         cur.execute(
-            "insert into tech_links (tech_link_id, project_id, label, created_at_utc) values (%s, %s, %s, %s)",
-            (tech_link_id, project_id, label, created_at),
+            "insert into tech_links (tech_link_id, project_id, label, created_at_utc, technician_id) "
+            "values (%s, %s, %s, %s, %s)",
+            (tech_link_id, project_id, label, created_at, technician_id),
         )
         con.commit()
-        return {"techLinkId": tech_link_id, "projectId": project_id, "label": label, "createdAtUtc": created_at}
+        return {
+            "techLinkId": tech_link_id,
+            "projectId": project_id,
+            "label": label,
+            "technicianId": technician_id,
+            "createdAtUtc": created_at,
+        }
     finally:
         con.close()
 
@@ -226,8 +320,10 @@ def list_active_tech_links(database_url: str, *, project_id: str) -> list[dict[s
     try:
         return db.fetch_all(
             con,
-            "select distinct tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\" "
+            "select distinct tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
+            "tl.technician_id as \"technicianId\", t.name as \"technicianName\" "
             "from tech_links tl join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
+            "left join technicians t on t.technician_id=tl.technician_id "
             "where tl.project_id=%s and tlt.revoked_at_utc is null "
             "order by tl.created_at_utc desc",
             (project_id,),
@@ -291,8 +387,10 @@ def resolve_active_tech_token(database_url: str, *, tech_token: str) -> dict[str
     try:
         row = db.fetch_one(
             con,
-            "select tl.tech_link_id as \"techLinkId\", tl.project_id as \"projectId\" "
+            "select tl.tech_link_id as \"techLinkId\", tl.project_id as \"projectId\", "
+            "tl.technician_id as \"technicianId\", coalesce(t.name, tl.label) as \"technicianName\" "
             "from tech_link_tokens tlt join tech_links tl on tl.tech_link_id=tlt.tech_link_id "
+            "left join technicians t on t.technician_id=tl.technician_id "
             "where tlt.token_hash=%s and tlt.revoked_at_utc is null",
             (_hash_token(tech_token),),
         )
@@ -331,23 +429,29 @@ def append_test_result(
     project_id: str,
     generation_run_id: str | None,
     recorded_by_tech_link_id: str | None,
+    recorded_by_technician_id: str | None = None,
+    recorded_by_technician_name: str | None = None,
     target_key: str,
     target_kind: str,
     target_name: str,
     refs: dict[str, Any],
     outcome: str,
     fail_note: str | None,
+    batch_id: str | None = None,
+    source: str = "SINGLE",
 ) -> str:
     test_result_id = _new_uuid()
     recorded_at = _utc_now()
+    source_s = str(source or "SINGLE").strip().upper() or "SINGLE"
     con = db.connect(database_url)
     try:
         cur = con.cursor()
         cur.execute(
             "insert into test_results "
             "(test_result_id, project_id, generation_run_id, recorded_at_utc, recorded_by_role, recorded_by_tech_link_id, "
-            "target_key, target_kind, target_name, refs, outcome, fail_note) "
-            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+            "recorded_by_technician_id, recorded_by_technician_name, "
+            "target_key, target_kind, target_name, refs, outcome, fail_note, batch_id, source) "
+            "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)",
             (
                 test_result_id,
                 project_id,
@@ -355,12 +459,16 @@ def append_test_result(
                 recorded_at,
                 "TECHNICIAN",
                 recorded_by_tech_link_id,
+                recorded_by_technician_id,
+                recorded_by_technician_name,
                 target_key,
                 target_kind,
                 target_name,
                 json.dumps(refs),
                 outcome,
                 fail_note,
+                batch_id,
+                source_s,
             ),
         )
         cur.execute(
@@ -372,6 +480,77 @@ def append_test_result(
         )
         con.commit()
         return test_result_id
+    finally:
+        con.close()
+
+
+def append_test_results_batch(
+    database_url: str,
+    *,
+    project_id: str,
+    generation_run_id: str | None,
+    recorded_by_tech_link_id: str | None,
+    outcome: str,
+    items: list[dict[str, Any]],
+    batch_id: str | None = None,
+    source: str = "GROUP",
+    recorded_by_technician_id: str | None = None,
+    recorded_by_technician_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Insert many test_results in one connection/transaction. Shared recorded_at, batch_id, and source."""
+    recorded_at = _utc_now()
+    batch_id = str(batch_id or "").strip() or _new_uuid()
+    source_s = str(source or "GROUP").strip().upper() or "GROUP"
+    out: list[dict[str, Any]] = []
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        for item in items:
+            test_result_id = _new_uuid()
+            target_key = str(item.get("target_key") or "")
+            cur.execute(
+                "insert into test_results "
+                "(test_result_id, project_id, generation_run_id, recorded_at_utc, recorded_by_role, recorded_by_tech_link_id, "
+                "recorded_by_technician_id, recorded_by_technician_name, "
+                "target_key, target_kind, target_name, refs, outcome, fail_note, batch_id, source) "
+                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s)",
+                (
+                    test_result_id,
+                    project_id,
+                    generation_run_id,
+                    recorded_at,
+                    "TECHNICIAN",
+                    recorded_by_tech_link_id,
+                    recorded_by_technician_id,
+                    recorded_by_technician_name,
+                    target_key,
+                    str(item.get("target_kind") or ""),
+                    str(item.get("target_name") or ""),
+                    json.dumps(item.get("refs") or {}),
+                    outcome,
+                    item.get("fail_note"),
+                    batch_id,
+                    source_s,
+                ),
+            )
+            cur.execute(
+                "insert into target_first_test_outcomes "
+                "(project_id, target_key, first_outcome, first_test_result_id, first_recorded_at_utc) "
+                "values (%s,%s,%s,%s,%s) "
+                "on conflict (project_id, target_key) do nothing",
+                (project_id, target_key, outcome, test_result_id, recorded_at),
+            )
+            out.append(
+                {
+                    "testResultId": test_result_id,
+                    "targetKey": target_key,
+                    "recordedAtUtc": recorded_at,
+                    "batchId": batch_id,
+                    "source": source_s,
+                }
+            )
+        con.commit()
+        return out
     finally:
         con.close()
 
@@ -476,7 +655,7 @@ def list_fail_tags_for_project(database_url: str, *, project_id: str) -> list[di
     try:
         return db.fetch_all(
             con,
-            "select target_key as \"targetKey\", tag from fail_tags where project_id=%s",
+            "select target_key as \"targetKey\", tag, updated_at_utc as \"updatedAtUtc\" from fail_tags where project_id=%s",
             (project_id,),
         )
     finally:
@@ -630,5 +809,51 @@ def put_idempotency_response(database_url: str, *, scope: str, idempotency_key: 
             (scope, idempotency_key, json.dumps(response)),
         )
         con.commit()
+    finally:
+        con.close()
+
+
+def _parse_disabled_types(raw: Any) -> list[str]:
+    from sentinel.server.services import testing_types
+
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = [raw]
+    return testing_types.normalize_disabled_types(raw)
+
+
+def get_testing_type_disabled(database_url: str, *, project_id: str) -> list[str]:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select disabled_types as \"disabledTypes\" from project_testing_type_settings where project_id=%s",
+            (project_id,),
+        )
+        if not row:
+            return []
+        return _parse_disabled_types(row.get("disabledTypes"))
+    finally:
+        con.close()
+
+
+def set_testing_type_disabled(database_url: str, *, project_id: str, disabled_types: list[str]) -> list[str]:
+    from sentinel.server.services import testing_types
+
+    cleaned = testing_types.normalize_disabled_types(disabled_types)
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        cur.execute(
+            "insert into project_testing_type_settings (project_id, disabled_types, updated_at_utc) "
+            "values (%s, %s::jsonb, %s) "
+            "on conflict (project_id) do update set disabled_types = excluded.disabled_types, "
+            "updated_at_utc = excluded.updated_at_utc",
+            (project_id, json.dumps(cleaned), _utc_now()),
+        )
+        con.commit()
+        return list(cleaned)
     finally:
         con.close()

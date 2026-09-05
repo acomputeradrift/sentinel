@@ -20,10 +20,11 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 
 from sentinel.server.api.errors import http_error
-from sentinel.server.api.schemas import PostReadyBaselineBody, PostTestResultBody
+from sentinel.server.api.schemas import PostReadyBaselineBody, PostTestResultBody, PostTestResultsBatchBody
 from sentinel.server.services import commissioning_rollups
+from sentinel.server.services import testing_types
 from sentinel.server.services import ws_broker
-from sentinel.server.services.repositories import Repository
+from sentinel.server.services.repositories import Repository, result_batch_id, result_source, tech_name_from_recorded_by
 
 
 router = APIRouter(tags=["testing"])
@@ -33,6 +34,7 @@ WS_SEND_TIMEOUT_S = 5.0
 COMMISSIONING_ROLLUPS_DEBOUNCE_S = 0.1
 SHELL_RUNTIME_MODE = "shell"
 SOURCE_RUNTIME_MODE = "source"
+BATCH_MAX_TARGETS = 20000
 
 
 def _repo(request: Request) -> Repository:
@@ -105,16 +107,16 @@ def _app_event_broker(app) -> ws_broker.ProjectEventBroker:
     return broker
 
 
-def _recorded_by_tech_label(*, repo: Repository, recorded_by: dict[str, Any] | None) -> str:
-    if not isinstance(recorded_by, dict):
-        return ""
-    tech_link_id = recorded_by.get("techLinkId")
-    if not tech_link_id:
-        return ""
-    return str(repo.get_tech_link_label(techLinkId=str(tech_link_id)) or "").strip()
+def _result_provenance(*, rec) -> dict[str, Any]:
+    return {"batchId": result_batch_id(rec), "source": result_source(rec)}
 
 
-def _build_test_result_event(*, rec, recorded_by_tech_label: str = "") -> dict:
+def _result_who(*, rec) -> dict[str, Any]:
+    recorded_by = rec.recordedBy if isinstance(getattr(rec, "recordedBy", None), dict) else {}
+    return {"recordedBy": recorded_by, "techName": tech_name_from_recorded_by(recorded_by)}
+
+
+def _build_test_result_event(*, rec) -> dict:
     target_key = str(rec.target.get("targetKey") or "")
     return {
         "type": "test_result",
@@ -126,7 +128,8 @@ def _build_test_result_event(*, rec, recorded_by_tech_label: str = "") -> dict:
         "kind": rec.target.get("kind") or rec.target.get("targetKind"),
         "refs": rec.target.get("refs"),
         "failNote": rec.failNote,
-        "recordedByTechLabel": str(recorded_by_tech_label or "").strip(),
+        **_result_provenance(rec=rec),
+        **_result_who(rec=rec),
     }
 
 
@@ -166,39 +169,42 @@ def _build_layer_lock_state_event(
 
 def _build_testing_snapshot(*, repo: Repository, projectId: str, seq: int = 0) -> dict:
     latest = repo.get_latest_results_for_project(projectId=projectId)
+    tags = repo.get_fail_tags_for_project(projectId=projectId)
+    tag_times = repo.get_fail_tag_updated_at_for_project(projectId=projectId)
     rows = list(latest.values())
     rows.sort(key=lambda r: r.recordedAtUtc, reverse=True)
     results: list[dict] = []
-    label_cache: dict[str, str] = {}
     for rec in rows:
         target = rec.target if isinstance(rec.target, dict) else {}
-        tech_label = ""
-        recorded_by = rec.recordedBy if isinstance(rec.recordedBy, dict) else {}
-        tech_link_id = recorded_by.get("techLinkId")
-        if tech_link_id:
-            cache_key = str(tech_link_id)
-            if cache_key not in label_cache:
-                label_cache[cache_key] = _recorded_by_tech_label(repo=repo, recorded_by=recorded_by)
-            tech_label = label_cache[cache_key]
+        target_key = str(target.get("targetKey") or "")
+        outcome = str(rec.outcome or "").upper()
+        retest_ready = outcome == "FAIL" and str(tags.get(target_key) or "").upper() == "DONE"
         results.append(
             {
-                "targetKey": str(target.get("targetKey") or ""),
-                "outcome": str(rec.outcome or "").upper(),
+                "targetKey": target_key,
+                "outcome": outcome,
                 "recordedAtUtc": rec.recordedAtUtc,
                 "targetName": target.get("targetName"),
                 "kind": target.get("kind") or target.get("targetKind"),
                 "refs": target.get("refs"),
                 "failNote": rec.failNote,
-                "recordedByTechLabel": tech_label,
+                "retestReady": retest_ready,
+                "retestReadyAt": str(tag_times.get(target_key) or "") if retest_ready else "",
+                **_result_provenance(rec=rec),
+                **_result_who(rec=rec),
             }
         )
     layer_locks = _build_layer_lock_rows(repo=repo, projectId=projectId)
+    settings = testing_types.settings_payload(
+        project_id=projectId, disabled_types=testing_types.disabled_types_from_repo(repo, projectId)
+    )
     return {
         "type": "testing_snapshot",
         "seq": int(seq or 0),
         "projectId": projectId,
         "results": results,
         "layerLocks": layer_locks,
+        "testingTypeSettings": settings,
     }
 
 
@@ -502,7 +508,71 @@ def _post_test_result_response(*, rec) -> dict:
         "target": rec.target,
         "outcome": rec.outcome,
         "failNote": rec.failNote,
+        **_result_provenance(rec=rec),
+        **_result_who(rec=rec),
     }
+
+
+def _build_test_results_batch_event(*, recs: list, outcome: str) -> dict:
+    first = recs[0]
+    return {
+        "type": "test_results.batch",
+        "projectId": first.projectId,
+        "recordedAtUtc": first.recordedAtUtc,
+        "outcome": str(outcome or "").strip().upper(),
+        "count": len(recs),
+        "targetKeys": [str((r.target or {}).get("targetKey") or "") for r in recs],
+        "results": [_post_test_result_response(rec=r) for r in recs],
+        **_result_provenance(rec=first),
+        **_result_who(rec=first),
+    }
+
+
+def _normalize_batch_items(*, payload: dict) -> tuple[str, list[dict[str, Any]]]:
+    outcome = str(payload.get("outcome") or "").strip().upper()
+    if outcome not in ("PASS", "FAIL", "UNTESTED"):
+        raise ValueError("outcome")
+    raw_targets = payload.get("targets")
+    if not isinstance(raw_targets, list) or not raw_targets:
+        raise ValueError("targets")
+    if len(raw_targets) > BATCH_MAX_TARGETS:
+        raise ValueError("too_many")
+    shared_note = payload.get("failNote")
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in raw_targets:
+        if not isinstance(row, dict):
+            continue
+        target_key = str(row.get("targetKey") or "").strip()
+        if not target_key or target_key in seen:
+            continue
+        seen.add(target_key)
+        fail_note = row.get("failNote")
+        if fail_note is None:
+            fail_note = shared_note
+        note = str(fail_note).strip() if fail_note is not None else None
+        if outcome == "FAIL" and not note:
+            raise ValueError("fail_note")
+        target = {
+            "targetKey": target_key,
+            "kind": row.get("kind") or row.get("targetKind"),
+            "targetName": row.get("targetName"),
+            "refs": row.get("refs") if isinstance(row.get("refs"), dict) else {},
+        }
+        items.append({"target": target, "failNote": note or None})
+    if not items:
+        raise ValueError("targets")
+    return outcome, items
+
+
+def _record_test_results_batch(*, repo: Repository, app, techToken: str, outcome: str, items: list[dict[str, Any]]) -> list:
+    recs = repo.append_test_results_batch(techToken=techToken, items=items, outcome=outcome)
+    if not recs:
+        return recs
+    _broker_app = _app_event_broker(app)
+    _broker_app.publish(projectId=recs[0].projectId, event=_build_test_results_batch_event(recs=recs, outcome=outcome))
+    _schedule_commissioning_rollups_refresh(app=app, project_id=recs[0].projectId)
+    return recs
 
 
 @router.post("/api/v1/testing/{techToken}/results")
@@ -545,14 +615,61 @@ def post_result(
     except KeyError:
         raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
 
-    tech_label = _recorded_by_tech_label(repo=repo, recorded_by=rec.recordedBy if isinstance(rec.recordedBy, dict) else {})
-    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec, recorded_by_tech_label=tech_label))
+    _broker(request).publish(projectId=rec.projectId, event=_build_test_result_event(rec=rec))
     _schedule_commissioning_rollups_refresh(app=request.app, project_id=rec.projectId)
 
     resp = _post_test_result_response(rec=rec)
     if ikey:
         repo.put_idempotency_response(scope=f"post_test_result:{techToken}", key=ikey, response=resp)
     return resp
+
+
+@router.post("/api/v1/testing/{techToken}/results/batch")
+def post_results_batch(request: Request, techToken: str, payload: dict) -> dict:
+    try:
+        body = PostTestResultsBatchBody.model_validate(payload or {})
+    except ValidationError:
+        raise http_error(400, code="VALIDATION_ERROR", message="Invalid test result batch payload.")
+
+    raw = body.model_dump(mode="python")
+    try:
+        outcome, items = _normalize_batch_items(payload=raw)
+    except ValueError as e:
+        code = str(e)
+        if code == "fail_note":
+            raise http_error(400, code="FAIL_NOTE_REQUIRED", message="Fail note is required when outcome is FAIL.")
+        if code == "too_many":
+            raise http_error(400, code="VALIDATION_ERROR", message=f"Batch cannot exceed {BATCH_MAX_TARGETS} targets.")
+        raise http_error(400, code="VALIDATION_ERROR", message="Invalid test result batch payload.")
+
+    repo = _repo(request)
+    try:
+        recs = _record_test_results_batch(repo=repo, app=request.app, techToken=techToken, outcome=outcome, items=items)
+    except KeyError:
+        raise http_error(410, code="TECH_LINK_REVOKED", message="This technician link has been revoked.")
+
+    first = recs[0]
+    provenance = _result_provenance(rec=first)
+    who = _result_who(rec=first)
+    return {
+        "projectId": first.projectId,
+        "recordedAtUtc": first.recordedAtUtc,
+        "outcome": outcome,
+        "count": len(recs),
+        "batchId": provenance["batchId"],
+        "source": provenance["source"],
+        **who,
+        "results": [
+            {
+                "testResultId": r.testResultId,
+                "targetKey": str((r.target or {}).get("targetKey") or ""),
+                "batchId": result_batch_id(r) or provenance["batchId"],
+                "source": result_source(r),
+                **_result_who(rec=r),
+            }
+            for r in recs
+        ],
+    }
 
 
 @router.websocket("/api/v1/testing/{techToken}/ws")
@@ -733,6 +850,73 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                         ),
                     )
                     continue
+                if msg_type == "test_result.submit_batch":
+                    try:
+                        outcome, items = _normalize_batch_items(payload=payload)
+                    except ValueError as e:
+                        code = str(e)
+                        if code == "fail_note":
+                            await _send_text_or_fail(
+                                websocket=websocket,
+                                text=json.dumps(
+                                    {
+                                        "type": "error",
+                                        "code": "FAIL_NOTE_REQUIRED",
+                                        "message": "Fail note is required when outcome is FAIL.",
+                                    }
+                                ),
+                                project_id=project_id,
+                                tech_token=techToken,
+                            )
+                            continue
+                        if code == "too_many":
+                            await _send_text_or_fail(
+                                websocket=websocket,
+                                text=json.dumps(
+                                    {
+                                        "type": "error",
+                                        "code": "VALIDATION_ERROR",
+                                        "message": f"Batch cannot exceed {BATCH_MAX_TARGETS} targets.",
+                                    }
+                                ),
+                                project_id=project_id,
+                                tech_token=techToken,
+                            )
+                            continue
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps(
+                                {
+                                    "type": "error",
+                                    "code": "VALIDATION_ERROR",
+                                    "message": "Invalid test result batch payload.",
+                                }
+                            ),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        continue
+                    try:
+                        recs = _record_test_results_batch(
+                            repo=repo, app=websocket.app, techToken=techToken, outcome=outcome, items=items
+                        )
+                    except KeyError:
+                        await _send_text_or_fail(
+                            websocket=websocket,
+                            text=json.dumps({"type": "error", "code": "TECH_LINK_REVOKED"}),
+                            project_id=project_id,
+                            tech_token=techToken,
+                        )
+                        await websocket.close(code=1008)
+                        return
+                    log.info(
+                        "[testing-ws] publish-batch projectId=%s count=%s outcome=%s broker_id=%s",
+                        recs[0].projectId if recs else project_id,
+                        len(recs),
+                        outcome,
+                        id(broker),
+                    )
+                    continue
                 if msg_type not in ("test_result.submit", "test_result"):
                     await _send_text_or_fail(
                         websocket=websocket,
@@ -776,11 +960,7 @@ async def testing_ws(websocket: WebSocket, techToken: str):
                     )
                     await websocket.close(code=1008)
                     return
-                tech_label = _recorded_by_tech_label(
-                    repo=repo,
-                    recorded_by=rec.recordedBy if isinstance(rec.recordedBy, dict) else {},
-                )
-                event = _build_test_result_event(rec=rec, recorded_by_tech_label=tech_label)
+                event = _build_test_result_event(rec=rec)
                 broker.publish(projectId=rec.projectId, event=event)
                 _schedule_commissioning_rollups_refresh(app=websocket.app, project_id=rec.projectId)
                 log.info(

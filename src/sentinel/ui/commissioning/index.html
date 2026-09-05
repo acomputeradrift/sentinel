@@ -42,6 +42,7 @@
           <button id="tab-commission" class="tab" type="button" aria-selected="false" data-tab="commission">Commissioning</button>
           <button id="tab-diagnostics" class="tab" type="button" aria-selected="false" data-tab="diagnostics">Diagnostics</button>
           <button id="tab-file" class="tab" type="button" aria-selected="false" data-tab="file">File</button>
+          <button id="tab-settings" class="tab" type="button" aria-selected="false" data-tab="settings">Settings</button>
           <button id="tab-tech-links" class="tab" type="button" aria-selected="false" data-tab="tech-links">Tech Links</button>
           <button id="tab-reports" class="tab" type="button" aria-selected="false" data-tab="reports">Reports</button>
           <button id="tab-clear-tests" class="tab" type="button" aria-selected="false" data-tab="clear-tests">Clear Tests</button>
@@ -77,6 +78,20 @@
             </section>
           </section>
 
+          <section id="panel-settings" class="panel" hidden>
+            <section class="card">
+              <h2>Settings</h2>
+              <p class="sub" id="settingsHintNoProject">Select a client and project in the header.</p>
+              <div id="settingsPanelBody" hidden>
+                <p class="sub" id="settingsHint">
+                  Each extracted test type can be required or left out of the job. Off keeps the control drawn on the technician page so the remote still looks real, but that type is not work: it is excluded from progress, pies, popups, and group pass. Results are not auto-passed.
+                </p>
+                <div id="settingsTypeStatus" class="status" role="status"></div>
+                <div id="settingsTypeGroups" data-testid="settings-type-groups"></div>
+              </div>
+            </section>
+          </section>
+
           <section id="panel-tech-links" class="panel" hidden>
             <section class="card">
               <h2>Tech Links</h2>
@@ -85,18 +100,20 @@
                 <div class="manage-section">
                   <div class="row tech-links-create-row">
                     <label class="field grow">
-                      <span>Tech label</span>
-                      <input id="techLabel" type="text" placeholder="e.g. Onsite Tech" />
+                      <span>Technician name</span>
+                      <input id="techLabel" type="text" list="companyTechnicianNames" placeholder="e.g. Alex" autocomplete="off" />
                     </label>
+                    <datalist id="companyTechnicianNames"></datalist>
                     <button id="createTechLinkBtn" type="button" disabled>Create tech link</button>
                     <span id="techLinkStatus" class="tech-link-inline-status" role="status"></span>
                   </div>
+                  <p class="sub" id="companyTechniciansLine">Company technicians: none yet.</p>
 
                   <div class="table-wrap">
                     <table class="mini-table" aria-label="Active tech links">
                       <thead>
                         <tr>
-                          <th style="width: 140px">Label</th>
+                          <th style="width: 140px">Technician</th>
                           <th>Link</th>
                           <th style="width: 190px">Created (UTC)</th>
                           <th style="width: 140px"></th>
@@ -226,6 +243,7 @@
                       <th data-sortable="true" data-sort-key="buttonName" aria-sort="none">Button Identity</th>
                       <th data-sortable="true" data-sort-key="testTarget" aria-sort="none">Test Target</th>
                       <th data-sortable="true" data-sort-key="passFail" aria-sort="none">Pass/Fail</th>
+                      <th data-sortable="true" data-sort-key="who" aria-sort="none">Who</th>
                     </tr>
                   </thead>
                   <tbody id="commissionActivityBody">
@@ -238,6 +256,7 @@
                       <td>Button Placeholder</td>
                       <td>Target Placeholder</td>
                       <td>status</td>
+                      <td>who</td>
                     </tr>
                     <tr>
                       <td>2026-04-02 00:00:01Z</td>
@@ -248,6 +267,7 @@
                       <td>Button Placeholder 2</td>
                       <td>Target Placeholder 2</td>
                       <td>status</td>
+                      <td>who</td>
                     </tr>
                   </tbody>
                 </table>
@@ -416,5 +436,7 @@
     <script src="./commission_tab.js"></script>
     <!-- diagnostics-tab:js -->
     <script src="./diagnostics_tab.js"></script>
+    <!-- settings-tab:js -->
+    <script src="./settings_tab.js"></script>
   </body>
 </html>

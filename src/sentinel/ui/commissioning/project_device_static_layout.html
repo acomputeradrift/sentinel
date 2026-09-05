@@ -33,8 +33,11 @@
 
       <aside id="deviceViewControlsCanvas" class="deviceControlsCanvas deviceControlsCanvasLeft" aria-label="Device View Controls">
         <div class="deviceViewControlsContent" aria-label="Static View Controls">
+          <section class="viewControlGroup" aria-label="Select Multiple Buttons">
+            <button class="selectMultipleButtonsBtn" id="sentinelGroupToggle" type="button" aria-pressed="false" aria-label="Select Multiple Buttons">Select Multiple Buttons</button>
+          </section>
           <section class="viewControlGroup" aria-label="Device Zoom">
-            <h3 class="viewControlLabel">Device</h3>
+            <h3 class="viewControlLabel">Device Zoom</h3>
             <div id="zoomControlsStatic" class="staticZoomControls" role="group" aria-label="Device zoom controls">
               <button class="zoomBtn zoomBtnDec zoom-btn zoom-dec" type="button" aria-label="Decrease device zoom">-</button>
               <button class="zoomBtn zoomBtnReset zoom-btn zoom-reset" type="button" aria-label="Device zoom percent">100%</button>
@@ -43,7 +46,7 @@
           </section>
 
           <section class="viewControlGroup" aria-label="Text Zoom">
-            <h3 class="viewControlLabel">Text</h3>
+            <h3 class="viewControlLabel">Text Zoom</h3>
             <div id="textZoomControlsStatic" class="staticZoomControls" role="group" aria-label="Text zoom controls">
               <button class="zoomBtn zoomBtnDec" type="button" aria-label="Decrease text zoom" data-control="text-zoom-dec" data-variant="full">-</button>
               <button class="zoomBtn zoomBtnReset" type="button" aria-label="Text zoom percent" data-control="text-zoom-reset" data-variant="full">100%</button>

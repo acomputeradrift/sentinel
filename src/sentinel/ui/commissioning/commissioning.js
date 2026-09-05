@@ -90,7 +90,7 @@ function _safeStorageSetJsonObject(key, obj) {
 }
 
 function setActiveTab(tabName) {
-  const tabs = ["commission", "diagnostics", "file", "tech-links", "reports", "clear-tests"];
+  const tabs = ["commission", "diagnostics", "file", "settings", "tech-links", "reports", "clear-tests"];
   for (const t of tabs) {
     const btn = document.getElementById(`tab-${t}`);
     const panel = document.getElementById(`panel-${t}`);
@@ -196,6 +196,10 @@ function updateManageVisibility() {
   if (fh) fh.hidden = hasProject;
   const th = document.getElementById("techHintNoProject");
   if (th) th.hidden = hasProject;
+  const settingsBody = document.getElementById("settingsPanelBody");
+  if (settingsBody) settingsBody.hidden = !hasProject;
+  const sh = document.getElementById("settingsHintNoProject");
+  if (sh) sh.hidden = hasProject;
   if (!hasProject) resetProjectDetailsUi();
 }
 
@@ -261,6 +265,8 @@ const state = {
   generationReadyByProject: {},
   activeUploadByProject: {},
   techLinksByProject: {},
+  companyTechnicians: [],
+  companyName: "",
   selectedProjectIdByClient: {},
   uploadInFlightByProject: {},
   uploadFinalizeTimerByProject: {},
@@ -382,7 +388,7 @@ function renderTechLinks() {
     const tr = document.createElement("tr");
 
     const tdLabel = document.createElement("td");
-    tdLabel.textContent = link.label || "(no label)";
+    tdLabel.textContent = link.name || link.label || "(unnamed)";
 
     const tdLink = document.createElement("td");
     tdLink.className = "mono tech-link-url-cell";
@@ -451,7 +457,9 @@ async function loadTechLinks() {
       .filter((r) => r && (r.active === undefined || !!r.active))
       .map((r) => ({
         techLinkId: r.techLinkId,
-        label: r.label || "",
+        technicianId: r.technicianId || "",
+        name: r.name || r.label || "",
+        label: r.name || r.label || "",
         createdAtUtc: r.createdAtUtc || "",
         techUrl: buildPayloadTechUrl(r.techUrl || ""),
       }));
@@ -833,28 +841,71 @@ function setActiveProjectWsContext(projectId) {
   manager.setActiveProject(String(projectId || "").trim());
 }
 
+function renderCompanyTechnicians() {
+  const line = document.getElementById("companyTechniciansLine");
+  const list = document.getElementById("companyTechnicianNames");
+  const items = Array.isArray(state.companyTechnicians) ? state.companyTechnicians : [];
+  const names = items.map((t) => String(t?.name || "").trim()).filter(Boolean);
+  if (line) {
+    const company = String(state.companyName || "").trim();
+    const prefix = company ? `${company} technicians` : "Company technicians";
+    line.textContent = names.length ? `${prefix}: ${names.join(", ")}` : `${prefix}: none yet.`;
+  }
+  if (list) {
+    list.innerHTML = "";
+    for (const name of names) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      list.appendChild(opt);
+    }
+  }
+}
+
+async function loadCompanyTechnicians() {
+  try {
+    const body = await jsonFetch(api("/commissioning/technicians"));
+    const rows = Array.isArray(body?.technicians) ? body.technicians : Array.isArray(body) ? body : [];
+    state.companyName = String(body?.companyName || "");
+    state.companyTechnicians = rows
+      .filter((r) => r && r.name)
+      .map((r) => ({ technicianId: r.technicianId, name: String(r.name || "").trim() }));
+    renderCompanyTechnicians();
+  } catch (_e) {
+    // Server may not support company technicians yet.
+  }
+}
+
 async function createTechLink() {
   const projectId = currentProjectId();
   const label = $("techLabel").value.trim();
   if (!projectId) return;
   const statusEl = document.getElementById("techLinkStatus");
   if (!label) {
-    if (statusEl) statusEl.textContent = "Tech label is required.";
+    if (statusEl) statusEl.textContent = "Technician name is required.";
     return;
   }
   const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links`), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ label }),
+    body: JSON.stringify({ name: label, label }),
   });
   const payloadTechUrl = buildPayloadTechUrl(out.techUrl || "");
   const createdAtUtc = new Date().toISOString();
+  const techName = String(out.name || out.label || label).trim();
   state.techLinksByProject[projectId] = [
-    { techLinkId: out.techLinkId, label: label, createdAtUtc, techUrl: payloadTechUrl },
+    {
+      techLinkId: out.techLinkId,
+      technicianId: out.technicianId || "",
+      name: techName,
+      label: techName,
+      createdAtUtc,
+      techUrl: payloadTechUrl,
+    },
     ...techLinksForProject(projectId),
   ];
   renderTechLinks();
   if (statusEl) statusEl.textContent = "";
+  await loadCompanyTechnicians();
 }
 
 async function clearTestsForProject() {
@@ -950,7 +1001,17 @@ async function run() {
   $("tab-commission").addEventListener("click", () => setActiveTab("commission"));
   $("tab-diagnostics").addEventListener("click", () => setActiveTab("diagnostics"));
   $("tab-file").addEventListener("click", () => setActiveTab("file"));
-  $("tab-tech-links").addEventListener("click", () => setActiveTab("tech-links"));
+  $("tab-settings").addEventListener("click", () => {
+    setActiveTab("settings");
+    if (typeof window.__sentinelLoadTestingTypeSettings === "function") {
+      void window.__sentinelLoadTestingTypeSettings();
+    }
+  });
+  $("tab-tech-links").addEventListener("click", () => {
+    setActiveTab("tech-links");
+    void loadCompanyTechnicians();
+    void loadTechLinks();
+  });
   $("tab-reports").addEventListener("click", () => setActiveTab("reports"));
   $("tab-clear-tests").addEventListener("click", () => setActiveTab("clear-tests"));
   const clearTestsBtn = document.getElementById("clearTestsBtn");
@@ -1005,6 +1066,8 @@ async function run() {
   setProgressHidden($("uploadProgressRow"), true);
   updateTechLinkEnabled();
   renderTechLinks();
+  renderCompanyTechnicians();
+  void loadCompanyTechnicians();
   setPanelContext();
   setActiveProjectWsContext(currentProjectId());
   startManageWs(currentProjectId());

@@ -11,14 +11,15 @@
     hardButtons: "var(--sentinel-fill-hard-button, #2c6fb7)",
     uiItems: "var(--sentinel-fill-ui-item, #a7a9ac)",
     emptyTag: "var(--sentinel-fill-empty-tag, #ef4444)",
-    systemEvents: "var(--sentinel-fill-system-event, #58585a)",
-    driverEvents: "var(--sentinel-fill-driver-event, #2c6fb7)",
+    systemEvents: "var(--sentinel-fill-system-event, #1e5f86)",
+    driverEvents: "var(--sentinel-fill-driver-event, #1e5f86)",
   };
 
   const STATE_TRIM = {
     pass: "var(--sentinel-trim-pass, #39b54a)",
     partial: "var(--sentinel-trim-partial, #fcb040)",
     fail: "var(--sentinel-trim-fail, #ef4444)",
+    retest: "var(--sentinel-trim-retest, #c026d3)",
     untested: "var(--sentinel-trim-untested, transparent)",
   };
 
@@ -45,6 +46,82 @@
     return targets.map((t) => String(t || "").trim()).filter(Boolean);
   }
 
+  const MACRO_ALIASES = { macro: 1, macros: 1, "system macro": 1, "system macros": 1 };
+  const MACRO_STEP_ALIASES = {
+    macrostep: 1,
+    macrosteps: 1,
+    "macro step": 1,
+    "macro steps": 1,
+    "macro-step": 1,
+  };
+  const TRIGGER_ALIASES = { trigger: 1, triggers: 1, "event trigger": 1, "event triggers": 1 };
+  const PAGE_LINK_ALIASES = { pagelink: 1, "page link": 1, pagelinks: 1, "page links": 1 };
+
+  let disabledTypeIds = new Set();
+
+  function canonicalizeTestingLabel(label) {
+    const s = String(label || "").trim();
+    if (!s) return "";
+    const lower = s.toLowerCase();
+    if (MACRO_ALIASES[lower]) return "System Macro";
+    if (MACRO_STEP_ALIASES[lower]) return "Macro Step";
+    if (TRIGGER_ALIASES[lower]) return "Event Trigger";
+    if (PAGE_LINK_ALIASES[lower]) return "Page Link";
+    if (lower === "text" || lower === "texts") return "Text";
+    if (lower === "bitmap") return "Bitmap";
+    if (lower === "icon") return "Icon";
+    if (lower.indexOf("variable - ") === 0) {
+      const tail = s.split("-").slice(1).join("-").trim();
+      return tail ? "Variable - " + tail.charAt(0).toUpperCase() + tail.slice(1) : s;
+    }
+    if (lower.indexOf("var.") === 0) {
+      const tail = s.slice(4).trim();
+      return tail ? "Variable - " + tail.charAt(0).toUpperCase() + tail.slice(1) : s;
+    }
+    return s;
+  }
+
+  function familyForKind(kind) {
+    return String(kind || "").trim().toUpperCase() === "EVENT" ? "event" : "button";
+  }
+
+  function typeIdForLabel(label, kind) {
+    const name = canonicalizeTestingLabel(label);
+    if (!name) return "";
+    return familyForKind(kind) + ":" + name;
+  }
+
+  function setDisabledTypeIds(ids) {
+    const next = new Set();
+    (Array.isArray(ids) ? ids : []).forEach(function (id) {
+      const s = String(id || "").trim();
+      if (s) next.add(s);
+    });
+    disabledTypeIds = next;
+  }
+
+  function applySettingsPayload(payload) {
+    const src = payload && typeof payload === "object" ? payload : {};
+    const nested = src.testingTypeSettings && typeof src.testingTypeSettings === "object" ? src.testingTypeSettings : src;
+    setDisabledTypeIds(nested.disabledTypes);
+    if (global.__sentinelGroupPass && typeof global.__sentinelGroupPass.pruneDisabled === "function") {
+      global.__sentinelGroupPass.pruneDisabled();
+    }
+  }
+
+  function isWorkLabelEnabled(label, kind) {
+    const typeId = typeIdForLabel(label, kind);
+    if (!typeId) return true;
+    return !disabledTypeIds.has(typeId);
+  }
+
+  function filterWorkTargets(meta) {
+    const m = meta && typeof meta === "object" ? meta : {};
+    return buttonTargetsFromMeta(m).filter(function (label) {
+      return isWorkLabelEnabled(label, m.kind);
+    });
+  }
+
   /**
    * Compute pass/partial/fail/untested. Any FAIL among targets => fail (red outline).
    */
@@ -52,7 +129,7 @@
     const m = meta && typeof meta === "object" ? meta : {};
     const wrap = ctxBtn && ctxBtn.closest ? ctxBtn.closest(".btn-wrap") : null;
     const categoryKey = buttonCategoryKeyFromMeta(m, wrap);
-    const targets = buttonTargetsFromMeta(m);
+    const targets = filterWorkTargets(m);
     if (categoryKey === "emptyTag") {
       return { stateKey: "fail", passCount: 0, targetCount: 0 };
     }
@@ -61,6 +138,7 @@
     }
     let passCount = 0;
     let failCount = 0;
+    let retestCount = 0;
     let recordedCount = 0;
     for (const label of targets) {
       const target = buildTargetPayload(ctxBtn, m, label);
@@ -71,9 +149,15 @@
       if (outcome !== "PASS" && outcome !== "FAIL") continue;
       recordedCount += 1;
       if (outcome === "PASS") passCount += 1;
-      if (outcome === "FAIL") failCount += 1;
+      if (outcome === "FAIL") {
+        failCount += 1;
+        if (rec.retestReady) retestCount += 1;
+      }
     }
     if (failCount > 0) {
+      if (retestCount > 0) {
+        return { stateKey: "retest", passCount, targetCount: targets.length };
+      }
       return { stateKey: "fail", passCount, targetCount: targets.length };
     }
     if (recordedCount === 0) {
@@ -138,6 +222,12 @@
     STATE_TRIM: STATE_TRIM,
     buttonCategoryKeyFromMeta: buttonCategoryKeyFromMeta,
     buttonTargetsFromMeta: buttonTargetsFromMeta,
+    canonicalizeTestingLabel: canonicalizeTestingLabel,
+    typeIdForLabel: typeIdForLabel,
+    setDisabledTypeIds: setDisabledTypeIds,
+    applySettingsPayload: applySettingsPayload,
+    isWorkLabelEnabled: isWorkLabelEnabled,
+    filterWorkTargets: filterWorkTargets,
     aggregateTestOutcomeState: aggregateTestOutcomeState,
     applyTestTrimToWrap: applyTestTrimToWrap,
     refreshButtonWraps: refreshButtonWraps,

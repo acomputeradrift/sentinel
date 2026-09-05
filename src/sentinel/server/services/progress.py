@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from sentinel.server.services import testing_types
 from sentinel.server.services.repositories import TestResultRecord
 
 _RESOLVED_TARGETS_CACHE: dict[str, dict[str, Any]] = {}
@@ -600,7 +601,12 @@ def _targets_from_resolved_payload(resolved_payload: dict[str, Any]) -> tuple[di
     return {"system": system, "driver": driver}, device_rows
 
 
-def commissioning_progress(*, projectId: str, latest_results: dict[str, TestResultRecord]) -> dict[str, Any]:
+def commissioning_progress(
+    *,
+    projectId: str,
+    latest_results: dict[str, TestResultRecord],
+    disabled_types: set[str] | frozenset[str] | None = None,
+) -> dict[str, Any]:
     path = _latest_project_data_path(projectId=projectId)
     if path is None:
         raise FileNotFoundError("project_data_missing")
@@ -652,18 +658,24 @@ def commissioning_progress(*, projectId: str, latest_results: dict[str, TestResu
         "device_targets": device_targets,
     }
 
+    disabled = testing_types.normalize_disabled_types(list(disabled_types or []))
+    event_system = testing_types.filter_expected_keys(event_targets.get("system", set()), disabled)
+    event_driver = testing_types.filter_expected_keys(event_targets.get("driver", set()), disabled)
+    filtered_devices: list[dict[str, Any]] = []
     all_expected: set[str] = set()
-    for section_keys in event_targets.values():
-        all_expected |= section_keys
+    all_expected |= event_system
+    all_expected |= event_driver
     for d in device_targets:
-        all_expected |= set(d["expected"])
+        expected = testing_types.filter_expected_keys(set(d["expected"]), disabled)
+        filtered_devices.append({**d, "expected": expected})
+        all_expected |= expected
 
     counts, last_ts = _counts_from_expected(all_expected, latest_results)
-    system_counts, system_last = _counts_from_expected(event_targets["system"], latest_results)
-    driver_counts, driver_last = _counts_from_expected(event_targets["driver"], latest_results)
+    system_counts, system_last = _counts_from_expected(event_system, latest_results)
+    driver_counts, driver_last = _counts_from_expected(event_driver, latest_results)
 
     devices_out: list[dict[str, Any]] = []
-    for d in device_targets:
+    for d in filtered_devices:
         d_counts, d_last = _counts_from_expected(set(d["expected"]), latest_results)
         devices_out.append(
             {
@@ -685,4 +697,15 @@ def commissioning_progress(*, projectId: str, latest_results: dict[str, TestResu
         },
         "devices": devices_out,
     }
+
+
+def commissioning_progress_for_project(
+    *,
+    repo: Any,
+    projectId: str,
+    latest_results: dict[str, TestResultRecord] | None = None,
+) -> dict[str, Any]:
+    latest = latest_results if latest_results is not None else repo.get_latest_results_for_project(projectId=projectId)
+    disabled = testing_types.disabled_types_from_repo(repo, projectId)
+    return commissioning_progress(projectId=projectId, latest_results=latest, disabled_types=disabled)
 

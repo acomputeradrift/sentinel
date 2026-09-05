@@ -41,3 +41,61 @@ class RenderCoreSyntaxTest(unittest.TestCase):
         text = render_core.read_text(encoding="utf-8")
         self.assertIn("--sentinel-device-button-radius-base", text)
         self.assertIn("--sentinel-device-button-radius", text)
+
+    def test_group_pass_embed_is_injected(self):
+        root = Path(__file__).resolve().parents[2]
+        render_core = root / "src" / "sentinel" / "generation" / "render_core.py"
+        embed = root / "src" / "sentinel" / "ui" / "testing" / "sentinel_group_pass_embed.js"
+        self.assertTrue(embed.exists(), f"Missing file: {embed}")
+        text = render_core.read_text(encoding="utf-8")
+        self.assertIn("def _sentinel_group_pass_embed_js()", text)
+        self.assertIn("{_group_embed}", text)
+        self.assertNotIn("handleViewportBoxClick(el, e)", text)
+        js = embed.read_text(encoding="utf-8")
+        self.assertIn("test_result.submit_batch", js)
+        self.assertIn("handleTestButtonClick", js)
+        self.assertIn("isSelectableTarget", js)
+        self.assertIn("handleViewportBoxClick", js)
+        self.assertIn("shiftKey", js)
+        self.assertIn("sentinelGroupMarquee", js)
+        self.assertIn("sentinelGroupActions", js)
+        self.assertIn("z-index:11000", js)
+        self.assertNotIn("z-index:9500", js)
+        self.assertIn("touch-action:none", js)
+        self.assertIn("translate(-50%, -50%)", js)
+        self.assertIn("Pass selected", js)
+        self.assertIn("Pass this page", js)
+        self.assertIn("Pass this device", js)
+        self.assertIn("Select Multiple Buttons", js)
+        self.assertIn(">Pass selected</button>", js)
+        self.assertIn(">Pass this page</button>", js)
+        self.assertIn(">Pass this device</button>", js)
+        self.assertIn(">Cancel</button>", js)
+        self.assertNotIn("Pass group", js)
+        self.assertNotIn("Add this page", js)
+        self.assertNotIn("Add this device", js)
+        self.assertNotIn(">Clear</button>", js)
+        self.assertNotIn(">Done</button>", js)
+        self.assertNotIn("sentinelGroupBar", js)
+        self.assertNotIn("padding-bottom:84px", js)
+        self.assertIn("pruneDisabled", js)
+        self.assertIn('textContent = "Select Multiple Buttons"', js)
+        self.assertIn(".deviceViewControlsContent", js)
+        self.assertIn('toggle.closest("#topControls, #topControlsStatic")', js)
+        shell = (root / "src" / "sentinel" / "ui" / "commissioning" / "project_device_static_layout.html").read_text(
+            encoding="utf-8"
+        )
+        header = shell.split("<header", 1)[1].split("</header>", 1)[0]
+        self.assertNotIn("Select Multiple Buttons", header)
+        self.assertNotIn("sentinelGroupToggle", header)
+        left = shell.split("deviceViewControlsContent", 1)[1].split("collapsedViewControls", 1)[0]
+        self.assertIn("Select Multiple Buttons", left)
+        self.assertIn("sentinelGroupToggle", left)
+        self.assertIn(">Device Zoom</h3>", left)
+        self.assertIn(">Text Zoom</h3>", left)
+        self.assertNotIn(">Device</h3>", shell)
+        self.assertNotIn(">Text</h3>", shell)
+        status_js = (root / "src" / "sentinel" / "ui" / "testing" / "sentinel_test_status_embed.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("filterWorkTargets", status_js)

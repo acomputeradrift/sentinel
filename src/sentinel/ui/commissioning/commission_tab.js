@@ -348,6 +348,7 @@ function normalizeEventMessage(ev) {
     buttonName: String(refs?.buttonName || ""),
     testTarget: String(data?.targetName || ""),
     passFail: rawOutcome === "PASS" ? "Pass" : rawOutcome === "FAIL" ? "Fail" : "",
+    who: String(data?.techName || data?.recordedBy?.name || ""),
     targetKey,
   };
 }
@@ -366,6 +367,7 @@ function appendActivityRow(msg) {
   const tdButton = document.createElement("td");
   const tdTarget = document.createElement("td");
   const tdStatus = document.createElement("td");
+  const tdWho = document.createElement("td");
 
   tdTime.className = "mono";
   tdDevice.className = "mono";
@@ -373,6 +375,7 @@ function appendActivityRow(msg) {
   tdButton.className = "mono";
   tdTarget.className = "mono";
   tdStatus.className = "mono status-cell";
+  tdWho.className = "mono";
 
   tdTime.textContent = msg.timestamp || "";
   tdTime.title = String(msg.timestampRaw || msg.timestamp || "");
@@ -385,6 +388,7 @@ function appendActivityRow(msg) {
   const st = String(msg.passFail || "").trim();
   tdStatus.textContent = st;
   tdStatus.dataset.status = st.toUpperCase();
+  tdWho.textContent = msg.who || "";
 
   tr.appendChild(tdTime);
   tr.appendChild(tdDevice);
@@ -394,6 +398,7 @@ function appendActivityRow(msg) {
   tr.appendChild(tdButton);
   tr.appendChild(tdTarget);
   tr.appendChild(tdStatus);
+  tr.appendChild(tdWho);
 
   body.appendChild(tr);
 
@@ -443,6 +448,10 @@ function _asEventActivity(payload) {
     kind: String(payload?.kind || payload?.targetKind || payload?.data?.kind || payload?.data?.targetKind || ""),
     refs: _cloneValue(payload?.refs && typeof payload.refs === "object" ? payload.refs : payload?.data?.refs && typeof payload.data.refs === "object" ? payload.data.refs : {}),
     failNote: payload?.failNote == null ? null : String(payload.failNote),
+    batchId: payload?.batchId == null ? null : String(payload.batchId || ""),
+    source: String(payload?.source || "SINGLE").trim().toUpperCase() || "SINGLE",
+    recordedBy: payload?.recordedBy && typeof payload.recordedBy === "object" ? _cloneValue(payload.recordedBy) : {},
+    techName: String(payload?.techName || payload?.recordedBy?.name || "").trim(),
   };
 }
 
@@ -480,7 +489,7 @@ function _upsertFailRecord(fails, payload) {
     effectiveRoomName: String(refs?.effectiveRoomName || prev?.effectiveRoomName || ""),
     effectiveSourceName: String(refs?.effectiveSourceName || prev?.effectiveSourceName || ""),
     effectiveScopeNames: String(refs?.effectiveScopeNames || prev?.effectiveScopeNames || ""),
-    techName: String(refs?.techName || prev?.techName || ""),
+    techName: String(payload?.techName || payload?.recordedBy?.name || refs?.techName || prev?.techName || ""),
   };
   if (idx >= 0) existing[idx] = next;
   else existing.unshift(next);
@@ -542,6 +551,47 @@ function reduceProjectStore(prevState, payload) {
     const activity = _asEventActivity(payload);
     project.activities = [activity, ...project.activities].slice(0, 50);
     project.fails = _upsertFailRecord(project.fails, payload);
+    return state;
+  }
+
+  if (t === "test_results.batch") {
+    const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
+    const outcome = String(payload?.outcome || "").trim().toUpperCase();
+    const at = String(payload?.recordedAtUtc || payload?.tsUtc || "");
+    const rows = Array.isArray(payload?.results) ? payload.results : [];
+    const byKey = new Map();
+    for (const row of rows) {
+      const targetKey = String(row?.targetKey || row?.target?.targetKey || "").trim();
+      if (targetKey) byKey.set(targetKey, row);
+    }
+    const fanKeys = keys.length ? keys : Array.from(byKey.keys());
+    const added = [];
+    for (const rawKey of fanKeys) {
+      const targetKey = String(rawKey || "").trim();
+      if (!targetKey) continue;
+      const row = byKey.get(targetKey) || {};
+      const target = row?.target && typeof row.target === "object" ? row.target : {};
+      project.fails = _upsertFailRecord(project.fails, { targetKey, outcome, recordedAtUtc: at });
+      added.push(
+        _asEventActivity({
+          projectId,
+          recordedAtUtc: at,
+          targetKey,
+          outcome,
+          targetName: row.targetName || target.targetName || "",
+          kind: row.kind || target.kind || "",
+          refs: row.refs || target.refs || {},
+          failNote: row.failNote == null ? null : row.failNote,
+          batchId: payload?.batchId || row.batchId || "",
+          source: payload?.source || row.source || "GROUP",
+          recordedBy: payload?.recordedBy,
+          techName: payload?.techName,
+        })
+      );
+    }
+    if (added.length) {
+      project.activities = [...added, ...project.activities].slice(0, 50);
+    }
     return state;
   }
 
@@ -917,6 +967,7 @@ function _sortCommissionRows(rows) {
     else if (key === "viewport") cmp = _commissionCompareText(a?.viewport, b?.viewport, direction);
     else if (key === "buttonName") cmp = _commissionCompareText(a?.buttonName, b?.buttonName, direction);
     else if (key === "testTarget") cmp = _commissionCompareText(a?.testTarget || a?.targetKey, b?.testTarget || b?.targetKey, direction);
+    else if (key === "who") cmp = _commissionCompareText(a?.who, b?.who, direction);
     if (cmp !== 0) return cmp;
     return Number(b?.timestampMs || 0) - Number(a?.timestampMs || 0);
   });

@@ -17,8 +17,13 @@ from sentinel.server.api.commissioning_project_ws import run_commissioning_proje
 from sentinel.server.services import commissioning_rollups
 from sentinel.server.services import pipeline
 from sentinel.server.services import progress
+from sentinel.server.services import testing_types
 from sentinel.server.services import ws_broker
-from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+from sentinel.server.services.commissioning_user import (
+    COMMISSIONING_STUB_COMPANY_ID,
+    COMMISSIONING_STUB_COMPANY_NAME,
+    COMMISSIONING_STUB_USER_ID,
+)
 from sentinel.server.services.repositories import Repository
 
 
@@ -48,14 +53,62 @@ def _require_project_for_user(repo: Repository, *, user_id: str, project_id: str
     return repo.get_project(projectId=project_id)
 
 
-def _commissioning_title_names(repo: Repository, *, project_id: str) -> tuple[str, str]:
-    proj = repo.get_project(projectId=project_id)
-    if proj is None:
-        return "", ""
-    client = repo.get_client(clientId=proj.clientId)
-    client_name = str(client.name if client is not None else "").strip()
-    project_name = str(proj.name or "").strip()
-    return client_name, project_name
+def _technician_payload(tech) -> dict:
+    created = tech.createdAtUtc
+    created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+    return {
+        "technicianId": tech.technicianId,
+        "companyId": COMMISSIONING_STUB_COMPANY_ID,
+        "name": tech.name,
+        "createdAtUtc": created_str,
+    }
+
+
+def _tech_link_payload(link, *, techUrl: str = "") -> dict:
+    name = str(link.label or "").strip()
+    return {
+        "techLinkId": link.techLinkId,
+        "technicianId": link.technicianId,
+        "name": name,
+        "label": name or link.label,
+        "createdAtUtc": link.createdAtUtc,
+        "techUrl": techUrl,
+    }
+
+
+def _map_tech_key_error(exc: KeyError, *, default_code: str, default_message: str) -> None:
+    code = str(exc).strip("'")
+    if code == "TECHNICIAN_NAME_REQUIRED":
+        raise http_error(400, code="TECHNICIAN_NAME_REQUIRED", message="Technician name is required.")
+    if code == "TECHNICIAN_NOT_FOUND":
+        raise http_error(404, code="TECHNICIAN_NOT_FOUND", message="Technician not found.")
+    if code == "PROJECT_NOT_FOUND":
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    raise http_error(400, code=default_code, message=default_message)
+
+
+@router.get("/technicians")
+def list_technicians(request: Request) -> dict:
+    uid = _commissioning_user_id(request)
+    techs = _repo(request).list_technicians(userId=uid)
+    return {
+        "companyId": COMMISSIONING_STUB_COMPANY_ID,
+        "companyName": COMMISSIONING_STUB_COMPANY_NAME,
+        "technicians": [_technician_payload(t) for t in techs],
+    }
+
+
+@router.post("/technicians")
+def create_technician(request: Request, payload: dict) -> dict:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise http_error(400, code="TECHNICIAN_NAME_REQUIRED", message="Technician name is required.")
+    try:
+        tech = _repo(request).create_technician(userId=_commissioning_user_id(request), name=name)
+    except KeyError as e:
+        _map_tech_key_error(e, default_code="TECHNICIAN_NAME_REQUIRED", default_message="Technician name is required.")
+        raise
+    return _technician_payload(tech)
 
 
 def _broker(request: Request) -> ws_broker.ProjectEventBroker:
@@ -153,9 +206,23 @@ def create_project(request: Request, clientId: str, payload: dict) -> dict:
 def create_tech_link(request: Request, projectId: str, payload: dict) -> dict:
     repo = _repo(request)
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
-    label = payload.get("label")
-    link, token = repo.create_tech_link(projectId=projectId, label=str(label) if label is not None else None)
-    return {"techLinkId": link.techLinkId, "techUrl": f"/testing/{token.techToken}"}
+    technician_id = str((payload or {}).get("technicianId") or "").strip() or None
+    name = str((payload or {}).get("name") or (payload or {}).get("label") or "").strip() or None
+    if not technician_id and not name:
+        raise http_error(400, code="TECHNICIAN_NAME_REQUIRED", message="Technician name is required.")
+    try:
+        link, token = repo.create_tech_link(
+            projectId=projectId,
+            label=name,
+            technicianId=technician_id,
+        )
+    except KeyError as e:
+        _map_tech_key_error(e, default_code="TECHNICIAN_NAME_REQUIRED", default_message="Technician name is required.")
+        raise
+    return {
+        **_tech_link_payload(link, techUrl=f"/testing/{token.techToken}"),
+        "techUrl": f"/testing/{token.techToken}",
+    }
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/rotate")
@@ -175,7 +242,7 @@ def list_active_tech_links(request: Request, projectId: str) -> list[dict]:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     links = repo.list_active_tech_links(projectId=projectId)
     # Read-only list endpoint: do not rotate/revoke tokens as a side effect.
-    return [{"techLinkId": l.techLinkId, "label": l.label, "createdAtUtc": l.createdAtUtc, "techUrl": ""} for l in links]
+    return [_tech_link_payload(l, techUrl="") for l in links]
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/revoke")
@@ -218,14 +285,11 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
     repo.record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
 
-    client_name, project_name = _commissioning_title_names(repo, project_id=projectId)
     try:
         generation = await asyncio.to_thread(
             pipeline.regenerate_project,
             projectId=projectId,
             apex_path=path,
-            client_name=client_name,
-            project_name=project_name,
             phase_hook=lambda phase, percent=0: _publish_generation_phase(
                 request,
                 projectId=projectId,
@@ -297,14 +361,11 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         raise http_error(404, code="UPLOAD_NOT_FOUND", message="Upload not found.")
     apex_path = candidates[0]
     generation: dict | None = None
-    client_name, project_name = _commissioning_title_names(repo, project_id=projectId)
     try:
         generation = await asyncio.to_thread(
             pipeline.regenerate_project,
             projectId=projectId,
             apex_path=apex_path,
-            client_name=client_name,
-            project_name=project_name,
             phase_hook=lambda phase, percent=0: _publish_generation_phase(
                 request,
                 projectId=projectId,
@@ -405,7 +466,9 @@ def project_progress(request: Request, projectId: str) -> dict:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     latest = repo.get_latest_results_for_project(projectId=projectId)
     try:
-        return progress.commissioning_progress(projectId=projectId, latest_results=latest)
+        return progress.commissioning_progress_for_project(
+            repo=repo, projectId=projectId, latest_results=latest
+        )
     except FileNotFoundError:
         raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
 
@@ -416,12 +479,76 @@ def project_rollups(request: Request, projectId: str) -> dict:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     latest = repo.get_latest_results_for_project(projectId=projectId)
     try:
-        prog = progress.commissioning_progress(projectId=projectId, latest_results=latest)
+        prog = progress.commissioning_progress_for_project(
+            repo=repo, projectId=projectId, latest_results=latest
+        )
     except FileNotFoundError:
         raise http_error(503, code="GENERATION_NOT_READY", message="Project model is not ready yet.")
     return commissioning_rollups.rollups_payload(
         repo=repo, projectId=projectId, latest_results=latest, progress_payload=prog
     )
+
+
+def _testing_type_settings_payload(*, repo: Repository, projectId: str) -> dict:
+    disabled = repo.get_testing_type_disabled(projectId=projectId)
+    return testing_types.settings_payload(project_id=projectId, disabled_types=disabled)
+
+
+def _publish_testing_type_settings(request: Request, *, projectId: str, payload: dict) -> None:
+    event = {
+        "type": "testing_type_settings",
+        "projectId": projectId,
+        **payload,
+    }
+    try:
+        _broker(request).publish(projectId=projectId, event=event)
+    except Exception:
+        log.exception("[commissioning-ws] publish:testing-type-settings-failed projectId=%s", projectId)
+    try:
+        prog, rollups = commissioning_rollups.compute_progress_and_testing_rollups(
+            repo=_repo(request), projectId=projectId
+        )
+        if prog is not None:
+            _broker(request).publish(
+                projectId=projectId,
+                event={
+                    "type": "commissioning_rollups",
+                    "projectId": projectId,
+                    "progress": prog,
+                    "rollups": rollups,
+                },
+            )
+    except Exception:
+        log.exception("[commissioning-ws] publish:testing-type-rollups-failed projectId=%s", projectId)
+
+
+@router.get("/projects/{projectId}/testing-types")
+def get_testing_types(request: Request, projectId: str) -> dict:
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    return _testing_type_settings_payload(repo=repo, projectId=projectId)
+
+
+@router.put("/projects/{projectId}/testing-types")
+def put_testing_types(request: Request, projectId: str, payload: dict) -> dict:
+    repo = _repo(request)
+    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    raw_disabled = payload.get("disabledTypes")
+    if raw_disabled is None and isinstance(payload.get("types"), list):
+        raw_disabled = [
+            str(row.get("id") or "").strip()
+            for row in payload.get("types") or []
+            if isinstance(row, dict) and row.get("enabled") is False
+        ]
+    try:
+        disabled = repo.set_testing_type_disabled(
+            projectId=projectId, disabledTypes=list(raw_disabled or [])
+        )
+    except KeyError:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    out = testing_types.settings_payload(project_id=projectId, disabled_types=disabled)
+    _publish_testing_type_settings(request, projectId=projectId, payload=out)
+    return out
 
 
 @router.get("/projects/{projectId}/events")

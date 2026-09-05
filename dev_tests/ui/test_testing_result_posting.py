@@ -217,6 +217,8 @@ class TestingResultPostingTest(unittest.TestCase):
         self.assertEqual(html.count("function _connectTechWs"), 1, "Expected a single _connectTechWs definition")
         self.assertIn("lastAppliedSeq", html)
         self.assertIn("sync.request", html)
+        self.assertIn("__sentinelGroupPass", html)
+        self.assertIn("test_result.submit_batch", html)
         self.assertNotIn("await fetch(", html, "HTML should not contain top-level await fetch fallback")
 
     def _install_fake_ws(self, page) -> None:  # noqa: ANN001
@@ -1274,6 +1276,663 @@ class TestingResultPostingTest(unittest.TestCase):
             sent2 = self._ws_payload(page, 2)
             self.assertEqual(sent2["outcome"], "UNTESTED")
             self.assertEqual(sent2["target"]["refs"].get("revertedFrom"), "PASS")
+        finally:
+            server.stop()
+
+    def _viewport_child_device_project(self) -> dict:
+        child_uf = {
+            "buttonIdentity": {"buttonTagName": "ALL-OFF", "text": "All Off", "buttonType": None},
+            "buttonUI": {
+                "fontSize": 10,
+                "orientations": {
+                    "portrait": {
+                        "visible": True,
+                        "coordinates": {"top": 12, "left": 12, "height": 50, "width": 240},
+                    }
+                },
+            },
+            "testTargets": {
+                "text": True,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "pageLink": {"enabled": False},
+            },
+        }
+        page_uf = {
+            "buttonIdentity": {"buttonTagName": "PAGE-BTN", "text": "Page Btn", "buttonType": None},
+            "buttonUI": {
+                "fontSize": 10,
+                "orientations": {
+                    "portrait": {
+                        "visible": True,
+                        "coordinates": {"top": 10, "left": 10, "height": 44, "width": 120},
+                    }
+                },
+            },
+            "testTargets": {
+                "text": True,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "pageLink": {"enabled": False},
+            },
+        }
+        return {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [page_uf],
+                                        },
+                                        "viewports": [
+                                            {
+                                                "viewportIdentity": {"viewportButtonId": 990},
+                                                "viewportUI": {
+                                                    "navigationMode": "page",
+                                                    "orientations": {
+                                                        "portrait": {
+                                                            "visible": True,
+                                                            "coordinates": {
+                                                                "top": 80,
+                                                                "left": 20,
+                                                                "height": 300,
+                                                                "width": 420,
+                                                            },
+                                                        }
+                                                    },
+                                                },
+                                                "layers": [
+                                                    {
+                                                        "layerName": "Viewport Layer",
+                                                        "layerOrder": 0,
+                                                        "frames": [
+                                                            {
+                                                                "frameId": 0,
+                                                                "buttonCategories": {
+                                                                    "screenLabels": [],
+                                                                    "hardButtons": [],
+                                                                    "screenButtons": [child_uf],
+                                                                },
+                                                            }
+                                                        ],
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48550}],
+                                "buttons": [
+                                    {
+                                        "buttonId": 48550,
+                                        "buttonTagName": "PAGE-BTN",
+                                        "identifiers": {"text": "Page Btn"},
+                                        "testTargets": {},
+                                    }
+                                ],
+                                "viewports": [
+                                    {
+                                        "viewportButtonId": 990,
+                                        "frames": [
+                                            {
+                                                "frameId": 0,
+                                                "buttons": [
+                                                    {
+                                                        "buttonId": 48551,
+                                                        "buttonTagName": "ALL-OFF",
+                                                        "identifiers": {"text": "All Off"},
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+    def _two_button_device_project(self) -> dict:
+        def _btn(tag: str, text: str, top: int, button_id: int) -> tuple[dict, dict]:
+            uf = {
+                "buttonIdentity": {"buttonTagName": tag, "text": text, "buttonType": None},
+                "buttonUI": {
+                    "fontSize": 10,
+                    "orientations": {
+                        "portrait": {"visible": True, "coordinates": {"top": top, "left": 10, "height": 44, "width": 120}}
+                    },
+                },
+                "testTargets": {
+                    "text": True,
+                    "macros": False,
+                    "macroSteps": False,
+                    "variables": {},
+                    "pageLink": {"enabled": False},
+                },
+            }
+            diag = {"buttonId": button_id, "buttonTagName": tag, "identifiers": {"text": text}, "testTargets": {}}
+            return uf, diag
+
+        a_uf, a_diag = _btn("BTN-A", "Button A", 10, 48551)
+        b_uf, b_diag = _btn("BTN-B", "Button B", 70, 48552)
+        return {
+            "source": {"file": "UnitTest.apex"},
+            "devices": [
+                {
+                    "userFacing": {
+                        "displayName": "Device A",
+                        "deviceUI": {
+                            "portrait": {"supported": True, "resolution": {"width": 480, "height": 854}},
+                            "landscape": {"supported": False, "resolution": {"width": 0, "height": 0}},
+                        },
+                        "pages": [
+                            {
+                                "pageName": "Home",
+                                "layers": [
+                                    {
+                                        "layerName": "Layer 1",
+                                        "layerOrder": 0,
+                                        "buttonCategories": {
+                                            "screenLabels": [],
+                                            "hardButtons": [],
+                                            "screenButtons": [a_uf, b_uf],
+                                        },
+                                        "viewports": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    "diagnostics": {
+                        "deviceId": 81,
+                        "pages": [
+                            {
+                                "pageId": 513,
+                                "pageName": "Home",
+                                "uiItems": [{"buttonId": 48551}, {"buttonId": 48552}],
+                                "buttons": [a_diag, b_diag],
+                                "viewports": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+
+    def test_group_add_page_sends_one_batch_pass_and_popup_still_works(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        self._assert_ws_helpers_present(html)
+
+        token = "techTokenGroupPass"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            self.assertEqual(page.locator("#sentinelGroupBar").count(), 0)
+            self.assertEqual(page.locator("#topControls #sentinelGroupToggle").count(), 0)
+            self.assertEqual(page.locator("#sentinelGroupToggle").inner_text().strip(), "Select Multiple Buttons")
+            overlaps_top = page.evaluate(
+                """() => {
+                  const t = document.getElementById("sentinelGroupToggle");
+                  const top = document.getElementById("topControls");
+                  if (!t || !top) return false;
+                  const a = t.getBoundingClientRect();
+                  const b = top.getBoundingClientRect();
+                  return !(a.bottom <= b.top || a.top >= b.bottom || a.right <= b.left || a.left >= b.right);
+                }"""
+            )
+            self.assertFalse(bool(overlaps_top))
+            page.click("#sentinelGroupToggle")
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            page.locator(".btn-wrap .test-btn").first.click()
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            labels = page.evaluate(
+                """() => Array.from(document.querySelectorAll("#sentinelGroupActions button")).filter((b) => !b.hidden).map((b) => String(b.textContent || "").trim())"""
+            )
+            self.assertEqual(labels, ["Pass selected", "Pass this page", "Pass this device", "Cancel"])
+            for label in labels:
+                self.assertNotIn("group", label.lower())
+            page.click("#sentinelGroupPassPage")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page, 0)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            self.assertEqual(sent["outcome"], "PASS")
+            keys = [str((t or {}).get("targetKey") or "") for t in (sent.get("targets") or [])]
+            self.assertGreaterEqual(len(keys), 2)
+            self.assertEqual(len(keys), len(set(keys)))
+
+            page.evaluate(
+                """
+(payload) => window.__emitWs({
+  type: "test_results.batch",
+  projectId: "proj-1",
+  recordedAtUtc: "2026-03-30T01:02:03Z",
+  outcome: payload.outcome,
+  count: (payload.targets || []).length,
+  targetKeys: (payload.targets || []).map((t) => t.targetKey)
+})
+""",
+                sent,
+            )
+            page.wait_for_timeout(50)
+            selected_after = page.evaluate("() => window.__sentinelGroupPass && window.__sentinelGroupPass.selectedCount()")
+            self.assertEqual(int(selected_after or 0), 0)
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+
+            page.locator(".btn-wrap .test-btn").first.click()
+            self.assertEqual(page.locator("#ov.open").count(), 1)
+            page.locator("#rows .row .actions button").first.click()
+            self._wait_for_ws_outbox(page, min_posts=2)
+            sent1 = self._ws_payload(page, 1)
+            self.assertEqual(sent1["type"], "test_result.submit")
+            # Group pass already marked these PASS, so the existing Pass button toggles to UNTESTED.
+            self.assertEqual(sent1["outcome"], "UNTESTED")
+        finally:
+            server.stop()
+
+    def test_select_multiple_buttons_lives_in_left_device_panel_not_top_chrome(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        panel = (
+            '<aside id="deviceViewControlsCanvas">'
+            '<div class="deviceViewControlsContent">'
+            '<section class="viewControlGroup" aria-label="Select Multiple Buttons">'
+            '<button class="selectMultipleButtonsBtn" id="sentinelGroupToggle" type="button" '
+            'aria-pressed="false" aria-label="Select Multiple Buttons">Select Multiple Buttons</button>'
+            "</section>"
+            '<section class="viewControlGroup" aria-label="Device Zoom">'
+            "<h3 class=\"viewControlLabel\">Device Zoom</h3>"
+            "</section>"
+            '<section class="viewControlGroup" aria-label="Text Zoom">'
+            "<h3 class=\"viewControlLabel\">Text Zoom</h3>"
+            "</section>"
+            "</div></aside>"
+        )
+        html = html.replace("<body>", "<body>" + panel, 1)
+        token = "techTokenSelectPanel"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            loc = page.evaluate(
+                """() => {
+                  const t = document.getElementById("sentinelGroupToggle");
+                  const header = document.getElementById("topControls") || document.getElementById("topControlsStatic");
+                  return {
+                    text: String((t && t.textContent) || "").trim(),
+                    inLeft: !!(t && t.closest(".deviceViewControlsContent")),
+                    inTop: !!(t && header && header.contains(t)),
+                    deviceZoom: !!document.querySelector('.deviceViewControlsContent h3.viewControlLabel'),
+                    labels: Array.from(document.querySelectorAll(".deviceViewControlsContent h3.viewControlLabel")).map((el) => String(el.textContent || "").trim()),
+                  };
+                }"""
+            )
+            self.assertEqual(loc["text"], "Select Multiple Buttons")
+            self.assertTrue(loc["inLeft"])
+            self.assertFalse(loc["inTop"])
+            self.assertEqual(loc["labels"], ["Device Zoom", "Text Zoom"])
+            self.assertEqual(page.locator("#topControls #sentinelGroupToggle").count(), 0)
+        finally:
+            server.stop()
+
+    def test_group_tap_selects_controls_without_opening_popup(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupTap"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.click("#sentinelGroupToggle")
+            btns = page.locator(".btn-wrap .test-btn")
+            self.assertGreaterEqual(btns.count(), 2)
+            btns.nth(0).click()
+            btns.nth(1).click()
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            box = page.locator("#sentinelGroupActions").bounding_box()
+            vp = page.viewport_size
+            self.assertIsNotNone(box)
+            self.assertIsNotNone(vp)
+            self.assertAlmostEqual(box["x"] + box["width"] / 2, vp["width"] / 2, delta=8)
+            self.assertAlmostEqual(box["y"] + box["height"] / 2, vp["height"] / 2, delta=8)
+            self.assertGreaterEqual(
+                int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0),
+                2,
+            )
+            self.assertGreaterEqual(page.locator(".btn-wrap.is-group-selected").count(), 2)
+            page.click("#sentinelGroupCancel")
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+        finally:
+            server.stop()
+
+    def test_home_events_have_no_select_multiple_and_keep_pass_all(self):
+        from sentinel.generation.render_core import render_project_home_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        project_data = {
+            "source": {"file": "UnitTest.apex"},
+            "events": {
+                "system": [
+                    {
+                        "diagnostics": {"eventId": 126},
+                        "userFacing": {"description": "Event A", "testTargets": {"Trigger": True}},
+                    },
+                    {
+                        "diagnostics": {"eventId": 127},
+                        "userFacing": {"description": "Event B", "testTargets": {"Trigger": True}},
+                    },
+                ],
+                "driver": [],
+            },
+            "devices": [],
+        }
+        html = render_project_home_html(project_data, app_ui, "unittest")
+        self._assert_ws_helpers_present(html)
+        token = "techTokenHomeEvents"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            self.assertEqual(page.locator("#sentinelGroupToggle").count(), 0)
+            page.click("button.section-toggle[data-target='system-events']")
+            events = page.locator("#system-events .test-btn")
+            self.assertGreaterEqual(events.count(), 2)
+            events.first.click()
+            page.locator("#ov.open").wait_for()
+            self.assertEqual(page.locator("#passAll").count(), 1)
+        finally:
+            server.stop()
+
+    def test_shift_click_adds_to_group_without_opening_popup(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupShift"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".btn-wrap .test-btn").first.wait_for()
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass && window.__sentinelGroupPass.isGroupMode()")))
+            page.locator(".btn-wrap .test-btn").nth(0).click(modifiers=["Shift"])
+            self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            n0 = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertGreaterEqual(n0, 1)
+            page.locator(".btn-wrap .test-btn").nth(1).click(modifiers=["Shift"])
+            n1 = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertGreater(n1, n0)
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            page.locator(".btn-wrap .test-btn").nth(1).click(modifiers=["Shift"])
+            n2 = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertEqual(n2, n0)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            page.click("#sentinelGroupPass")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page, 0)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            self.assertEqual(sent["outcome"], "PASS")
+            self.assertGreaterEqual(len(sent.get("targets") or []), 1)
+        finally:
+            server.stop()
+
+    def test_drag_select_adds_page_buttons_and_sends_batch(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupDrag"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator("#rtiDeviceCanvas").wait_for()
+            page.click("#sentinelGroupToggle")
+            self.assertEqual(
+                page.evaluate("() => getComputedStyle(document.getElementById('rtiCanvas')).touchAction"),
+                "none",
+            )
+            wraps = page.locator(".btn-wrap")
+            wraps.first.wait_for()
+            self.assertGreaterEqual(wraps.count(), 2)
+            b0 = wraps.nth(0).bounding_box()
+            b1 = wraps.nth(1).bounding_box()
+            canvas = page.locator("#rtiDeviceCanvas").bounding_box()
+            self.assertIsNotNone(b0)
+            self.assertIsNotNone(b1)
+            self.assertIsNotNone(canvas)
+            start_x = max(canvas["x"] + 2, min(b0["x"], b1["x"]) - 6)
+            start_y = max(canvas["y"] + 2, min(b0["y"], b1["y"]) - 6)
+            end_x = min(canvas["x"] + canvas["width"] - 2, max(b0["x"] + b0["width"], b1["x"] + b1["width"]) + 6)
+            end_y = min(canvas["y"] + canvas["height"] - 2, max(b0["y"] + b0["height"], b1["y"] + b1["height"]) + 6)
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(end_x, end_y, steps=16)
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            page.mouse.up()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            selected = int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0)
+            self.assertGreaterEqual(selected, 2)
+            self.assertGreaterEqual(page.locator(".btn-wrap.is-group-selected").count(), 2)
+            page.click("#sentinelGroupPass")
+            self._wait_for_ws_outbox(page, min_posts=1)
+            sent = self._ws_payload(page, 0)
+            self.assertEqual(sent["type"], "test_result.submit_batch")
+            self.assertEqual(sent["outcome"], "PASS")
+            keys = [str((t or {}).get("targetKey") or "") for t in (sent.get("targets") or [])]
+            self.assertGreaterEqual(len(keys), 2)
+            self.assertEqual(len(keys), len(set(keys)))
+        finally:
+            server.stop()
+
+    def test_drag_without_select_does_not_group(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupDragOff"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator("#rtiDeviceCanvas").wait_for()
+            wraps = page.locator(".btn-wrap")
+            wraps.first.wait_for()
+            b0 = wraps.nth(0).bounding_box()
+            b1 = wraps.nth(1).bounding_box()
+            canvas = page.locator("#rtiDeviceCanvas").bounding_box()
+            self.assertIsNotNone(b0)
+            self.assertIsNotNone(b1)
+            self.assertIsNotNone(canvas)
+            start_x = max(canvas["x"] + 2, min(b0["x"], b1["x"]) - 6)
+            start_y = max(canvas["y"] + 2, min(b0["y"], b1["y"]) - 6)
+            end_x = min(canvas["x"] + canvas["width"] - 2, max(b0["x"] + b0["width"], b1["x"] + b1["width"]) + 6)
+            end_y = min(canvas["y"] + canvas["height"] - 2, max(b0["y"] + b0["height"], b1["y"] + b1["height"]) + 6)
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(end_x, end_y, steps=16)
+            page.mouse.up()
+            page.wait_for_timeout(50)
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+        finally:
+            server.stop()
+
+    def test_shift_drag_turns_select_on_and_adds_targets(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupShiftDrag"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator("#rtiDeviceCanvas").wait_for()
+            wraps = page.locator(".btn-wrap")
+            wraps.first.wait_for()
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            b0 = wraps.nth(0).bounding_box()
+            b1 = wraps.nth(1).bounding_box()
+            canvas = page.locator("#rtiDeviceCanvas").bounding_box()
+            self.assertIsNotNone(b0)
+            self.assertIsNotNone(b1)
+            self.assertIsNotNone(canvas)
+            start_x = max(canvas["x"] + 2, min(b0["x"], b1["x"]) - 6)
+            start_y = max(canvas["y"] + 2, min(b0["y"], b1["y"]) - 6)
+            end_x = min(canvas["x"] + canvas["width"] - 2, max(b0["x"] + b0["width"], b1["x"] + b1["width"]) + 6)
+            end_y = min(canvas["y"] + canvas["height"] - 2, max(b0["y"] + b0["height"], b1["y"] + b1["height"]) + 6)
+            page.keyboard.down("Shift")
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(end_x, end_y, steps=16)
+            page.mouse.up()
+            page.keyboard.up("Shift")
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 2)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
+    def test_select_on_viewport_opens_mode_without_selecting_children(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._viewport_child_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupViewport"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.wait_for()
+            page.click("#sentinelGroupToggle")
+            page.locator(".vp-box").first.click()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
+    def test_group_pass_selects_buttons_inside_open_viewport(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._viewport_child_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupViewportInside"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.wait_for()
+            page.locator(".vp-box").first.click()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            page.click("#sentinelGroupToggle")
+            popup_btn = page.locator(".vp-popup-stage .test-btn, .vp-popup-vcontent .test-btn").first
+            popup_btn.wait_for()
+            popup_btn.click()
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 1)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            stack = page.evaluate(
+                """() => {
+                  const actions = document.getElementById("sentinelGroupActions");
+                  const popup = document.getElementById("vpPopup");
+                  return {
+                    actions: parseInt(getComputedStyle(actions).zIndex, 10),
+                    popup: parseInt(getComputedStyle(popup).zIndex, 10),
+                  };
+                }"""
+            )
+            self.assertGreater(int(stack["actions"]), int(stack["popup"]))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
+    def test_select_off_viewport_still_enters_mode(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._viewport_child_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupViewportOff"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.wait_for()
+            self.assertFalse(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            page.locator(".vp-box").first.click()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
         finally:
             server.stop()
 

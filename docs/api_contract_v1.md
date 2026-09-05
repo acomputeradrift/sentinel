@@ -26,7 +26,7 @@ Compatibility rule (normative):
 
 Identifiers (stable across the system):
 - `clientId`, `projectId`, `uploadId`, `extractionRunId`, `generationRunId`
-- `techLinkId`, `techToken`
+- `techLinkId`, `techToken`, `technicianId`
 - `targetKey`, `testResultId`
 
 Enums (shared meanings; never reuse meanings within v1):
@@ -98,12 +98,25 @@ One multi-day commissioning/testing project. Repeated uploads/extractions/genera
 }
 ```
 
+### `Technician`
+Named field technician belonging to the dealer/company (the commissioning operator). Access to a job is still a `TechLink` token — there is no technician login in v1.
+```json
+{
+  "technicianId": "uuid",
+  "companyId": "uuid",
+  "name": "string",
+  "createdAtUtc": "2026-03-19T12:00:00Z"
+}
+```
+
 ### `TechLink`
-Represents one tester (you, onsite tech, remote support) and the current token link used by that tester.
+Represents one tester (you, onsite tech, remote support) and the current token link used by that tester. New links bind a named company technician (`technicianId` + `name`). `label` is kept as the technician name for older clients.
 ```json
 {
   "techLinkId": "uuid",
   "projectId": "uuid",
+  "technicianId": "uuid",
+  "name": "string",
   "label": "string|null",
   "token": "opaque-string",
   "issuedAtUtc": "2026-03-19T12:02:00Z",
@@ -207,15 +220,20 @@ Given an extracted `testTargets` structure:
   "projectId": "uuid",
   "generationRunId": "uuid",
   "recordedAtUtc": "2026-03-19T12:05:00Z",
-  "recordedBy": { "role": "TECHNICIAN|PROGRAMMER", "techLinkId": "uuid|null" },
+  "recordedBy": { "role": "TECHNICIAN|PROGRAMMER", "techLinkId": "uuid|null", "technicianId": "uuid|null", "name": "string" },
   "target": { "targetKey": "string", "kind": "EVENT|BUTTON|VIEWPORT_BUTTON", "refs": {}, "targetName": "string" },
   "outcome": "PASS|FAIL",
-  "failNote": "string|null"
+  "failNote": "string|null",
+  "batchId": "uuid|null",
+  "source": "SINGLE|GROUP"
 }
 ```
 
 Rule (normative):
 - If `outcome == "FAIL"`, `failNote` is required and non-empty. Reject with `error.code = FAIL_NOTE_REQUIRED`.
+- `source` and `batchId` are additive provenance. Per-control Pass/Fail and popup Pass All store `source=SINGLE` and `batchId=null`. Group pass (`POST .../results/batch` or WS `test_result.submit_batch`) stores `source=GROUP` and a shared `batchId` on every row in that submit.
+- Every result records who did it. `recordedBy.name` / `recordedBy.technicianId` are stamped on the append-only row (including GROUP rows) so who survives token revoke, technician rename, re-upload, and snapshot rebuild. Commissioning snapshot `activities` and fail items include `recordedBy` and `techName`.
+- Commissioning snapshot rebuild (`activities` on `commissioning_snapshot`) lists each latest target as its own `test_result` row, including group-pass items. `batchId` / `source=GROUP` stay on those rows for reports.
 
 ## Derived current status + progress (normative)
 
@@ -236,6 +254,7 @@ Tie-breaker rule:
 Progress is computed from:
 1) the **latest active extracted model** for the project (defines the set of expected targets), and
 2) the derived per-target current state above.
+3) optional per-project **testing-type settings**. Disabled types are **excluded** from the required/progress set (not auto-passed). Historical rows stay in append-only audit; they do not count toward pies, popups, or group pass while the type is off. Default is all types ON (today’s required set).
 
 Definitions:
 - `totalTargets`: count of expected targets for the scope (project, device, or events section).
@@ -290,7 +309,7 @@ Definitions:
   "currentOutcome": "FAIL",
   "lastTestedAtUtc": "2026-03-19T12:05:00Z|null",
   "lastFailNote": "string|null",
-  "recordedBy": { "role": "TECHNICIAN|PROGRAMMER", "techLinkId": "uuid|null" }
+  "recordedBy": { "role": "TECHNICIAN|PROGRAMMER", "techLinkId": "uuid|null", "technicianId": "uuid|null", "name": "string" }
 }
 ```
 
@@ -355,16 +374,31 @@ Base: `/api/v1`
 - `GET /api/v1/commissioning/clients/{clientId}/projects` -> list projects for client
 - `GET /api/v1/commissioning/projects/{projectId}` -> project details
 
+### Company technicians (Commissioning)
+Named technicians live under the commissioning operator (the company stub user until real auth). No login product.
+- `GET /api/v1/commissioning/technicians` -> `{ "companyId", "companyName", "technicians": [Technician] }`
+- `POST /api/v1/commissioning/technicians` -> find-or-create by name (case-insensitive) under the company
+  - req: `{ "name": "string" }`
+  - resp: `Technician`
+  - empty name: `400 TECHNICIAN_NAME_REQUIRED`
+
 ### Technician link issuance/rotation (Diagnostics)
 - `POST /api/v1/commissioning/projects/{projectId}/tech-links`
-  - behavior: create a new tech link (new tester) under the project
-  - req:
+  - behavior: bind a named company technician to this job and issue a tech-link token. A different named technician on the same project is a clean handoff (history is append-only). The same name find-or-creates the same `technicianId`.
+  - req (any one of):
     ```json
-    { "label": "string|null" }
+    { "technicianId": "uuid" }
     ```
+    ```json
+    { "name": "string" }
+    ```
+    ```json
+    { "label": "string" }
+    ```
+  - `label` is accepted as an alias for `name` (older clients). Anonymous / empty name is rejected (`400 TECHNICIAN_NAME_REQUIRED`).
   - resp:
     ```json
-    { "techLinkId": "uuid", "techUrl": "/testing/{techToken}" }
+    { "techLinkId": "uuid", "technicianId": "uuid", "name": "string", "label": "string", "techUrl": "/testing/{techToken}" }
     ```
 
 - `POST /api/v1/commissioning/projects/{projectId}/tech-links/{techLinkId}/rotate`
@@ -389,10 +423,17 @@ Base: `/api/v1`
 - `GET /api/v1/commissioning/projects/{projectId}/progress` -> derived `ProjectProgress` for the commissioning console (device + event-section rollups; page detail optional/future)
 - `GET /api/v1/commissioning/projects/{projectId}/fails` -> current fail/task-list projection for the commissioning console
   - each row is a `FailItem`
+- `GET /api/v1/commissioning/projects/{projectId}/testing-types` -> catalog of extracted target types with `enabled` (default all true) and `disabledTypes[]`
+- `PUT /api/v1/commissioning/projects/{projectId}/testing-types`
+  - req: `{ "disabledTypes": ["button:Bitmap"] }` (unknown ids ignored)
+  - also accepts `{ "types": [{ "id": "button:Bitmap", "enabled": false }] }`
+  - resp: same shape as GET
+  - Off-behavior is `exclude` (not auto-pass). Controls remain drawn on generated technician pages.
 
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
 - `POST /api/v1/testing/{techToken}/results` -> append a `TestResultRecord`
+- `POST /api/v1/testing/{techToken}/results/batch` -> append many `TestResultRecord`s in one request (same fail-note rule: FAIL requires a note on the batch or per target). Response includes shared `batchId` and `source=GROUP`.
 - `GET /api/v1/testing/{techToken}/target-status?targetKey=...` -> derived `TargetStatus`
 
 Future tech-scoped read endpoints may be added later, but they are not required for the current MVP contract.

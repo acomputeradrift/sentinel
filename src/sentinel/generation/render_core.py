@@ -12,48 +12,15 @@ def load_json(path: Path) -> Any:
         return json.load(f)
 
 
-def _commissioning_meta_tags(*, client_name: str = "", project_name: str = "") -> str:
-    parts: list[str] = []
-    client = str(client_name or "").strip()
-    project = str(project_name or "").strip()
-    if client:
-        parts.append(f'<meta name="sentinel-client-name" content="{escape(client, quote=True)}">')
-    if project:
-        parts.append(f'<meta name="sentinel-project-name" content="{escape(project, quote=True)}">')
-    return "".join(parts)
-
-
-def format_page_header_title(
-    template: str,
-    *,
-    client_name: str,
-    project_name: str,
-    device_name: str,
-    page_name: str,
-) -> str:
-    out = str(template or "")
-    for key, value in (
-        ("{clientName}", client_name),
-        ("{projectName}", project_name),
-        ("{deviceName}", device_name),
-        ("{pageName}", page_name),
-    ):
-        out = out.replace(key, str(value or ""))
-    return out
-
-
-def format_row_status_line(tech_label: str, timestamp: str, *, template: str | None = None) -> str:
-    row_template = str(template or "Passed by {techLabel}: {timestamp}")
-    return (
-        row_template.replace("{techLabel}", str(tech_label or "").strip()).replace("{timestamp}", str(timestamp or "").strip())
-    )
-
-
 _SENTINEL_UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
 def _sentinel_test_status_embed_js() -> str:
     return (_SENTINEL_UI_DIR / "testing" / "sentinel_test_status_embed.js").read_text(encoding="utf-8")
+
+
+def _sentinel_group_pass_embed_js() -> str:
+    return (_SENTINEL_UI_DIR / "testing" / "sentinel_group_pass_embed.js").read_text(encoding="utf-8")
 
 
 def _sentinel_device_theme_css() -> str:
@@ -256,10 +223,7 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     out: list[str] = []
     if t.get("text"):
         out.append("Text")
-    audio_scope = (btn.get("apexScopeSource") or {}).get("audioScope")
-    if t.get("macros") or (
-        isinstance(audio_scope, dict) and audio_scope.get("wrapperDeviceId") is not None
-    ):
+    if t.get("macros"):
         out.append("System Macro")
     if t.get("macroSteps"):
         out.append("Macro Step")
@@ -428,7 +392,6 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
         ("screenLabels", "Screen Label"),
         ("screenButtons", "Screen Button"),
         ("hardButtons", "Hard Button"),
-        ("emptyTag", "Empty Tag"),
         ("uiItems", "UI Item"),
     ]
     layers = _page_layers(page)
@@ -442,7 +405,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
             layer_items: list[tuple[dict[str, Any], str, int]] = []
             for rank, (cat, label) in enumerate(category_defs):
                 for btn in cats.get(cat, []):
-                    if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
+                    if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
                     layer_items.append((btn, label, rank))
             layer_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
@@ -452,7 +415,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
     root_items: list[tuple[dict[str, Any], str, int]] = []
     for rank, (cat, label) in enumerate(category_defs):
         for btn in page.get("buttonCategories", {}).get(cat, []):
-            if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
+            if cat != "uiItems" and _is_ui_only_button(btn):
                 continue
             root_items.append((btn, label, rank))
     root_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
@@ -608,12 +571,11 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
                     ("screenLabels", "Screen Label"),
                     ("screenButtons", "Screen Button"),
                     ("hardButtons", "Hard Button"),
-                    ("emptyTag", "Empty Tag"),
                     ("uiItems", "UI Item"),
                 )
             ):
                 for btn in cats.get(cat, []):
-                    if cat not in ("uiItems", "emptyTag") and _is_ui_only_button(btn):
+                    if cat != "uiItems" and _is_ui_only_button(btn):
                         continue
                     frame_items.append((btn, label, rank))
             frame_items.sort(key=lambda item: _button_stack_sort_key(item[0], item[2]))
@@ -724,329 +686,6 @@ def _hard_key_strip_width_for_height(touch_h: int, hk_design_w: int, hk_design_h
     if hk_design_h <= 0:
         return 1
     return max(1, int(round(hk_design_w * touch_h / hk_design_h)))
-
-
-def _hard_key_layout_display_height(
-    touch_w: int,
-    touch_h: int,
-    hk_design_w: int,
-    hk_design_h: int,
-) -> int:
-    """Logical device height for contain scaling when the strip is width-matched to touch."""
-    if touch_h <= 0:
-        return 1
-    if touch_w <= 0 or hk_design_w <= 0 or hk_design_h <= 0:
-        return max(1, int(touch_h))
-    strip_h_at_touch_w = max(1, int(round(touch_w * hk_design_h / hk_design_w)))
-    return max(int(touch_h), strip_h_at_touch_w)
-
-
-def _contain_scale(
-    intrinsic_w: float,
-    intrinsic_h: float,
-    fit_w: float,
-    fit_h: float,
-) -> float:
-    """Uniform scale so intrinsic rect fits inside fit_w x fit_h (aspect preserved)."""
-    iw = float(intrinsic_w)
-    ih = float(intrinsic_h)
-    fw = float(fit_w)
-    fh = float(fit_h)
-    if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
-        return 0.0
-    return max(0.0, min(fw / iw, fh / ih))
-
-
-def _layout_touchscreen_device(
-    usable_w: int,
-    usable_h: int,
-    touch_w: int,
-    touch_h: int,
-    *,
-    margin: int = 20,
-) -> dict[str, float] | None:
-    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
-        return None
-    uw = float(usable_w)
-    uh = float(usable_h)
-    fit_w = max(1.0, uw - 2.0 * float(margin))
-    fit_h = max(1.0, uh - 2.0 * float(margin))
-    scale = _contain_scale(touch_w, touch_h, fit_w, fit_h)
-    if scale <= 0:
-        return None
-    width = float(touch_w) * scale
-    height = float(touch_h) * scale
-    return {
-        "scale": scale,
-        "left": (uw - width) / 2.0,
-        "top": (uh - height) / 2.0,
-        "width": width,
-        "height": height,
-    }
-
-
-def _layout_hard_key_touch_column(
-    usable_w: int,
-    usable_h: int,
-    touch_w: int,
-    touch_h: int,
-    *,
-    margin: int = 20,
-) -> dict[str, float] | None:
-    """HK touch column only: contain in half padded width x padded height; center at 25% of usable."""
-    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
-        return None
-    uw = float(usable_w)
-    uh = float(usable_h)
-    half_w = max(1.0, (uw - 2.0 * float(margin)) / 2.0)
-    fit_h = max(1.0, uh - 2.0 * float(margin))
-    scale = _contain_scale(float(touch_w), float(touch_h), half_w, fit_h)
-    if scale <= 0:
-        return None
-    width = float(touch_w) * scale
-    height = float(touch_h) * scale
-    top = max(0.0, (uh - height) / 2.0)
-    left = 0.25 * uw - width / 2.0
-    return {
-        "scale": scale,
-        "left": left,
-        "top": top,
-        "width": width,
-        "height": height,
-        "centerX": 0.25 * uw,
-        "centerY": top + height / 2.0,
-    }
-
-
-def _layout_hard_key_strip_column(
-    usable_w: int,
-    usable_h: int,
-    touch_h: int,
-    hk_design_w: int,
-    hk_design_h: int,
-    touch_column_width: float,
-    *,
-    margin: int = 20,
-) -> dict[str, float] | None:
-    """HK strip column: contain in half padded width and padded height; width capped by scaled touch column."""
-    if usable_w <= 0 or usable_h <= 0 or touch_h <= 0:
-        return None
-    if hk_design_w <= 0 or hk_design_h <= 0:
-        return None
-    touch_col_w = float(touch_column_width)
-    if touch_col_w <= 0:
-        return None
-    uw = float(usable_w)
-    uh = float(usable_h)
-    th = float(touch_h)
-    dw = float(hk_design_w)
-    dh = float(hk_design_h)
-    half_w = max(1.0, (uw - 2.0 * float(margin)) / 2.0)
-    fit_h = max(1.0, uh - 2.0 * float(margin))
-    strip_w0 = th * dw / dh
-    candidates = [_contain_scale(strip_w0, th, half_w, fit_h)]
-    if strip_w0 > 0:
-        candidates.append(touch_col_w / strip_w0)
-    scale = min(c for c in candidates if c > 0)
-    if scale <= 0:
-        return None
-    height = th * scale
-    width = height * dw / dh
-    top = max(0.0, (uh - height) / 2.0)
-    left = 0.75 * uw - width / 2.0
-    return {
-        "scale": scale,
-        "left": left,
-        "top": top,
-        "width": width,
-        "height": height,
-        "centerX": 0.75 * uw,
-        "centerY": top + height / 2.0,
-    }
-
-
-def _hard_key_boxes_at_scales(
-    usable_w: float,
-    usable_h: float,
-    touch_w: float,
-    touch_h: float,
-    hk_design_w: float,
-    hk_design_h: float,
-    touch_scale: float,
-    strip_scale: float,
-) -> dict[str, dict[str, float] | float]:
-    th_touch = float(touch_h) * float(touch_scale)
-    tw_s = float(touch_w) * float(touch_scale)
-    strip_th = float(touch_h) * float(strip_scale)
-    strip_w = strip_th * float(hk_design_w) / float(hk_design_h)
-    touch_left = 0.25 * usable_w - tw_s / 2.0
-    hk_left = 0.75 * usable_w - strip_w / 2.0
-    touch_top = max(0.0, (float(usable_h) - th_touch) / 2.0)
-    strip_top = max(0.0, (float(usable_h) - strip_th) / 2.0)
-    touch = {
-        "left": touch_left,
-        "top": touch_top,
-        "width": tw_s,
-        "height": th_touch,
-        "centerX": 0.25 * usable_w,
-        "centerY": touch_top + th_touch / 2.0,
-    }
-    strip = {
-        "left": hk_left,
-        "top": strip_top,
-        "width": strip_w,
-        "height": strip_th,
-        "centerX": 0.75 * usable_w,
-        "centerY": strip_top + strip_th / 2.0,
-    }
-    asm_left = min(touch_left, hk_left)
-    asm_top = min(touch_top, strip_top)
-    asm_right = max(touch_left + tw_s, hk_left + strip_w)
-    asm_bottom = max(touch_top + th_touch, strip_top + strip_th)
-    assembly = {
-        "left": asm_left,
-        "top": asm_top,
-        "width": asm_right - asm_left,
-        "height": asm_bottom - asm_top,
-        "centerX": 0.5 * usable_w,
-        "centerY": asm_top + (asm_bottom - asm_top) / 2.0,
-    }
-    return {
-        "touchScale": float(touch_scale),
-        "stripScale": float(strip_scale),
-        "scale": float(strip_scale),
-        "touch": touch,
-        "strip": strip,
-        "assembly": assembly,
-    }
-
-
-def _hard_key_boxes_at_scale(
-    usable_w: float,
-    usable_h: float,
-    touch_w: float,
-    touch_h: float,
-    hk_design_w: float,
-    hk_design_h: float,
-    scale: float,
-) -> dict[str, dict[str, float] | float]:
-    return _hard_key_boxes_at_scales(
-        usable_w, usable_h, touch_w, touch_h, hk_design_w, hk_design_h, scale, scale
-    )
-
-
-def _layout_hard_key_split(
-    usable_w: int,
-    usable_h: int,
-    touch_w: int,
-    touch_h: int,
-    hk_design_w: int,
-    hk_design_h: int,
-    *,
-    margin: int = 20,
-) -> dict[str, dict[str, float] | float] | None:
-    """Anchor at 25% / 75% of usable width; each zone capped at half the padded usable width."""
-    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
-        return None
-    if hk_design_w <= 0 or hk_design_h <= 0:
-        return None
-    uw = float(usable_w)
-    uh = float(usable_h)
-    tw = float(touch_w)
-    th = float(touch_h)
-    dw = float(hk_design_w)
-    dh = float(hk_design_h)
-    touch_col = _layout_hard_key_touch_column(
-        int(uw), int(uh), int(tw), int(th), margin=margin
-    )
-    if touch_col is None:
-        return None
-    touch_scale = float(touch_col["scale"])
-    strip_col = _layout_hard_key_strip_column(
-        int(uw),
-        int(uh),
-        int(th),
-        int(dw),
-        int(dh),
-        float(touch_col["width"]),
-        margin=margin,
-    )
-    if strip_col is None:
-        return None
-    strip_scale = float(strip_col["scale"])
-    out = _hard_key_boxes_at_scales(uw, uh, tw, th, dw, dh, touch_scale, strip_scale)
-    out["_usableW"] = uw
-    out["_usableH"] = uh
-    out["_touchW"] = tw
-    out["_touchH"] = th
-    out["_designW"] = dw
-    out["_designH"] = dh
-    return out
-
-
-def _layout_hard_key_split_at_scale(
-    layout: dict[str, dict[str, float] | float],
-    touch_scale: float,
-    strip_scale: float | None = None,
-) -> dict[str, dict[str, float] | float]:
-    """Recompute box geometry at new touch/strip scales (e.g. after zoom)."""
-    uw = float(layout["_usableW"])
-    uh = float(layout["_usableH"])
-    tw = float(layout["_touchW"])
-    th = float(layout["_touchH"])
-    dw = float(layout["_designW"])
-    dh = float(layout["_designH"])
-    ss = float(strip_scale) if strip_scale is not None else float(touch_scale)
-    out = _hard_key_boxes_at_scales(uw, uh, tw, th, dw, dh, float(touch_scale), ss)
-    out["_usableW"] = uw
-    out["_usableH"] = uh
-    out["_touchW"] = tw
-    out["_touchH"] = th
-    out["_designW"] = dw
-    out["_designH"] = dh
-    return out
-
-
-def _hard_key_usable_split_layout(
-    usable_w: int,
-    usable_h: int,
-    touch_w: int,
-    touch_h: int,
-    hk_design_w: int,
-    hk_design_h: int,
-    *,
-    margin: int = 20,
-) -> dict[str, float] | None:
-    """Backward-compatible flat dict for callers/tests migrating to _layout_hard_key_split."""
-    lay = _layout_hard_key_split(
-        usable_w, usable_h, touch_w, touch_h, hk_design_w, hk_design_h, margin=margin
-    )
-    if lay is None:
-        return None
-    touch = lay["touch"]
-    strip = lay["strip"]
-    assert isinstance(touch, dict) and isinstance(strip, dict)
-    return {
-        "scale": float(lay.get("stripScale", lay["scale"])),
-        "touchScale": float(lay.get("touchScale", lay["scale"])),
-        "stripScale": float(lay.get("stripScale", lay["scale"])),
-        "touchLeft": float(touch["left"]),
-        "touchTop": float(touch["top"]),
-        "touchWidth": float(touch["width"]),
-        "touchHeight": float(touch["height"]),
-        "touchCenterX": float(touch["centerX"]),
-        "hkLeft": float(strip["left"]),
-        "hkTop": float(strip["top"]),
-        "hkWidth": float(strip["width"]),
-        "hkHeight": float(strip["height"]),
-        "hkCenterX": float(strip["centerX"]),
-        "_usableW": float(usable_w),
-        "_usableH": float(usable_h),
-        "_touchW": float(touch_w),
-        "_touchH": float(touch_h),
-        "_designW": float(hk_design_w),
-        "_designH": float(hk_design_h),
-    }
 
 
 def _hard_key_quarter_band_layout(
@@ -1208,12 +847,13 @@ def _load_hard_key_template(model_key: str) -> tuple[str, str]:
     return (style, body)
 
 
-def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict[str, Any], category_label: str) -> str:
+def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict[str, Any]) -> str:
     identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
     identity_label = _button_identity_label(btn) if isinstance(btn, dict) else ""
-    category_key = _category_key_from_label(category_label)
+    label = "hardButtons"
+    category_key = _category_key_from_label(label)
     meta: dict[str, Any] = {
-        "category": category_label,
+        "category": label,
         "categoryKey": category_key,
         "identity": identity_label,
         "buttonType": identity.get("buttonType") or "",
@@ -1221,8 +861,6 @@ def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict
     }
     if isinstance(btn, dict) and isinstance(btn.get("apexScopeSource"), dict):
         meta["apexScopeSource"] = btn.get("apexScopeSource")
-    if isinstance(btn, dict) and isinstance(btn.get("resolvedPageLink"), dict):
-        meta["resolvedPageLink"] = btn.get("resolvedPageLink")
     return json.dumps(meta).replace("'", "&apos;")
 
 
@@ -1230,7 +868,6 @@ def _render_hard_key_button(
     btn: dict[str, Any],
     *,
     slot: int,
-    category_label: str,
     variable_label: str,
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
@@ -1242,8 +879,8 @@ def _render_hard_key_button(
         return ""
     identity_label = _button_identity_label(btn)
     tag_name = _button_tag_name(btn)
-    category_key = _category_key_from_label(category_label)
-    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui, category_label)
+    category_key = _category_key_from_label("hardButtons")
+    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui)
     link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
     return (
         f"<div class='btn-wrap hk-btn-wrap' "
@@ -1262,7 +899,7 @@ def _augment_template_with_slots(
     body_html: str,
     *,
     model_key: str,
-    slot_buttons_by_left: dict[int, tuple[dict[str, Any], str]],
+    slot_buttons_by_left: dict[int, dict[str, Any]],
     variable_label: str,
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
@@ -1317,14 +954,12 @@ def _augment_template_with_slots(
             if slot is None:
                 raise ValueError(f"Unknown data-label {dl!r} for model '{model_key}'")
             injected_slots.append(int(slot))
-            button_entry = slot_buttons_by_left.get(int(slot))
-            if button_entry is None:
+            button = slot_buttons_by_left.get(int(slot))
+            if button is None:
                 return full
-            button, category_label = button_entry
             btn_html = _render_hard_key_button(
                 button,
                 slot=int(slot),
-                category_label=category_label,
                 variable_label=variable_label,
                 app_ui=app_ui,
                 page_targets=page_targets,
@@ -1349,20 +984,18 @@ def _augment_template_with_slots(
             except StopIteration:
                 return match.group(0)
             injected_slots.append(int(slot))
-            button_entry = slot_buttons_by_left.get(int(slot))
+            button = slot_buttons_by_left.get(int(slot))
             full = match.group(0)
             # Keep the template's opening tag byte-for-byte; only inject children before </div>.
             inner = re.match(r"^(<div\b[^>]+>)\s*(</div>)\s*$", full, flags=re.DOTALL | re.IGNORECASE)
             if not inner:
                 return full
             open_tag, close_tag = inner.group(1), inner.group(2)
-            if button_entry is None:
+            if button is None:
                 return full
-            button, category_label = button_entry
             btn_html = _render_hard_key_button(
                 button,
                 slot=int(slot),
-                category_label=category_label,
                 variable_label=variable_label,
                 app_ui=app_ui,
                 page_targets=page_targets,
@@ -1395,7 +1028,7 @@ def _render_hard_key_strip(
     *,
     model_key: str,
     hard_key_layer: dict[str, Any],
-    layer_hard_buttons: list[tuple[dict[str, Any], str]],
+    layer_hard_buttons: list[dict[str, Any]],
     variable_label: str,
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
@@ -1406,8 +1039,8 @@ def _render_hard_key_strip(
     _, body = _load_hard_key_template(model_key)
     if not body:
         return ""
-    button_by_id: dict[int, tuple[dict[str, Any], str]] = {}
-    for ub, category_label in layer_hard_buttons or []:
+    button_by_id: dict[int, dict[str, Any]] = {}
+    for ub in layer_hard_buttons or []:
         if not isinstance(ub, dict):
             continue
         scope = ub.get("apexScopeSource") if isinstance(ub.get("apexScopeSource"), dict) else {}
@@ -1415,20 +1048,20 @@ def _render_hard_key_strip(
         bid = bid_obj.get("buttonId")
         if bid is None:
             continue
-        button_by_id[int(bid)] = (ub, category_label)
+        button_by_id[int(bid)] = ub
 
-    slot_buttons_by_left: dict[int, tuple[dict[str, Any], str]] = {}
+    slot_buttons_by_left: dict[int, dict[str, Any]] = {}
     for slot in (hard_key_layer or {}).get("slots", []) or []:
         if not isinstance(slot, dict):
             continue
         bid = slot.get("buttonId")
         if bid is None:
             continue
-        button_entry = button_by_id.get(int(bid))
-        if button_entry is None:
+        button = button_by_id.get(int(bid))
+        if button is None:
             continue
         slot_key = int(slot.get("slotKey") or slot.get("buttonLeft") or 0)
-        slot_buttons_by_left[slot_key] = button_entry
+        slot_buttons_by_left[slot_key] = button
 
     augmented = _augment_template_with_slots(
         body,
@@ -1487,8 +1120,6 @@ def _render_button_control(
     }
     if isinstance(btn.get("apexScopeSource"), dict):
         meta["apexScopeSource"] = btn.get("apexScopeSource")
-    if isinstance(btn.get("resolvedPageLink"), dict):
-        meta["resolvedPageLink"] = btn.get("resolvedPageLink")
     meta_attr = json.dumps(meta).replace("'", "&apos;")
     visibility_attr = "1" if bool(oriented_ui.get("visible", True)) and "display:none" not in extra_style else "0"
     classes = f"btn-wrap {extra_classes}".strip()
@@ -1742,7 +1373,7 @@ def _room_list_row_slot_rects(
 
 
 def _max_button_order_for_page_layer(page: dict[str, Any], layer_key: str) -> int:
-    category_defs = ("screenLabels", "screenButtons", "hardButtons", "emptyTag", "uiItems")
+    category_defs = ("screenLabels", "screenButtons", "hardButtons", "uiItems")
     max_order = 0
     layers = _page_layers(page)
     if layers and layer_key.startswith("layer-"):
@@ -1808,7 +1439,6 @@ def _synthetic_room_list_row_button(
     row_index: int,
     page_id: Any,
     rti_address: Any,
-    device_id: Any,
     source_device_id: Any,
     primary_tag: str,
     primary_tag_id: int | None,
@@ -1872,13 +1502,7 @@ def _synthetic_room_list_row_button(
         },
         "resolvedPageLink": resolved if page_link_on else None,
         "apexScopeSource": {
-            "page": {
-                "pageId": page_id,
-                "deviceId": int(device_id) if device_id is not None else None,
-                "roomId": room_id,
-                "sourceDeviceId": source_device_id,
-                "rtiAddress": rti_address,
-            },
+            "page": {"pageId": page_id, "roomId": room_id, "sourceDeviceId": source_device_id, "rtiAddress": rti_address},
             "viewportLayer": {"layerId": 0, "sharedLayerId": 0, "roomId": None, "sourceId": None},
             "pageLayer": {"roomId": None, "sourceId": None},
             "button": {"buttonId": 1_000_000 + row_index, "buttonTagId": primary_tag_id},
@@ -1965,7 +1589,6 @@ def _synthetic_controller_room_list_rows_html(
             row_index=0,
             page_id=page_id,
             rti_address=rti_address,
-            device_id=diag_device_id,
             source_device_id=diag_device_id,
             primary_tag=tag0,
             primary_tag_id=tag_id0,
@@ -2008,7 +1631,6 @@ def _synthetic_controller_room_list_rows_html(
                 row_index=i,
                 page_id=page_id,
                 rti_address=rti_address,
-                device_id=diag_device_id,
                 source_device_id=diag_device_id,
                 primary_tag=tag_name,
                 primary_tag_id=tag_id,
@@ -2088,7 +1710,6 @@ def _synthetic_controller_room_list_rows_html(
         row_index=0,
         page_id=page_id,
         rti_address=rti_address,
-        device_id=diag_device_id,
         source_device_id=diag_device_id,
         primary_tag=tag0,
         primary_tag_id=tag_id0,
@@ -2141,7 +1762,6 @@ def _synthetic_controller_room_list_rows_html(
             row_index=i,
             page_id=page_id,
             rti_address=rti_address,
-            device_id=diag_device_id,
             source_device_id=diag_device_id,
             primary_tag=tag_name,
             primary_tag_id=tag_id,
@@ -2861,12 +2481,10 @@ def _page_payload(
             hk_layer = layer.get("hardKeyLayer") if isinstance(layer.get("hardKeyLayer"), dict) else {}
             if not (hk_layer.get("slots") or hk_layer.get("gestures") or hk_layer.get("unmappedSlots")):
                 continue
-            hard_buttons: list[tuple[dict[str, Any], str]] = []
+            hard_buttons = []
             categories = layer.get("buttonCategories") if isinstance(layer.get("buttonCategories"), dict) else {}
             if isinstance(categories.get("hardButtons"), list):
-                hard_buttons.extend((btn, "Hard Button") for btn in categories.get("hardButtons") if isinstance(btn, dict))
-            if isinstance(categories.get("emptyTag"), list):
-                hard_buttons.extend((btn, "Empty Tag") for btn in categories.get("emptyTag") if isinstance(btn, dict))
+                hard_buttons = categories.get("hardButtons")
             hard_key_strip_html = _render_hard_key_strip(
                 model_key=model_key,
                 hard_key_layer=hk_layer,
@@ -2915,8 +2533,6 @@ def _render_document(
     hard_key_design_w: int = 0,
     hard_key_design_h: int = 0,
     device_profile_class: str = "",
-    client_name: str = "",
-    project_name: str = "",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -2932,14 +2548,14 @@ def _render_document(
     control_json = json.dumps(control_cfg)
     rti_device_json = json.dumps(rti_device_cfg)
     _ts_embed = _sentinel_test_status_embed_js()
+    _group_embed = _sentinel_group_pass_embed_js()
     _hk_css_stripped = (hard_key_style_css or "").strip()
     _hard_key_template_style_tag = (
         '<style data-sentinel-hard-key-template="1">\n' + _hk_css_stripped + "\n</style>" if _hk_css_stripped else ""
     )
     device_theme_css = _sentinel_device_theme_css()
-    commissioning_meta = _commissioning_meta_tags(client_name=client_name, project_name=project_name)
     return f"""<!doctype html>
-<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{commissioning_meta}<title>{header}</title>
+<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
 {device_theme_css}
@@ -3064,6 +2680,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
@@ -3092,6 +2709,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 {_ts_embed}
+{_group_embed}
 const APP_UI={app_json};
 const APP_UI_CONTROLS={control_json};
 const RTI_DEVICE_LAYOUT={rti_device_json};
@@ -3131,6 +2749,7 @@ let selectedRoomId=null;
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
 let pendingTargetKey=null;
+let pendingBatchPass=false;
 let techLastAppliedSeq=0;
 let passAllQueue=[];
 let passAllContext=null;
@@ -3409,9 +3028,13 @@ function _applyTechPayload(payload) {{
      const code = payload?.code;
      const message = payload?.message;
      const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
-     if (pendingTargetKey || isPosting) {{
+     if (pendingTargetKey || pendingBatchPass || isPosting) {{
       setPosting(false);
       setPostStatus(`Error: ${{msg}}`, "error");
+      if (pendingBatchPass) {{
+       pendingBatchPass = false;
+       if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, msg);
+      }}
       drainPassAllQueue();
      }} else {{
       _logTechWs("error-msg", msg);
@@ -3434,6 +3057,9 @@ function _applyTechPayload(payload) {{
      techLastAppliedSeq = seq;
     }}
     if (t === "testing_snapshot") {{
+     if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+      globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+     }}
      const results = Array.isArray(payload?.results) ? payload.results : [];
      const layerLocks = Array.isArray(payload?.layerLocks) ? payload.layerLocks : [];
      let applied = 0;
@@ -3442,11 +3068,10 @@ function _applyTechPayload(payload) {{
       if (!targetKey) continue;
       const outcome = String(rec?.outcome || "").toUpperCase();
       const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-      const techLabel=String(rec?.recordedByTechLabel || '');
-      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady, retestReadyAt: String(rec?.retestReadyAt || "") }});
       const rowUi = rowStatusByTargetKey.get(targetKey);
       if (rowUi) {{
-       setRowStatus(rowUi, outcome, at, techLabel);
+       setRowStatus(rowUi, outcome, at, !!rec?.retestReady, rec?.retestReadyAt);
        applied += 1;
       }}
      }}
@@ -3466,18 +3091,58 @@ function _applyTechPayload(payload) {{
      return;
     }}
     if (t === "commissioning_rollups") return;
+    if (t === "testing_type_settings") {{
+     if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+      globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+     }}
+     refreshButtonVisualStates();
+     return;
+    }}
+    if (t === "test_results.batch") {{
+     const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
+     const outcome = String(payload?.outcome || "PASS").toUpperCase();
+     const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+     for (const k of keys) {{
+      const targetKey = String(k || "").trim();
+      if (!targetKey) continue;
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
+      const rowUi = rowStatusByTargetKey.get(targetKey);
+      if (rowUi) setRowStatus(rowUi, outcome, at);
+     }}
+     refreshButtonVisualStates();
+     if (pendingBatchPass) {{
+      _logTechWs("ack-batch", keys.length);
+      pendingBatchPass = false;
+      setPosting(false);
+      setPostStatus("", "");
+      if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(true);
+     }}
+     return;
+    }}
+    if (t === "fail_tag_updated") {{
+     const tagKey = String(payload?.targetKey || "");
+     if (!tagKey) return;
+     const prev = statusByTargetKey.get(tagKey) || {{}};
+     const prevOutcome = String(prev.outcome || "").toUpperCase();
+     const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
+     const readyAt = ready ? String(payload?.recordedAtUtc || "") : "";
+     statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready, retestReadyAt: readyAt }});
+     const rowUi = rowStatusByTargetKey.get(tagKey);
+     if (rowUi) setRowStatus(rowUi, prev.outcome || "", prev.recordedAtUtc || "", ready, readyAt);
+     refreshButtonVisualStates();
+     return;
+    }}
     if (t !== "test_result.recorded" && t !== "test_result") return;
     const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
     if (!targetKey) return;
     const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
     const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-    const techLabel=String(payload?.recordedByTechLabel || '');
-    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
+    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
     const rowUi = rowStatusByTargetKey.get(targetKey);
     if (!rowUi) {{
      _logTechWs("row-miss", targetKey);
     }} else {{
-      setRowStatus(rowUi, outcome, at, techLabel);
+      setRowStatus(rowUi, outcome, at);
     }}
     refreshButtonVisualStates();
     if (pendingTargetKey && pendingTargetKey === targetKey) {{
@@ -3533,6 +3198,10 @@ function _connectTechWs() {{
     _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
     setPosting(false);
     if (pendingTargetKey) setRowInlineError(pendingTargetKey, "websocket not connected");
+    if (pendingBatchPass) {{
+     pendingBatchPass = false;
+     if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, "websocket not connected");
+    }}
     setPostStatus("", "");
     return;
    }}
@@ -3553,17 +3222,16 @@ function _connectTechWs() {{
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
- function formatRowStatusLine(techLabel, timestamp) {{
-  const template=(APP_UI.testingPopup && APP_UI.testingPopup.rowStatusLineTemplate) || 'Passed by {{techLabel}}: {{timestamp}}';
-  return template.replace('{{techLabel}}', String(techLabel || '').trim()).replace('{{timestamp}}', String(timestamp || '').trim());
- }}
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
-  const techLabel=String(rowUi.recordedByTechLabel || '').trim();
   const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
   if (outcome === "PASS" && times.PASS) {{
-    rowUi.lastTestEl.textContent = formatRowStatusLine(techLabel, times.PASS);
+    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    return;
+  }}
+  if (outcome === "FAIL" && rowUi.retestReady) {{
+    rowUi.lastTestEl.textContent = times.RETEST ? `Ready for retest: ${{times.RETEST}}` : "Ready for retest";
     return;
   }}
   if (outcome === "FAIL" && times.FAIL) {{
@@ -3576,16 +3244,26 @@ function _connectTechWs() {{
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc, recordedByTechLabel) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, retestReady, retestReadyAt) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  const ready = !!retestReady && o === "FAIL";
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
-  if (recordedByTechLabel !== undefined) rowUi.recordedByTechLabel = String(recordedByTechLabel || '').trim();
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
-  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.failBtn) {{
+    rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+    rowUi.failBtn.classList.toggle("is-retest-ready", ready);
+  }}
   rowUi.currentOutcome = o;
+  rowUi.retestReady = ready;
   if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  if (ready) {{
+    const readyAt = formatLastTestUtc(retestReadyAt);
+    if (readyAt) rowUi.statusTimes.RETEST = readyAt;
+  }} else {{
+    delete rowUi.statusTimes.RETEST;
+  }}
   _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
@@ -3596,7 +3274,7 @@ function _connectTechWs() {{
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at, rec.recordedByTechLabel);
+  setRowStatus(rowUi, outcome, at, !!rec.retestReady, rec.retestReadyAt);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -3715,20 +3393,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
   const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
-    const resolvedPageLink = (m.resolvedPageLink && typeof m.resolvedPageLink === "object") ? m.resolvedPageLink : null;
-    const pageLinkPath = resolvedPageLink ? String(resolvedPageLink.resolutionPath || "").trim() : "";
-    const pageLinkDeviceId = pageScope.deviceId != null ? Number(pageScope.deviceId) : (deviceId != null ? Number(deviceId) : null);
-    if (lowerLabel === "page link" && pageLinkPath && pageLinkPath !== "macroStep" && pageLinkDeviceId != null && Number.isFinite(pageLinkDeviceId)) {{
-     const targetKey = `tt2_pagelink:${{pageLinkDeviceId}}:${{Number(buttonTagId)}}:Page Link`;
-     refs.pageLinkScope = "deviceTag";
-     refs.resolutionPath = pageLinkPath;
-     return {{
-      targetKey,
-      kind: scope,
-      targetName,
-      refs
-     }};
-    }}
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
@@ -3759,16 +3423,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
   }}
     refs.programRef = programRef;
-    if (apexScopeSource.audioScope && typeof apexScopeSource.audioScope === "object" && apexScopeSource.audioScope.wrapperDeviceId != null && rtiAddress != null && effectiveRoomId != null) {{
-     const wrapperDeviceId = Number(apexScopeSource.audioScope.wrapperDeviceId);
-     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{Number(buttonTagId)}}:${{keyTokenResolved}}`;
-     return {{
-      targetKey,
-      kind: scope,
-      targetName,
-      refs
-     }};
-    }}
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
      const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
@@ -3953,24 +3607,32 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    failBtn.addEventListener('click', e=>{{e.stopPropagation(); postResultWs(ctxBtn, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
+ function workTargets(meta) {{
+  if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.filterWorkTargets === "function") {{
+   return globalThis.__sentinelTestStatus.filterWorkTargets(meta || {{}});
+  }}
+  const m = (meta && typeof meta === "object") ? meta : {{}};
+  return Array.isArray(m.targets) ? m.targets : [];
+ }}
  function bindTestButtonClicks(root) {{
   const scope=root||document;
   scope.querySelectorAll('.test-btn').forEach(b=>{{
    if (b.dataset.boundTestBtn) return;
    b.dataset.boundTestBtn='1';
-   b.addEventListener('click',()=>{{
+   b.addEventListener('click',(e)=>{{
     const wrap=b.closest('.btn-wrap');
     if (wrap && String(wrap.dataset.syntheticRoomList || '') === '1') {{
       setSelectedRoom(wrap.dataset.syntheticRoomId);
     }}
+    if (globalThis.__sentinelGroupPass && globalThis.__sentinelGroupPass.handleTestButtonClick(b, e)) return;
      const m=JSON.parse(b.dataset.meta||'{{}}');
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
-     pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-     rows.innerHTML=(m.targets||[]).map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
+     const targets = workTargets(m);
+     rows.innerHTML=targets.map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
      clearPassAllQueue();
      setPostStatus('','');
      if (passAllBtn) {{
-      const targets = Array.isArray(m.targets) ? m.targets : [];
       const showPassAll = targets.length > 1;
       passAllBtn.hidden = !showPassAll;
       passAllBtn.disabled = !showPassAll;
@@ -3986,7 +3648,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   scope.querySelectorAll('.vp-box').forEach(el=>{{
    if (el.dataset.boundVpClick) return;
    el.dataset.boundVpClick='1';
-   el.addEventListener('click', ()=>{{
+   el.addEventListener('click', (e)=>{{
     if (viewportMode.active) return;
     enterViewportMode(el.dataset.vp);
    }});
@@ -3995,6 +3657,22 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
 bindTestButtonClicks(document);
 bindViewportBoxClicks(document);
  _connectTechWs();
+ if (globalThis.__sentinelGroupPass) {{
+  globalThis.__sentinelGroupPass.attach({{
+   surface: "device",
+   buildTargetPayload: buildTargetPayload,
+   sendWs: _sendTechWs,
+   refreshVisuals: refreshButtonVisualStates,
+   materializeActivePage: function() {{ if (typeof ensurePageMaterialized === "function") ensurePageMaterialized(activePageIndex); }},
+   materializeAllPages: function() {{
+    if (!Array.isArray(PAGE_STATE) || typeof ensurePageMaterialized !== "function") return;
+    for (let i = 0; i < PAGE_STATE.length; i++) ensurePageMaterialized(i);
+   }},
+   activePageRoot: function() {{ return document.querySelector(".device-page.active") || document.querySelector(".device-page"); }},
+   onPostingChange: setPosting,
+   setPendingBatch: function(on) {{ pendingBatchPass = !!on; }}
+  }});
+ }}
 document.getElementById('close').addEventListener('click',()=>{{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click',e=>{{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
  function activePageEl() {{
@@ -4808,204 +4486,6 @@ function hkTouchSourceSize() {{
  const s=currentOrientationSize();
  return {{width:Number(s.width||0), height:Number(s.height||0)}};
 }}
-function containScale(intrinsicW, intrinsicH, fitW, fitH) {{
- const iw=Number(intrinsicW)||0;
- const ih=Number(intrinsicH)||0;
- const fw=Number(fitW)||0;
- const fh=Number(fitH)||0;
- if (iw<=0 || ih<=0 || fw<=0 || fh<=0) return 0;
- return Math.max(0, Math.min(fw/iw, fh/ih));
-}}
-function layoutTouchscreenDevice(usableW, usableH, touchW, touchH, margin) {{
- const uw=Number(usableW)||0;
- const uh=Number(usableH)||0;
- const tw=Number(touchW)||0;
- const th=Number(touchH)||0;
- const m=margin==null ? 20 : Number(margin);
- if (uw<=0 || uh<=0 || tw<=0 || th<=0) return null;
- const fitW=Math.max(1, uw-2*m);
- const fitH=Math.max(1, uh-2*m);
- const scale=containScale(tw, th, fitW, fitH);
- if (!Number.isFinite(scale) || scale<=0) return null;
- const width=tw*scale;
- const height=th*scale;
- return {{scale, left:(uw-width)/2, top:(uh-height)/2, width, height}};
-}}
-function layoutHardKeyTouchColumn(usableW, usableH, touchW, touchH, margin) {{
- const uw=Number(usableW)||0;
- const uh=Number(usableH)||0;
- const tw=Number(touchW)||0;
- const th=Number(touchH)||0;
- const m=margin==null ? 20 : Number(margin);
- if (uw<=0 || uh<=0 || tw<=0 || th<=0) return null;
- const halfW=Math.max(1, (uw-2*m)/2);
- const fitH=Math.max(1, uh-2*m);
- const scale=containScale(tw, th, halfW, fitH);
- if (!Number.isFinite(scale) || scale<=0) return null;
- const width=tw*scale;
- const height=th*scale;
- const top=Math.max(0, (uh-height)/2);
- const left=0.25*uw-width/2;
- return {{scale, left, top, width, height, centerX:0.25*uw, centerY:top+height/2}};
-}}
-function layoutHardKeyStripColumn(usableW, usableH, touchH, designW, designH, touchColumnWidth, margin) {{
- const uw=Number(usableW)||0;
- const uh=Number(usableH)||0;
- const th=Number(touchH)||0;
- const dw=Number(designW)||0;
- const dh=Number(designH)||0;
- const touchColW=Number(touchColumnWidth)||0;
- const m=margin==null ? 20 : Number(margin);
- if (uw<=0 || uh<=0 || th<=0 || dw<=0 || dh<=0 || touchColW<=0) return null;
- const halfW=Math.max(1, (uw-2*m)/2);
- const fitH=Math.max(1, uh-2*m);
- const stripW0=th*dw/dh;
- const candidates=[containScale(stripW0, th, halfW, fitH)];
- if (stripW0>0) candidates.push(touchColW/stripW0);
- const scale=Math.min.apply(null, candidates.filter(v=>Number.isFinite(v)&&v>0));
- if (!Number.isFinite(scale) || scale<=0) return null;
- const height=th*scale;
- const width=height*dw/dh;
- const top=Math.max(0, (uh-height)/2);
- const left=0.75*uw-width/2;
- return {{scale, left, top, width, height, centerX:0.75*uw, centerY:top+height/2}};
-}}
-function hardKeyBoxesAtScales(usableW, usableH, touchW, touchH, designW, designH, touchScale, stripScale) {{
- const uw=Number(usableW)||0;
- const uh=Number(usableH)||0;
- const ts=Number(touchScale)||0;
- const ss=Number(stripScale)||0;
- const tw=Number(touchW)*ts;
- const thTouch=Number(touchH)*ts;
- const stripTh=Number(touchH)*ss;
- const stripW=stripTh*Number(designW)/Number(designH);
- const touchLeft=0.25*uw-tw/2;
- const hkLeft=0.75*uw-stripW/2;
- const touchTop=Math.max(0, (uh-thTouch)/2);
- const stripTop=Math.max(0, (uh-stripTh)/2);
- const touch={{
-  left:touchLeft,
-  top:touchTop,
-  width:tw,
-  height:thTouch,
-  centerX:0.25*uw,
-  centerY:touchTop+thTouch/2,
- }};
- const strip={{
-  left:hkLeft,
-  top:stripTop,
-  width:stripW,
-  height:stripTh,
-  centerX:0.75*uw,
-  centerY:stripTop+stripTh/2,
- }};
- const asmLeft=Math.min(touchLeft, hkLeft);
- const asmTop=Math.min(touchTop, stripTop);
- const asmRight=Math.max(touchLeft+tw, hkLeft+stripW);
- const asmBottom=Math.max(touchTop+thTouch, stripTop+stripTh);
- const assembly={{
-  left:asmLeft,
-  top:asmTop,
-  width:asmRight-asmLeft,
-  height:asmBottom-asmTop,
-  centerX:0.5*uw,
-  centerY:asmTop+(asmBottom-asmTop)/2,
- }};
- return {{touchScale:ts, stripScale:ss, scale:ss, touch, strip, assembly}};
-}}
-function layoutHardKeySplit(usableW, usableH, touchW, touchH, designW, designH, margin) {{
- const uw=Number(usableW)||0;
- const uh=Number(usableH)||0;
- const tw=Number(touchW)||0;
- const th=Number(touchH)||0;
- const dw=Number(designW)||0;
- const dh=Number(designH)||0;
- const m=margin==null ? 20 : Number(margin);
- if (uw<=0 || uh<=0 || tw<=0 || th<=0 || dw<=0 || dh<=0) return null;
- const touchCol=layoutHardKeyTouchColumn(uw, uh, tw, th, m);
- if (!touchCol) return null;
- const stripCol=layoutHardKeyStripColumn(uw, uh, th, dw, dh, touchCol.width, m);
- if (!stripCol) return null;
- const touchScale=Number(touchCol.scale)||0;
- const stripScale=Number(stripCol.scale)||0;
- if (!Number.isFinite(touchScale) || touchScale<=0 || !Number.isFinite(stripScale) || stripScale<=0) return null;
- const out=hardKeyBoxesAtScales(uw, uh, tw, th, dw, dh, touchScale, stripScale);
- out._usableW=uw;
- out._usableH=uh;
- out._touchW=tw;
- out._touchH=th;
- out._designW=dw;
- out._designH=dh;
- return out;
-}}
-function layoutHardKeySplitAtScale(layout, touchScale, stripScale) {{
- if (!layout) return null;
- const ss=(stripScale==null) ? Number(touchScale) : Number(stripScale);
- const out=hardKeyBoxesAtScales(
-  layout._usableW, layout._usableH, layout._touchW, layout._touchH, layout._designW, layout._designH, touchScale, ss
- );
- out._usableW=layout._usableW;
- out._usableH=layout._usableH;
- out._touchW=layout._touchW;
- out._touchH=layout._touchH;
- out._designW=layout._designW;
- out._designH=layout._designH;
- return out;
-}}
-function applyHardKeySplitLayout(activePage, pos) {{
- if (!activePage||!pos||!pos.assembly) return;
- const asm=pos.assembly;
- const rel=(box)=>({{
-  left:Number(box.left)-asm.left,
-  top:Number(box.top)-asm.top,
-  width:Number(box.width),
-  height:Number(box.height),
- }});
- const touch=rel(pos.touch);
- const strip=rel(pos.strip);
- const leftCol=activePage.querySelector('.hk-split-left');
- const rightCol=activePage.querySelector('.hk-split-right');
- const touchStack=activePage.querySelector('.hk-touch-stack');
- const place=(el, left, top, width, height)=>{{
-  if (!el) return;
-  el.style.position='absolute';
-  el.style.left=`${{left}}px`;
-  el.style.top=`${{top}}px`;
-  el.style.width=`${{width}}px`;
-  el.style.height=`${{height}}px`;
-  el.style.right='auto';
-  el.style.bottom='auto';
- }};
- place(leftCol, touch.left, touch.top, touch.width, touch.height);
- place(rightCol, strip.left, strip.top, strip.width, strip.height);
- if (touchStack) {{
-  touchStack.style.width=`${{touch.width}}px`;
-  touchStack.style.height=`${{touch.height}}px`;
- }}
- const frameW=Math.max(1, Math.floor(strip.width));
- const frameH=Math.max(1, Math.floor(strip.height));
- if (rightCol) {{
-  rightCol.style.setProperty('--frame-w', `${{frameW}}px`);
-  rightCol.style.setProperty('--frame-h', `${{frameH}}px`);
-  const frame=rightCol.querySelector('.frame');
-  if (frame) {{
-   frame.style.setProperty('--frame-w', `${{frameW}}px`);
-   frame.style.setProperty('--frame-h', `${{frameH}}px`);
-   frame.style.removeProperty('transform');
-   frame.style.removeProperty('transform-origin');
-  }}
- }}
-}}
-function centerRtiCanvasOnHkAssembly(pos) {{
- const rtiCanvas=document.getElementById('rtiCanvas');
- if (!rtiCanvas||!pos||!pos.assembly) return;
- const cx=Number(pos.assembly.centerX)||0;
- const cy=Number(pos.assembly.centerY)||0;
- const maxL=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth, 0);
- const maxT=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight, 0);
- rtiCanvas.scrollLeft=clamp(cx-(rtiCanvas.clientWidth/2), 0, maxL);
- rtiCanvas.scrollTop=clamp(cy-(rtiCanvas.clientHeight/2), 0, maxT);
-}}
 function applyOrientationState() {{
  const short=currentOrientation==='landscape' ? 'l' : 'p';
  document.querySelectorAll('.orientation-btn').forEach(button=>button.classList.toggle('active', button.dataset.orientation===currentOrientation));
@@ -5193,28 +4673,11 @@ function renderLayerPanel() {{
    applyViewportPopupLayerVisibility();
   }}
  }}
-function readCommissioningTitles() {{
- const client=document.querySelector('meta[name="sentinel-client-name"]')?.getAttribute('content')||'';
- const project=document.querySelector('meta[name="sentinel-project-name"]')?.getAttribute('content')||'';
- return {{ clientName: client, projectName: project }};
-}}
 function syncHeader() {{
- const headerRoot=document.getElementById('topControls');
- const headerEl=headerRoot ? headerRoot.querySelector('.header') : null;
+ const headerEl=document.querySelector('#topControls .header');
  if (!headerEl) return;
- const titles=readCommissioningTitles();
- const deviceName=PAGE_STATE[0]?.deviceName || '';
- const pageName=activePageState().pageName || '';
  const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
- if (titles.clientName || titles.projectName) {{
-  headerEl.textContent=titleTemplate
-   .replace('{{clientName}}', titles.clientName)
-   .replace('{{projectName}}', titles.projectName)
-   .replace('{{deviceName}}', deviceName)
-   .replace('{{pageName}}', pageName);
- }} else {{
-  headerEl.textContent=`${{deviceName}} - ${{pageName}}`.trim();
- }}
+ headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
  syncSelectedRoomIndicator();
 }}
  function syncViewportControls() {{}}
@@ -5337,31 +4800,39 @@ function syncHeader() {{
    if (!canvas||!canvas.classList.contains('rti-device-canvas-hk')) return;
    canvas.querySelectorAll('.hk-split-right').forEach((zone)=>{{ zone.classList.remove('hk-tight-cluster'); }});
    canvas.querySelectorAll('.hk-cluster-rim').forEach((el)=>{{ el.remove(); }});
+   canvas.querySelectorAll('.hk-split-right .frame').forEach((fr)=>{{
+    fr.style.removeProperty('transform');
+    fr.style.removeProperty('transform-origin');
+    delete fr.dataset.sentinelHkTightApplied;
+   }});
    if (!activePage) return;
+   const leftCol=activePage.querySelector('.hk-split-left');
+   const touchEl=leftCol ? (leftCol.querySelector('.hk-touch-stack')||leftCol) : null;
+   if (!touchEl) return;
    const HK_TIGHT_PAD=4;
    const ringStrokeRaw=getComputedStyle(document.documentElement).getPropertyValue('--sentinel-device-frame-ring-width').trim();
    const ringStroke=Math.max(0,parseFloat(ringStrokeRaw)||0)||3;
    activePage.querySelectorAll('.hk-split-right').forEach((zone)=>{{
     const frame=zone.querySelector('.frame');
     if (!frame) return;
-    let boxes=[...frame.querySelectorAll('.box')].filter((b)=>b.querySelector('.hk-btn-wrap'));
-    if (!boxes.length) boxes=[...frame.querySelectorAll('.box')];
+    const boxes=[...frame.querySelectorAll('.box')];
     if (!boxes.length) return;
-    let minL=Infinity,minT=Infinity,maxR=-Infinity,maxB=-Infinity;
+    zone.classList.add('hk-tight-cluster');
+    const fr=frame.getBoundingClientRect();
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     for (const el of boxes) {{
      const r=el.getBoundingClientRect();
-     minL=Math.min(minL,r.left);
-     minT=Math.min(minT,r.top);
-     maxR=Math.max(maxR,r.right);
-     maxB=Math.max(maxB,r.bottom);
+     minX=Math.min(minX,r.left-fr.left);
+     minY=Math.min(minY,r.top-fr.top);
+     maxX=Math.max(maxX,r.right-fr.left);
+     maxY=Math.max(maxY,r.bottom-fr.top);
     }}
-    const uw=maxR-minL;
-    const uh=maxB-minT;
+    const uw=maxX-minX;
+    const uh=maxY-minY;
     if (!Number.isFinite(uw)||!Number.isFinite(uh)||uw<=0||uh<=0) {{
+     zone.classList.remove('hk-tight-cluster');
      return;
     }}
-    zone.classList.add('hk-tight-cluster');
-    const zr=zone.getBoundingClientRect();
     const innerW=uw+2*HK_TIGHT_PAD;
     const innerH=uh+2*HK_TIGHT_PAD;
     const rim=document.createElement('div');
@@ -5369,9 +4840,34 @@ function syncHeader() {{
     rim.setAttribute('aria-hidden','true');
     rim.style.cssText=
      'position:absolute;box-sizing:content-box;pointer-events:none;z-index:2147483647;'+
-     `left:${{minL-HK_TIGHT_PAD-ringStroke-zr.left}}px;top:${{minT-HK_TIGHT_PAD-ringStroke-zr.top}}px;`+
+     `left:${{minX-HK_TIGHT_PAD-ringStroke}}px;top:${{minY-HK_TIGHT_PAD-ringStroke}}px;`+
      `width:${{innerW}}px;height:${{innerH}}px;`;
-    zone.appendChild(rim);
+    frame.appendChild(rim);
+    const fr2=frame.getBoundingClientRect();
+    const rr=rim.getBoundingClientRect();
+    const ox=rr.left-fr2.left+rr.width/2;
+    const oy=rr.top-fr2.top+rr.height/2;
+    const leftW=touchEl.getBoundingClientRect().width;
+    const s=leftW/rr.width;
+    if (!Number.isFinite(s)||s<=0||!(leftW>0)) {{
+     rim.remove();
+     zone.classList.remove('hk-tight-cluster');
+     return;
+    }}
+    const scaleAroundRing='translate('+ox+'px,'+oy+'px) scale('+s+') translate('+(-ox)+'px,'+(-oy)+'px)';
+    frame.style.transformOrigin='0 0';
+    frame.style.transform=scaleAroundRing;
+    void frame.offsetHeight;
+    let top=Infinity,bot=-Infinity;
+    for (const el of frame.querySelectorAll('.box')) {{
+     const r=el.getBoundingClientRect();
+     top=Math.min(top,r.top);
+     bot=Math.max(bot,r.bottom);
+    }}
+    const z=zone.getBoundingClientRect();
+    const dy=z.top+z.height/2-(top+bot)/2;
+    frame.style.transform='translateY('+dy+'px) '+scaleAroundRing;
+    frame.dataset.sentinelHkTightApplied='1';
    }});
   }}
 function applyRtiLayout() {{
@@ -5417,79 +4913,58 @@ function applyRtiLayout() {{
  rtiCanvas.style.width=`${{rtiCanvasWidth}}px`;
  rtiCanvas.style.height=`${{rtiCanvasHeight}}px`;
 
-const isHkDevice=rtiDeviceCanvas.classList.contains('rti-device-canvas-hk');
+const sourceSize=currentOrientationSize();
 const DEVICE_CANVAS_MARGIN=20;
-const zoomMul=clamp(Number(currentZoomPercent||ZOOM_DEFAULT), ZOOM_DEFAULT, ZOOM_MAX)/100;
-const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
-const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
-let totalScale=1;
-let hkTouchScale=1;
-let hkStripScale=1;
-let fittedWidth=0;
-let fittedHeight=0;
-let offsetLeft=0;
-let offsetTop=0;
-let hkSplitPos=null;
-if (isHkDevice) {{
- const usableW=rtiCanvasWidth;
- const usableH=rtiCanvasHeight;
- const ts=hkTouchSourceSize();
- const touchW=Number(ts.width||0);
- const touchH=Number(ts.height||0);
- const designW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
- const designH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
- const baseLay=layoutHardKeySplit(usableW, usableH, touchW, touchH, designW, designH, DEVICE_CANVAS_MARGIN);
- let baseTouchScale=(baseLay && Number(baseLay.touchScale)>0) ? Number(baseLay.touchScale) : 1;
- let baseStripScale=(baseLay && Number(baseLay.stripScale)>0) ? Number(baseLay.stripScale) : baseTouchScale;
+const fitWidth=Math.max(rtiCanvasWidth-(DEVICE_CANVAS_MARGIN*2),1);
+const fitHeight=Math.max(rtiCanvasHeight-(DEVICE_CANVAS_MARGIN*2),1);
+const widthScale=fitWidth/sourceSize.width;
+const heightScale=fitHeight/sourceSize.height;
+ let scale=Math.min(widthScale,heightScale);
+ const maxScale=Number(RTI_DEVICE_LAYOUT.maxScale ?? 10);
+ const minScale=Number(RTI_DEVICE_LAYOUT.minScale ?? 0.25);
  if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) {{
-  baseTouchScale=Math.min(baseTouchScale, 1);
-  baseStripScale=Math.min(baseStripScale, 1);
+   scale=Math.min(scale,1);
  }}
- baseTouchScale=Math.min(maxScale, Math.max(minScale, baseTouchScale));
- baseStripScale=Math.min(maxScale, Math.max(minScale, baseStripScale));
- hkTouchScale=baseTouchScale*zoomMul;
- hkStripScale=baseStripScale*zoomMul;
- totalScale=hkStripScale;
- hkSplitPos=layoutHardKeySplitAtScale(baseLay, hkTouchScale, hkStripScale);
- const asm=(hkSplitPos && hkSplitPos.assembly) ? hkSplitPos.assembly : null;
- fittedWidth=asm ? asm.width : usableW;
- fittedHeight=asm ? asm.height : usableH;
- offsetLeft=asm ? asm.left : 0;
- offsetTop=asm ? asm.top : 0;
- const contentWidth=Math.max(rtiCanvasWidth, asm ? (asm.left+asm.width) : rtiCanvasWidth);
- const contentHeight=Math.max(rtiCanvasHeight, asm ? (asm.top+asm.height) : rtiCanvasHeight);
+ scale=Math.min(maxScale, Math.max(minScale, scale));
+ const totalScale=scale*(currentZoomPercent/100);
+const fittedWidth=sourceSize.width*totalScale;
+const fittedHeight=sourceSize.height*totalScale;
+const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
+const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
+const offsetLeft=(contentWidth-fittedWidth)/2;
+const offsetTop=(contentHeight-fittedHeight)/2;
  rtiContent.style.width=`${{contentWidth}}px`;
  rtiContent.style.height=`${{contentHeight}}px`;
  rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
  rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
  rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
  rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
- rtiDeviceCanvas.style.setProperty('--sentinel-device-scale', String(hkStripScale));
- rtiDeviceCanvas.style.setProperty('--sentinel-hk-touch-scale', String(hkTouchScale));
-}} else {{
- const sourceSize=currentOrientationSize();
- const touchLay=layoutTouchscreenDevice(rtiCanvasWidth, rtiCanvasHeight, sourceSize.width, sourceSize.height, DEVICE_CANVAS_MARGIN);
- let baseScale=(touchLay && Number(touchLay.scale)>0) ? Number(touchLay.scale) : 1;
- if (!Boolean(RTI_DEVICE_LAYOUT.allowScaleAboveOne)) baseScale=Math.min(baseScale, 1);
- baseScale=Math.min(maxScale, Math.max(minScale, baseScale));
- totalScale=baseScale*zoomMul;
- fittedWidth=sourceSize.width*totalScale;
- fittedHeight=sourceSize.height*totalScale;
- const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
- const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
- offsetLeft=(contentWidth-fittedWidth)/2;
- offsetTop=(contentHeight-fittedHeight)/2;
- rtiContent.style.width=`${{contentWidth}}px`;
- rtiContent.style.height=`${{contentHeight}}px`;
- rtiDeviceCanvas.style.left=`${{offsetLeft}}px`;
- rtiDeviceCanvas.style.top=`${{offsetTop}}px`;
- rtiDeviceCanvas.style.width=`${{fittedWidth}}px`;
- rtiDeviceCanvas.style.height=`${{fittedHeight}}px`;
- rtiDeviceCanvas.style.removeProperty('--sentinel-device-scale');
-}}
  currentTotalScale=totalScale;
  currentDeviceLeft=offsetLeft;
  currentDeviceTop=offsetTop;
+ if (rtiDeviceCanvas.classList.contains('rti-device-canvas-hk')) {{
+  const ts=hkTouchSourceSize();
+  const tsw=Number(ts.width||0);
+  const tsh=Number(ts.height||0);
+  if (tsw>0 && tsh>0) {{
+   rtiDeviceCanvas.style.setProperty('--sentinel-device-scale', String(totalScale));
+   document.querySelectorAll('.hk-touch-stack').forEach(el=>{{
+    el.style.width=`${{tsw*totalScale}}px`;
+    el.style.height=`${{tsh*totalScale}}px`;
+   }});
+  }}
+ }} else {{
+  rtiDeviceCanvas.style.removeProperty('--sentinel-device-scale');
+ }}
+ if (_pendingZoomCenter) {{
+  const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
+  const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
+  const cx=Number(_pendingZoomCenter.centerX||0);
+  const cy=Number(_pendingZoomCenter.centerY||0);
+  rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(cx*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
+  rtiCanvas.scrollTop=clamp((currentDeviceTop+(cy*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
+  _pendingZoomCenter=null;
+ }}
  rtiCanvas.classList.toggle('scroll-hover', Boolean(ZOOM_CONTROLS.scrollbars?.showOnHover) && currentZoomPercent > 100);
 
  if (orientationControls) {{
@@ -5519,18 +4994,11 @@ if (isHkDevice) {{
 
  document.querySelectorAll('.device-page').forEach(page=>page.classList.toggle('active', Number(page.dataset.pageIndex)===activePageIndex));
  const activePage=activePageEl();
- const hkElementScale=(el)=>{{
-  if (!isHkDevice || !el) return totalScale;
-  if (el.classList.contains('hk-btn-wrap')) return hkStripScale;
-  if (el.closest('.hk-split-left')) return hkTouchScale;
-  return totalScale;
- }};
  if (activePage) activePage.querySelectorAll('.vp-box').forEach(el=>{{
-   const elScale=hkElementScale(el);
-   const left=Number(el.dataset.left||0)*elScale;
-   const top=Number(el.dataset.top||0)*elScale;
-   const width=Number(el.dataset.width||0)*elScale;
-   const height=Number(el.dataset.height||0)*elScale;
+   const left=Number(el.dataset.left||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
+   const width=Number(el.dataset.width||0)*totalScale;
+   const height=Number(el.dataset.height||0)*totalScale;
    el.style.left=`${{left}}px`;
    el.style.top=`${{top}}px`;
    el.style.width=`${{width}}px`;
@@ -5538,29 +5006,26 @@ if (isHkDevice) {{
  }});
 
  if (activePage) activePage.querySelectorAll('.synthetic-list-scroll').forEach(el=>{{
-   const elScale=hkElementScale(el);
-   const left=Number(el.dataset.left||0)*elScale;
-   const top=Number(el.dataset.top||0)*elScale;
-   const width=Number(el.dataset.width||0)*elScale;
-   const height=Number(el.dataset.height||0)*elScale;
+   const left=Number(el.dataset.left||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
+   const width=Number(el.dataset.width||0)*totalScale;
+   const height=Number(el.dataset.height||0)*totalScale;
    el.style.left=`${{left}}px`;
    el.style.top=`${{top}}px`;
    el.style.width=`${{width}}px`;
    el.style.height=`${{height}}px`;
   }});
  if (activePage) activePage.querySelectorAll('.synthetic-list-scroll .synthetic-list-scroll-pad').forEach(el=>{{
-   const elScale=hkElementScale(el);
-   const ph=Number(el.dataset.activePadHeight!=null ? el.dataset.activePadHeight : (el.dataset.padHeight||0))*elScale;
+   const ph=Number(el.dataset.activePadHeight!=null ? el.dataset.activePadHeight : (el.dataset.padHeight||0))*totalScale;
    el.style.height=`${{ph}}px`;
  }});
  if (activePage) activePage.querySelectorAll('.btn-wrap').forEach(el=>{{
    const isHk=el.classList.contains('hk-btn-wrap');
    if (!isHk) {{
-   const elScale=hkElementScale(el);
-   const left=Number(el.dataset.left||0)*elScale;
-   const top=Number(el.dataset.top||0)*elScale;
-   const width=Number(el.dataset.width||0)*elScale;
-   const height=Number(el.dataset.height||0)*elScale;
+   const left=Number(el.dataset.left||0)*totalScale;
+   const top=Number(el.dataset.top||0)*totalScale;
+   const width=Number(el.dataset.width||0)*totalScale;
+   const height=Number(el.dataset.height||0)*totalScale;
    const inSyntheticList=String(el.dataset.syntheticSourceList||'')==='1' || String(el.dataset.syntheticRoomList||'')==='1';
    const shell=inSyntheticList ? el.closest('.synthetic-list-scroll') : null;
    const reserveRight=(shell && inSyntheticList) ? Math.max(4, (shell.offsetWidth-shell.clientWidth)+4) : 0;
@@ -5573,40 +5038,27 @@ if (isHkDevice) {{
    }}
    const button=el.querySelector('.test-btn');
     if (button) {{
-      const elScale=hkElementScale(el);
-      if (isHk) {{
-       button.style.removeProperty('font-size');
-      }} else {{
-       const buttonFontPx=resolveButtonFontPx(el, elScale);
-       button.style.fontSize=`${{buttonFontPx}}px`;
-      }}
-      button.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*elScale)}}px`;
+      const buttonFontPx=resolveButtonFontPx(el, totalScale);
+      button.style.fontSize=`${{buttonFontPx}}px`;
+      button.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*totalScale)}}px`;
       const linkHit=el.querySelector('.page-link-hit');
-      if (linkHit) {{
-       const buttonFontPx=isHk
-        ? Number.parseFloat(getComputedStyle(button).fontSize||'0')
-        : resolveButtonFontPx(el, elScale);
-       if (buttonFontPx>0) applyLinkSizing(linkHit, buttonFontPx, elScale);
-      }}
+      if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
     }}
   }});
- if (isHkDevice && activePage && hkSplitPos) {{
-  applyHardKeySplitLayout(activePage, hkSplitPos);
-  applyHkTightClusterLayout(activePage);
- }}
- if (_pendingZoomCenter) {{
-  if (isHkDevice && hkSplitPos) {{
-   centerRtiCanvasOnHkAssembly(hkSplitPos);
-  }} else {{
-   const maxScrollLeft=Math.max(rtiCanvas.scrollWidth-rtiCanvas.clientWidth,0);
-   const maxScrollTop=Math.max(rtiCanvas.scrollHeight-rtiCanvas.clientHeight,0);
-   const cx=Number(_pendingZoomCenter.centerX||0);
-   const cy=Number(_pendingZoomCenter.centerY||0);
-   rtiCanvas.scrollLeft=clamp((currentDeviceLeft+(cx*currentTotalScale))-(rtiCanvas.clientWidth/2),0,maxScrollLeft);
-   rtiCanvas.scrollTop=clamp((currentDeviceTop+(cy*currentTotalScale))-(rtiCanvas.clientHeight/2),0,maxScrollTop);
-  }}
-  _pendingZoomCenter=null;
- }}
+ if (activePage) activePage.querySelectorAll('.hk-split-right').forEach(zone=>{{
+   const designW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
+   const designH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
+   const zoneW=zone.clientWidth;
+   const zoneH=zone.clientHeight;
+   if (designW>0 && designH>0 && zoneW>0 && zoneH>0) {{
+     const fitScale=Math.min(zoneW/designW, zoneH/designH);
+     const frameW=Math.max(1, Math.floor(designW*fitScale));
+     const frameH=Math.max(1, Math.floor(designH*fitScale));
+     zone.style.setProperty('--frame-w', `${{frameW}}px`);
+     zone.style.setProperty('--frame-h', `${{frameH}}px`);
+   }}
+ }});
+ applyHkTightClusterLayout(activePage);
  refreshButtonVisualStates();
  syncHeader();
  if (LAYER_PANEL.enabled===false) {{
@@ -6043,22 +5495,10 @@ def _count_label(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
 
-def render_project_home_html(
-    project_data: dict[str, Any],
-    app_ui: dict[str, Any],
-    project_stem: str,
-    *,
-    client_name: str = "",
-    project_name: str = "",
-) -> str:
+def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str) -> str:
     source = project_data.get("source", {})
     source_file = str(source.get("file") or project_stem)
-    source_basename = Path(source_file).name if source_file else project_stem
-    client_display = str(client_name or "").strip()
-    project_display = str(project_name or "").strip()
-    if not project_display:
-        project_display = Path(source_file).stem if source_file else project_stem
-    page_title = project_display
+    project_title = Path(source_file).stem if source_file else project_stem
     system_events = _event_section_items(project_data, "system")
     driver_events = _event_section_items(project_data, "driver")
     devices = project_data.get("devices", [])
@@ -6109,9 +5549,9 @@ def render_project_home_html(
 
     app_json = json.dumps(app_ui)
     _ts_embed = _sentinel_test_status_embed_js()
-    commissioning_meta = _commissioning_meta_tags(client_name=client_display, project_name=project_display)
+    _group_embed = _sentinel_group_pass_embed_js()
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{commissioning_meta}<title>{escape(page_title)}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{project_title}</title>
 <style>
 html,body{{margin:0;min-height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#eef3f7 0%,#dce7ef 100%);color:#183247;}}
@@ -6119,7 +5559,6 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-header{{margin-bottom:24px;padding:24px 28px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
 .home-kicker{{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5a7387;margin-bottom:10px;}}
 .home-title{{margin:0;font-size:32px;line-height:1.05;}}
-.home-title + .home-title{{margin-top:4px;}}
 .home-source{{margin-top:10px;font-size:14px;color:#4d6678;word-break:break-word;}}
 .home-section{{margin-top:28px;padding:22px 24px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
 .section-toggle{{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;box-sizing:border-box;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
@@ -6137,7 +5576,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .btn-wrap--home-event .test-btn{{width:100%;margin:0;font:inherit;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:0;background:var(--btn-fill-color);color:#fff;box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);font-size:15px;line-height:1.35;text-align:left;cursor:pointer;white-space:normal;}}
 .btn-wrap--home-event:hover .test-btn{{filter:brightness(1.05);}}
 .btn-wrap--home-event .btn-pass-total{{display:none !important;visibility:hidden !important;}}
-.device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
+.device-row{{background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;}}
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px;z-index:10000;}}
 .ov.open{{display:flex;}}
@@ -6162,6 +5601,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
@@ -6175,9 +5615,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <main class='home-shell'>
 <section class='home-header'>
 <div class='home-kicker'>Project Home</div>
-<h1 class='home-title home-client-name'>{escape(client_display)}</h1>
-<h1 class='home-title home-project-name'>{escape(project_display)}</h1>
-<div class='home-source'>Current File: {escape(source_basename)}</div>
+<h1 class='home-title'>{project_title}</h1>
+<div class='home-source'>{source_file}</div>
 </section>
 <section class='home-section'>
 <button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-system'>0%</span></button>
@@ -6195,6 +5634,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <div class='ov' id='ov'><div class='pop'><div class='pop-head'><h3 id='pt'></h3><button id='passAll' type='button'>Pass All</button></div><div id='rows' class='rows-scroll scroll-hover'></div><div class='post-status' id='postStatus' role='status' aria-live='polite' hidden></div><button id='close'>Close</button></div></div>
 <script>
 {_ts_embed}
+{_group_embed}
 const APP_UI={app_json};
  const ov=document.getElementById('ov'),pt=document.getElementById('pt'),rows=document.getElementById('rows'),postStatus=document.getElementById('postStatus'),passAllBtn=document.getElementById('passAll');
  let isPosting=false;
@@ -6203,6 +5643,7 @@ const APP_UI={app_json};
  let techWsReconnectTimer=null;
  let techWsReconnectDelayMs=500;
  let pendingTargetKey=null;
+ let pendingBatchPass=false;
  let techLastAppliedSeq=0;
  let passAllQueue=[];
  let passAllContext=null;
@@ -6289,6 +5730,10 @@ const APP_UI={app_json};
       const msg = String(code ? `${{code}}${{message ? ": " + message : ""}}` : (message || "Error"));
       setPosting(false);
       if (pendingTargetKey) setRowInlineError(pendingTargetKey, msg);
+      if (pendingBatchPass) {{
+       pendingBatchPass = false;
+       if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, msg);
+      }}
       setPostStatus("", "");
       drainPassAllQueue();
       return;
@@ -6309,6 +5754,9 @@ const APP_UI={app_json};
     techLastAppliedSeq = seq;
    }}
    if (t === "testing_snapshot") {{
+    if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+     globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+    }}
     const results = Array.isArray(payload?.results) ? payload.results : [];
     let applied = 0;
     for (const rec of results) {{
@@ -6316,11 +5764,10 @@ const APP_UI={app_json};
      if (!targetKey) continue;
      const outcome = String(rec?.outcome || "").toUpperCase();
      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-     const techLabel=String(rec?.recordedByTechLabel || '');
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady, retestReadyAt: String(rec?.retestReadyAt || "") }});
      const rowUi = rowStatusByTargetKey.get(targetKey);
      if (rowUi) {{
-      setRowStatus(rowUi, outcome, at, techLabel);
+      setRowStatus(rowUi, outcome, at, !!rec?.retestReady, rec?.retestReadyAt);
       applied += 1;
      }}
     }}
@@ -6332,16 +5779,56 @@ const APP_UI={app_json};
     updateHomeSectionPercents(payload?.progress);
     return;
    }}
+   if (t === "testing_type_settings") {{
+    if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.applySettingsPayload === "function") {{
+     globalThis.__sentinelTestStatus.applySettingsPayload(payload);
+    }}
+    refreshHomeEventVisualStates();
+    return;
+   }}
+   if (t === "test_results.batch") {{
+    const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
+    const outcome = String(payload?.outcome || "PASS").toUpperCase();
+    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
+    for (const k of keys) {{
+     const targetKey = String(k || "").trim();
+     if (!targetKey) continue;
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
+     const rowUi = rowStatusByTargetKey.get(targetKey);
+     if (rowUi) setRowStatus(rowUi, outcome, at);
+    }}
+    refreshHomeEventVisualStates();
+    if (pendingBatchPass) {{
+     _logTechWs("ack-batch", keys.length);
+     pendingBatchPass = false;
+     setPosting(false);
+     setPostStatus("", "");
+     if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(true);
+    }}
+    return;
+   }}
+   if (t === "fail_tag_updated") {{
+    const tagKey = String(payload?.targetKey || "");
+    if (!tagKey) return;
+    const prev = statusByTargetKey.get(tagKey) || {{}};
+    const prevOutcome = String(prev.outcome || "").toUpperCase();
+    const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
+    const readyAt = ready ? String(payload?.recordedAtUtc || "") : "";
+    statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready, retestReadyAt: readyAt }});
+    const rowUi = rowStatusByTargetKey.get(tagKey);
+    if (rowUi) setRowStatus(rowUi, prev.outcome || "", prev.recordedAtUtc || "", ready, readyAt);
+    refreshHomeEventVisualStates();
+    return;
+   }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   const techLabel=String(payload?.recordedByTechLabel || '');
-   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, recordedByTechLabel: techLabel }});
+   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
    const rowUi = rowStatusByTargetKey.get(targetKey);
    if (rowUi) {{
-    setRowStatus(rowUi, outcome, at, techLabel);
+    setRowStatus(rowUi, outcome, at);
    }}
     if (pendingTargetKey && pendingTargetKey === targetKey) {{
      _logTechWs("ack-match", targetKey);
@@ -6392,6 +5879,10 @@ const APP_UI={app_json};
      _logTechWs("send-abort:not-open", techWs ? techWs.readyState : "null");
      setPosting(false);
      if (pendingTargetKey) setRowInlineError(pendingTargetKey, "websocket not connected");
+     if (pendingBatchPass) {{
+      pendingBatchPass = false;
+      if (globalThis.__sentinelGroupPass) globalThis.__sentinelGroupPass.onBatchAck(false, "websocket not connected");
+     }}
      setPostStatus("", "");
      return;
     }}
@@ -6412,17 +5903,16 @@ const APP_UI={app_json};
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
- function formatRowStatusLine(techLabel, timestamp) {{
-  const template=(APP_UI.testingPopup && APP_UI.testingPopup.rowStatusLineTemplate) || 'Passed by {{techLabel}}: {{timestamp}}';
-  return template.replace('{{techLabel}}', String(techLabel || '').trim()).replace('{{timestamp}}', String(timestamp || '').trim());
- }}
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
-  const techLabel=String(rowUi.recordedByTechLabel || '').trim();
   const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
   if (outcome === "PASS" && times.PASS) {{
-    rowUi.lastTestEl.textContent = formatRowStatusLine(techLabel, times.PASS);
+    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    return;
+  }}
+  if (outcome === "FAIL" && rowUi.retestReady) {{
+    rowUi.lastTestEl.textContent = times.RETEST ? `Ready for retest: ${{times.RETEST}}` : "Ready for retest";
     return;
   }}
   if (outcome === "FAIL" && times.FAIL) {{
@@ -6435,16 +5925,26 @@ const APP_UI={app_json};
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc, recordedByTechLabel) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, retestReady, retestReadyAt) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  const ready = !!retestReady && o === "FAIL";
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
-  if (recordedByTechLabel !== undefined) rowUi.recordedByTechLabel = String(recordedByTechLabel || '').trim();
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
-  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.failBtn) {{
+    rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+    rowUi.failBtn.classList.toggle("is-retest-ready", ready);
+  }}
   rowUi.currentOutcome = o;
+  rowUi.retestReady = ready;
   if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  if (ready) {{
+    const readyAt = formatLastTestUtc(retestReadyAt);
+    if (readyAt) rowUi.statusTimes.RETEST = readyAt;
+  }} else {{
+    delete rowUi.statusTimes.RETEST;
+  }}
   _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
@@ -6455,7 +5955,7 @@ const APP_UI={app_json};
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at, rec.recordedByTechLabel);
+  setRowStatus(rowUi, outcome, at, !!rec.retestReady, rec.retestReadyAt);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -6574,20 +6074,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const macroStepIds = Array.isArray(bindings.macroStepIds) ? bindings.macroStepIds : [];
   const lowerLabel = String(keyTokenResolved || "").trim().toLowerCase();
    if (buttonTagId != null) {{
-    const resolvedPageLink = (m.resolvedPageLink && typeof m.resolvedPageLink === "object") ? m.resolvedPageLink : null;
-    const pageLinkPath = resolvedPageLink ? String(resolvedPageLink.resolutionPath || "").trim() : "";
-    const pageLinkDeviceId = pageScope.deviceId != null ? Number(pageScope.deviceId) : (deviceId != null ? Number(deviceId) : null);
-    if (lowerLabel === "page link" && pageLinkPath && pageLinkPath !== "macroStep" && pageLinkDeviceId != null && Number.isFinite(pageLinkDeviceId)) {{
-     const targetKey = `tt2_pagelink:${{pageLinkDeviceId}}:${{Number(buttonTagId)}}:Page Link`;
-     refs.pageLinkScope = "deviceTag";
-     refs.resolutionPath = pageLinkPath;
-     return {{
-      targetKey,
-      kind: scope,
-      targetName,
-      refs
-     }};
-    }}
     let programRef = "none";
     const firstMacroId = macroIds.length ? Number(macroIds[0]) : null;
     const firstVarId = variableIds.length ? Number(variableIds[0]) : null;
@@ -6618,16 +6104,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    if (syntheticSourceDeviceId != null && Number.isFinite(syntheticSourceDeviceId)) refs.syntheticSourceDeviceId = Number(syntheticSourceDeviceId);
   }}
     refs.programRef = programRef;
-    if (apexScopeSource.audioScope && typeof apexScopeSource.audioScope === "object" && apexScopeSource.audioScope.wrapperDeviceId != null && rtiAddress != null && effectiveRoomId != null) {{
-     const wrapperDeviceId = Number(apexScopeSource.audioScope.wrapperDeviceId);
-     const targetKey = `tt2_audio:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{wrapperDeviceId}}:${{Number(buttonTagId)}}:${{keyTokenResolved}}`;
-     return {{
-      targetKey,
-      kind: scope,
-      targetName,
-      refs
-     }};
-    }}
     if (rtiAddress != null && effectiveRoomId != null && effectiveSourceIdResolved != null) {{
      const targetKey = `tt2:${{Number(rtiAddress)}}:${{scopeType}}:${{Number(effectiveRoomId)}}:${{Number(effectiveSourceIdResolved)}}:${{Number(buttonTagId)}}:${{programRef}}:${{keyTokenResolved}}`;
      return {{
@@ -6807,14 +6283,22 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    failBtn.addEventListener('click', function(e){{e.stopPropagation(); postResultWs(null, meta, label, 'FAIL', noteEl ? noteEl.value : '', rowUi);}});
   }});
  }}
+ function workTargets(meta) {{
+  if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.filterWorkTargets === "function") {{
+   return globalThis.__sentinelTestStatus.filterWorkTargets(meta || {{}});
+  }}
+  const m = (meta && typeof meta === "object") ? meta : {{}};
+  return Array.isArray(m.targets) ? m.targets : [];
+ }}
  Array.prototype.forEach.call(document.querySelectorAll('.test-btn'), function(b){{
-  b.addEventListener('click', function(){{
+  b.addEventListener('click', function(e){{
+   if (globalThis.__sentinelGroupPass && globalThis.__sentinelGroupPass.handleTestButtonClick(b, e)) return;
    const m=JSON.parse(b.getAttribute('data-meta')||'{{}}');
    const popupCfg=(APP_UI && APP_UI.testingPopup) ? APP_UI.testingPopup : {{}};
    const suffix=(popupCfg.includeButtonTypeInTitle && m.buttonType)?(' (' + m.buttonType + ')'):'';
-   const titleTemplate=popupCfg.titleTemplate || '{{category}} - {{identity}}';
+   const titleTemplate=popupCfg.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
-   const targets=Array.isArray(m.targets) ? m.targets : [];
+   const targets=workTargets(m);
     rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
     clearPassAllQueue();
     setPostStatus('','');
@@ -6838,9 +6322,6 @@ def build_device_render_bundle(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
-    *,
-    client_name: str = "",
-    project_name: str = "",
 ) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
@@ -6878,44 +6359,48 @@ def build_device_render_bundle(
         if ("iphone" in profile_name or "ipad" in profile_name)
         else "sentinel-device-profile-other"
     )
-    title_template = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
+    title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
-    header = format_page_header_title(
-        title_template,
-        client_name=client_name,
-        project_name=project_name,
-        device_name=str(uf.get("displayName", "") or ""),
-        page_name=first_page_name,
-    )
+    header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
     product_model_key = _hard_key_model_key(device)
-    hk_remote = False
+    hk_split_layout: dict[str, Any] | None = None
     if product_model_key is not None:
         from sentinel.generation.hard_keys import registry as _hk_registry
 
         _hk_model = _hk_registry.MODELS.get(product_model_key)
         if _hk_model is not None:
-            hk_remote = True
             hk_design_w, hk_design_h = _hk_model.design_size
+            gap_design_px = 16
+            pad_px = 20
             for orient_key in ("portrait", "landscape"):
                 size = orientation_state["sizes"].get(orient_key)
                 if not isinstance(size, dict):
                     continue
                 touch_w0 = int(size.get("width") or 0)
                 touch_h0 = int(size.get("height") or 0)
-                size["hardKeyLayout"] = {
-                    "touchSourceWidth": touch_w0,
-                    "touchSourceHeight": touch_h0,
-                    "stripDesignWidth": int(hk_design_w),
-                    "stripDesignHeight": int(hk_design_h),
-                }
-                size["height"] = _hard_key_layout_display_height(
+                lay = _hard_key_quarter_band_layout(
                     touch_w0,
                     touch_h0,
-                    hk_design_w,
-                    hk_design_h,
+                    hk_design_w=hk_design_w,
+                    hk_design_h=hk_design_h,
+                    gap_design_px=gap_design_px,
+                    pad_px=pad_px,
                 )
+                if lay is None:
+                    continue
+                size["width"] = int(lay["virtual_w"])
+                size["hardKeyLayout"] = {
+                    "touchSourceWidth": int(lay["touch_w"]),
+                    "touchSourceHeight": int(lay["touch_h"]),
+                    "virtualWidth": int(lay["virtual_w"]),
+                    "stripWidth": int(lay["virtual_hk_w"]),
+                    "usableU": int(lay["usable_u"]),
+                    "padPx": int(lay["pad_px"]),
+                }
+                if orient_key == active_orientation:
+                    hk_split_layout = lay
             if active_orientation == "portrait":
                 res = orientation_state["sizes"]["portrait"]
             else:
@@ -6931,17 +6416,21 @@ def build_device_render_bundle(
         diag_page_id = diag_pages[page_index].get("pageId") if page_index < len(diag_pages) else None
         # Keep viewport box click-targets above same-layer button rows while preserving layer z-order.
         page_inner_main = f"{payload['page_button_rows']}{payload['viewport_button_rows']}{payload['viewport_boxes']}"
-        if hk_remote:
+        if product_model_key is not None and hk_split_layout is not None:
             strip_html = payload.get("hard_key_strip_html") or ""
             hk_owner = str(payload.get("hard_key_owner_layer_key") or "").strip()
             hk_owner_attr = (
                 f" data-owner-layer-key='{escape(hk_owner, quote=True)}'" if hk_owner else ""
             )
+            tlp = float(hk_split_layout["touch_left_pct"])
+            twp = float(hk_split_layout["touch_width_pct"])
+            hlp = float(hk_split_layout["hk_left_pct"])
+            hwp = float(hk_split_layout["hk_width_pct"])
             page_html_by_index[str(page_index)] = (
-                f"<div class='hk-split-left'>"
+                f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;bottom:0;'>"
                 f"<div class='hk-touch-stack'>{page_inner_main}</div></div>"
-                f"<div class='hk-split-right'{hk_owner_attr} data-hk-model=\"{product_model_key}\">"
-                f"{strip_html}</div>"
+                f"<div class='hk-split-right'{hk_owner_attr} data-hk-model=\"{product_model_key}\" "
+                f"style='left:{hlp:.4f}%;width:{hwp:.4f}%;top:0;bottom:0;'>{strip_html}</div>"
             )
         else:
             page_html_by_index[str(page_index)] = page_inner_main
@@ -6997,8 +6486,6 @@ def build_device_render_bundle(
         hard_key_design_w=hard_key_design_w,
         hard_key_design_h=hard_key_design_h,
         device_profile_class=device_profile_class,
-        client_name=client_name,
-        project_name=project_name,
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):
@@ -7036,9 +6523,6 @@ def render_single_device_html(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
-    *,
-    client_name: str = "",
-    project_name: str = "",
 ) -> str:
     bundle = build_device_render_bundle(
         project_data,
@@ -7046,8 +6530,6 @@ def render_single_device_html(
         project_stem,
         device_index=device_index,
         resolved_targets=resolved_targets,
-        client_name=client_name,
-        project_name=project_name,
     )
     return str(bundle.get("html") or "")
 
@@ -7058,9 +6540,6 @@ def build_device_payload(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
-    *,
-    client_name: str = "",
-    project_name: str = "",
 ) -> dict[str, Any]:
     bundle = build_device_render_bundle(
         project_data,
@@ -7068,8 +6547,6 @@ def build_device_payload(
         project_stem,
         device_index=device_index,
         resolved_targets=resolved_targets,
-        client_name=client_name,
-        project_name=project_name,
     )
     payload = bundle.get("payload")
     return payload if isinstance(payload, dict) else {}

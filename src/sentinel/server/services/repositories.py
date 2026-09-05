@@ -20,6 +20,25 @@ def new_token() -> str:
     return uuid4().hex
 
 
+TEST_RESULT_SOURCE_SINGLE = "SINGLE"
+TEST_RESULT_SOURCE_GROUP = "GROUP"
+
+
+def result_source(rec: Any, *, default: str | None = None) -> str:
+    raw = str(getattr(rec, "source", None) or "").strip().upper()
+    if raw:
+        return raw
+    if getattr(rec, "batchId", None):
+        return TEST_RESULT_SOURCE_GROUP
+    return default or TEST_RESULT_SOURCE_SINGLE
+
+
+def result_batch_id(rec: Any) -> str | None:
+    raw = getattr(rec, "batchId", None)
+    s = str(raw).strip() if raw is not None else ""
+    return s or None
+
+
 @dataclass(frozen=True)
 class Client:
     clientId: str
@@ -38,11 +57,20 @@ class Project:
 
 
 @dataclass
+class Technician:
+    technicianId: str
+    userId: str
+    name: str
+    createdAtUtc: str
+
+
+@dataclass
 class TechLink:
     techLinkId: str
     projectId: str
     label: str | None
     createdAtUtc: str
+    technicianId: str | None = None
 
 
 @dataclass
@@ -50,6 +78,24 @@ class ActiveToken:
     techToken: str
     techLinkId: str
     projectId: str
+    technicianId: str | None = None
+    technicianName: str | None = None
+
+
+def recorded_by_from_token(tok: ActiveToken) -> dict[str, Any]:
+    name = str(tok.technicianName or "").strip()
+    return {
+        "role": "TECHNICIAN",
+        "techLinkId": tok.techLinkId,
+        "technicianId": tok.technicianId,
+        "name": name,
+    }
+
+
+def tech_name_from_recorded_by(recorded_by: Any) -> str:
+    if not isinstance(recorded_by, dict):
+        return ""
+    return str(recorded_by.get("name") or "").strip()
 
 
 @dataclass
@@ -70,6 +116,8 @@ class TestResultRecord:
     target: dict[str, Any]
     outcome: str
     failNote: str | None
+    batchId: str | None = None
+    source: str = TEST_RESULT_SOURCE_SINGLE
 
 
 class Repository(Protocol):
@@ -85,7 +133,15 @@ class Repository(Protocol):
 
     def get_project(self, *, projectId: str) -> Project | None: ...
 
-    def create_tech_link(self, *, projectId: str, label: str | None) -> tuple[TechLink, ActiveToken]: ...
+    def list_technicians(self, *, userId: str) -> list[Technician]: ...
+
+    def create_technician(self, *, userId: str, name: str) -> Technician: ...
+
+    def get_technician(self, *, technicianId: str) -> Technician | None: ...
+
+    def create_tech_link(
+        self, *, projectId: str, label: str | None, technicianId: str | None = None
+    ) -> tuple[TechLink, ActiveToken]: ...
 
     def rotate_tech_link_token(self, *, projectId: str, techLinkId: str) -> ActiveToken: ...
 
@@ -114,6 +170,14 @@ class Repository(Protocol):
         failNote: str | None,
     ) -> TestResultRecord: ...
 
+    def append_test_results_batch(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+        outcome: str,
+    ) -> list[TestResultRecord]: ...
+
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]: ...
 
     def get_latest_results_for_project(self, *, projectId: str) -> dict[str, TestResultRecord]: ...
@@ -121,6 +185,8 @@ class Repository(Protocol):
     def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None: ...
 
     def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]: ...
+
+    def get_fail_tag_updated_at_for_project(self, *, projectId: str) -> dict[str, str]: ...
 
     def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None: ...
 
@@ -136,12 +202,17 @@ class Repository(Protocol):
 
     def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None: ...
 
+    def get_testing_type_disabled(self, *, projectId: str) -> list[str]: ...
+
+    def set_testing_type_disabled(self, *, projectId: str, disabledTypes: list[str]) -> list[str]: ...
+
 
 class InMemoryRepository:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._clients: dict[str, Client] = {}
         self._projects: dict[str, Project] = {}
+        self._technicians: dict[str, Technician] = {}
         self._tech_links: dict[str, TechLink] = {}
         self._active_tokens: dict[str, ActiveToken] = {}
         self._active_token_by_link: dict[str, str] = {}
@@ -149,12 +220,14 @@ class InMemoryRepository:
         self._active_upload_by_project: dict[str, str] = {}
         self._results_by_project_target: dict[tuple[str, str], list[TestResultRecord]] = {}
         self._fail_tags_by_project_target: dict[tuple[str, str], str] = {}
+        self._fail_tag_times_by_project_target: dict[tuple[str, str], str] = {}
         self._layer_locks_by_project_scope_layer: dict[tuple[str, str, str], dict[str, Any]] = {}
         self._idempotency: dict[tuple[str, str], dict[str, Any]] = {}
         # First recorded outcome per (projectId, targetKey); mirrors Postgres target_first_test_outcomes.
         self._first_outcome_by_project_target: dict[tuple[str, str], str] = {}
         # Monotonic ids for in-memory test results (matches Postgres test_result_id ordering).
         self._next_test_result_id = 0
+        self._testing_type_disabled_by_project: dict[str, list[str]] = {}
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -211,11 +284,72 @@ class InMemoryRepository:
         with self._lock:
             return self._projects.get(projectId)
 
-    def create_tech_link(self, *, projectId: str, label: str | None) -> tuple[TechLink, ActiveToken]:
+    def list_technicians(self, *, userId: str) -> list[Technician]:
         with self._lock:
-            if projectId not in self._projects:
-                raise KeyError("PROJECT_NOT_FOUND")
-            link = TechLink(techLinkId=new_uuid(), projectId=projectId, label=label, createdAtUtc=utc_now())
+            out = [t for t in self._technicians.values() if str(t.userId) == str(userId)]
+            out.sort(key=lambda t: (t.createdAtUtc, t.name))
+            return out
+
+    def create_technician(self, *, userId: str, name: str) -> Technician:
+        with self._lock:
+            return self._find_or_create_technician_locked(userId=str(userId), name=name)
+
+    def get_technician(self, *, technicianId: str) -> Technician | None:
+        with self._lock:
+            return self._technicians.get(str(technicianId))
+
+    def _find_or_create_technician_locked(self, *, userId: str, name: str) -> Technician:
+        wanted = str(name or "").strip()
+        if not wanted:
+            raise KeyError("TECHNICIAN_NAME_REQUIRED")
+        folded = wanted.casefold()
+        for existing in self._technicians.values():
+            if str(existing.userId) == str(userId) and str(existing.name).strip().casefold() == folded:
+                return existing
+        tech = Technician(
+            technicianId=new_uuid(),
+            userId=str(userId),
+            name=wanted,
+            createdAtUtc=utc_now(),
+        )
+        self._technicians[tech.technicianId] = tech
+        return tech
+
+    def _company_user_id_for_project_locked(self, *, projectId: str) -> str:
+        project = self._projects.get(projectId)
+        if project is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        client = self._clients.get(project.clientId)
+        if client is None:
+            raise KeyError("CLIENT_NOT_FOUND")
+        return str(client.userId)
+
+    def _resolve_technician_for_link_locked(
+        self, *, projectId: str, label: str | None, technicianId: str | None
+    ) -> Technician:
+        user_id = self._company_user_id_for_project_locked(projectId=projectId)
+        tid = str(technicianId or "").strip()
+        if tid:
+            tech = self._technicians.get(tid)
+            if tech is None or str(tech.userId) != str(user_id):
+                raise KeyError("TECHNICIAN_NOT_FOUND")
+            return tech
+        return self._find_or_create_technician_locked(userId=user_id, name=str(label or ""))
+
+    def create_tech_link(
+        self, *, projectId: str, label: str | None, technicianId: str | None = None
+    ) -> tuple[TechLink, ActiveToken]:
+        with self._lock:
+            tech = self._resolve_technician_for_link_locked(
+                projectId=projectId, label=label, technicianId=technicianId
+            )
+            link = TechLink(
+                techLinkId=new_uuid(),
+                projectId=projectId,
+                label=tech.name,
+                createdAtUtc=utc_now(),
+                technicianId=tech.technicianId,
+            )
             self._tech_links[link.techLinkId] = link
             token = self._issue_token_locked(projectId=projectId, techLinkId=link.techLinkId)
             return link, token
@@ -252,9 +386,30 @@ class InMemoryRepository:
             if old is not None:
                 self._active_tokens.pop(old, None)
 
+    def _who_for_link_locked(self, *, techLinkId: str) -> tuple[str | None, str | None]:
+        link = self._tech_links.get(techLinkId)
+        if link is None:
+            return None, None
+        tid = str(link.technicianId or "").strip() or None
+        name = None
+        if tid:
+            tech = self._technicians.get(tid)
+            if tech is not None:
+                name = str(tech.name or "").strip() or None
+        if not name:
+            name = str(link.label or "").strip() or None
+        return tid, name
+
     def _issue_token_locked(self, *, projectId: str, techLinkId: str) -> ActiveToken:
         techToken = new_token()
-        token = ActiveToken(techToken=techToken, techLinkId=techLinkId, projectId=projectId)
+        technician_id, technician_name = self._who_for_link_locked(techLinkId=techLinkId)
+        token = ActiveToken(
+            techToken=techToken,
+            techLinkId=techLinkId,
+            projectId=projectId,
+            technicianId=technician_id,
+            technicianName=technician_name,
+        )
         self._active_tokens[techToken] = token
         self._active_token_by_link[techLinkId] = techToken
         return token
@@ -336,16 +491,54 @@ class InMemoryRepository:
                 testResultId=tr_id,
                 projectId=tok.projectId,
                 recordedAtUtc=ts,
-                recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+                recordedBy=recorded_by_from_token(tok),
                 target=target,
                 outcome=outcome,
                 failNote=failNote,
+                batchId=None,
+                source=TEST_RESULT_SOURCE_SINGLE,
             )
             key = (tok.projectId, str(target.get("targetKey") or ""))
             self._results_by_project_target.setdefault(key, []).append(rec)
             if key not in self._first_outcome_by_project_target:
                 self._first_outcome_by_project_target[key] = str(outcome or "").strip().upper()
         return rec
+
+    def append_test_results_batch(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+        outcome: str,
+    ) -> list[TestResultRecord]:
+        tok = self.resolve_active_token(techToken=techToken)
+        ts = utc_now()
+        batch_id = new_uuid()
+        recs: list[TestResultRecord] = []
+        with self._lock:
+            for item in items:
+                target = dict(item.get("target") or {})
+                note = item.get("failNote")
+                note_s = str(note).strip() if note is not None else None
+                self._next_test_result_id += 1
+                tr_id = str(self._next_test_result_id)
+                rec = TestResultRecord(
+                    testResultId=tr_id,
+                    projectId=tok.projectId,
+                    recordedAtUtc=ts,
+                    recordedBy=recorded_by_from_token(tok),
+                    target=target,
+                    outcome=outcome,
+                    failNote=note_s or None,
+                    batchId=batch_id,
+                    source=TEST_RESULT_SOURCE_GROUP,
+                )
+                key = (tok.projectId, str(target.get("targetKey") or ""))
+                self._results_by_project_target.setdefault(key, []).append(rec)
+                if key not in self._first_outcome_by_project_target:
+                    self._first_outcome_by_project_target[key] = str(outcome or "").strip().upper()
+                recs.append(rec)
+        return recs
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
         tok = self.resolve_active_token(techToken=techToken)
@@ -378,6 +571,7 @@ class InMemoryRepository:
             if projectId not in self._projects:
                 raise KeyError("PROJECT_NOT_FOUND")
             self._fail_tags_by_project_target[(projectId, targetKey)] = tag
+            self._fail_tag_times_by_project_target[(projectId, targetKey)] = utc_now()
 
     def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]:
         with self._lock:
@@ -385,6 +579,14 @@ class InMemoryRepository:
             for (pid, target_key), tag in self._fail_tags_by_project_target.items():
                 if pid == projectId:
                     out[target_key] = tag
+            return out
+
+    def get_fail_tag_updated_at_for_project(self, *, projectId: str) -> dict[str, str]:
+        with self._lock:
+            out: dict[str, str] = {}
+            for (pid, target_key), at in self._fail_tag_times_by_project_target.items():
+                if pid == projectId:
+                    out[target_key] = at
             return out
 
     def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None:
@@ -438,6 +640,9 @@ class InMemoryRepository:
             drop_tag_keys = [key for key in self._fail_tags_by_project_target.keys() if key[0] == projectId]
             for key in drop_tag_keys:
                 self._fail_tags_by_project_target.pop(key, None)
+            drop_tag_time_keys = [key for key in self._fail_tag_times_by_project_target.keys() if key[0] == projectId]
+            for key in drop_tag_time_keys:
+                self._fail_tag_times_by_project_target.pop(key, None)
             drop_lock_keys = [key for key in self._layer_locks_by_project_scope_layer.keys() if key[0] == projectId]
             for key in drop_lock_keys:
                 self._layer_locks_by_project_scope_layer.pop(key, None)
@@ -449,6 +654,22 @@ class InMemoryRepository:
     def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None:
         with self._lock:
             self._idempotency[(str(scope), str(key))] = dict(response)
+
+    def get_testing_type_disabled(self, *, projectId: str) -> list[str]:
+        with self._lock:
+            if str(projectId) not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            return list(self._testing_type_disabled_by_project.get(str(projectId)) or [])
+
+    def set_testing_type_disabled(self, *, projectId: str, disabledTypes: list[str]) -> list[str]:
+        from sentinel.server.services import testing_types
+
+        cleaned = testing_types.normalize_disabled_types(disabledTypes)
+        with self._lock:
+            if str(projectId) not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            self._testing_type_disabled_by_project[str(projectId)] = list(cleaned)
+            return list(cleaned)
 
 
 class PostgresRepository:
@@ -532,22 +753,97 @@ class PostgresRepository:
         finally:
             con.close()
 
-    def create_tech_link(self, *, projectId: str, label: str | None) -> tuple[TechLink, ActiveToken]:
-        link_row = self._q.create_tech_link(self._database_url, project_id=projectId, label=label)
+    def _technician_from_row(self, row: dict[str, Any] | None) -> Technician | None:
+        if not row:
+            return None
+        created = row.get("createdAtUtc")
+        created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+        return Technician(
+            technicianId=str(row["technicianId"]),
+            userId=str(row["userId"]),
+            name=str(row.get("name") or ""),
+            createdAtUtc=created_str,
+        )
+
+    def _active_token_from_resolved(self, *, techToken: str, resolved: dict[str, Any]) -> ActiveToken:
+        name = str(resolved.get("technicianName") or "").strip() or None
+        tid_raw = resolved.get("technicianId")
+        tid = str(tid_raw).strip() if tid_raw else None
+        return ActiveToken(
+            techToken=techToken,
+            techLinkId=str(resolved["techLinkId"]),
+            projectId=str(resolved["projectId"]),
+            technicianId=tid or None,
+            technicianName=name,
+        )
+
+    def _company_user_id_for_project(self, *, projectId: str) -> str:
+        project = self.get_project(projectId=projectId)
+        if project is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        client = self.get_client(clientId=project.clientId)
+        if client is None:
+            raise KeyError("CLIENT_NOT_FOUND")
+        return str(client.userId)
+
+    def list_technicians(self, *, userId: str) -> list[Technician]:
+        rows = self._q.list_technicians_for_user(self._database_url, user_id=userId)
+        out: list[Technician] = []
+        for row in rows:
+            tech = self._technician_from_row(row)
+            if tech is not None:
+                out.append(tech)
+        return out
+
+    def create_technician(self, *, userId: str, name: str) -> Technician:
+        row = self._q.create_technician(self._database_url, user_id=userId, name=name)
+        tech = self._technician_from_row(row)
+        if tech is None:
+            raise KeyError("TECHNICIAN_NOT_FOUND")
+        return tech
+
+    def get_technician(self, *, technicianId: str) -> Technician | None:
+        row = self._q.get_technician(self._database_url, technician_id=technicianId)
+        return self._technician_from_row(row)
+
+    def create_tech_link(
+        self, *, projectId: str, label: str | None, technicianId: str | None = None
+    ) -> tuple[TechLink, ActiveToken]:
+        user_id = self._company_user_id_for_project(projectId=projectId)
+        tid = str(technicianId or "").strip()
+        if tid:
+            row = self._q.get_technician(self._database_url, technician_id=tid)
+            tech = self._technician_from_row(row)
+            if tech is None or str(tech.userId) != str(user_id):
+                raise KeyError("TECHNICIAN_NOT_FOUND")
+        else:
+            tech = self.create_technician(userId=user_id, name=str(label or ""))
+        link_row = self._q.create_tech_link(
+            self._database_url,
+            project_id=projectId,
+            label=tech.name,
+            technician_id=tech.technicianId,
+        )
         token_row = self._q.rotate_tech_link_token(self._database_url, tech_link_id=link_row["techLinkId"], project_id=projectId)
         created = link_row.get("createdAtUtc")
         created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
-        link = TechLink(techLinkId=link_row["techLinkId"], projectId=projectId, label=label, createdAtUtc=created_str)
-        token = ActiveToken(techToken=token_row["techToken"], techLinkId=link.techLinkId, projectId=projectId)
+        link = TechLink(
+            techLinkId=link_row["techLinkId"],
+            projectId=projectId,
+            label=tech.name,
+            createdAtUtc=created_str,
+            technicianId=tech.technicianId,
+        )
+        resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=token_row["techToken"])
+        token = self._active_token_from_resolved(techToken=token_row["techToken"], resolved=resolved)
         return link, token
 
     def rotate_tech_link_token(self, *, projectId: str, techLinkId: str) -> ActiveToken:
         token_row = self._q.rotate_tech_link_token(self._database_url, tech_link_id=techLinkId, project_id=projectId)
-        # Validate token is tied to the expected project by resolving it.
         resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=token_row["techToken"])
         if str(resolved["projectId"]) != str(projectId):
             raise KeyError("TECH_LINK_NOT_FOUND")
-        return ActiveToken(techToken=token_row["techToken"], techLinkId=resolved["techLinkId"], projectId=resolved["projectId"])
+        return self._active_token_from_resolved(techToken=token_row["techToken"], resolved=resolved)
 
     def list_active_tech_links(self, *, projectId: str) -> list[TechLink]:
         rows = self._q.list_active_tech_links(self._database_url, project_id=projectId)
@@ -555,7 +851,18 @@ class PostgresRepository:
         for r in rows:
             created = r.get("createdAtUtc")
             created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
-            out.append(TechLink(techLinkId=str(r["techLinkId"]), projectId=projectId, label=r.get("label"), createdAtUtc=created_str))
+            name = str(r.get("technicianName") or r.get("label") or "").strip() or None
+            tid_raw = r.get("technicianId")
+            tid = str(tid_raw).strip() if tid_raw else None
+            out.append(
+                TechLink(
+                    techLinkId=str(r["techLinkId"]),
+                    projectId=projectId,
+                    label=name or r.get("label"),
+                    createdAtUtc=created_str,
+                    technicianId=tid or None,
+                )
+            )
         return out
 
     def revoke_tech_link(self, *, projectId: str, techLinkId: str) -> None:
@@ -563,7 +870,7 @@ class PostgresRepository:
 
     def resolve_active_token(self, *, techToken: str) -> ActiveToken:
         resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=techToken)
-        return ActiveToken(techToken=techToken, techLinkId=resolved["techLinkId"], projectId=resolved["projectId"])
+        return self._active_token_from_resolved(techToken=techToken, resolved=resolved)
 
     def record_upload(self, *, projectId: str, uploadId: str, originalFilename: str, storagePath: str) -> UploadRecord:
         self._q.upsert_upload_record(
@@ -649,23 +956,88 @@ class PostgresRepository:
             project_id=tok.projectId,
             generation_run_id=generation_run_id,
             recorded_by_tech_link_id=tok.techLinkId,
+            recorded_by_technician_id=tok.technicianId,
+            recorded_by_technician_name=str(tok.technicianName or "").strip() or None,
             target_key=str(target.get("targetKey") or ""),
             target_kind=str(target.get("kind") or target.get("targetKind") or ""),
             target_name=str(target.get("targetName") or ""),
             refs=dict(target.get("refs") or {}),
             outcome=outcome,
             fail_note=failNote,
+            batch_id=None,
+            source=TEST_RESULT_SOURCE_SINGLE,
         )
 
         return TestResultRecord(
             testResultId=str(test_result_id),
             projectId=tok.projectId,
             recordedAtUtc=utc_now(),
-            recordedBy={"role": "TECHNICIAN", "techLinkId": tok.techLinkId},
+            recordedBy=recorded_by_from_token(tok),
             target=target,
             outcome=outcome,
             failNote=failNote,
+            batchId=None,
+            source=TEST_RESULT_SOURCE_SINGLE,
         )
+
+    def append_test_results_batch(
+        self,
+        *,
+        techToken: str,
+        items: list[dict[str, Any]],
+        outcome: str,
+    ) -> list[TestResultRecord]:
+        tok = self.resolve_active_token(techToken=techToken)
+        generation_run_id = self._q.ensure_generation_run(self._database_url, project_id=tok.projectId)
+        batch_id = new_uuid()
+        rows = self._q.append_test_results_batch(
+            self._database_url,
+            project_id=tok.projectId,
+            generation_run_id=generation_run_id,
+            recorded_by_tech_link_id=tok.techLinkId,
+            recorded_by_technician_id=tok.technicianId,
+            recorded_by_technician_name=str(tok.technicianName or "").strip() or None,
+            outcome=outcome,
+            batch_id=batch_id,
+            source=TEST_RESULT_SOURCE_GROUP,
+            items=[
+                {
+                    "target_key": str((item.get("target") or {}).get("targetKey") or ""),
+                    "target_kind": str(
+                        (item.get("target") or {}).get("kind") or (item.get("target") or {}).get("targetKind") or ""
+                    ),
+                    "target_name": str((item.get("target") or {}).get("targetName") or ""),
+                    "refs": dict((item.get("target") or {}).get("refs") or {}),
+                    "fail_note": item.get("failNote"),
+                }
+                for item in items
+            ],
+        )
+        ts = utc_now()
+        recs: list[TestResultRecord] = []
+        for row, item in zip(rows, items):
+            recorded = row.get("recordedAtUtc")
+            if hasattr(recorded, "isoformat"):
+                recorded_str = recorded.isoformat()
+            elif recorded:
+                recorded_str = str(recorded)
+            else:
+                recorded_str = ts
+            row_batch = row.get("batchId")
+            recs.append(
+                TestResultRecord(
+                    testResultId=str(row.get("testResultId") or ""),
+                    projectId=tok.projectId,
+                    recordedAtUtc=recorded_str,
+                    recordedBy=recorded_by_from_token(tok),
+                    target=dict(item.get("target") or {}),
+                    outcome=outcome,
+                    failNote=item.get("failNote"),
+                    batchId=str(row_batch).strip() if row_batch else batch_id,
+                    source=str(row.get("source") or TEST_RESULT_SOURCE_GROUP),
+                )
+            )
+        return recs
 
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
         tok = self.resolve_active_token(techToken=techToken)
@@ -677,8 +1049,13 @@ class PostgresRepository:
             rows = self._db.fetch_all(
                 con,
                 "select distinct on (target_key) "
+                "test_result_id as \"testResultId\", "
                 "target_key as \"targetKey\", target_kind as \"targetKind\", target_name as \"targetName\", refs as \"refs\", "
-                "outcome, fail_note as \"failNote\", recorded_at_utc as \"recordedAtUtc\", recorded_by_role as \"recordedByRole\", recorded_by_tech_link_id as \"recordedByTechLinkId\" "
+                "outcome, fail_note as \"failNote\", recorded_at_utc as \"recordedAtUtc\", recorded_by_role as \"recordedByRole\", "
+                "recorded_by_tech_link_id as \"recordedByTechLinkId\", "
+                "recorded_by_technician_id as \"recordedByTechnicianId\", "
+                "recorded_by_technician_name as \"recordedByTechnicianName\", "
+                "batch_id as \"batchId\", source as \"source\" "
                 "from test_results where project_id=%s order by target_key, recorded_at_utc desc, test_result_id desc",
                 (projectId,),
             )
@@ -696,15 +1073,25 @@ class PostgresRepository:
                     except Exception:
                         refs_val = {}
                 target = {"targetKey": target_key, "kind": str(r.get("targetKind") or ""), "refs": refs_val, "targetName": str(r.get("targetName") or "")}
-                recorded_by = {"role": str(r.get("recordedByRole") or ""), "techLinkId": r.get("recordedByTechLinkId")}
+                recorded_by = {
+                    "role": str(r.get("recordedByRole") or ""),
+                    "techLinkId": r.get("recordedByTechLinkId"),
+                    "technicianId": r.get("recordedByTechnicianId"),
+                    "name": str(r.get("recordedByTechnicianName") or "").strip(),
+                }
+                batch_raw = r.get("batchId")
+                batch_id = str(batch_raw).strip() if batch_raw else None
+                source_raw = str(r.get("source") or "").strip().upper()
                 out[target_key] = TestResultRecord(
-                    testResultId=new_uuid(),
+                    testResultId=str(r.get("testResultId") or new_uuid()),
                     projectId=projectId,
                     recordedAtUtc=created_str,
                     recordedBy=recorded_by,
                     target=target,
                     outcome=str(r.get("outcome") or ""),
                     failNote=r.get("failNote"),
+                    batchId=batch_id or None,
+                    source=source_raw or (TEST_RESULT_SOURCE_GROUP if batch_id else TEST_RESULT_SOURCE_SINGLE),
                 )
             return out
         finally:
@@ -718,6 +1105,16 @@ class PostgresRepository:
         out: dict[str, str] = {}
         for r in rows:
             out[str(r.get("targetKey") or "")] = str(r.get("tag") or "")
+        return out
+
+    def get_fail_tag_updated_at_for_project(self, *, projectId: str) -> dict[str, str]:
+        rows = self._q.list_fail_tags_for_project(self._database_url, project_id=projectId)
+        out: dict[str, str] = {}
+        for r in rows:
+            key = str(r.get("targetKey") or "")
+            at = str(r.get("updatedAtUtc") or "").strip()
+            if key and at:
+                out[key] = at
         return out
 
     def set_layer_lock_state(self, *, projectId: str, scopeKey: str, layerKey: str, visible: bool, locked: bool) -> None:
@@ -761,4 +1158,16 @@ class PostgresRepository:
 
     def put_idempotency_response(self, *, scope: str, key: str, response: dict[str, Any]) -> None:
         self._q.put_idempotency_response(self._database_url, scope=str(scope), idempotency_key=str(key), response=response)
+
+    def get_testing_type_disabled(self, *, projectId: str) -> list[str]:
+        if self.get_project(projectId=projectId) is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        return self._q.get_testing_type_disabled(self._database_url, project_id=projectId)
+
+    def set_testing_type_disabled(self, *, projectId: str, disabledTypes: list[str]) -> list[str]:
+        if self.get_project(projectId=projectId) is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        return self._q.set_testing_type_disabled(
+            self._database_url, project_id=projectId, disabled_types=disabledTypes
+        )
 
