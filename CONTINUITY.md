@@ -95,12 +95,12 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 ## Now
 
 - **Updated:** 2026-09-05
-- **Branch:** `cursor/select-group-chrome-ff08`
-- **Repo HEAD:** `ddc9919` (Mac = GitHub; briefing commit may be one ahead)
-- **Droplet HEAD:** `ddc9919` at `/opt/sentinel/app` — service `active`
+- **Branch:** `main`
+- **Repo HEAD:** `79f4ce2` (Mac = GitHub `main`)
+- **Droplet HEAD:** `79f4ce2` at `/opt/sentinel/app` — service `active`
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** Management / token / new-pass / PDF plan at `docs/management_surface_and_reports_plan.md`. Refresh 410 is `TECH_LINK_REVOKED` (blank `techUrl` after reload, not DB wipe). Shell Fail retest color is local-only until deploy.
-- **Next:** approve plan todos; first code slice is persist-and-return `techUrl` (plan item 3). Do not rediscover SSH/droplets.
+- **Open:** Management / token / new-pass / PDF plan at `docs/management_surface_and_reports_plan.md`. Refresh 410 is `TECH_LINK_REVOKED` (blank `techUrl` after reload, not DB wipe). Shell Fail retest color is live.
+- **Next:** plan item 3 — persist-and-return `techUrl`. Do not rediscover SSH/droplets.
 
 ---
 
