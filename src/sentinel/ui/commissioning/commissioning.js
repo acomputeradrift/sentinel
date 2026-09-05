@@ -425,11 +425,6 @@ function renderTechLinks() {
       set("");
       const revokeUrl = api(`/commissioning/projects/${encodeURIComponent(projectIdNow)}/tech-links/${encodeURIComponent(link.techLinkId)}/revoke`);
       jsonFetch(revokeUrl, { method: "POST" })
-        .catch(() =>
-          jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectIdNow)}/tech-links/${encodeURIComponent(link.techLinkId)}/rotate`), {
-            method: "POST",
-          })
-        )
         .then(() => {
           state.techLinksByProject[projectIdNow] = techLinksForProject(projectIdNow).filter((x) => x.techLinkId !== link.techLinkId);
           renderTechLinks();

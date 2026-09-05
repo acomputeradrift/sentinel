@@ -34,13 +34,18 @@ def repo_root(*, anchor_file: Path) -> Path:
 
 
 def venv_python(repo: Path) -> Path:
-    """Return the ``.tmp_apex_env`` interpreter path."""
+    """Return the ``.tmp_apex_env`` interpreter path.
+
+    Do not ``Path.resolve()`` the interpreter itself. POSIX venvs typically
+    symlink ``bin/python`` at the system interpreter; following that symlink
+    makes ``pip`` install into the externally-managed system Python.
+    """
     env = (os.environ.get("SENTINEL_VENV_PYTHON") or "").strip()
     if env:
-        return Path(env).expanduser().resolve(strict=False)
+        return Path(env).expanduser()
     if os.name == "nt":
-        return (repo / ".tmp_apex_env" / "Scripts" / "python.exe").resolve(strict=False)
-    return (repo / ".tmp_apex_env" / "bin" / "python").resolve(strict=False)
+        return repo / ".tmp_apex_env" / "Scripts" / "python.exe"
+    return repo / ".tmp_apex_env" / "bin" / "python"
 
 
 def subprocess_cwd(repo: Path) -> Path:

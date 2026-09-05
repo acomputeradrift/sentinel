@@ -290,6 +290,38 @@ def prune_project_uploads_keep_latest_two(database_url: str, *, project_id: str)
         con.close()
 
 
+def find_active_tech_link_for_technician(
+    database_url: str, *, project_id: str, technician_id: str
+) -> dict[str, Any] | None:
+    wanted = str(technician_id or "").strip()
+    if not wanted:
+        return None
+    con = db.connect(database_url)
+    try:
+        return db.fetch_one(
+            con,
+            "select tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
+            "tl.technician_id as \"technicianId\", t.name as \"technicianName\", "
+            "tlt.issued_path as \"issuedPath\", tlt.issued_at_utc as \"issuedAtUtc\" "
+            "from tech_links tl join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
+            "left join technicians t on t.technician_id=tl.technician_id "
+            "where tl.project_id=%s and tl.technician_id=%s and tlt.revoked_at_utc is null "
+            "order by tlt.issued_at_utc desc",
+            (project_id, wanted),
+        )
+    finally:
+        con.close()
+
+
+def token_from_issued_path(issued_path: str | None) -> str | None:
+    path = str(issued_path or "").strip()
+    prefix = "/testing/"
+    if not path.startswith(prefix):
+        return None
+    token = path[len(prefix) :].strip()
+    return token or None
+
+
 def create_tech_link(
     database_url: str, *, project_id: str, label: str | None, technician_id: str | None = None
 ) -> dict[str, Any]:

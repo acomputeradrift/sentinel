@@ -384,7 +384,7 @@ Named technicians live under the commissioning operator (the company stub user u
 
 ### Technician link issuance/rotation (Diagnostics)
 - `POST /api/v1/commissioning/projects/{projectId}/tech-links`
-  - behavior: bind a named company technician to this job and issue a tech-link token. A different named technician on the same project is a clean handoff (history is append-only). The same name find-or-creates the same `technicianId`.
+  - behavior: bind a named company technician to this job and issue **or reuse** the one active tech-link for that name on this project. Reuse returns the persisted `techUrl` and does not mint or rotate a second active token. A different named technician on the same project is a clean handoff (history is append-only). The same name find-or-creates the same `technicianId`. After revoke, create issues a new active link.
   - req (any one of):
     ```json
     { "technicianId": "uuid" }

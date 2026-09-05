@@ -346,6 +346,13 @@ class InMemoryRepository:
             tech = self._resolve_technician_for_link_locked(
                 projectId=projectId, label=label, technicianId=technicianId
             )
+            existing = self._active_link_for_technician_locked(
+                projectId=projectId, technicianId=tech.technicianId
+            )
+            if existing is not None:
+                token = self._active_tokens.get(self._active_token_by_link[existing.techLinkId])
+                if token is not None:
+                    return existing, token
             link = TechLink(
                 techLinkId=new_uuid(),
                 projectId=projectId,
@@ -356,6 +363,20 @@ class InMemoryRepository:
             self._tech_links[link.techLinkId] = link
             token = self._issue_token_locked(projectId=projectId, techLinkId=link.techLinkId)
             return link, token
+
+    def _active_link_for_technician_locked(self, *, projectId: str, technicianId: str) -> TechLink | None:
+        wanted = str(technicianId or "").strip()
+        if not wanted:
+            return None
+        for link in self._tech_links.values():
+            if link.projectId != projectId:
+                continue
+            if str(link.technicianId or "").strip() != wanted:
+                continue
+            if link.techLinkId not in self._active_token_by_link:
+                continue
+            return link
+        return None
 
     def rotate_tech_link_token(self, *, projectId: str, techLinkId: str) -> ActiveToken:
         with self._lock:
@@ -835,6 +856,30 @@ class PostgresRepository:
                 raise KeyError("TECHNICIAN_NOT_FOUND")
         else:
             tech = self.create_technician(userId=user_id, name=str(label or ""))
+        existing = self._q.find_active_tech_link_for_technician(
+            self._database_url, project_id=projectId, technician_id=tech.technicianId
+        )
+        if existing is not None:
+            token_plain = self._q.token_from_issued_path(existing.get("issuedPath"))
+            if token_plain:
+                created = existing.get("createdAtUtc")
+                created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+                issued = existing.get("issuedAtUtc")
+                issued_str = issued.isoformat() if hasattr(issued, "isoformat") else (str(issued) if issued else None)
+                name = str(existing.get("technicianName") or existing.get("label") or tech.name or "").strip()
+                link = TechLink(
+                    techLinkId=str(existing["techLinkId"]),
+                    projectId=projectId,
+                    label=name or tech.name,
+                    createdAtUtc=created_str,
+                    technicianId=tech.technicianId,
+                    issuedPath=str(existing.get("issuedPath") or "").strip() or None,
+                    issuedAtUtc=issued_str,
+                )
+                resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=token_plain)
+                token = self._active_token_from_resolved(techToken=token_plain, resolved=resolved)
+                token.issuedAtUtc = issued_str
+                return link, token
         link_row = self._q.create_tech_link(
             self._database_url,
             project_id=projectId,
