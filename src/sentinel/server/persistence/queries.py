@@ -320,8 +320,9 @@ def list_active_tech_links(database_url: str, *, project_id: str) -> list[dict[s
     try:
         return db.fetch_all(
             con,
-            "select distinct tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
-            "tl.technician_id as \"technicianId\", t.name as \"technicianName\" "
+            "select tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
+            "tl.technician_id as \"technicianId\", t.name as \"technicianName\", "
+            "tlt.issued_path as \"issuedPath\", tlt.issued_at_utc as \"issuedAtUtc\" "
             "from tech_links tl join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
             "left join technicians t on t.technician_id=tl.technician_id "
             "where tl.project_id=%s and tlt.revoked_at_utc is null "
@@ -371,13 +372,20 @@ def rotate_tech_link_token(database_url: str, *, tech_link_id: str, project_id: 
             if exists is None:
                 raise KeyError("TECH_LINK_NOT_FOUND")
         cur = con.cursor()
+        issued_path = f"/testing/{tech_token}"
         cur.execute("update tech_link_tokens set revoked_at_utc=%s where tech_link_id=%s and revoked_at_utc is null", (issued_at, tech_link_id))
         cur.execute(
-            "insert into tech_link_tokens (tech_link_token_id, tech_link_id, token_hash, issued_at_utc, revoked_at_utc) values (%s,%s,%s,%s,null)",
-            (token_id, tech_link_id, token_hash, issued_at),
+            "insert into tech_link_tokens (tech_link_token_id, tech_link_id, token_hash, issued_at_utc, revoked_at_utc, issued_path) "
+            "values (%s,%s,%s,%s,null,%s)",
+            (token_id, tech_link_id, token_hash, issued_at, issued_path),
         )
         con.commit()
-        return {"techLinkId": tech_link_id, "techToken": tech_token, "issuedAtUtc": issued_at.isoformat()}
+        return {
+            "techLinkId": tech_link_id,
+            "techToken": tech_token,
+            "issuedAtUtc": issued_at.isoformat(),
+            "issuedPath": issued_path,
+        }
     finally:
         con.close()
 

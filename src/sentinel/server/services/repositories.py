@@ -71,6 +71,8 @@ class TechLink:
     label: str | None
     createdAtUtc: str
     technicianId: str | None = None
+    issuedPath: str | None = None
+    issuedAtUtc: str | None = None
 
 
 @dataclass
@@ -80,6 +82,7 @@ class ActiveToken:
     projectId: str
     technicianId: str | None = None
     technicianName: str | None = None
+    issuedAtUtc: str | None = None
 
 
 def recorded_by_from_token(tok: ActiveToken) -> dict[str, Any]:
@@ -371,9 +374,22 @@ class InMemoryRepository:
             for link in self._tech_links.values():
                 if link.projectId != projectId:
                     continue
-                if link.techLinkId not in self._active_token_by_link:
+                token = self._active_token_by_link.get(link.techLinkId)
+                if not token:
                     continue
-                out.append(link)
+                active = self._active_tokens.get(token)
+                issued_at = active.issuedAtUtc if active is not None else None
+                out.append(
+                    TechLink(
+                        techLinkId=link.techLinkId,
+                        projectId=link.projectId,
+                        label=link.label,
+                        createdAtUtc=link.createdAtUtc,
+                        technicianId=link.technicianId,
+                        issuedPath=f"/testing/{token}",
+                        issuedAtUtc=issued_at,
+                    )
+                )
             out.sort(key=lambda l: l.createdAtUtc, reverse=True)
             return out
 
@@ -409,6 +425,7 @@ class InMemoryRepository:
             projectId=projectId,
             technicianId=technician_id,
             technicianName=technician_name,
+            issuedAtUtc=utc_now(),
         )
         self._active_tokens[techToken] = token
         self._active_token_by_link[techLinkId] = techToken
@@ -854,6 +871,9 @@ class PostgresRepository:
             name = str(r.get("technicianName") or r.get("label") or "").strip() or None
             tid_raw = r.get("technicianId")
             tid = str(tid_raw).strip() if tid_raw else None
+            issued = r.get("issuedAtUtc")
+            issued_str = issued.isoformat() if hasattr(issued, "isoformat") else (str(issued) if issued else None)
+            issued_path = str(r.get("issuedPath") or "").strip() or None
             out.append(
                 TechLink(
                     techLinkId=str(r["techLinkId"]),
@@ -861,6 +881,8 @@ class PostgresRepository:
                     label=name or r.get("label"),
                     createdAtUtc=created_str,
                     technicianId=tid or None,
+                    issuedPath=issued_path,
+                    issuedAtUtc=issued_str,
                 )
             )
         return out

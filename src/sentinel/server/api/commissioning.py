@@ -64,16 +64,27 @@ def _technician_payload(tech) -> dict:
     }
 
 
-def _tech_link_payload(link, *, techUrl: str = "") -> dict:
+def _issued_tech_url(link, *, techUrl: str | None = None) -> str:
+    if techUrl:
+        return str(techUrl)
+    path = str(getattr(link, "issuedPath", None) or "").strip()
+    return path
+
+
+def _tech_link_payload(link, *, techUrl: str | None = None) -> dict:
     name = str(link.label or "").strip()
-    return {
+    issued = getattr(link, "issuedAtUtc", None)
+    payload = {
         "techLinkId": link.techLinkId,
         "technicianId": link.technicianId,
         "name": name,
         "label": name or link.label,
         "createdAtUtc": link.createdAtUtc,
-        "techUrl": techUrl,
+        "techUrl": _issued_tech_url(link, techUrl=techUrl),
     }
+    if issued:
+        payload["issuedAtUtc"] = issued
+    return payload
 
 
 def _map_tech_key_error(exc: KeyError, *, default_code: str, default_message: str) -> None:
@@ -219,10 +230,14 @@ def create_tech_link(request: Request, projectId: str, payload: dict) -> dict:
     except KeyError as e:
         _map_tech_key_error(e, default_code="TECHNICIAN_NAME_REQUIRED", default_message="Technician name is required.")
         raise
-    return {
+    issued_at = getattr(token, "issuedAtUtc", None)
+    created = {
         **_tech_link_payload(link, techUrl=f"/testing/{token.techToken}"),
         "techUrl": f"/testing/{token.techToken}",
     }
+    if issued_at:
+        created["issuedAtUtc"] = issued_at
+    return created
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/rotate")
@@ -233,7 +248,11 @@ def rotate_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
         token = repo.rotate_tech_link_token(projectId=projectId, techLinkId=techLinkId)
     except KeyError:
         raise http_error(404, code="TECH_LINK_NOT_FOUND", message="Tech link not found.")
-    return {"techLinkId": techLinkId, "techUrl": f"/testing/{token.techToken}"}
+    rotated = {"techLinkId": techLinkId, "techUrl": f"/testing/{token.techToken}"}
+    issued_at = getattr(token, "issuedAtUtc", None)
+    if issued_at:
+        rotated["issuedAtUtc"] = issued_at
+    return rotated
 
 
 @router.get("/projects/{projectId}/tech-links")
@@ -242,7 +261,7 @@ def list_active_tech_links(request: Request, projectId: str) -> list[dict]:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     links = repo.list_active_tech_links(projectId=projectId)
     # Read-only list endpoint: do not rotate/revoke tokens as a side effect.
-    return [_tech_link_payload(l, techUrl="") for l in links]
+    return [_tech_link_payload(l) for l in links]
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/revoke")

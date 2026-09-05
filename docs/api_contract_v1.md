@@ -401,11 +401,33 @@ Named technicians live under the commissioning operator (the company stub user u
     { "techLinkId": "uuid", "technicianId": "uuid", "name": "string", "label": "string", "techUrl": "/testing/{techToken}" }
     ```
 
+- `GET /api/v1/commissioning/projects/{projectId}/tech-links`
+  - behavior: list **active** tech links for the project. Returns the persisted `techUrl` for each active token. **Read-only:** does not mint, rotate, or revoke tokens.
+  - resp: array of
+    ```json
+    {
+      "techLinkId": "uuid",
+      "technicianId": "uuid",
+      "name": "string",
+      "label": "string",
+      "createdAtUtc": "2026-03-19T12:02:00Z",
+      "issuedAtUtc": "2026-03-19T12:02:00Z",
+      "techUrl": "/testing/{techToken}"
+    }
+    ```
+
 - `POST /api/v1/commissioning/projects/{projectId}/tech-links/{techLinkId}/rotate`
-  - behavior: revoke prior token for this `techLinkId`, issue a new token (techLinkId remains stable)
+  - behavior: revoke prior token for this `techLinkId`, issue a new token (techLinkId remains stable). Old URL becomes `410 TECH_LINK_REVOKED`.
   - resp:
     ```json
     { "techLinkId": "uuid", "techUrl": "/testing/{techToken}" }
+    ```
+
+- `POST /api/v1/commissioning/projects/{projectId}/tech-links/{techLinkId}/revoke`
+  - behavior: revoke the active token. Old URL becomes `410 TECH_LINK_REVOKED`. Link disappears from the active list.
+  - resp:
+    ```json
+    { "projectId": "uuid", "techLinkId": "uuid", "revoked": true }
     ```
 
 ### Uploads + regeneration (Diagnostics)
