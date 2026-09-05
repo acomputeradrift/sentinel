@@ -19,18 +19,26 @@ from sentinel.server.services.repositories import InMemoryRepository, PostgresRe
 import sentinel as _sentinel_package
 
 
-def _commissioning_ui_dir() -> Path | None:
+def _packaged_ui_dir(*parts: str) -> Path | None:
     """
-    Resolve packaged commissioning static files under ``sentinel/ui/commissioning``.
+    Resolve packaged static files under ``sentinel/ui/...``.
 
     Uses the ``sentinel`` package location so paths stay correct under UNC shares,
     editable installs, and typical test runners (not cwd-relative).
     """
     root = Path(_sentinel_package.__file__).resolve().parent
-    candidate = root / "ui" / "commissioning"
+    candidate = root.joinpath("ui", *parts)
     if candidate.is_dir():
         return candidate
     return None
+
+
+def _commissioning_ui_dir() -> Path | None:
+    return _packaged_ui_dir("commissioning")
+
+
+def _management_ui_dir() -> Path | None:
+    return _packaged_ui_dir("management")
 
 
 def create_app(repo: Repository | None = None) -> FastAPI:
@@ -66,6 +74,9 @@ def create_app(repo: Repository | None = None) -> FastAPI:
     commissioning_dir = _commissioning_ui_dir()
     if commissioning_dir is not None:
         app.mount("/commissioning", StaticFiles(directory=str(commissioning_dir), html=True), name="commissioning-ui")
+    management_dir = _management_ui_dir()
+    if management_dir is not None:
+        app.mount("/management", StaticFiles(directory=str(management_dir), html=True), name="management-ui")
 
     app.include_router(commissioning_router)
     app.include_router(events_router)

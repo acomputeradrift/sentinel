@@ -173,8 +173,8 @@ function writeHashRoute(clientId, projectId) {
 function resetProjectDetailsUi() {
   setStatus($("uploadStatus"), "");
   setStatus($("uploadProgressLabel"), "");
-  setStatus($("techLinkStatus"), "");
-  $("techLabel").value = "";
+  const techStatus = document.getElementById("techLinkStatus");
+  if (techStatus) setStatus(techStatus, "");
   const fin = $("apexFile");
   if (fin) fin.value = "";
   setProgressHidden($("uploadProgressRow"), true);
@@ -290,9 +290,7 @@ function setProgress(el, pct) {
 }
 
 function updateTechLinkEnabled() {
-  const projectId = currentProjectId();
-  const ready = projectId ? !!state.generationReadyByProject[projectId] : false;
-  $("createTechLinkBtn").disabled = !projectId || !ready;
+  // Console Tech Links is Copy/Open only. Management issues tokens.
 }
 
 function techLinksForProject(projectId) {
@@ -402,6 +400,22 @@ function renderTechLinks() {
 
     const tdActions = document.createElement("td");
     tdActions.className = "tech-link-actions";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "tech-link-action-btn";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", async () => {
+      const url = String(link.techUrl || "").trim();
+      const statusEl = document.getElementById("techLinkStatus");
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        if (statusEl) statusEl.textContent = "Copied.";
+      } catch (_e) {
+        if (statusEl) statusEl.textContent = "Copy failed.";
+      }
+    });
+    tdActions.appendChild(copy);
     const open = document.createElement("button");
     open.type = "button";
     open.className = "tech-link-action-btn";
@@ -412,27 +426,6 @@ function renderTechLinks() {
       window.open(url, "_blank", "noopener");
     });
     tdActions.appendChild(open);
-
-    const revoke = document.createElement("button");
-    revoke.type = "button";
-    revoke.className = "danger tech-link-action-btn";
-    revoke.textContent = "Revoke";
-    revoke.addEventListener("click", () => {
-      const projectIdNow = currentProjectId();
-      if (!projectIdNow) return;
-      const statusEl = document.getElementById("techLinkStatus");
-      const set = (msg) => statusEl && (statusEl.textContent = msg || "");
-      set("");
-      const revokeUrl = api(`/commissioning/projects/${encodeURIComponent(projectIdNow)}/tech-links/${encodeURIComponent(link.techLinkId)}/revoke`);
-      jsonFetch(revokeUrl, { method: "POST" })
-        .then(() => {
-          state.techLinksByProject[projectIdNow] = techLinksForProject(projectIdNow).filter((x) => x.techLinkId !== link.techLinkId);
-          renderTechLinks();
-          set("");
-        })
-        .catch((e) => set(String(e?.message || e)));
-    });
-    tdActions.appendChild(revoke);
 
     tr.appendChild(tdLabel);
     tr.appendChild(tdLink);
@@ -455,7 +448,8 @@ async function loadTechLinks() {
         technicianId: r.technicianId || "",
         name: r.name || r.label || "",
         label: r.name || r.label || "",
-        createdAtUtc: r.createdAtUtc || "",
+        createdAtUtc: r.issuedAtUtc || r.createdAtUtc || "",
+        issuedAtUtc: r.issuedAtUtc || r.createdAtUtc || "",
         techUrl: buildPayloadTechUrl(r.techUrl || ""),
       }));
     renderTechLinks();
@@ -870,39 +864,6 @@ async function loadCompanyTechnicians() {
   }
 }
 
-async function createTechLink() {
-  const projectId = currentProjectId();
-  const label = $("techLabel").value.trim();
-  if (!projectId) return;
-  const statusEl = document.getElementById("techLinkStatus");
-  if (!label) {
-    if (statusEl) statusEl.textContent = "Technician name is required.";
-    return;
-  }
-  const out = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links`), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: label, label }),
-  });
-  const payloadTechUrl = buildPayloadTechUrl(out.techUrl || "");
-  const createdAtUtc = new Date().toISOString();
-  const techName = String(out.name || out.label || label).trim();
-  state.techLinksByProject[projectId] = [
-    {
-      techLinkId: out.techLinkId,
-      technicianId: out.technicianId || "",
-      name: techName,
-      label: techName,
-      createdAtUtc,
-      techUrl: payloadTechUrl,
-    },
-    ...techLinksForProject(projectId),
-  ];
-  renderTechLinks();
-  if (statusEl) statusEl.textContent = "";
-  await loadCompanyTechnicians();
-}
-
 async function clearTestsForProject() {
   const projectId = String(currentProjectId() || "").trim();
   if (!projectId) return;
@@ -1053,7 +1014,6 @@ async function run() {
     });
   }
   $("uploadBtn").addEventListener("click", () => safe(uploadAndRegenerate, $("uploadStatus")));
-  $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
 
   await safe(refreshClients, null);
   state.lastValidClientId = currentClientId();

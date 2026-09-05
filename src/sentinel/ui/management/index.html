@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sentinel Management</title>
+    <link rel="stylesheet" href="./management.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="topbar-brand">
+            <h1>Sentinel Management</h1>
+            <p class="sub">Shop roster, technician links, start-new-pass, and reports.</p>
+          </div>
+          <div class="user-chip" aria-label="Signed in as Jamie" title="Jamie">
+            <span class="user-chip-avatar" aria-hidden="true">J</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="card" id="contextCard">
+          <h2>Context</h2>
+          <p class="sub">Select a client and project. Management is the token editor for this shop.</p>
+          <div class="row">
+            <label class="field">
+              <span>Client</span>
+              <select id="clientSelect" aria-label="Client"></select>
+            </label>
+            <label class="field grow" id="newClientRow" hidden>
+              <span>New client name</span>
+              <input id="newClientName" type="text" autocomplete="off" />
+            </label>
+            <button id="newClientSubmit" type="button" hidden>Create client</button>
+            <label class="field">
+              <span>Project</span>
+              <select id="projectSelect" aria-label="Project"></select>
+            </label>
+            <label class="field grow" id="newProjectRow" hidden>
+              <span>New project name</span>
+              <input id="newProjectName" type="text" autocomplete="off" />
+            </label>
+            <button id="newProjectSubmit" type="button" hidden>Create project</button>
+          </div>
+          <div id="contextStatus" class="status" role="status"></div>
+        </section>
+
+        <section class="card" id="techniciansCard">
+          <h2>Technicians</h2>
+          <p class="sub">Company roster. Find-or-create by name.</p>
+          <div class="row">
+            <label class="field grow">
+              <span>Technician name</span>
+              <input id="newTechnicianName" type="text" placeholder="e.g. Alex" autocomplete="off" />
+            </label>
+            <button id="createTechnicianBtn" type="button">Add technician</button>
+          </div>
+          <div id="technicianStatus" class="status" role="status"></div>
+          <ul id="technicianRoster" class="roster" data-testid="technician-roster"></ul>
+        </section>
+
+        <section class="card" id="techLinksCard">
+          <h2>Tech links</h2>
+          <p class="sub" id="techLinksHint">Select a project to issue or reuse the one active link per technician.</p>
+          <div id="techLinksBodyWrap" hidden>
+            <div class="row">
+              <label class="field grow">
+                <span>Technician name</span>
+                <input id="techLinkName" type="text" list="rosterNames" placeholder="e.g. Alex" autocomplete="off" />
+              </label>
+              <datalist id="rosterNames"></datalist>
+              <button id="issueTechLinkBtn" type="button">Issue or reuse link</button>
+            </div>
+            <div id="techLinkStatus" class="status" role="status"></div>
+            <div class="table-wrap">
+              <table class="mini-table" aria-label="Project tech links">
+                <thead>
+                  <tr>
+                    <th>Technician</th>
+                    <th>Link</th>
+                    <th>Issued (UTC)</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="techLinksBody"></tbody>
+              </table>
+              <div class="empty" id="techLinksEmpty">No active tech links for this project.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="./management.js"></script>
+  </body>
+</html>
