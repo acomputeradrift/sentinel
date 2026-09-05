@@ -96,11 +96,11 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 - **Updated:** 2026-09-05
 - **Branch:** `cursor/management-tokens-reports-629d`
-- **Repo HEAD:** in progress (slices 2–11; not merged, not deployed)
+- **Repo HEAD:** slices 2–11 on this PR (not merged, not deployed)
 - **Droplet HEAD:** unchanged — do not deploy this branch
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** Implementing approved plan items 2–11 on this PR branch. Slice 2 (`/management/` in `scope.md`) and slice 3 (persist/list `techUrl`) in progress. Item 12 deploy is out of scope.
-- **Next:** finish slices 3–11 on this branch, then Jamie review + deploy only when he says deploy.
+- **Open:** https://github.com/acomputeradrift/sentinel/pull/7 — remaining work is item 12 (deploy) only. Do not deploy until Jamie says deploy.
+- **Next:** Jamie review + deploy when he says deploy.
 
 ---
 
