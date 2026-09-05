@@ -192,3 +192,26 @@ button.danger {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+.checks {
+  border: 1px solid #e4ecf3;
+  border-radius: 12px;
+  margin: 14px 0 0;
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.checks legend {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4e6a7f;
+}
+
+.checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}

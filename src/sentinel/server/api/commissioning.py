@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Request, WebSocket
 from fastapi import UploadFile
+from fastapi.responses import Response
 
 from sentinel.server.api.errors import http_error
 from sentinel.server.api import commissioning_snapshots
@@ -19,6 +20,8 @@ from sentinel.server.services import pipeline
 from sentinel.server.services import progress
 from sentinel.server.services import testing_types
 from sentinel.server.services import ws_broker
+from sentinel.server.services.report_document import build_report_document, resolve_report_options
+from sentinel.server.services.report_pdf import render_report_pdf, report_download_filename
 from sentinel.server.services.commissioning_user import (
     COMMISSIONING_STUB_COMPANY_ID,
     COMMISSIONING_STUB_COMPANY_NAME,
@@ -644,6 +647,34 @@ def clear_project_tests(request: Request, projectId: str) -> dict:
         confirmName=None,
         reason="clear-tests-alias",
     )
+
+
+def _report_file_response(request: Request, *, projectId: str, payload: dict | None) -> Response:
+    repo = _repo(request)
+    user_id = _commissioning_user_id(request)
+    _require_project_for_user(repo, user_id=user_id, project_id=projectId)
+    try:
+        options = resolve_report_options(payload)
+    except ValueError:
+        raise http_error(400, code="UNKNOWN_REPORT_PRESET", message="Unknown report preset.")
+    document = build_report_document(repo=repo, projectId=projectId, options=options)
+    pdf = render_report_pdf(document)
+    filename = report_download_filename(document)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/projects/{projectId}/reports")
+def create_project_report(request: Request, projectId: str, payload: dict) -> Response:
+    return _report_file_response(request, projectId=projectId, payload=payload)
+
+
+@router.get("/projects/{projectId}/reports")
+def get_project_report(request: Request, projectId: str, preset: str = "closeout") -> Response:
+    return _report_file_response(request, projectId=projectId, payload={"preset": preset})
 
 
 @router.websocket("/projects/{projectId}/ws")

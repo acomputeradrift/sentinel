@@ -269,3 +269,76 @@ class ManagementRuntimeTest(unittest.TestCase):
         expect(page.locator("#testPassStatus")).to_contain_text("New test pass started")
         self.assertEqual(state["pass_posts"], [{"confirmName": "Job One", "reason": "retest after firmware"}])
         page.close()
+
+    def test_management_report_builder_posts_option_bag(self):
+        from playwright.sync_api import expect
+
+        page = self._browser.new_page()
+        state: dict[str, object] = {
+            "clients": [{"clientId": "client-1", "name": "Acme", "createdAtUtc": "2026-03-21T00:00:00Z"}],
+            "projects": [
+                {
+                    "projectId": "proj-1",
+                    "clientId": "client-1",
+                    "name": "Job One",
+                    "status": "READY",
+                    "createdAtUtc": "2026-03-21T00:00:00Z",
+                }
+            ],
+            "report_posts": [],
+        }
+
+        def fulfill_json(route, body, status=200):
+            route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
+
+        def handle_clients(route, request):
+            fulfill_json(route, state["clients"])
+
+        def handle_projects(route, request):
+            fulfill_json(route, state["projects"])
+
+        def handle_technicians(route, request):
+            fulfill_json(route, {"companyId": "company-1", "companyName": "Jamie", "technicians": []})
+
+        def handle_tech_links(route, request):
+            fulfill_json(route, [])
+
+        def handle_reports(route, request):
+            data = json.loads(request.post_data or "{}")
+            state["report_posts"].append(data)
+            route.fulfill(
+                status=200,
+                headers={
+                    "content-type": "application/pdf",
+                    "content-disposition": 'attachment; filename="Acme-Job One-closeout-2026-03-21.pdf"',
+                },
+                body=b"%PDF-1.4 mock",
+            )
+
+        page.route("**/api/v1/commissioning/clients", handle_clients)
+        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
+        page.route("**/api/v1/commissioning/technicians", handle_technicians)
+        page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
+        page.route("**/api/v1/commissioning/projects/*/reports**", handle_reports)
+
+        url = f"{self._static.base_url}/src/sentinel/ui/management/index.html"
+        page.goto(url)
+        expect(page.get_by_role("heading", name="Reports")).to_be_visible()
+        page.locator("#clientSelect").select_option(value="client-1")
+        page.locator("#projectSelect").select_option(value="proj-1")
+        expect(page.locator("#reportsBodyWrap")).to_be_visible()
+        expect(page.locator("#reportPreset")).to_be_visible()
+        expect(page.locator("#includeCover")).to_be_checked()
+        page.locator("#reportPreset").select_option(value="full_audit")
+        expect(page.locator("#includeFullHistory")).to_be_checked()
+        expect(page.locator("#includeOperatorAppendix")).not_to_be_checked()
+        with page.expect_download() as download_info:
+            page.locator("#generateReportBtn").click()
+        download = download_info.value
+        self.assertTrue(str(download.suggested_filename).endswith(".pdf"))
+        self.assertEqual(len(state["report_posts"]), 1)
+        posted = state["report_posts"][0]
+        self.assertEqual(posted["preset"], "full_audit")
+        self.assertTrue(posted["include"]["fullHistory"])
+        self.assertFalse(posted["include"]["operatorAppendix"])
+        page.close()

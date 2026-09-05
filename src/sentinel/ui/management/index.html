@@ -81,6 +81,50 @@
           </div>
         </section>
 
+        <section class="card" id="reportsCard">
+          <h2>Reports</h2>
+          <p class="sub">Build a PDF from stored progress, fails, and full history. No photos, signatures, or raw tokens.</p>
+          <p class="sub" id="reportsHint">Select a project to generate a report.</p>
+          <div id="reportsBodyWrap" hidden>
+            <div class="row">
+              <label class="field">
+                <span>Preset</span>
+                <select id="reportPreset" aria-label="Report preset">
+                  <option value="closeout">Closeout / owner</option>
+                  <option value="dealer_punch_list">Dealer punch list</option>
+                  <option value="full_audit">Full audit</option>
+                </select>
+              </label>
+            </div>
+            <fieldset class="checks">
+              <legend>Scope</legend>
+              <label><input id="scopeSystemEvents" type="checkbox" checked /> System events</label>
+              <label><input id="scopeDriverEvents" type="checkbox" checked /> Driver events</label>
+              <label><input id="scopeDevices" type="checkbox" checked /> Devices</label>
+              <label><input id="scopeIncludeDisabledTypes" type="checkbox" /> Include types turned off on the job</label>
+              <div id="reportDeviceChecks" class="checks" data-testid="report-device-checks"></div>
+            </fieldset>
+            <fieldset class="checks">
+              <legend>Content</legend>
+              <label><input id="includeCover" type="checkbox" /> Cover</label>
+              <label><input id="includeProgressSummary" type="checkbox" /> Progress summary</label>
+              <label><input id="includeEventSectionCounts" type="checkbox" /> Event section counts</label>
+              <label><input id="includeDeviceCounts" type="checkbox" /> Device counts</label>
+              <label><input id="includeCurrentTargets" type="checkbox" /> Current target list</label>
+              <label><input id="includeFailDetail" type="checkbox" /> Fail detail</label>
+              <label><input id="includeProgrammerFields" type="checkbox" /> Programmer fields</label>
+              <label><input id="includeFullHistory" type="checkbox" /> Full history</label>
+              <label><input id="includePriorPasses" type="checkbox" /> Prior passes</label>
+              <label><input id="includeTestingTypeLegend" type="checkbox" /> Testing-type legend</label>
+              <label><input id="includeOperatorAppendix" type="checkbox" /> Operator appendix (names only)</label>
+            </fieldset>
+            <div class="row">
+              <button id="generateReportBtn" type="button">Generate PDF</button>
+            </div>
+            <div id="reportStatus" class="status" role="status"></div>
+          </div>
+        </section>
+
         <section class="card" id="techLinksCard">
           <h2>Tech links</h2>
           <p class="sub" id="techLinksHint">Select a project to issue or reuse the one active link per technician.</p>

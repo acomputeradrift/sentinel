@@ -54,11 +54,68 @@ function shellTechUrl(raw) {
 const OPTION_NEW_CLIENT = "__new_client__";
 const OPTION_NEW_PROJECT = "__new_project__";
 
+const PRESET_INCLUDE = {
+  closeout: {
+    cover: true,
+    progressSummary: true,
+    eventSectionCounts: false,
+    deviceCounts: true,
+    currentTargets: false,
+    failDetail: true,
+    programmerFields: false,
+    fullHistory: false,
+    includePriorPasses: false,
+    testingTypeLegend: false,
+    operatorAppendix: false,
+  },
+  dealer_punch_list: {
+    cover: true,
+    progressSummary: false,
+    eventSectionCounts: false,
+    deviceCounts: false,
+    currentTargets: false,
+    failDetail: true,
+    programmerFields: true,
+    fullHistory: false,
+    includePriorPasses: false,
+    testingTypeLegend: false,
+    operatorAppendix: false,
+  },
+  full_audit: {
+    cover: true,
+    progressSummary: true,
+    eventSectionCounts: true,
+    deviceCounts: true,
+    currentTargets: true,
+    failDetail: true,
+    programmerFields: true,
+    fullHistory: true,
+    includePriorPasses: true,
+    testingTypeLegend: true,
+    operatorAppendix: false,
+  },
+};
+
+const INCLUDE_CHECKBOX_IDS = {
+  cover: "includeCover",
+  progressSummary: "includeProgressSummary",
+  eventSectionCounts: "includeEventSectionCounts",
+  deviceCounts: "includeDeviceCounts",
+  currentTargets: "includeCurrentTargets",
+  failDetail: "includeFailDetail",
+  programmerFields: "includeProgrammerFields",
+  fullHistory: "includeFullHistory",
+  includePriorPasses: "includePriorPasses",
+  testingTypeLegend: "includeTestingTypeLegend",
+  operatorAppendix: "includeOperatorAppendix",
+};
+
 const state = {
   clients: [],
   projects: [],
   technicians: [],
   techLinks: [],
+  reportDevices: [],
 };
 
 function currentClientId() {
@@ -203,6 +260,8 @@ function updateContextVisibility() {
   $("techLinksHint").hidden = hasProject;
   $("testPassBodyWrap").hidden = !hasProject;
   $("testPassHint").hidden = hasProject;
+  $("reportsBodyWrap").hidden = !hasProject;
+  $("reportsHint").hidden = hasProject;
 }
 
 async function loadClients() {
@@ -290,6 +349,7 @@ async function createProject() {
   await loadProjects();
   $("projectSelect").value = created.projectId;
   await loadTechLinks();
+  await loadReportDevices();
   updateContextVisibility();
   setStatus($("contextStatus"), "");
 }
@@ -336,6 +396,96 @@ async function rotateLink(link) {
     { method: "POST" }
   );
   await loadTechLinks();
+}
+
+function applyReportPreset() {
+  const preset = String($("reportPreset").value || "closeout");
+  const include = PRESET_INCLUDE[preset] || PRESET_INCLUDE.closeout;
+  for (const [key, id] of Object.entries(INCLUDE_CHECKBOX_IDS)) {
+    $(id).checked = !!include[key];
+  }
+}
+
+function renderReportDevices() {
+  const host = $("reportDeviceChecks");
+  host.innerHTML = "";
+  for (const device of state.reportDevices) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = true;
+    input.value = String(device.deviceId);
+    label.appendChild(input);
+    label.appendChild(document.createTextNode(` ${device.displayName || device.deviceId}`));
+    host.appendChild(label);
+  }
+}
+
+async function loadReportDevices() {
+  const projectId = currentProjectId();
+  if (!projectId) {
+    state.reportDevices = [];
+    renderReportDevices();
+    return;
+  }
+  try {
+    const progress = await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/progress`));
+    state.reportDevices = Array.isArray(progress?.devices) ? progress.devices : [];
+  } catch (_e) {
+    state.reportDevices = [];
+  }
+  renderReportDevices();
+}
+
+function readReportOptions() {
+  const include = {};
+  for (const [key, id] of Object.entries(INCLUDE_CHECKBOX_IDS)) {
+    include[key] = !!$(id).checked;
+  }
+  const deviceBoxes = Array.from($("reportDeviceChecks").querySelectorAll("input[type=checkbox]"));
+  const deviceIds = deviceBoxes.filter((el) => el.checked).map((el) => el.value);
+  return {
+    preset: String($("reportPreset").value || "closeout"),
+    scope: {
+      includeSystemEvents: $("scopeSystemEvents").checked,
+      includeDriverEvents: $("scopeDriverEvents").checked,
+      includeDevices: $("scopeDevices").checked,
+      includeDisabledTypes: $("scopeIncludeDisabledTypes").checked,
+      deviceIds: deviceIds.length && deviceIds.length !== deviceBoxes.length ? deviceIds : undefined,
+    },
+    include,
+  };
+}
+
+async function generateReport() {
+  const projectId = currentProjectId();
+  if (!projectId) return;
+  const payload = readReportOptions();
+  const merged = {
+    method: "POST",
+    headers: { ...commissioningAuthHeaders(), "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  };
+  const res = await fetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/reports`), merged);
+  const ct = res.headers.get("content-type") || "";
+  if (!res.ok) {
+    const body = ct.includes("application/json") ? await res.json() : await res.text();
+    if (body && typeof body === "object" && body.error && body.error.message) {
+      throw new Error(String(body.error.message));
+    }
+    throw new Error(typeof body === "string" ? body : JSON.stringify(body));
+  }
+  const disposition = res.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : "report.pdf";
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  setStatus($("reportStatus"), "Report downloaded.");
 }
 
 async function startNewTestPass() {
@@ -389,6 +539,7 @@ async function onClientChange() {
 async function onProjectChange() {
   updateContextVisibility();
   await loadTechLinks();
+  await loadReportDevices();
 }
 
 async function run() {
@@ -413,11 +564,18 @@ async function run() {
   $("startTestPassBtn").addEventListener("click", () => {
     void startNewTestPass().catch((e) => setStatus($("testPassStatus"), String(e?.message || e)));
   });
+  $("reportPreset").addEventListener("change", () => {
+    applyReportPreset();
+  });
+  $("generateReportBtn").addEventListener("click", () => {
+    void generateReport().catch((e) => setStatus($("reportStatus"), String(e?.message || e)));
+  });
   try {
     await loadClients();
     await loadTechnicians();
     fillSelect($("projectSelect"), [], (p) => p.projectId, (p) => p.name, "Select project…");
     updateContextVisibility();
+    applyReportPreset();
     renderTechLinks();
   } catch (e) {
     setStatus($("contextStatus"), String(e?.message || e));
