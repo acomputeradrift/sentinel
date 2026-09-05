@@ -327,6 +327,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         generation=generation if isinstance(generation, dict) else {},
     )
     repo.set_project_active_upload(projectId=projectId, uploadId=upload_id)
+    repo.set_project_status(projectId=projectId, status="READY")
     repo.prune_project_upload_retention(
         projectId=projectId,
         activeUploadId=str(upload_id),
@@ -406,6 +407,7 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     )
     repo.record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
     repo.set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
+    repo.set_project_status(projectId=projectId, status="READY")
     repo.prune_project_upload_retention(
         projectId=projectId,
         activeUploadId=str(upload_id),
@@ -575,17 +577,73 @@ async def project_events(request: Request, projectId: str, once: bool = False):
     raise http_error(410, code="SSE_REMOVED", message="SSE endpoints have been removed; use WebSocket.")
 
 
-@router.post("/projects/{projectId}/clear-tests")
-def clear_project_tests(request: Request, projectId: str) -> dict:
+def _start_test_pass_response(
+    request: Request,
+    *,
+    projectId: str,
+    confirmName: str | None,
+    reason: str | None,
+) -> dict:
     repo = _repo(request)
-    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
-    repo.clear_project_testing_data(projectId=projectId)
-    snapshot = commissioning_snapshots.commissioning_snapshot(repo=repo, projectId=projectId)
+    user_id = _commissioning_user_id(request)
+    _require_project_for_user(repo, user_id=user_id, project_id=projectId)
+    recorded_by = {"role": "PROGRAMMER", "userId": user_id}
     try:
+        started = repo.start_project_test_pass(
+            projectId=projectId,
+            recordedBy=recorded_by,
+            reason=reason,
+            confirmName=confirmName,
+        )
+    except KeyError:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    snapshot = commissioning_snapshots.commissioning_snapshot(repo=repo, projectId=projectId)
+    event = {
+        "type": "test_pass.started",
+        "projectId": projectId,
+        "testPassId": started.get("testPassId"),
+        "startedAtUtc": started.get("startedAtUtc"),
+        "recordedBy": started.get("recordedBy") or recorded_by,
+        "reason": started.get("reason"),
+        "confirmName": started.get("confirmName"),
+    }
+    try:
+        _broker(request).publish(projectId=projectId, event=event)
         _broker(request).publish(projectId=projectId, event=snapshot)
     except Exception:
-        log.exception("[commissioning-ws] publish:clear-tests-failed projectId=%s", projectId)
-    return snapshot
+        log.exception("[commissioning-ws] publish:test-pass-failed projectId=%s", projectId)
+    return {
+        **snapshot,
+        "testPassId": started.get("testPassId"),
+        "startedAtUtc": started.get("startedAtUtc"),
+        "recordedBy": started.get("recordedBy") or recorded_by,
+        "reason": started.get("reason"),
+    }
+
+
+@router.post("/projects/{projectId}/test-passes")
+def start_project_test_pass(request: Request, projectId: str, payload: dict) -> dict:
+    repo = _repo(request)
+    user_id = _commissioning_user_id(request)
+    project = _require_project_for_user(repo, user_id=user_id, project_id=projectId)
+    confirm = str((payload or {}).get("confirmName") or "").strip()
+    if not confirm:
+        raise http_error(400, code="CONFIRM_NAME_REQUIRED", message="Type the project name to confirm.")
+    if confirm != str(project.name or "").strip():
+        raise http_error(400, code="CONFIRM_NAME_MISMATCH", message="Project name does not match.")
+    reason = str((payload or {}).get("reason") or "").strip() or None
+    return _start_test_pass_response(request, projectId=projectId, confirmName=confirm, reason=reason)
+
+
+@router.post("/projects/{projectId}/clear-tests")
+def clear_project_tests(request: Request, projectId: str) -> dict:
+    # Deprecated alias: start a new test pass. Does not DELETE history.
+    return _start_test_pass_response(
+        request,
+        projectId=projectId,
+        confirmName=None,
+        reason="clear-tests-alias",
+    )
 
 
 @router.websocket("/projects/{projectId}/ws")

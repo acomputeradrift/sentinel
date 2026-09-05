@@ -242,9 +242,10 @@ The server is the source of truth for test state by storing **append-only** hist
 ### Per-target current state
 
 For a given `projectId + targetKey`:
-- `currentOutcome` is the outcome of the most recent `TestResultRecord` by `recordedAtUtc`.
-- If no record exists for that `targetKey` within the project, `currentOutcome = UNTESTED`.
-- `lastTestedAtUtc` is the `recordedAtUtc` of the most recent record (or `null` if untested).
+- `currentOutcome` is the outcome of the most recent `TestResultRecord` by `recordedAtUtc` **in the current test pass** (records at or after the latest `test-passes.startedAtUtc`).
+- If no record exists for that `targetKey` in the current pass, `currentOutcome = UNTESTED`.
+- Full append-only history remains queryable across passes.
+- `lastTestedAtUtc` is the `recordedAtUtc` of the most recent current-pass record (or `null` if untested).
 
 Tie-breaker rule:
 - If two records have the same `recordedAtUtc`, the server uses `testResultId` as a deterministic tie-breaker.
@@ -452,6 +453,23 @@ Named technicians live under the commissioning operator (the company stub user u
   - resp: same shape as GET
   - Off-behavior is `exclude` (not auto-pass). Controls remain drawn on generated technician pages.
 
+### Start new test pass (dealer-scoped; this project only)
+- `POST /api/v1/commissioning/projects/{projectId}/test-passes`
+  - behavior: record a pass boundary. **Does not DELETE** `test_results`. Derived `currentOutcome` is `UNTESTED` for targets after the boundary. Current fail tags are archived (history kept) and become inactive for the new pass. Confirm by typing the project name.
+  - req:
+    ```json
+    { "confirmName": "string", "reason": "string|null" }
+    ```
+  - resp: commissioning snapshot plus
+    ```json
+    { "projectId": "uuid", "testPassId": "uuid", "startedAtUtc": "2026-03-19T12:05:00Z", "recordedBy": { "role": "PROGRAMMER", "userId": "uuid" }, "reason": "string|null" }
+    ```
+  - `400 CONFIRM_NAME_REQUIRED` when `confirmName` is empty
+  - `400 CONFIRM_NAME_MISMATCH` when `confirmName` does not match the project name
+  - publishes `test_pass.started` (who / when / project / optional reason) then a commissioning snapshot
+- `POST /api/v1/commissioning/projects/{projectId}/clear-tests`
+  - **Deprecated alias** for start-new-pass. Same pass-boundary behavior (no DELETE of history). Existing clients may omit `confirmName`.
+
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
 - `POST /api/v1/testing/{techToken}/results` -> append a `TestResultRecord`
@@ -498,4 +516,6 @@ Minimum event types:
 - `EXTRACT_FAILED`
 - `GENERATE_FAILED`
 - `FAIL_NOTE_REQUIRED`
+- `CONFIRM_NAME_REQUIRED`
+- `CONFIRM_NAME_MISMATCH`
 
