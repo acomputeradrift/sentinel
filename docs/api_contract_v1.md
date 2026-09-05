@@ -470,6 +470,44 @@ Named technicians live under the commissioning operator (the company stub user u
 - `POST /api/v1/commissioning/projects/{projectId}/clear-tests`
   - **Deprecated alias** for start-new-pass. Same pass-boundary behavior (no DELETE of history). Existing clients may omit `confirmName`.
 
+### Reports (additive; Management builder)
+- `POST /api/v1/commissioning/projects/{projectId}/reports`
+  - Builds a report for **this project only** from the same progress / fails / append-only history queries as the console. Does **not** use the 50-row snapshot `activities` cap.
+  - req option bag (presets set defaults; `include` / `scope` override):
+    ```json
+    {
+      "preset": "closeout|dealer_punch_list|full_audit",
+      "scope": {
+        "includeSystemEvents": true,
+        "includeDriverEvents": true,
+        "includeDevices": true,
+        "deviceIds": ["string"] ,
+        "includeDisabledTypes": false
+      },
+      "include": {
+        "cover": true,
+        "progressSummary": true,
+        "eventSectionCounts": true,
+        "deviceCounts": true,
+        "currentTargets": true,
+        "currentTargetOutcomes": ["PASS", "FAIL", "UNTESTED"],
+        "failDetail": true,
+        "programmerFields": false,
+        "fullHistory": false,
+        "includePriorPasses": false,
+        "testingTypeLegend": false,
+        "operatorAppendix": false
+      }
+    }
+    ```
+  - Preset defaults:
+    - `closeout`: cover + project progress + device counts + current fail notes. No history, no programmer tags, no operator appendix.
+    - `dealer_punch_list`: cover + fail detail (notes, placement, room/source, tech name, task tag).
+    - `full_audit`: cover + progress + event/device counts + all current targets + full history (including prior passes) + testing-type legend. Operator appendix still default off.
+  - `operatorAppendix` lists **active technician names only** (never raw tokens or `techUrl`).
+  - Do not send photos, signatures, site address, page pies, or live screenshots — those fields are not in this contract.
+  - resp (v1 file): PDF bytes with `Content-Disposition` filename `{client}-{project}-{preset}-{date}.pdf`. The structured document used to render the PDF is the option-filtered bag (cover / progressSummary / eventSectionCounts / deviceCounts / currentTargets / failDetail / history / testingTypeLegend / operatorAppendix). Omitted checkboxes are absent from that bag.
+
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
 - `POST /api/v1/testing/{techToken}/results` -> append a `TestResultRecord`

@@ -216,6 +216,8 @@ class Repository(Protocol):
         confirmName: str | None = None,
     ) -> dict[str, Any]: ...
 
+    def get_current_test_pass_started_at(self, *, projectId: str) -> str | None: ...
+
     def list_fail_tag_history_for_project(self, *, projectId: str) -> list[dict[str, Any]]: ...
 
     def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None: ...
@@ -672,6 +674,10 @@ class InMemoryRepository:
                 out.extend(items)
             out.sort(key=lambda r: (r.recordedAtUtc, r.testResultId))
             return out
+
+    def get_current_test_pass_started_at(self, *, projectId: str) -> str | None:
+        with self._lock:
+            return self._current_pass_started_at_locked(projectId=projectId)
 
     def start_project_test_pass(
         self,
@@ -1342,6 +1348,9 @@ class PostgresRepository:
     def list_test_results_for_project(self, *, projectId: str) -> list[TestResultRecord]:
         rows = self._q.list_test_results_for_project(self._database_url, project_id=projectId)
         return [self._result_from_row(projectId=projectId, row=r) for r in rows]
+
+    def get_current_test_pass_started_at(self, *, projectId: str) -> str | None:
+        return self._q.current_test_pass_started_at(self._database_url, project_id=projectId)
 
     def start_project_test_pass(
         self,
