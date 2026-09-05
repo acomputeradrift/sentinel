@@ -2680,6 +2680,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
@@ -3067,10 +3068,10 @@ function _applyTechPayload(payload) {{
       if (!targetKey) continue;
       const outcome = String(rec?.outcome || "").toUpperCase();
       const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady, retestReadyAt: String(rec?.retestReadyAt || "") }});
       const rowUi = rowStatusByTargetKey.get(targetKey);
       if (rowUi) {{
-       setRowStatus(rowUi, outcome, at);
+       setRowStatus(rowUi, outcome, at, !!rec?.retestReady, rec?.retestReadyAt);
        applied += 1;
       }}
      }}
@@ -3104,7 +3105,7 @@ function _applyTechPayload(payload) {{
      for (const k of keys) {{
       const targetKey = String(k || "").trim();
       if (!targetKey) continue;
-      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+      statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
       const rowUi = rowStatusByTargetKey.get(targetKey);
       if (rowUi) setRowStatus(rowUi, outcome, at);
      }}
@@ -3118,12 +3119,25 @@ function _applyTechPayload(payload) {{
      }}
      return;
     }}
+    if (t === "fail_tag_updated") {{
+     const tagKey = String(payload?.targetKey || "");
+     if (!tagKey) return;
+     const prev = statusByTargetKey.get(tagKey) || {{}};
+     const prevOutcome = String(prev.outcome || "").toUpperCase();
+     const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
+     const readyAt = ready ? String(payload?.recordedAtUtc || "") : "";
+     statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready, retestReadyAt: readyAt }});
+     const rowUi = rowStatusByTargetKey.get(tagKey);
+     if (rowUi) setRowStatus(rowUi, prev.outcome || "", prev.recordedAtUtc || "", ready, readyAt);
+     refreshButtonVisualStates();
+     return;
+    }}
     if (t !== "test_result.recorded" && t !== "test_result") return;
     const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
     if (!targetKey) return;
     const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
     const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+    statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
     const rowUi = rowStatusByTargetKey.get(targetKey);
     if (!rowUi) {{
      _logTechWs("row-miss", targetKey);
@@ -3216,6 +3230,10 @@ function _connectTechWs() {{
     rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
     return;
   }}
+  if (outcome === "FAIL" && rowUi.retestReady) {{
+    rowUi.lastTestEl.textContent = times.RETEST ? `Ready for retest: ${{times.RETEST}}` : "Ready for retest";
+    return;
+  }}
   if (outcome === "FAIL" && times.FAIL) {{
     rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
     return;
@@ -3226,15 +3244,26 @@ function _connectTechWs() {{
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, retestReady, retestReadyAt) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  const ready = !!retestReady && o === "FAIL";
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
-  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.failBtn) {{
+    rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+    rowUi.failBtn.classList.toggle("is-retest-ready", ready);
+  }}
   rowUi.currentOutcome = o;
+  rowUi.retestReady = ready;
   if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  if (ready) {{
+    const readyAt = formatLastTestUtc(retestReadyAt);
+    if (readyAt) rowUi.statusTimes.RETEST = readyAt;
+  }} else {{
+    delete rowUi.statusTimes.RETEST;
+  }}
   _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
@@ -3245,7 +3274,7 @@ function _connectTechWs() {{
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at);
+  setRowStatus(rowUi, outcome, at, !!rec.retestReady, rec.retestReadyAt);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -3619,7 +3648,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   scope.querySelectorAll('.vp-box').forEach(el=>{{
    if (el.dataset.boundVpClick) return;
    el.dataset.boundVpClick='1';
-   el.addEventListener('click', ()=>{{
+   el.addEventListener('click', (e)=>{{
     if (viewportMode.active) return;
     enterViewportMode(el.dataset.vp);
    }});
@@ -5547,7 +5576,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .btn-wrap--home-event .test-btn{{width:100%;margin:0;font:inherit;display:block;box-sizing:border-box;padding:16px 18px;border-radius:16px;border:0;background:var(--btn-fill-color);color:#fff;box-shadow:inset 0 0 0 1px #154665,inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color);font-size:15px;line-height:1.35;text-align:left;cursor:pointer;white-space:normal;}}
 .btn-wrap--home-event:hover .test-btn{{filter:brightness(1.05);}}
 .btn-wrap--home-event .btn-pass-total{{display:none !important;visibility:hidden !important;}}
-.device-row{{background:#29445a;box-shadow:inset 0 0 0 1px #1c3244;}}
+.device-row{{background:#1e5f86;box-shadow:inset 0 0 0 1px #154665;}}
 .home-empty{{padding:16px 18px;border:1px dashed #a9bccd;border-radius:16px;background:#edf4f8;color:#557082;font-size:14px;}}
 .ov{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;padding:8px 12px;z-index:10000;}}
 .ov.open{{display:flex;}}
@@ -5572,6 +5601,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
@@ -5734,10 +5764,10 @@ const APP_UI={app_json};
      if (!targetKey) continue;
      const outcome = String(rec?.outcome || "").toUpperCase();
      const at = String(rec?.recordedAtUtc || rec?.lastTestedAtUtc || rec?.tsUtc || "");
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: !!rec?.retestReady, retestReadyAt: String(rec?.retestReadyAt || "") }});
      const rowUi = rowStatusByTargetKey.get(targetKey);
      if (rowUi) {{
-      setRowStatus(rowUi, outcome, at);
+      setRowStatus(rowUi, outcome, at, !!rec?.retestReady, rec?.retestReadyAt);
       applied += 1;
      }}
     }}
@@ -5763,7 +5793,7 @@ const APP_UI={app_json};
     for (const k of keys) {{
      const targetKey = String(k || "").trim();
      if (!targetKey) continue;
-     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+     statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
      const rowUi = rowStatusByTargetKey.get(targetKey);
      if (rowUi) setRowStatus(rowUi, outcome, at);
     }}
@@ -5777,12 +5807,25 @@ const APP_UI={app_json};
     }}
     return;
    }}
+   if (t === "fail_tag_updated") {{
+    const tagKey = String(payload?.targetKey || "");
+    if (!tagKey) return;
+    const prev = statusByTargetKey.get(tagKey) || {{}};
+    const prevOutcome = String(prev.outcome || "").toUpperCase();
+    const ready = String(payload?.tag || "").toUpperCase() === "DONE" && prevOutcome === "FAIL";
+    const readyAt = ready ? String(payload?.recordedAtUtc || "") : "";
+    statusByTargetKey.set(tagKey, {{ outcome: prev.outcome || "", recordedAtUtc: prev.recordedAtUtc || "", retestReady: ready, retestReadyAt: readyAt }});
+    const rowUi = rowStatusByTargetKey.get(tagKey);
+    if (rowUi) setRowStatus(rowUi, prev.outcome || "", prev.recordedAtUtc || "", ready, readyAt);
+    refreshHomeEventVisualStates();
+    return;
+   }}
    if (t !== "test_result.recorded" && t !== "test_result") return;
    const targetKey = String(payload?.targetKey || payload?.target?.targetKey || "");
    if (!targetKey) return;
    const outcome = String(payload?.outcome || payload?.currentOutcome || "").toUpperCase();
    const at = String(payload?.recordedAtUtc || payload?.lastTestedAtUtc || payload?.tsUtc || "");
-   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at }});
+   statusByTargetKey.set(targetKey, {{ outcome, recordedAtUtc: at, retestReady: false }});
    const rowUi = rowStatusByTargetKey.get(targetKey);
    if (rowUi) {{
     setRowStatus(rowUi, outcome, at);
@@ -5868,6 +5911,10 @@ const APP_UI={app_json};
     rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
     return;
   }}
+  if (outcome === "FAIL" && rowUi.retestReady) {{
+    rowUi.lastTestEl.textContent = times.RETEST ? `Ready for retest: ${{times.RETEST}}` : "Ready for retest";
+    return;
+  }}
   if (outcome === "FAIL" && times.FAIL) {{
     rowUi.lastTestEl.textContent = `Failed: ${{times.FAIL}}`;
     return;
@@ -5878,15 +5925,26 @@ const APP_UI={app_json};
   }}
   rowUi.lastTestEl.textContent = "";
  }}
- function setRowStatus(rowUi, outcome, recordedAtUtc) {{
+ function setRowStatus(rowUi, outcome, recordedAtUtc, retestReady, retestReadyAt) {{
   if (!rowUi) return;
   const o = String(outcome || "").trim().toUpperCase();
   const at = formatLastTestUtc(recordedAtUtc);
+  const ready = !!retestReady && o === "FAIL";
   if (!rowUi.statusTimes) rowUi.statusTimes = {{}};
   if (rowUi.passBtn) rowUi.passBtn.classList.toggle("is-pass-active", o === "PASS");
-  if (rowUi.failBtn) rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+  if (rowUi.failBtn) {{
+    rowUi.failBtn.classList.toggle("is-fail-active", o === "FAIL");
+    rowUi.failBtn.classList.toggle("is-retest-ready", ready);
+  }}
   rowUi.currentOutcome = o;
+  rowUi.retestReady = ready;
   if (at && (o === "PASS" || o === "FAIL" || o === "UNTESTED")) rowUi.statusTimes[o] = at;
+  if (ready) {{
+    const readyAt = formatLastTestUtc(retestReadyAt);
+    if (readyAt) rowUi.statusTimes.RETEST = readyAt;
+  }} else {{
+    delete rowUi.statusTimes.RETEST;
+  }}
   _renderRowStatusTimes(rowUi);
  }}
  function applyCachedStatus(rowUi, targetKey) {{
@@ -5897,7 +5955,7 @@ const APP_UI={app_json};
   if (!rec) return;
   const outcome = String(rec.outcome || "").toUpperCase();
   const at = String(rec.recordedAtUtc || "");
-  setRowStatus(rowUi, outcome, at);
+  setRowStatus(rowUi, outcome, at, !!rec.retestReady, rec.retestReadyAt);
  }}
 function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   const m = (meta && typeof meta === "object") ? meta : {{}};
@@ -6255,16 +6313,6 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   }});
  }});
 _connectTechWs();
-if (globalThis.__sentinelGroupPass) {{
- globalThis.__sentinelGroupPass.attach({{
-  surface: "home",
-  buildTargetPayload: buildTargetPayload,
-  sendWs: _sendTechWs,
-  refreshVisuals: refreshHomeEventVisualStates,
-  onPostingChange: setPosting,
-  setPendingBatch: function(on) {{ pendingBatchPass = !!on; }}
- }});
-}}
 document.getElementById('close').addEventListener('click', function(){{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click', function(e){{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
 </script></body></html>"""

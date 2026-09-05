@@ -233,7 +233,7 @@ Rule (normative):
 - If `outcome == "FAIL"`, `failNote` is required and non-empty. Reject with `error.code = FAIL_NOTE_REQUIRED`.
 - `source` and `batchId` are additive provenance. Per-control Pass/Fail and popup Pass All store `source=SINGLE` and `batchId=null`. Group pass (`POST .../results/batch` or WS `test_result.submit_batch`) stores `source=GROUP` and a shared `batchId` on every row in that submit.
 - Every result records who did it. `recordedBy.name` / `recordedBy.technicianId` are stamped on the append-only row (including GROUP rows) so who survives token revoke, technician rename, re-upload, and snapshot rebuild. Commissioning snapshot `activities` and fail items include `recordedBy` and `techName`.
-- Commissioning snapshot rebuild (`activities` on `commissioning_snapshot`) collapses latest rows that share a `batchId` into one `test_results.batch` activity so a reconnect still shows a group pass, not N walked singles.
+- Commissioning snapshot rebuild (`activities` on `commissioning_snapshot`) lists each latest target as its own `test_result` row, including group-pass items. `batchId` / `source=GROUP` stay on those rows for reports.
 
 ## Derived current status + progress (normative)
 

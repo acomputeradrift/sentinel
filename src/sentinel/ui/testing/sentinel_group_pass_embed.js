@@ -2,9 +2,9 @@
  * Technician group-pass chrome (project home + device pages).
  * Injected with test-status embed; pages call globalThis.__sentinelGroupPass.attach(...).
  *
- * Grouping model: an ephemeral session set of targetKeys. Fill it by tapping controls,
- * shift-click, rubber-band drag on a device page, and/or structural shortcuts
- * (this page / this device / system events / driver events), then Pass group in one
+ * Grouping model: an ephemeral session set of targetKeys. Fill it by tapping
+ * Select Multiple Buttons (iPad) then tapping controls / a viewport / rubber-band
+ * dragging, or via desktop shift-click / shift-drag, then Pass selected in one
  * WebSocket batch. Not persisted. Fail stays per-target.
  */
 (function (global) {
@@ -13,21 +13,29 @@
   const CONFIRM_AT = 25;
   const DRAG_THRESHOLD_PX = 8;
   const STYLE_ID = "sentinel-group-pass-style";
-  const BAR_ID = "sentinelGroupBar";
+  const TOGGLE_ID = "sentinelGroupToggle";
+  const ACTIONS_ID = "sentinelGroupActions";
   const MARQUEE_ID = "sentinelGroupMarquee";
+  const CLUSTER_ID = "sentinelGroupToggleCluster";
 
   const CSS = [
-    "body{padding-bottom:84px;}",
-    "#" + BAR_ID + "{position:fixed;left:12px;right:12px;bottom:12px;z-index:9500;display:flex;flex-wrap:wrap;align-items:center;gap:8px;box-sizing:border-box;padding:10px 12px;border:1px solid #b9cad8;border-radius:16px;background:rgba(247,251,255,.96);box-shadow:0 10px 30px rgba(20,50,75,.16);font-family:Segoe UI,Tahoma,sans-serif;color:#14324b;}",
-    "#" + BAR_ID + " button{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:8px 14px;font-size:13px;line-height:1.1;cursor:pointer;color:#14324b;}",
-    "#" + BAR_ID + " button:disabled{opacity:.55;cursor:not-allowed;}",
-    "#" + BAR_ID + " button.is-active{background:#29445a;color:#fff;border-color:#29445a;font-weight:700;}",
-    "#" + BAR_ID + " button.group-pass{background:#eaf7ef;border-color:#39b54a;color:#1f5d2d;font-weight:700;}",
-    "#" + BAR_ID + " .group-count{font-size:13px;font-weight:700;margin-left:auto;}",
-    "#" + BAR_ID + " .group-status{width:100%;font-size:12px;line-height:1.25;color:#274258;}",
-    "#" + BAR_ID + " .group-status.is-error{color:#8f1f1f;}",
+    "#" + TOGGLE_ID + "{display:inline-flex;align-items:center;justify-content:center;min-width:96px;max-width:120px;min-height:44px;height:auto;padding:8px 10px;border-radius:12px;border:2px solid #f0a126;background:transparent;color:#29445a;font-size:12px;font-weight:700;cursor:pointer;box-sizing:border-box;white-space:normal;text-align:center;line-height:1.2;flex-shrink:0;font-family:Segoe UI,Tahoma,sans-serif;}",
+    "#" + TOGGLE_ID + ".is-active{background:#29445a;color:#fff;border-color:#29445a;}",
+    "#appCanvas > #" + TOGGLE_ID + "{position:absolute;z-index:31;}",
+    "#" + CLUSTER_ID + "{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;}",
+    ".home-header{position:relative;padding-right:160px;box-sizing:border-box;}",
+    ".home-header #" + TOGGLE_ID + "{position:absolute;top:24px;right:28px;}",
+    "#" + ACTIONS_ID + "{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:11000;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;min-width:220px;max-width:min(360px,calc(100vw - 24px));max-height:min(50vh,420px);overflow:auto;padding:12px;border:1px solid #b9cad8;border-radius:16px;background:rgba(247,251,255,.98);box-shadow:0 10px 30px rgba(20,50,75,.16);font-family:Segoe UI,Tahoma,sans-serif;color:#14324b;}",
+    "#" + ACTIONS_ID + "[hidden]{display:none !important;}",
+    "#" + ACTIONS_ID + " button{border:1px solid #a9bccd;background:#f7fbff;border-radius:12px;min-height:44px;padding:10px 14px;font-size:15px;line-height:1.1;cursor:pointer;color:#14324b;width:100%;}",
+    "#" + ACTIONS_ID + " button:disabled{opacity:.55;cursor:not-allowed;}",
+    "#" + ACTIONS_ID + " button.group-pass{background:#eaf7ef;border-color:#39b54a;color:#1f5d2d;font-weight:700;}",
+    "#" + ACTIONS_ID + " .group-count{font-size:13px;font-weight:700;}",
+    "#" + ACTIONS_ID + " .group-status{width:100%;font-size:12px;line-height:1.25;color:#274258;}",
+    "#" + ACTIONS_ID + " .group-status.is-error{color:#8f1f1f;}",
     "body.sentinel-group-mode .btn-wrap.is-group-selected{outline:3px solid #7c3aed;outline-offset:2px;}",
-    "#" + MARQUEE_ID + "{position:fixed;z-index:9400;pointer-events:none;box-sizing:border-box;border:1px dashed #7c3aed;background:rgba(124,58,237,.12);}",
+    "body.sentinel-group-mode #rtiCanvas,body.sentinel-group-mode #rtiDeviceCanvas,body.sentinel-group-mode .device-page{touch-action:none;}",
+    "#" + MARQUEE_ID + "{position:fixed;z-index:10900;pointer-events:none;box-sizing:border-box;border:1px dashed #7c3aed;background:rgba(124,58,237,.12);}",
     "body.sentinel-group-dragging{user-select:none;}",
   ].join("\n");
 
@@ -35,10 +43,12 @@
   let groupMode = false;
   let posting = false;
   let opts = null;
-  let bar = null;
+  let toggle = null;
+  let actions = null;
   let drag = null;
   let swallowClick = false;
   let dragListenersBound = false;
+  let hideActionsWhileDragging = false;
 
   function injectStyle() {
     if (document.getElementById(STYLE_ID)) return;
@@ -70,10 +80,6 @@
     return out;
   }
 
-  function wrapForButton(btn) {
-    return btn && btn.closest ? btn.closest(".btn-wrap") : null;
-  }
-
   function wrapHasSelected(wrap) {
     if (!wrap) return false;
     const btn = wrap.querySelector(".test-btn");
@@ -91,9 +97,15 @@
     });
   }
 
+  function statusText() {
+    if (!actions) return "";
+    const el = actions.querySelector(".group-status");
+    return el ? String(el.textContent || "").trim() : "";
+  }
+
   function setStatus(text, isError) {
-    if (!bar) return;
-    const el = bar.querySelector(".group-status");
+    if (!actions) return;
+    const el = actions.querySelector(".group-status");
     if (!el) return;
     const t = String(text || "").trim();
     el.textContent = t;
@@ -103,30 +115,48 @@
   }
 
   function syncTogglePressed() {
-    if (!bar) return;
-    const toggle = bar.querySelector("#sentinelGroupToggle");
-    if (toggle) toggle.setAttribute("aria-pressed", groupMode ? "true" : "false");
+    if (!toggle) return;
+    toggle.setAttribute("aria-pressed", groupMode ? "true" : "false");
+    toggle.classList.toggle("is-active", groupMode);
+  }
+
+  function actionsShouldShow() {
+    if (!groupMode || hideActionsWhileDragging) return false;
+    if (posting) return true;
+    if (selected.size > 0) return true;
+    return !!statusText();
+  }
+
+  function positionActions() {
+    if (!actions || actions.hidden) return;
+    actions.style.top = "50%";
+    actions.style.left = "50%";
+    actions.style.transform = "translate(-50%, -50%)";
   }
 
   function updateChrome() {
-    if (!bar) return;
     const n = selected.size;
-    const toggle = bar.querySelector("#sentinelGroupToggle");
-    const tools = bar.querySelector("#sentinelGroupTools");
-    const count = bar.querySelector(".group-count");
-    const passBtn = bar.querySelector("#sentinelGroupPass");
     if (toggle) toggle.classList.toggle("is-active", groupMode);
-    if (tools) tools.hidden = !groupMode;
-    if (count) count.textContent = n === 1 ? "1 target" : n + " targets";
-    if (passBtn) passBtn.disabled = posting || n < 1;
-    bar.querySelectorAll("button").forEach(function (btn) {
-      if (btn.id === "sentinelGroupToggle") return;
-      if (btn.id === "sentinelGroupPass") {
-        btn.disabled = posting || n < 1;
-        return;
-      }
-      btn.disabled = posting || !groupMode;
-    });
+    if (actions) {
+      const count = actions.querySelector(".group-count");
+      const passBtn = actions.querySelector("#sentinelGroupPass");
+      if (count) count.textContent = n === 1 ? "1 target" : n + " targets";
+      const show = actionsShouldShow();
+      actions.hidden = !show;
+      actions.querySelectorAll("button").forEach(function (btn) {
+        if (btn.id === "sentinelGroupPass") {
+          btn.disabled = posting || n < 1;
+          return;
+        }
+        if (btn.id === "sentinelGroupCancel") {
+          btn.disabled = posting;
+          return;
+        }
+        btn.disabled = posting || !groupMode;
+      });
+      if (passBtn) passBtn.disabled = posting || n < 1;
+      if (show) positionActions();
+    }
     document.body.classList.toggle("sentinel-group-mode", groupMode);
     refreshWrapSelection(document);
   }
@@ -135,6 +165,7 @@
     groupMode = !!on;
     if (!groupMode) {
       posting = false;
+      hideActionsWhileDragging = false;
     }
     setStatus("", false);
     syncTogglePressed();
@@ -182,40 +213,54 @@
 
   function buttonsInRoot(root) {
     if (!root || !root.querySelectorAll) return [];
-    return Array.prototype.slice.call(root.querySelectorAll(".test-btn"));
+    return Array.prototype.slice.call(root.querySelectorAll(".test-btn")).filter(isSelectableTarget);
   }
 
-  function addButtons(btns, label) {
+  function addButtons(btns) {
     let n = 0;
     for (let i = 0; i < btns.length; i += 1) {
       n += addPayloads(payloadsForButton(btns[i]));
     }
-    setStatus(n ? "Added " + n + " from " + label + "." : "No new targets in " + label + ".", false);
-    updateChrome();
+    return n;
   }
 
-  function addThisPage() {
+  function replaceSelectionFromButtons(btns) {
+    selected.clear();
+    return addButtons(btns);
+  }
+
+  function passThisPage() {
+    if (posting || !opts) return;
     if (typeof opts.materializeActivePage === "function") opts.materializeActivePage();
     const root = typeof opts.activePageRoot === "function" ? opts.activePageRoot() : null;
-    addButtons(buttonsInRoot(root), "this page");
+    const n = replaceSelectionFromButtons(buttonsInRoot(root));
+    if (!n) {
+      setStatus("No targets on this page.", false);
+      updateChrome();
+      return;
+    }
+    passSelected();
   }
 
-  function addThisDevice() {
+  function passThisDevice() {
+    if (posting || !opts) return;
     if (typeof opts.materializeAllPages === "function") opts.materializeAllPages();
-    addButtons(buttonsInRoot(document.querySelector("#rtiDeviceCanvas") || document), "this device");
+    const n = replaceSelectionFromButtons(buttonsInRoot(document.querySelector("#rtiDeviceCanvas") || document));
+    if (!n) {
+      setStatus("No targets on this device.", false);
+      updateChrome();
+      return;
+    }
+    passSelected();
   }
 
-  function addSection(id, label) {
-    addButtons(buttonsInRoot(document.getElementById(id)), label);
-  }
-
-  function clearGroup() {
+  function cancelSelection() {
     selected.clear();
     setStatus("", false);
-    updateChrome();
+    setGroupMode(false);
   }
 
-  function passGroup() {
+  function passSelected() {
     if (posting || !opts || typeof opts.sendWs !== "function") return;
     const targets = [];
     selected.forEach(function (t) {
@@ -247,17 +292,19 @@
     if (typeof opts.setPendingBatch === "function") opts.setPendingBatch(false);
     if (ok) {
       selected.clear();
-      setStatus("Group passed.", false);
+      setStatus("", false);
       if (typeof opts.refreshVisuals === "function") opts.refreshVisuals();
+      setGroupMode(false);
     } else {
-      setStatus(String(message || "Group pass failed."), true);
+      setStatus(String(message || "Pass failed."), true);
+      updateChrome();
     }
-    updateChrome();
   }
 
   function handleTestButtonClick(btn, evt) {
     const shift = !!(evt && evt.shiftKey);
     if (!groupMode && !shift) return false;
+    if (!isSelectableTarget(btn)) return false;
     if (evt && typeof evt.preventDefault === "function") evt.preventDefault();
     if (evt && typeof evt.stopPropagation === "function") evt.stopPropagation();
     if (shift) enterGroupMode();
@@ -272,9 +319,16 @@
 
   function isChromeTarget(el) {
     if (!el || !el.closest) return true;
-    if (el.closest("#" + BAR_ID)) return true;
+    if (el.closest("#" + TOGGLE_ID)) return true;
+    if (el.closest("#" + CLUSTER_ID)) return true;
+    if (el.closest("#" + ACTIONS_ID)) return true;
     if (el.closest("#" + MARQUEE_ID)) return true;
     if (el.closest("#ov")) return true;
+    if (el.closest("#topControls") || el.closest("#topControlsStatic")) return true;
+    if (el.closest("#zoomControls") || el.closest("#zoomControlsStatic") || el.closest("#orientationControls")) return true;
+    if (el.closest("#deviceViewControlsCanvas") || el.closest(".deviceViewControlsContent")) return true;
+    if (el.closest(".vp-popup-stage") || el.closest(".vp-popup-vcontent")) return false;
+    if (el.closest("#layerControls") || el.closest("#vpPopup")) return true;
     if (el.closest("#rtiDeviceCanvas") || el.closest("#rtiCanvas") || el.closest(".device-page")) return false;
     return true;
   }
@@ -285,6 +339,15 @@
       if (root) return root;
     }
     return document.querySelector("#rtiDeviceCanvas") || document;
+  }
+
+  function selectionRoots() {
+    const roots = [pageRoot()];
+    if (document.body && document.body.classList && document.body.classList.contains("viewport-mode")) {
+      const stage = document.querySelector(".vp-popup-vcontent") || document.querySelector(".vp-popup-stage");
+      if (stage) roots.push(stage);
+    }
+    return roots.filter(Boolean);
   }
 
   function marqueeEl() {
@@ -317,20 +380,51 @@
     if (el) el.hidden = true;
   }
 
+  function inViewportPopup(el) {
+    return !!(el && el.closest && (el.closest(".vp-popup-stage") || el.closest(".vp-popup-vcontent")));
+  }
+
+  function isViewportChild(el) {
+    if (!el) return false;
+    if (el.classList && el.classList.contains("vp-btn")) return true;
+    const wrap = el.closest ? el.closest(".btn-wrap") : el;
+    if (wrap && wrap.classList && wrap.classList.contains("vp-btn")) return true;
+    if (wrap && wrap.getAttribute && String(wrap.getAttribute("data-vp") || "").trim()) return true;
+    return false;
+  }
+
+  function isViewportMode() {
+    return !!(document.body && document.body.classList && document.body.classList.contains("viewport-mode"));
+  }
+
+  function isSelectableTarget(el) {
+    if (!el) return false;
+    if (inViewportPopup(el)) return isViewportMode();
+    if (isViewportChild(el)) return false;
+    return true;
+  }
+
   function wrapsIntersecting(rect) {
-    const root = pageRoot();
-    const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
     const hit = [];
-    for (let i = 0; i < wraps.length; i += 1) {
-      const box = wraps[i].getBoundingClientRect();
-      if (box.width <= 0 || box.height <= 0) continue;
-      const overlap = !(
-        box.right < rect.left ||
-        box.left > rect.left + rect.width ||
-        box.bottom < rect.top ||
-        box.top > rect.top + rect.height
-      );
-      if (overlap) hit.push(wraps[i]);
+    const seen = new Set();
+    const roots = selectionRoots();
+    for (let r = 0; r < roots.length; r += 1) {
+      const root = roots[r];
+      const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
+      for (let i = 0; i < wraps.length; i += 1) {
+        if (seen.has(wraps[i])) continue;
+        seen.add(wraps[i]);
+        if (!isSelectableTarget(wraps[i])) continue;
+        const box = wraps[i].getBoundingClientRect();
+        if (box.width <= 0 || box.height <= 0) continue;
+        const overlap = !(
+          box.right < rect.left ||
+          box.left > rect.left + rect.width ||
+          box.bottom < rect.top ||
+          box.top > rect.top + rect.height
+        );
+        if (overlap) hit.push(wraps[i]);
+      }
     }
     return hit;
   }
@@ -344,29 +438,62 @@
     return n;
   }
 
+  function wrapsForViewport(vpIndex) {
+    const hit = [];
+    const seen = new Set();
+    const want = String(vpIndex);
+    const roots = selectionRoots();
+    for (let r = 0; r < roots.length; r += 1) {
+      const root = roots[r];
+      const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
+      for (let i = 0; i < wraps.length; i += 1) {
+        if (seen.has(wraps[i])) continue;
+        seen.add(wraps[i]);
+        if (!isSelectableTarget(wraps[i])) continue;
+        if (String(wraps[i].getAttribute("data-vp") || "") === want) hit.push(wraps[i]);
+      }
+    }
+    return hit;
+  }
+
+  function handleViewportBoxClick(_box, _evt) {
+    return false;
+  }
+
   function endDrag() {
     document.body.classList.remove("sentinel-group-dragging");
     hideMarquee();
+    hideActionsWhileDragging = false;
     drag = null;
   }
 
   function onPointerDown(e) {
     if (!opts || opts.surface !== "device") return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    if (e.shiftKey || posting || overlayOpen()) return;
+    if (posting || overlayOpen()) return;
     if (isChromeTarget(e.target)) return;
-    drag = { x0: e.clientX, y0: e.clientY, active: false };
+    if (drag) return;
+    const shift = !!e.shiftKey;
+    if (!groupMode && !shift) return;
+    if (shift) enterGroupMode();
+    drag = { x0: e.clientX, y0: e.clientY, active: false, pointerId: e.pointerId };
   }
 
   function onPointerMove(e) {
     if (!drag) return;
+    if (drag.pointerId != null && e.pointerId != null && e.pointerId !== drag.pointerId) {
+      if (e.cancelable && typeof e.preventDefault === "function") e.preventDefault();
+      return;
+    }
     const dx = e.clientX - drag.x0;
     const dy = e.clientY - drag.y0;
     if (!drag.active) {
       if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
       drag.active = true;
+      hideActionsWhileDragging = true;
       document.body.classList.add("sentinel-group-dragging");
       enterGroupMode();
+      updateChrome();
     }
     if (e.cancelable && typeof e.preventDefault === "function") e.preventDefault();
     paintMarquee(rectFromPoints({ x: drag.x0, y: drag.y0 }, { x: e.clientX, y: e.clientY }));
@@ -374,10 +501,14 @@
 
   function onPointerUp(e) {
     if (!drag) return;
+    if (drag.pointerId != null && e.pointerId != null && e.pointerId !== drag.pointerId) return;
     const wasActive = drag.active;
     const start = { x: drag.x0, y: drag.y0 };
     endDrag();
-    if (!wasActive) return;
+    if (!wasActive) {
+      updateChrome();
+      return;
+    }
     swallowClick = true;
     if (e && e.cancelable && typeof e.preventDefault === "function") e.preventDefault();
     const rect = rectFromPoints(start, { x: e.clientX, y: e.clientY });
@@ -387,63 +518,147 @@
   }
 
   function onSwallowClick(e) {
-    if (!swallowClick) return;
-    swallowClick = false;
-    if (typeof e.preventDefault === "function") e.preventDefault();
-    if (typeof e.stopPropagation === "function") e.stopPropagation();
+    if (swallowClick) {
+      swallowClick = false;
+      if (typeof e.preventDefault === "function") e.preventDefault();
+      if (typeof e.stopPropagation === "function") e.stopPropagation();
+      return;
+    }
+    const box = e.target && e.target.closest ? e.target.closest(".vp-box") : null;
+    if (!box) return;
+  }
+
+  function onGesturePrevent(e) {
+    if (!groupMode) return;
+    if (!opts || opts.surface !== "device") return;
+    if (isChromeTarget(e.target)) return;
+    if (e && e.cancelable && typeof e.preventDefault === "function") e.preventDefault();
   }
 
   function bindDragSelect() {
     if (dragListenersBound) return;
     dragListenersBound = true;
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("pointermove", onPointerMove, true);
-    document.addEventListener("pointerup", onPointerUp, true);
-    document.addEventListener("pointercancel", onPointerUp, true);
+    const cap = { capture: true, passive: false };
+    document.addEventListener("pointerdown", onPointerDown, cap);
+    document.addEventListener("pointermove", onPointerMove, cap);
+    document.addEventListener("pointerup", onPointerUp, cap);
+    document.addEventListener("pointercancel", onPointerUp, cap);
     document.addEventListener("click", onSwallowClick, true);
+    document.addEventListener("touchmove", onGesturePrevent, cap);
+    document.addEventListener("gesturestart", onGesturePrevent, cap);
+    document.addEventListener("gesturechange", onGesturePrevent, cap);
+    window.addEventListener("resize", function () {
+      syncGeneratedTogglePosition();
+      if (actions && !actions.hidden) positionActions();
+    });
   }
 
-  function mountBar() {
-    if (document.getElementById(BAR_ID)) {
-      bar = document.getElementById(BAR_ID);
+  function syncGeneratedTogglePosition() {
+    if (!toggle) return;
+    if (toggle.closest(".deviceViewControlsContent") || toggle.closest(".home-header")) return;
+    const zoom = document.getElementById("zoomControls");
+    const canvas = document.getElementById("appCanvas");
+    const topControls = document.getElementById("topControls");
+    if (!zoom || !canvas || toggle.parentNode !== canvas) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const zoomRect = zoom.getBoundingClientRect();
+    const headerBottom = topControls ? topControls.getBoundingClientRect().bottom : canvasRect.top;
+    const left = Math.max(8, zoomRect.left - canvasRect.left);
+    const belowZoom = zoomRect.bottom - canvasRect.top + 8;
+    const belowHeader = headerBottom - canvasRect.top + 8;
+    toggle.style.left = left + "px";
+    toggle.style.top = Math.max(belowZoom, belowHeader) + "px";
+  }
+
+  function placeToggle(el) {
+    const panel = document.querySelector(".deviceViewControlsContent");
+    if (panel) {
+      let group = panel.querySelector('[aria-label="Select Multiple Buttons"]');
+      if (!group) {
+        group = document.createElement("section");
+        group.className = "viewControlGroup";
+        group.setAttribute("aria-label", "Select Multiple Buttons");
+        panel.insertBefore(group, panel.firstChild);
+      }
+      if (!el.parentNode || el.parentNode !== group) group.appendChild(el);
       return;
     }
-    bar = document.createElement("div");
-    bar.id = BAR_ID;
-    bar.innerHTML =
-      '<button type="button" id="sentinelGroupToggle" aria-pressed="false">Group</button>' +
-      '<div id="sentinelGroupTools" hidden>' +
-      '<button type="button" id="sentinelGroupAddPage" data-surface="device">Add this page</button>' +
-      '<button type="button" id="sentinelGroupAddDevice" data-surface="device">Add this device</button>' +
-      '<button type="button" id="sentinelGroupAddSystem" data-surface="home">Add system events</button>' +
-      '<button type="button" id="sentinelGroupAddDriver" data-surface="home">Add driver events</button>' +
-      '<span class="group-count">0 targets</span>' +
-      '<button type="button" id="sentinelGroupPass" class="group-pass" disabled>Pass group</button>' +
-      '<button type="button" id="sentinelGroupClear">Clear</button>' +
-      '<button type="button" id="sentinelGroupDone">Done</button>' +
-      "</div>" +
-      '<div class="group-status" hidden></div>';
-    document.body.appendChild(bar);
-    const surface = opts && opts.surface === "home" ? "home" : "device";
-    bar.querySelectorAll("[data-surface]").forEach(function (el) {
-      el.hidden = el.getAttribute("data-surface") !== surface;
-    });
-    bar.querySelector("#sentinelGroupToggle").addEventListener("click", function () {
+    const header = document.querySelector(".home-header");
+    if (header) {
+      header.appendChild(el);
+      return;
+    }
+    const canvas = document.getElementById("appCanvas");
+    const zoom = document.getElementById("zoomControls") || document.getElementById("zoomControlsStatic");
+    if (canvas && zoom && zoom.parentNode === canvas) {
+      if (el.parentNode !== canvas) canvas.appendChild(el);
+      syncGeneratedTogglePosition();
+      return;
+    }
+    if (zoom && zoom.parentNode) {
+      zoom.parentNode.insertBefore(el, zoom);
+      return;
+    }
+    document.body.appendChild(el);
+  }
+
+  function bindToggle(el) {
+    if (!el || el.dataset.boundSelectToggle) return;
+    el.dataset.boundSelectToggle = "1";
+    el.addEventListener("click", function () {
       setGroupMode(!groupMode);
     });
-    bar.querySelector("#sentinelGroupAddPage").addEventListener("click", addThisPage);
-    bar.querySelector("#sentinelGroupAddDevice").addEventListener("click", addThisDevice);
-    bar.querySelector("#sentinelGroupAddSystem").addEventListener("click", function () {
-      addSection("system-events", "system events");
+  }
+
+  function mountToggle() {
+    const existing = document.getElementById(TOGGLE_ID);
+    if (existing) {
+      toggle = existing;
+      if (!String(toggle.textContent || "").trim()) toggle.textContent = "Select Multiple Buttons";
+      bindToggle(toggle);
+      if (toggle.closest && toggle.closest("#topControls, #topControlsStatic")) {
+        placeToggle(toggle);
+      }
+      return;
+    }
+    toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.id = TOGGLE_ID;
+    toggle.className = "selectMultipleButtonsBtn";
+    toggle.textContent = "Select Multiple Buttons";
+    toggle.setAttribute("aria-pressed", "false");
+    toggle.setAttribute("aria-label", "Select Multiple Buttons");
+    placeToggle(toggle);
+    bindToggle(toggle);
+  }
+
+  function mountActions() {
+    const existing = document.getElementById(ACTIONS_ID);
+    if (existing) {
+      actions = existing;
+      return;
+    }
+    actions = document.createElement("div");
+    actions.id = ACTIONS_ID;
+    actions.hidden = true;
+    actions.setAttribute("role", "dialog");
+    actions.setAttribute("aria-label", "Selection actions");
+    actions.innerHTML =
+      '<div class="group-count">0 targets</div>' +
+      '<button type="button" id="sentinelGroupPass" class="group-pass" disabled>Pass selected</button>' +
+      '<button type="button" id="sentinelGroupPassPage" data-surface="device">Pass this page</button>' +
+      '<button type="button" id="sentinelGroupPassDevice" data-surface="device">Pass this device</button>' +
+      '<button type="button" id="sentinelGroupCancel">Cancel</button>' +
+      '<div class="group-status" hidden></div>';
+    document.body.appendChild(actions);
+    const surface = opts && opts.surface === "home" ? "home" : "device";
+    actions.querySelectorAll("[data-surface]").forEach(function (el) {
+      el.hidden = el.getAttribute("data-surface") !== surface;
     });
-    bar.querySelector("#sentinelGroupAddDriver").addEventListener("click", function () {
-      addSection("driver-events", "driver events");
-    });
-    bar.querySelector("#sentinelGroupPass").addEventListener("click", passGroup);
-    bar.querySelector("#sentinelGroupClear").addEventListener("click", clearGroup);
-    bar.querySelector("#sentinelGroupDone").addEventListener("click", function () {
-      setGroupMode(false);
-    });
+    actions.querySelector("#sentinelGroupPassPage").addEventListener("click", passThisPage);
+    actions.querySelector("#sentinelGroupPassDevice").addEventListener("click", passThisDevice);
+    actions.querySelector("#sentinelGroupPass").addEventListener("click", passSelected);
+    actions.querySelector("#sentinelGroupCancel").addEventListener("click", cancelSelection);
   }
 
   function pruneDisabled() {
@@ -471,14 +686,18 @@
   function attach(nextOpts) {
     opts = nextOpts && typeof nextOpts === "object" ? nextOpts : {};
     injectStyle();
-    mountBar();
+    mountToggle();
+    mountActions();
     bindDragSelect();
     updateChrome();
+    syncGeneratedTogglePosition();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncGeneratedTogglePosition);
   }
 
   global.__sentinelGroupPass = {
     attach: attach,
     handleTestButtonClick: handleTestButtonClick,
+    handleViewportBoxClick: handleViewportBoxClick,
     onBatchAck: onBatchAck,
     pruneDisabled: pruneDisabled,
     isGroupMode: function () {

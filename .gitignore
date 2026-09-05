@@ -1,6 +1,8 @@
 Assets/
 .worktrees/
 .tmp_apex_env/
+generated/
+uploads/
 devtools/last_regression_run.txt
 devtools/_agent_shell_capture.txt
 devtools/dash_room_list_probe.json

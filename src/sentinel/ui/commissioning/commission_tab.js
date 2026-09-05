@@ -558,32 +558,40 @@ function reduceProjectStore(prevState, payload) {
     const keys = Array.isArray(payload?.targetKeys) ? payload.targetKeys : [];
     const outcome = String(payload?.outcome || "").trim().toUpperCase();
     const at = String(payload?.recordedAtUtc || payload?.tsUtc || "");
-    const count = Number(payload?.count || keys.length) || keys.length;
-    for (const rawKey of keys) {
+    const rows = Array.isArray(payload?.results) ? payload.results : [];
+    const byKey = new Map();
+    for (const row of rows) {
+      const targetKey = String(row?.targetKey || row?.target?.targetKey || "").trim();
+      if (targetKey) byKey.set(targetKey, row);
+    }
+    const fanKeys = keys.length ? keys : Array.from(byKey.keys());
+    const added = [];
+    for (const rawKey of fanKeys) {
       const targetKey = String(rawKey || "").trim();
       if (!targetKey) continue;
+      const row = byKey.get(targetKey) || {};
+      const target = row?.target && typeof row.target === "object" ? row.target : {};
       project.fails = _upsertFailRecord(project.fails, { targetKey, outcome, recordedAtUtc: at });
+      added.push(
+        _asEventActivity({
+          projectId,
+          recordedAtUtc: at,
+          targetKey,
+          outcome,
+          targetName: row.targetName || target.targetName || "",
+          kind: row.kind || target.kind || "",
+          refs: row.refs || target.refs || {},
+          failNote: row.failNote == null ? null : row.failNote,
+          batchId: payload?.batchId || row.batchId || "",
+          source: payload?.source || row.source || "GROUP",
+          recordedBy: payload?.recordedBy,
+          techName: payload?.techName,
+        })
+      );
     }
-    project.activities = [
-      {
-        type: "test_results.batch",
-        projectId,
-        recordedAtUtc: at,
-        outcome,
-        count,
-        targetKeys: keys.map((k) => String(k || "")),
-        targetKey: "",
-        targetName: `Group ${outcome === "FAIL" ? "fail" : "pass"} (${count} targets)`,
-        kind: "",
-        refs: {},
-        failNote: null,
-        batchId: String(payload?.batchId || ""),
-        source: String(payload?.source || "GROUP").trim().toUpperCase() || "GROUP",
-        recordedBy: payload?.recordedBy && typeof payload.recordedBy === "object" ? _cloneValue(payload.recordedBy) : {},
-        techName: String(payload?.techName || payload?.recordedBy?.name || "").trim(),
-      },
-      ...project.activities,
-    ].slice(0, 50);
+    if (added.length) {
+      project.activities = [...added, ...project.activities].slice(0, 50);
+    }
     return state;
   }
 

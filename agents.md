@@ -90,9 +90,9 @@ Example expected behavior:
 
 ### When Jamie says `deploy`
 
-1. **Commit the full change set**, not only `src/`. The droplet install uses `git archive … HEAD src`, so **only `src/` is uploaded** to the server, but the repo should still record everything that belongs to the release: `src/`, `dev_tests/`, `pyproject.toml`, `docs/` (including `docs/directives/`), `devtools/` scripts that are tracked, `.gitignore`, root policy files (`AGENTS.md`, `bootstrap.md`, `agents.md`), and `.cursor/rules/` when those rules are part of project policy.
+1. **Commit the full change set** and **push** it: `src/`, `dev_tests/`, `pyproject.toml`, `docs/` (including `docs/directives/`), `devtools/` scripts that are tracked, `.gitignore`, root policy files (`AGENTS.md`, `bootstrap.md`, `agents.md`), and `.cursor/rules/` when those rules are part of project policy.
 2. **Do not commit** build artifacts under `*.egg-info/`, local venvs (e.g. `.tmp_apex_env/`), or deployment zips.
-3. Then follow preflight in `docs/directives/dev_environment_and_workflow.md` (archive → verify zip → `scp` / extract → on-disk proof → restart).
+3. Then follow `docs/directives/dev_environment_and_workflow.md`: pull that commit onto `/opt/sentinel/app` (`fetch` + `reset --hard`), prove `HEAD` and a marker, restart `sentinel.service`.
 
 ---
 

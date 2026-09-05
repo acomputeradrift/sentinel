@@ -1,0 +1,7 @@
+.tmp_apex_env/
+generated/
+uploads/
+**/__pycache__/
+*.egg-info/
+temp/
+output/

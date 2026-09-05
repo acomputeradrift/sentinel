@@ -655,7 +655,7 @@ def list_fail_tags_for_project(database_url: str, *, project_id: str) -> list[di
     try:
         return db.fetch_all(
             con,
-            "select target_key as \"targetKey\", tag from fail_tags where project_id=%s",
+            "select target_key as \"targetKey\", tag, updated_at_utc as \"updatedAtUtc\" from fail_tags where project_id=%s",
             (project_id,),
         )
     finally:
