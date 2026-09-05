@@ -52,6 +52,7 @@ Commissioning + technician field-testing for RTI projects. Ingest an `.apex` fil
 | File-level map (optional, not required at start) | `codebase_map.md` |
 | Security model | `docs/directives/commissioning_security_model.md` |
 | Runbook | `docs/directives/runbook.md` |
+| Management URL, token persist, new test pass, PDF reports | `docs/management_surface_and_reports_plan.md` |
 
 ---
 
@@ -93,13 +94,13 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 ## Now
 
-- **Updated:** 2026-09-01
+- **Updated:** 2026-09-05
 - **Branch:** `cursor/select-group-chrome-ff08`
 - **Repo HEAD:** `ddc9919` (Mac = GitHub; briefing commit may be one ahead)
 - **Droplet HEAD:** `ddc9919` at `/opt/sentinel/app` — service `active`
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** Device rows match event `#1e5f86`. Select Multiple on the base page no longer grabs viewport buttons; open viewport mode first, then select inside. Live. Existing technician pages need a regenerate.
-- **Next:** continue from this file; do not rediscover SSH/droplets or the product.
+- **Open:** Management / token / new-pass / PDF plan at `docs/management_surface_and_reports_plan.md`. Refresh 410 is `TECH_LINK_REVOKED` (blank `techUrl` after reload, not DB wipe). Shell Fail retest color is local-only until deploy.
+- **Next:** approve plan todos; first code slice is persist-and-return `techUrl` (plan item 3). Do not rediscover SSH/droplets.
 
 ---
 

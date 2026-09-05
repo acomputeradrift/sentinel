@@ -131,3 +131,12 @@ class TestingSnapshotRetestReadyTest(unittest.TestCase):
         self.assertIn("Ready for retest", render)
         self.assertIn("retestReadyAt", render)
         self.assertGreaterEqual(render.count(".actions button.is-fail-active.is-retest-ready"), 2)
+
+    def test_shell_layout_fail_retest_uses_magenta(self):
+        css = (
+            ROOT / "src" / "sentinel" / "ui" / "commissioning" / "project_device_static_layout.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".actions button.is-fail-active.is-retest-ready", css)
+        self.assertIn("#c026d3", css)
+        self.assertIn("#fae8ff", css)
+        self.assertIn("#86198f", css)

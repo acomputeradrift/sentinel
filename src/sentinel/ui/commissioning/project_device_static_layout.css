@@ -378,6 +378,13 @@ body {
   font-weight: 700;
 }
 
+.actions button.is-fail-active.is-retest-ready {
+  color: #86198f;
+  background: #fae8ff;
+  border-color: #c026d3;
+  font-weight: 700;
+}
+
 .row-last-test {
   font-size: 13px;
   line-height: 1.2;
