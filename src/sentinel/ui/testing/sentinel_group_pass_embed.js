@@ -93,7 +93,7 @@
   function refreshWrapSelection(root) {
     const scope = root || document;
     scope.querySelectorAll(".btn-wrap").forEach(function (wrap) {
-      wrap.classList.toggle("is-group-selected", groupMode && wrapHasSelected(wrap));
+      wrap.classList.toggle("is-group-selected", groupMode && isSelectableTarget(wrap) && wrapHasSelected(wrap));
     });
   }
 
@@ -397,11 +397,46 @@
     return !!(document.body && document.body.classList && document.body.classList.contains("viewport-mode"));
   }
 
+  function isInsideDeviceViewportBox(el) {
+    if (!el || inViewportPopup(el)) return false;
+    const wrap = el.closest && el.closest(".btn-wrap") ? el.closest(".btn-wrap") : el;
+    if (!wrap || typeof wrap.getBoundingClientRect !== "function") return false;
+    const box = wrap.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) return false;
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    const page = (wrap.closest && wrap.closest(".device-page")) || document;
+    const vps = page.querySelectorAll ? page.querySelectorAll(".vp-box") : [];
+    for (let i = 0; i < vps.length; i += 1) {
+      const vp = vps[i].getBoundingClientRect();
+      if (vp.width <= 0 || vp.height <= 0) continue;
+      const right = vp.right != null ? vp.right : vp.left + vp.width;
+      const bottom = vp.bottom != null ? vp.bottom : vp.top + vp.height;
+      if (cx >= vp.left && cx <= right && cy >= vp.top && cy <= bottom) return true;
+    }
+    return false;
+  }
+
   function isSelectableTarget(el) {
     if (!el) return false;
     if (inViewportPopup(el)) return isViewportMode();
     if (isViewportChild(el)) return false;
+    if (isInsideDeviceViewportBox(el)) return false;
     return true;
+  }
+
+  function rootIsViewportPopup(root) {
+    if (!root) return false;
+    if (root.classList && (root.classList.contains("vp-popup-vcontent") || root.classList.contains("vp-popup-stage"))) {
+      return true;
+    }
+    return !!(root.closest && (root.closest(".vp-popup-vcontent") || root.closest(".vp-popup-stage")));
+  }
+
+  function wrapsInRoot(root) {
+    if (!root || !root.querySelectorAll) return [];
+    const sel = rootIsViewportPopup(root) ? ".btn-wrap" : ".btn-wrap:not(.vp-btn)";
+    return root.querySelectorAll(sel);
   }
 
   function wrapsIntersecting(rect) {
@@ -410,7 +445,7 @@
     const roots = selectionRoots();
     for (let r = 0; r < roots.length; r += 1) {
       const root = roots[r];
-      const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
+      const wraps = wrapsInRoot(root);
       for (let i = 0; i < wraps.length; i += 1) {
         if (seen.has(wraps[i])) continue;
         seen.add(wraps[i]);
@@ -445,7 +480,7 @@
     const roots = selectionRoots();
     for (let r = 0; r < roots.length; r += 1) {
       const root = roots[r];
-      const wraps = root.querySelectorAll ? root.querySelectorAll(".btn-wrap") : [];
+      const wraps = wrapsInRoot(root);
       for (let i = 0; i < wraps.length; i += 1) {
         if (seen.has(wraps[i])) continue;
         seen.add(wraps[i]);
@@ -706,5 +741,6 @@
     selectedCount: function () {
       return selected.size;
     },
+    isSelectableTarget: isSelectableTarget,
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);
