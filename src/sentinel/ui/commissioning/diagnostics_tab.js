@@ -42,7 +42,8 @@ function updateDiagnosticsTitle() {
   const filename = String(filenameEl && filenameEl.textContent ? filenameEl.textContent : "").trim();
   const titleEl = document.querySelector("#panel-diagnostics .panel-context .panel-context-title");
   if (!titleEl) return;
-  const parts = [clientName, projectName, filename].map((s) => String(s || "").trim()).filter(Boolean);
+  const parts = [clientName, projectName].map((s) => String(s || "").trim()).filter(Boolean);
+  if (filename && filename.toLowerCase() !== "none") parts.push(filename);
   titleEl.textContent = parts.length ? parts.join(" -> ") : "Client -> Project -> Filename";
 }
 

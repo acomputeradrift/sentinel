@@ -128,7 +128,7 @@ async function refreshCommissionTopboxTitle(projectId) {
   const filename = raw.toLowerCase().startsWith("last generated:") ? raw.slice("last generated:".length).trim() : raw;
 
   const parts = [clientName, projectName].map((s) => String(s || "").trim()).filter(Boolean);
-  if (filename) parts.push(filename);
+  if (filename && filename.toLowerCase() !== "none") parts.push(filename);
   title.textContent = parts.join(" -> ");
 }
 

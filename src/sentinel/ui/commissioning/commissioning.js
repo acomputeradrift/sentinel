@@ -305,6 +305,15 @@ function formatUtc(ts) {
   return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
 }
 
+function refreshContextTitlesAfterFilename(projectId) {
+  if (typeof refreshCommissionTopboxTitle === "function") {
+    void refreshCommissionTopboxTitle(projectId);
+  }
+  if (typeof updateDiagnosticsTitle === "function") {
+    updateDiagnosticsTitle();
+  }
+}
+
 function setLastGeneratedLabel() {
   const el = document.getElementById("lastGeneratedLabel");
   if (!el) return;
@@ -312,12 +321,14 @@ function setLastGeneratedLabel() {
   if (!projectId) {
     el.textContent = "None";
     setFileUploadedAtLabel();
+    refreshContextTitlesAfterFilename("");
     return;
   }
   const activeUpload = state.activeUploadByProject[projectId] || null;
   const name = activeUpload && activeUpload.originalFilename ? String(activeUpload.originalFilename).trim() : "";
   el.textContent = name || "None";
   setFileUploadedAtLabel();
+  refreshContextTitlesAfterFilename(projectId);
 }
 
 function setFileUploadedAtLabel() {

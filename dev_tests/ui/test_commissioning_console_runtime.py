@@ -830,6 +830,33 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#regenProgressLabel")).to_have_count(0)
         expect(page.locator("#regenStatus")).to_have_count(0)
         expect(page.locator("#lastGeneratedLabel")).to_have_text("None")
+        page.evaluate(
+            """
+() => {
+  if (!window.__sentinelProjectWsManager || typeof window.__sentinelProjectWsManager.dispatchIncoming !== "function") return;
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation",
+    projectId: "proj-1",
+    status: "READY",
+    uploadId: "up-reload",
+    originalFilename: "TEST - System Manager v11.3.apex",
+    activeUpload: {
+      uploadId: "up-reload",
+      originalFilename: "TEST - System Manager v11.3.apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-06T00:00:00Z",
+    },
+  });
+}
+"""
+        )
+        expect(page.locator("#lastGeneratedLabel")).to_have_text("TEST - System Manager v11.3.apex")
+        expect(page.locator("#panel-commission .panel-context-title")).to_have_text(
+            "Client A -> Project 1 -> TEST - System Manager v11.3.apex"
+        )
+        expect(page.locator("#panel-diagnostics .panel-context-title")).to_have_text(
+            "Client A -> Project 1 -> TEST - System Manager v11.3.apex"
+        )
         self.assertLessEqual(page.locator("#manageProjectDetails").evaluate("el => parseFloat(getComputedStyle(el).marginTop)"), 12)
         self.assertIn(
             page.locator("#manageProjectDetails").evaluate("el => getComputedStyle(el).borderTopStyle"),
@@ -1183,6 +1210,112 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         self.assertEqual(state.get("fails_fetch_count"), 0)
         self.assertEqual(state.get("rollups_fetch_count"), 0)
 
+        page.close()
+
+    def test_breadcrumb_updates_when_filename_lands_without_tab_click(self):
+        from playwright.sync_api import expect
+
+        page = self._browser.new_page()
+        state: dict[str, object] = {
+            "clients": [],
+            "clients_by_id": {},
+            "projects_by_client": {},
+            "projects_by_id": {},
+        }
+
+        def fulfill_json(route, payload, status: int = 200):
+            route.fulfill(
+                status=status,
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(payload),
+            )
+
+        def handle_clients(route, request):
+            if request.method == "GET":
+                fulfill_json(route, state["clients"])
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                client = {"clientId": "client-1", "name": data.get("name", ""), "createdAtUtc": "2026-03-21T00:00:00Z"}
+                state["clients"] = [client]
+                state["clients_by_id"]["client-1"] = client
+                state["projects_by_client"]["client-1"] = []
+                fulfill_json(route, client)
+                return
+            route.fulfill(status=405, body="method not allowed")
+
+        def handle_projects(route, request):
+            parts = request.url.split("/commissioning/clients/")[-1].split("/projects")
+            client_id = parts[0].strip("/")
+            if request.method == "GET":
+                fulfill_json(route, state["projects_by_client"].get(client_id, []))
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                proj = {
+                    "projectId": "proj-1",
+                    "clientId": client_id,
+                    "name": data.get("name", ""),
+                    "createdAtUtc": "2026-03-21T00:00:00Z",
+                    "status": "EMPTY",
+                }
+                state["projects_by_client"][client_id] = [proj]
+                state["projects_by_id"][proj["projectId"]] = proj
+                fulfill_json(route, proj)
+                return
+            route.fulfill(status=405, body="method not allowed")
+
+        page.route("**/api/v1/commissioning/technicians", lambda route, request: fulfill_json(route, {"technicians": []}))
+        page.route("**/api/v1/commissioning/clients", handle_clients)
+        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
+        page.route("**/api/v1/commissioning/projects/**", lambda route, request: fulfill_json(route, {}))
+
+        page.add_init_script(
+            """
+(() => {
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      setTimeout(() => { if (this.onopen) this.onopen({}); }, 0);
+    }
+    send() {}
+    close() { this.readyState = 3; if (this.onclose) this.onclose({}); }
+  }
+  window.WebSocket = FakeWebSocket;
+})();
+"""
+        )
+        page.goto(f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html")
+        _commissioning_click_file_tab(page)
+        _commissioning_create_client_via_modal(page, "Client A")
+        _commissioning_create_project_via_modal(page, "Project 1")
+        expect(page.locator("#lastGeneratedLabel")).to_have_text("None")
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation",
+    projectId: "proj-1",
+    status: "READY",
+    originalFilename: "TEST - System Manager v11.3.apex",
+    activeUpload: {
+      uploadId: "up-reload",
+      originalFilename: "TEST - System Manager v11.3.apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-06T00:00:00Z",
+    },
+  });
+}
+"""
+        )
+        expect(page.locator("#lastGeneratedLabel")).to_have_text("TEST - System Manager v11.3.apex")
+        expect(page.locator("#panel-commission .panel-context-title")).to_have_text(
+            "Client A -> Project 1 -> TEST - System Manager v11.3.apex"
+        )
+        expect(page.locator("#panel-diagnostics .panel-context-title")).to_have_text(
+            "Client A -> Project 1 -> TEST - System Manager v11.3.apex"
+        )
         page.close()
 
     def test_live_smoke_real_asset_no_unexpected_ws_disconnects(self):
