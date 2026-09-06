@@ -78,7 +78,7 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 - **Updated:** 2026-09-06
 - **Branch:** `main`
-- **Repo HEAD:** `e3dd171` (Mac = GitHub `main`)
+- **Repo HEAD:** `008376d` (Mac = GitHub `main`)
 - **Droplet HEAD:** unchanged — morning list is on GitHub, not deployed yet
 - **Live DB:** wiped empty 2026-09-06 (fresh clients/projects). Disk leftovers pruned.
 - **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
