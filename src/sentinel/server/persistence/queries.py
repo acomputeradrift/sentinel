@@ -173,6 +173,19 @@ def create_project(database_url: str, *, client_id: str, name: str) -> str:
         con.close()
 
 
+def set_project_status(database_url: str, *, project_id: str, status: str) -> None:
+    con = db.connect(database_url)
+    try:
+        exists = db.fetch_one(con, "select 1 from projects where project_id=%s", (project_id,))
+        if exists is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        cur = con.cursor()
+        cur.execute("update projects set status=%s where project_id=%s", (str(status or "").strip().upper(), project_id))
+        con.commit()
+    finally:
+        con.close()
+
+
 def list_projects_for_client(database_url: str, *, client_id: str) -> list[dict[str, Any]]:
     con = db.connect(database_url)
     try:
@@ -290,6 +303,38 @@ def prune_project_uploads_keep_latest_two(database_url: str, *, project_id: str)
         con.close()
 
 
+def find_active_tech_link_for_technician(
+    database_url: str, *, project_id: str, technician_id: str
+) -> dict[str, Any] | None:
+    wanted = str(technician_id or "").strip()
+    if not wanted:
+        return None
+    con = db.connect(database_url)
+    try:
+        return db.fetch_one(
+            con,
+            "select tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
+            "tl.technician_id as \"technicianId\", t.name as \"technicianName\", "
+            "tlt.issued_path as \"issuedPath\", tlt.issued_at_utc as \"issuedAtUtc\" "
+            "from tech_links tl join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
+            "left join technicians t on t.technician_id=tl.technician_id "
+            "where tl.project_id=%s and tl.technician_id=%s and tlt.revoked_at_utc is null "
+            "order by tlt.issued_at_utc desc",
+            (project_id, wanted),
+        )
+    finally:
+        con.close()
+
+
+def token_from_issued_path(issued_path: str | None) -> str | None:
+    path = str(issued_path or "").strip()
+    prefix = "/testing/"
+    if not path.startswith(prefix):
+        return None
+    token = path[len(prefix) :].strip()
+    return token or None
+
+
 def create_tech_link(
     database_url: str, *, project_id: str, label: str | None, technician_id: str | None = None
 ) -> dict[str, Any]:
@@ -320,8 +365,9 @@ def list_active_tech_links(database_url: str, *, project_id: str) -> list[dict[s
     try:
         return db.fetch_all(
             con,
-            "select distinct tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
-            "tl.technician_id as \"technicianId\", t.name as \"technicianName\" "
+            "select tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
+            "tl.technician_id as \"technicianId\", t.name as \"technicianName\", "
+            "tlt.issued_path as \"issuedPath\", tlt.issued_at_utc as \"issuedAtUtc\" "
             "from tech_links tl join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
             "left join technicians t on t.technician_id=tl.technician_id "
             "where tl.project_id=%s and tlt.revoked_at_utc is null "
@@ -371,13 +417,20 @@ def rotate_tech_link_token(database_url: str, *, tech_link_id: str, project_id: 
             if exists is None:
                 raise KeyError("TECH_LINK_NOT_FOUND")
         cur = con.cursor()
+        issued_path = f"/testing/{tech_token}"
         cur.execute("update tech_link_tokens set revoked_at_utc=%s where tech_link_id=%s and revoked_at_utc is null", (issued_at, tech_link_id))
         cur.execute(
-            "insert into tech_link_tokens (tech_link_token_id, tech_link_id, token_hash, issued_at_utc, revoked_at_utc) values (%s,%s,%s,%s,null)",
-            (token_id, tech_link_id, token_hash, issued_at),
+            "insert into tech_link_tokens (tech_link_token_id, tech_link_id, token_hash, issued_at_utc, revoked_at_utc, issued_path) "
+            "values (%s,%s,%s,%s,null,%s)",
+            (token_id, tech_link_id, token_hash, issued_at, issued_path),
         )
         con.commit()
-        return {"techLinkId": tech_link_id, "techToken": tech_token, "issuedAtUtc": issued_at.isoformat()}
+        return {
+            "techLinkId": tech_link_id,
+            "techToken": tech_token,
+            "issuedAtUtc": issued_at.isoformat(),
+            "issuedPath": issued_path,
+        }
     finally:
         con.close()
 
@@ -555,14 +608,125 @@ def append_test_results_batch(
         con.close()
 
 
+def current_test_pass_started_at(database_url: str, *, project_id: str) -> str | None:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select started_at_utc as \"startedAtUtc\" from project_test_passes "
+            "where project_id=%s order by started_at_utc desc limit 1",
+            (project_id,),
+        )
+        if not row or not row.get("startedAtUtc"):
+            return None
+        started = row.get("startedAtUtc")
+        return started.isoformat() if hasattr(started, "isoformat") else str(started)
+    finally:
+        con.close()
+
+
+def start_project_test_pass(
+    database_url: str,
+    *,
+    project_id: str,
+    recorded_by_role: str,
+    recorded_by_user_id: str | None,
+    reason: str | None,
+    confirm_name: str | None,
+) -> dict[str, Any]:
+    pass_id = _new_uuid()
+    started_at = _utc_now()
+    con = db.connect(database_url)
+    try:
+        exists = db.fetch_one(con, "select 1 from projects where project_id=%s", (project_id,))
+        if exists is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        cur = con.cursor()
+        cur.execute(
+            "insert into project_test_passes "
+            "(test_pass_id, project_id, started_at_utc, recorded_by_role, recorded_by_user_id, reason, confirm_name) "
+            "values (%s,%s,%s,%s,%s,%s,%s)",
+            (pass_id, project_id, started_at, recorded_by_role, recorded_by_user_id, reason, confirm_name),
+        )
+        tags = db.fetch_all(
+            con,
+            "select target_key as \"targetKey\", tag, updated_at_utc as \"updatedAtUtc\" from fail_tags where project_id=%s",
+            (project_id,),
+        )
+        for row in tags:
+            cur.execute(
+                "insert into fail_tag_history "
+                "(fail_tag_history_id, project_id, target_key, tag, updated_at_utc, archived_at_utc, test_pass_id) "
+                "values (%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    _new_uuid(),
+                    project_id,
+                    row.get("targetKey"),
+                    row.get("tag"),
+                    row.get("updatedAtUtc") or started_at,
+                    started_at,
+                    pass_id,
+                ),
+            )
+        cur.execute("delete from fail_tags where project_id=%s", (project_id,))
+        con.commit()
+        return {
+            "testPassId": pass_id,
+            "projectId": project_id,
+            "startedAtUtc": started_at.isoformat() if hasattr(started_at, "isoformat") else str(started_at),
+            "recordedBy": {"role": recorded_by_role, "userId": recorded_by_user_id},
+            "reason": reason,
+            "confirmName": confirm_name,
+        }
+    finally:
+        con.close()
+
+
+def list_fail_tag_history_for_project(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select target_key as \"targetKey\", tag, updated_at_utc as \"updatedAtUtc\", "
+            "archived_at_utc as \"archivedAtUtc\", test_pass_id as \"testPassId\", project_id as \"projectId\" "
+            "from fail_tag_history where project_id=%s order by archived_at_utc asc",
+            (project_id,),
+        )
+    finally:
+        con.close()
+
+
+def list_test_results_for_project(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select test_result_id as \"testResultId\", "
+            "target_key as \"targetKey\", target_kind as \"targetKind\", target_name as \"targetName\", refs as \"refs\", "
+            "outcome, fail_note as \"failNote\", recorded_at_utc as \"recordedAtUtc\", recorded_by_role as \"recordedByRole\", "
+            "recorded_by_tech_link_id as \"recordedByTechLinkId\", "
+            "recorded_by_technician_id as \"recordedByTechnicianId\", "
+            "recorded_by_technician_name as \"recordedByTechnicianName\", "
+            "batch_id as \"batchId\", source as \"source\" "
+            "from test_results where project_id=%s order by recorded_at_utc asc, test_result_id asc",
+            (project_id,),
+        )
+    finally:
+        con.close()
+
+
 def get_target_status(database_url: str, *, project_id: str, target_key: str) -> dict[str, Any]:
     con = db.connect(database_url)
     try:
         row = db.fetch_one(
             con,
             "select outcome as \"currentOutcome\", recorded_at_utc as \"lastTestedAtUtc\", fail_note as \"lastFailNote\" "
-            "from test_results where project_id=%s and target_key=%s order by recorded_at_utc desc, test_result_id desc limit 1",
-            (project_id, target_key),
+            "from test_results where project_id=%s and target_key=%s "
+            "and recorded_at_utc >= coalesce("
+            "(select max(started_at_utc) from project_test_passes where project_id=%s), "
+            "'-infinity'::timestamptz) "
+            "order by recorded_at_utc desc, test_result_id desc limit 1",
+            (project_id, target_key, project_id),
         )
         if row is None:
             return {"targetKey": target_key, "currentOutcome": "UNTESTED", "lastTestedAtUtc": None, "lastFailNote": None}
@@ -596,8 +760,11 @@ def list_latest_target_statuses(database_url: str, *, project_id: str) -> list[d
             "from test_results tr "
             "left join tech_links tl on tl.tech_link_id=tr.recorded_by_tech_link_id "
             "where tr.project_id=%s "
+            "and tr.recorded_at_utc >= coalesce("
+            "(select max(started_at_utc) from project_test_passes where project_id=%s), "
+            "'-infinity'::timestamptz) "
             "order by tr.target_key, tr.recorded_at_utc desc, tr.test_result_id desc",
-            (project_id,),
+            (project_id, project_id),
         )
     finally:
         con.close()
@@ -627,10 +794,13 @@ def list_latest_failed_targets(database_url: str, *, project_id: str) -> list[di
             "  from test_results tr "
             "  left join tech_links tl on tl.tech_link_id=tr.recorded_by_tech_link_id "
             "  where tr.project_id=%s "
+            "  and tr.recorded_at_utc >= coalesce("
+            "(select max(started_at_utc) from project_test_passes where project_id=%s), "
+            "'-infinity'::timestamptz) "
             "  order by tr.target_key, tr.recorded_at_utc desc, tr.test_result_id desc"
             ") latest where latest.\"currentOutcome\"='FAIL' "
             "order by latest.\"lastTestedAtUtc\" desc, latest.\"targetKey\" asc",
-            (project_id,),
+            (project_id, project_id),
         )
     finally:
         con.close()
@@ -745,9 +915,16 @@ def count_first_time_fail_targets(database_url: str, *, project_id: str) -> int:
     try:
         row = db.fetch_one(
             con,
-            "select count(*)::bigint as \"count\" from target_first_test_outcomes "
-            "where project_id=%s and first_outcome='FAIL'",
-            (project_id,),
+            "select count(*)::bigint as \"count\" from ("
+            "  select distinct on (tr.target_key) tr.outcome as outcome "
+            "  from test_results tr "
+            "  where tr.project_id=%s "
+            "  and tr.recorded_at_utc >= coalesce("
+            "    (select max(started_at_utc) from project_test_passes where project_id=%s),"
+            "    '-infinity'::timestamptz) "
+            "  order by tr.target_key, tr.recorded_at_utc asc, tr.test_result_id asc"
+            ") firsts where firsts.outcome='FAIL'",
+            (project_id, project_id),
         )
         return int(row["count"]) if row else 0
     finally:
@@ -770,14 +947,14 @@ def get_tech_link_label(database_url: str, *, tech_link_id: str) -> str | None:
 
 
 def clear_project_testing_data(database_url: str, *, project_id: str) -> None:
-    con = db.connect(database_url)
-    try:
-        cur = con.cursor()
-        cur.execute("delete from test_results where project_id=%s", (project_id,))
-        cur.execute("delete from fail_tags where project_id=%s", (project_id,))
-        con.commit()
-    finally:
-        con.close()
+    start_project_test_pass(
+        database_url,
+        project_id=project_id,
+        recorded_by_role="PROGRAMMER",
+        recorded_by_user_id=None,
+        reason="clear-tests-alias",
+        confirm_name=None,
+    )
 
 
 def get_idempotency_response(database_url: str, *, scope: str, idempotency_key: str) -> dict[str, Any] | None:

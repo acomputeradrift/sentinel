@@ -111,13 +111,14 @@ class FailTagsTest(unittest.TestCase):
         error = (body.get("detail") or {}).get("error") if isinstance(body.get("detail"), dict) else body.get("error")
         self.assertEqual((error or {}).get("code"), "SSE_REMOVED")
 
-    def test_clear_tests_endpoint_clears_results_and_tags_for_project(self):
+    def test_clear_tests_endpoint_starts_new_pass_without_deleting_history(self):
         TestClient = _require_fastapi()
 
         from sentinel.server.app.main import create_app
         from sentinel.server.services.repositories import InMemoryRepository
 
-        app = create_app(repo=InMemoryRepository())
+        repo = InMemoryRepository()
+        app = create_app(repo=repo)
         client = TestClient(app)
 
         c = client.post("/api/v1/commissioning/clients", json={"name": "Client B"}).json()
@@ -152,7 +153,11 @@ class FailTagsTest(unittest.TestCase):
         self.assertEqual(payload.get("type"), "commissioning_snapshot")
         self.assertEqual(payload.get("fails"), [])
         self.assertEqual(((payload.get("progress") or {}).get("counts") or {}).get("testedTargets"), 0)
+        self.assertTrue(payload.get("testPassId"))
 
         after = client.get(f"/api/v1/commissioning/projects/{project_id}/fails")
         self.assertEqual(after.status_code, 200)
         self.assertEqual(after.json(), [])
+        history = repo.list_test_results_for_project(projectId=project_id)
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0].outcome, "FAIL")

@@ -39,9 +39,8 @@ def _commissioning_create_project_via_modal(page, name: str) -> None:
 
 
 def _expect_commissioning_live_upload_finished(expect, page, apex_path: Path) -> None:
-    """commissioning.js: success clears upload-status; lastGeneratedLabel shows filename; Create tech link enables when ready."""
+    """commissioning.js: success clears upload-status; lastGeneratedLabel shows filename."""
     expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name, timeout=120000)
-    expect(page.locator("#createTechLinkBtn")).to_be_enabled(timeout=120000)
     expect(page.get_by_test_id("upload-status")).to_have_text("")
 
 
@@ -199,7 +198,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "progress_fetch_count": 0,
             "fails_fetch_count": 0,
             "rollups_fetch_count": 0,
-            "clear_tests_count": 0,
+            "clear_tests_count": 0,  # kept for older mock traces; Clear Tests tab is gone
             "company_technicians": [],
         }
 
@@ -286,7 +285,18 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 }
                 state["projects_by_client"][client_id] = [proj]
                 state["projects_by_id"][proj["projectId"]] = proj
-                state["tech_links_by_project"][proj["projectId"]] = []
+                state["tech_links_by_project"][proj["projectId"]] = [
+                    {
+                        "techLinkId": "tl-active",
+                        "technicianId": "tech-1",
+                        "name": "Onsite Tech",
+                        "label": "Onsite Tech",
+                        "techUrl": "/testing/token-abc",
+                        "createdAtUtc": "2026-03-21T00:01:00Z",
+                        "issuedAtUtc": "2026-03-21T00:01:00Z",
+                        "revokedAtUtc": None,
+                    }
+                ]
                 fulfill_json(route, proj)
                 return
             route.fulfill(status=405, body="method not allowed")
@@ -842,14 +852,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Regenerate")).to_have_count(0)
 
         page.get_by_role("button", name="Tech Links").click()
-        page.get_by_label("Technician name").fill("   ")
-        page.get_by_role("button", name="Create tech link").click()
-        expect(page.locator("#techLinkStatus")).to_contain_text("Technician name is required.")
-        self.assertEqual(int(state.get("tech_link_counter") or 0), 0)
-        page.get_by_label("Technician name").fill("Onsite Tech")
-        expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
-        page.get_by_role("button", name="Create tech link").click()
+        expect(page.get_by_role("button", name="Create tech link")).to_have_count(0)
+        expect(page.get_by_role("button", name="Revoke")).to_have_count(0)
         expect(page.get_by_test_id("tech-url").first).to_contain_text("/testing/token-abc?runtime=shell")
+        expect(page.get_by_role("button", name="Copy")).to_be_visible()
         with page.expect_popup() as open_popup_info:
             page.get_by_role("button", name="Open").click()
         open_popup = open_popup_info.value
@@ -858,17 +864,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Legacy")).to_have_count(0)
         row_actions = page.locator("#techLinksBody tr").first.locator("td").nth(3).locator("button")
         expect(row_actions).to_have_count(2)
-        expect(row_actions.nth(0)).to_have_text("Open")
-        expect(row_actions.nth(1)).to_have_text("Revoke")
+        expect(row_actions.nth(0)).to_have_text("Copy")
+        expect(row_actions.nth(1)).to_have_text("Open")
         expect(page.locator("#techLinksBody")).to_contain_text("Onsite Tech")
         expect(page.locator("#panel-tech-links")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
-        expect(page.get_by_role("button", name="Revoke")).to_be_visible()
-        page.get_by_role("button", name="Revoke").click()
-        expect(page.locator("#techLinksBody")).not_to_contain_text("Onsite Tech")
-        expect(page.locator("#techLinkStatus")).to_have_text("")
-        page.get_by_label("Technician name").fill("Remote Tech")
-        page.get_by_role("button", name="Create tech link").click()
-        expect(page.locator("#panel-tech-links")).to_contain_text("Remote Tech")
+        expect(page.locator("#panel-tech-links")).to_contain_text("Management")
 
         # Tab switching
         page.get_by_role("button", name="Commissioning").click()
@@ -1140,14 +1140,10 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.get_by_role("button", name="File").click()
         expect(page.locator("#panel-file")).to_be_visible()
-        page.get_by_role("button", name="Clear Tests").click()
-        expect(page.locator("#panel-clear-tests")).to_be_visible()
-        page.get_by_role("button", name="Clear tests for this project").click()
-        self.assertEqual(int(state.get("clear_tests_count") or 0), 1)
-        page.get_by_role("button", name="Commissioning").click()
-        expect(page.locator("#commissionActivityBody tr")).to_have_count(0)
+        expect(page.get_by_role("button", name="Clear Tests")).to_have_count(0)
+        expect(page.locator("#panel-clear-tests")).to_have_count(0)
+        expect(page.get_by_role("button", name="Clear tests for this project")).to_have_count(0)
         page.get_by_role("button", name="Diagnostics").click()
-        expect(page.locator("#diagnosticsTaskTable tbody tr")).to_have_count(0)
 
         # Tab switches inside same project should not force diagnostics consumer close churn.
         self.assertFalse(

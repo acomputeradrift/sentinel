@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 import threading
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,6 +19,23 @@ def new_uuid() -> str:
 
 def new_token() -> str:
     return uuid4().hex
+
+
+def project_has_generated_artifacts(*, projectId: str) -> bool:
+    root = Path(os.environ.get("SENTINEL_GENERATED_ROOT") or "generated").resolve()
+    project_dir = (root / str(projectId)).resolve()
+    if not project_dir.is_dir():
+        return False
+    return any(project_dir.glob("*_project_data.json"))
+
+
+def hydrate_project_ready_status(project: Project | None) -> Project | None:
+    if project is None:
+        return None
+    status = str(project.status or "").strip().upper()
+    if status != "READY" and project_has_generated_artifacts(projectId=project.projectId):
+        project.status = "READY"
+    return project
 
 
 TEST_RESULT_SOURCE_SINGLE = "SINGLE"
@@ -71,6 +89,8 @@ class TechLink:
     label: str | None
     createdAtUtc: str
     technicianId: str | None = None
+    issuedPath: str | None = None
+    issuedAtUtc: str | None = None
 
 
 @dataclass
@@ -80,6 +100,7 @@ class ActiveToken:
     projectId: str
     technicianId: str | None = None
     technicianName: str | None = None
+    issuedAtUtc: str | None = None
 
 
 def recorded_by_from_token(tok: ActiveToken) -> dict[str, Any]:
@@ -133,6 +154,8 @@ class Repository(Protocol):
 
     def get_project(self, *, projectId: str) -> Project | None: ...
 
+    def set_project_status(self, *, projectId: str, status: str) -> None: ...
+
     def list_technicians(self, *, userId: str) -> list[Technician]: ...
 
     def create_technician(self, *, userId: str, name: str) -> Technician: ...
@@ -182,6 +205,21 @@ class Repository(Protocol):
 
     def get_latest_results_for_project(self, *, projectId: str) -> dict[str, TestResultRecord]: ...
 
+    def list_test_results_for_project(self, *, projectId: str) -> list[TestResultRecord]: ...
+
+    def start_project_test_pass(
+        self,
+        *,
+        projectId: str,
+        recordedBy: dict[str, Any],
+        reason: str | None = None,
+        confirmName: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def get_current_test_pass_started_at(self, *, projectId: str) -> str | None: ...
+
+    def list_fail_tag_history_for_project(self, *, projectId: str) -> list[dict[str, Any]]: ...
+
     def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None: ...
 
     def get_fail_tags_for_project(self, *, projectId: str) -> dict[str, str]: ...
@@ -228,6 +266,8 @@ class InMemoryRepository:
         # Monotonic ids for in-memory test results (matches Postgres test_result_id ordering).
         self._next_test_result_id = 0
         self._testing_type_disabled_by_project: dict[str, list[str]] = {}
+        self._test_passes_by_project: dict[str, list[dict[str, Any]]] = {}
+        self._fail_tag_history: list[dict[str, Any]] = []
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -278,11 +318,20 @@ class InMemoryRepository:
             client = self._clients.get(clientId)
             if client is None or str(client.userId) != str(userId):
                 raise KeyError("CLIENT_NOT_FOUND")
-            return [p for p in self._projects.values() if p.clientId == clientId]
+            return [hydrate_project_ready_status(p) or p for p in self._projects.values() if p.clientId == clientId]
 
     def get_project(self, *, projectId: str) -> Project | None:
         with self._lock:
-            return self._projects.get(projectId)
+            project = self._projects.get(projectId)
+        return hydrate_project_ready_status(project)
+
+    def set_project_status(self, *, projectId: str, status: str) -> None:
+        wanted = str(status or "").strip().upper()
+        with self._lock:
+            project = self._projects.get(projectId)
+            if project is None:
+                raise KeyError("PROJECT_NOT_FOUND")
+            project.status = wanted
 
     def list_technicians(self, *, userId: str) -> list[Technician]:
         with self._lock:
@@ -343,6 +392,13 @@ class InMemoryRepository:
             tech = self._resolve_technician_for_link_locked(
                 projectId=projectId, label=label, technicianId=technicianId
             )
+            existing = self._active_link_for_technician_locked(
+                projectId=projectId, technicianId=tech.technicianId
+            )
+            if existing is not None:
+                token = self._active_tokens.get(self._active_token_by_link[existing.techLinkId])
+                if token is not None:
+                    return existing, token
             link = TechLink(
                 techLinkId=new_uuid(),
                 projectId=projectId,
@@ -353,6 +409,20 @@ class InMemoryRepository:
             self._tech_links[link.techLinkId] = link
             token = self._issue_token_locked(projectId=projectId, techLinkId=link.techLinkId)
             return link, token
+
+    def _active_link_for_technician_locked(self, *, projectId: str, technicianId: str) -> TechLink | None:
+        wanted = str(technicianId or "").strip()
+        if not wanted:
+            return None
+        for link in self._tech_links.values():
+            if link.projectId != projectId:
+                continue
+            if str(link.technicianId or "").strip() != wanted:
+                continue
+            if link.techLinkId not in self._active_token_by_link:
+                continue
+            return link
+        return None
 
     def rotate_tech_link_token(self, *, projectId: str, techLinkId: str) -> ActiveToken:
         with self._lock:
@@ -371,9 +441,22 @@ class InMemoryRepository:
             for link in self._tech_links.values():
                 if link.projectId != projectId:
                     continue
-                if link.techLinkId not in self._active_token_by_link:
+                token = self._active_token_by_link.get(link.techLinkId)
+                if not token:
                     continue
-                out.append(link)
+                active = self._active_tokens.get(token)
+                issued_at = active.issuedAtUtc if active is not None else None
+                out.append(
+                    TechLink(
+                        techLinkId=link.techLinkId,
+                        projectId=link.projectId,
+                        label=link.label,
+                        createdAtUtc=link.createdAtUtc,
+                        technicianId=link.technicianId,
+                        issuedPath=f"/testing/{token}",
+                        issuedAtUtc=issued_at,
+                    )
+                )
             out.sort(key=lambda l: l.createdAtUtc, reverse=True)
             return out
 
@@ -409,6 +492,7 @@ class InMemoryRepository:
             projectId=projectId,
             technicianId=technician_id,
             technicianName=technician_name,
+            issuedAtUtc=utc_now(),
         )
         self._active_tokens[techToken] = token
         self._active_token_by_link[techLinkId] = techToken
@@ -540,11 +624,25 @@ class InMemoryRepository:
                 recs.append(rec)
         return recs
 
+    def _current_pass_started_at_locked(self, *, projectId: str) -> str | None:
+        passes = self._test_passes_by_project.get(str(projectId)) or []
+        if not passes:
+            return None
+        return str(passes[-1].get("startedAtUtc") or "") or None
+
+    def _results_in_current_pass_locked(self, items: list[TestResultRecord], *, projectId: str) -> list[TestResultRecord]:
+        cutoff = self._current_pass_started_at_locked(projectId=projectId)
+        if not cutoff:
+            return list(items)
+        return [r for r in items if str(r.recordedAtUtc or "") >= cutoff]
+
     def get_target_status(self, *, techToken: str, targetKey: str) -> dict[str, Any]:
         tok = self.resolve_active_token(techToken=techToken)
         with self._lock:
             key = (tok.projectId, targetKey)
-            items = self._results_by_project_target.get(key, [])
+            items = self._results_in_current_pass_locked(
+                self._results_by_project_target.get(key, []), projectId=tok.projectId
+            )
             last = self._latest_record(items)
             if last is None:
                 return {"targetKey": targetKey, "currentOutcome": "UNTESTED", "lastTestedAtUtc": None, "lastFailNote": None}
@@ -561,10 +659,67 @@ class InMemoryRepository:
             for (pid, target_key), items in self._results_by_project_target.items():
                 if pid != projectId or not items:
                     continue
-                last = self._latest_record(items)
+                window = self._results_in_current_pass_locked(items, projectId=projectId)
+                last = self._latest_record(window)
                 if last is not None:
                     out[target_key] = last
             return out
+
+    def list_test_results_for_project(self, *, projectId: str) -> list[TestResultRecord]:
+        with self._lock:
+            out: list[TestResultRecord] = []
+            for (pid, _target_key), items in self._results_by_project_target.items():
+                if pid != projectId:
+                    continue
+                out.extend(items)
+            out.sort(key=lambda r: (r.recordedAtUtc, r.testResultId))
+            return out
+
+    def get_current_test_pass_started_at(self, *, projectId: str) -> str | None:
+        with self._lock:
+            return self._current_pass_started_at_locked(projectId=projectId)
+
+    def start_project_test_pass(
+        self,
+        *,
+        projectId: str,
+        recordedBy: dict[str, Any],
+        reason: str | None = None,
+        confirmName: str | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            if projectId not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            started = utc_now()
+            pass_id = new_uuid()
+            rec = {
+                "testPassId": pass_id,
+                "projectId": projectId,
+                "startedAtUtc": started,
+                "recordedBy": dict(recordedBy or {}),
+                "reason": str(reason).strip() if reason else None,
+                "confirmName": str(confirmName).strip() if confirmName else None,
+            }
+            self._test_passes_by_project.setdefault(projectId, []).append(rec)
+            drop_tag_keys = [key for key in self._fail_tags_by_project_target.keys() if key[0] == projectId]
+            for key in drop_tag_keys:
+                self._fail_tag_history.append(
+                    {
+                        "targetKey": key[1],
+                        "tag": self._fail_tags_by_project_target.get(key),
+                        "updatedAtUtc": self._fail_tag_times_by_project_target.get(key),
+                        "archivedAtUtc": started,
+                        "testPassId": pass_id,
+                        "projectId": projectId,
+                    }
+                )
+                self._fail_tags_by_project_target.pop(key, None)
+                self._fail_tag_times_by_project_target.pop(key, None)
+            return rec
+
+    def list_fail_tag_history_for_project(self, *, projectId: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(row) for row in self._fail_tag_history if row.get("projectId") == projectId]
 
     def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None:
         with self._lock:
@@ -615,11 +770,19 @@ class InMemoryRepository:
 
     def count_first_time_fail_targets(self, *, projectId: str) -> int:
         with self._lock:
-            return sum(
-                1
-                for (pid, _tk), outcome in self._first_outcome_by_project_target.items()
-                if pid == projectId and outcome == "FAIL"
-            )
+            count = 0
+            seen: set[str] = set()
+            for (pid, target_key), items in self._results_by_project_target.items():
+                if pid != projectId or target_key in seen:
+                    continue
+                window = self._results_in_current_pass_locked(items, projectId=projectId)
+                if not window:
+                    continue
+                first = min(window, key=lambda r: (r.recordedAtUtc, r.testResultId))
+                seen.add(target_key)
+                if str(first.outcome or "").strip().upper() == "FAIL":
+                    count += 1
+            return count
 
     def get_tech_link_label(self, *, techLinkId: str) -> str | None:
         with self._lock:
@@ -630,22 +793,11 @@ class InMemoryRepository:
             return label or None
 
     def clear_project_testing_data(self, *, projectId: str) -> None:
-        with self._lock:
-            drop_result_keys = [key for key in self._results_by_project_target.keys() if key[0] == projectId]
-            for key in drop_result_keys:
-                self._results_by_project_target.pop(key, None)
-            drop_first_keys = [key for key in self._first_outcome_by_project_target.keys() if key[0] == projectId]
-            for key in drop_first_keys:
-                self._first_outcome_by_project_target.pop(key, None)
-            drop_tag_keys = [key for key in self._fail_tags_by_project_target.keys() if key[0] == projectId]
-            for key in drop_tag_keys:
-                self._fail_tags_by_project_target.pop(key, None)
-            drop_tag_time_keys = [key for key in self._fail_tag_times_by_project_target.keys() if key[0] == projectId]
-            for key in drop_tag_time_keys:
-                self._fail_tag_times_by_project_target.pop(key, None)
-            drop_lock_keys = [key for key in self._layer_locks_by_project_scope_layer.keys() if key[0] == projectId]
-            for key in drop_lock_keys:
-                self._layer_locks_by_project_scope_layer.pop(key, None)
+        self.start_project_test_pass(
+            projectId=projectId,
+            recordedBy={"role": "PROGRAMMER", "userId": None},
+            reason="clear-tests-alias",
+        )
 
     def get_idempotency_response(self, *, scope: str, key: str) -> dict[str, Any] | None:
         with self._lock:
@@ -734,8 +886,21 @@ class PostgresRepository:
         for r in rows:
             created = r.get("createdAtUtc")
             created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
-            out.append(Project(projectId=str(r["projectId"]), clientId=str(r["clientId"]), name=str(r["name"]), status=str(r["status"]), createdAtUtc=created_str))
+            project = hydrate_project_ready_status(
+                Project(
+                    projectId=str(r["projectId"]),
+                    clientId=str(r["clientId"]),
+                    name=str(r["name"]),
+                    status=str(r["status"]),
+                    createdAtUtc=created_str,
+                )
+            )
+            if project is not None:
+                out.append(project)
         return out
+
+    def set_project_status(self, *, projectId: str, status: str) -> None:
+        self._q.set_project_status(self._database_url, project_id=projectId, status=status)
 
     def get_project(self, *, projectId: str) -> Project | None:
         con = self._db.connect(self._database_url)
@@ -749,7 +914,21 @@ class PostgresRepository:
                 return None
             created = row.get("createdAtUtc")
             created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
-            return Project(projectId=str(row["projectId"]), clientId=str(row["clientId"]), name=str(row["name"]), status=str(row["status"]), createdAtUtc=created_str)
+            project = Project(
+                projectId=str(row["projectId"]),
+                clientId=str(row["clientId"]),
+                name=str(row["name"]),
+                status=str(row["status"]),
+                createdAtUtc=created_str,
+            )
+            before = str(project.status or "")
+            hydrated = hydrate_project_ready_status(project)
+            if hydrated is not None and str(hydrated.status or "") != before:
+                try:
+                    self.set_project_status(projectId=projectId, status=str(hydrated.status))
+                except Exception:
+                    pass
+            return hydrated
         finally:
             con.close()
 
@@ -818,6 +997,30 @@ class PostgresRepository:
                 raise KeyError("TECHNICIAN_NOT_FOUND")
         else:
             tech = self.create_technician(userId=user_id, name=str(label or ""))
+        existing = self._q.find_active_tech_link_for_technician(
+            self._database_url, project_id=projectId, technician_id=tech.technicianId
+        )
+        if existing is not None:
+            token_plain = self._q.token_from_issued_path(existing.get("issuedPath"))
+            if token_plain:
+                created = existing.get("createdAtUtc")
+                created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+                issued = existing.get("issuedAtUtc")
+                issued_str = issued.isoformat() if hasattr(issued, "isoformat") else (str(issued) if issued else None)
+                name = str(existing.get("technicianName") or existing.get("label") or tech.name or "").strip()
+                link = TechLink(
+                    techLinkId=str(existing["techLinkId"]),
+                    projectId=projectId,
+                    label=name or tech.name,
+                    createdAtUtc=created_str,
+                    technicianId=tech.technicianId,
+                    issuedPath=str(existing.get("issuedPath") or "").strip() or None,
+                    issuedAtUtc=issued_str,
+                )
+                resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=token_plain)
+                token = self._active_token_from_resolved(techToken=token_plain, resolved=resolved)
+                token.issuedAtUtc = issued_str
+                return link, token
         link_row = self._q.create_tech_link(
             self._database_url,
             project_id=projectId,
@@ -854,6 +1057,9 @@ class PostgresRepository:
             name = str(r.get("technicianName") or r.get("label") or "").strip() or None
             tid_raw = r.get("technicianId")
             tid = str(tid_raw).strip() if tid_raw else None
+            issued = r.get("issuedAtUtc")
+            issued_str = issued.isoformat() if hasattr(issued, "isoformat") else (str(issued) if issued else None)
+            issued_path = str(r.get("issuedPath") or "").strip() or None
             out.append(
                 TechLink(
                     techLinkId=str(r["techLinkId"]),
@@ -861,6 +1067,8 @@ class PostgresRepository:
                     label=name or r.get("label"),
                     createdAtUtc=created_str,
                     technicianId=tid or None,
+                    issuedPath=issued_path,
+                    issuedAtUtc=issued_str,
                 )
             )
         return out
@@ -1056,8 +1264,12 @@ class PostgresRepository:
                 "recorded_by_technician_id as \"recordedByTechnicianId\", "
                 "recorded_by_technician_name as \"recordedByTechnicianName\", "
                 "batch_id as \"batchId\", source as \"source\" "
-                "from test_results where project_id=%s order by target_key, recorded_at_utc desc, test_result_id desc",
-                (projectId,),
+                "from test_results where project_id=%s "
+                "and recorded_at_utc >= coalesce("
+                "(select max(started_at_utc) from project_test_passes where project_id=%s), "
+                "'-infinity'::timestamptz) "
+                "order by target_key, recorded_at_utc desc, test_result_id desc",
+                (projectId, projectId),
             )
             out: dict[str, TestResultRecord] = {}
             for r in rows:
@@ -1096,6 +1308,71 @@ class PostgresRepository:
             return out
         finally:
             con.close()
+
+    def _result_from_row(self, *, projectId: str, row: dict[str, Any]) -> TestResultRecord:
+        created = row.get("recordedAtUtc")
+        created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+        refs_val = row.get("refs") or {}
+        if isinstance(refs_val, str):
+            try:
+                import json as _json
+
+                refs_val = _json.loads(refs_val)
+            except Exception:
+                refs_val = {}
+        batch_raw = row.get("batchId")
+        batch_id = str(batch_raw).strip() if batch_raw else None
+        source_raw = str(row.get("source") or "").strip().upper()
+        return TestResultRecord(
+            testResultId=str(row.get("testResultId") or new_uuid()),
+            projectId=projectId,
+            recordedAtUtc=created_str,
+            recordedBy={
+                "role": str(row.get("recordedByRole") or ""),
+                "techLinkId": row.get("recordedByTechLinkId"),
+                "technicianId": row.get("recordedByTechnicianId"),
+                "name": str(row.get("recordedByTechnicianName") or "").strip(),
+            },
+            target={
+                "targetKey": str(row.get("targetKey") or ""),
+                "kind": str(row.get("targetKind") or ""),
+                "refs": refs_val,
+                "targetName": str(row.get("targetName") or ""),
+            },
+            outcome=str(row.get("outcome") or ""),
+            failNote=row.get("failNote"),
+            batchId=batch_id or None,
+            source=source_raw or (TEST_RESULT_SOURCE_GROUP if batch_id else TEST_RESULT_SOURCE_SINGLE),
+        )
+
+    def list_test_results_for_project(self, *, projectId: str) -> list[TestResultRecord]:
+        rows = self._q.list_test_results_for_project(self._database_url, project_id=projectId)
+        return [self._result_from_row(projectId=projectId, row=r) for r in rows]
+
+    def get_current_test_pass_started_at(self, *, projectId: str) -> str | None:
+        return self._q.current_test_pass_started_at(self._database_url, project_id=projectId)
+
+    def start_project_test_pass(
+        self,
+        *,
+        projectId: str,
+        recordedBy: dict[str, Any],
+        reason: str | None = None,
+        confirmName: str | None = None,
+    ) -> dict[str, Any]:
+        if self.get_project(projectId=projectId) is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        return self._q.start_project_test_pass(
+            self._database_url,
+            project_id=projectId,
+            recorded_by_role=str((recordedBy or {}).get("role") or "PROGRAMMER"),
+            recorded_by_user_id=str((recordedBy or {}).get("userId") or "") or None,
+            reason=str(reason).strip() if reason else None,
+            confirm_name=str(confirmName).strip() if confirmName else None,
+        )
+
+    def list_fail_tag_history_for_project(self, *, projectId: str) -> list[dict[str, Any]]:
+        return self._q.list_fail_tag_history_for_project(self._database_url, project_id=projectId)
 
     def set_fail_tag(self, *, projectId: str, targetKey: str, tag: str) -> None:
         self._q.upsert_fail_tag(self._database_url, project_id=projectId, target_key=targetKey, tag=tag)

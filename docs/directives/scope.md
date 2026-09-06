@@ -4,11 +4,12 @@
 1. Generating a project-specific JSON file from a project's `.apex` file using the `apex_project_structure_v4.json` template, and generating the user testing interface from that project-specific JSON using the `app_ui_structure.json` template.
 2. Supporting two user-facing testing areas within that interface: event testing and device testing.
 3. Generating a diagnostics interface for `.apex` upload, project-data regeneration, test-environment regeneration, live monitoring of results, and troubleshooting support.
-4. Preserving testing continuity across updated `.apex` uploads so commissioning can continue after project fixes.
-5. Recording pass/fail results, timestamps, fail notes, and append-only test history for each test target.
-6. Producing device testing views that reflect the RTI project structure closely enough to support practical commissioning and validation.
-7. Providing navigation through generated device pages in a way that follows the structure of the RTI project.
-8. Supporting layer visibility controls when needed to inspect overlapping buttons or crowded UI pages.
+4. Providing a third **operator** browser surface at `/management/` for shop-wide technician roster, token lifecycle, start-new-pass, and reports. This is not a third testing UI.
+5. Preserving testing continuity across updated `.apex` uploads so commissioning can continue after project fixes.
+6. Recording pass/fail results, timestamps, fail notes, and append-only test history for each test target.
+7. Producing device testing views that reflect the RTI project structure closely enough to support practical commissioning and validation.
+8. Providing navigation through generated device pages in a way that follows the structure of the RTI project.
+9. Supporting layer visibility controls when needed to inspect overlapping buttons or crowded UI pages.
 
 ## Out of Scope
 1. Acting as the live RTI control system for end users.

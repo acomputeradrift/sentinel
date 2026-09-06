@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Request, WebSocket
 from fastapi import UploadFile
+from fastapi.responses import Response
 
 from sentinel.server.api.errors import http_error
 from sentinel.server.api import commissioning_snapshots
@@ -19,6 +20,8 @@ from sentinel.server.services import pipeline
 from sentinel.server.services import progress
 from sentinel.server.services import testing_types
 from sentinel.server.services import ws_broker
+from sentinel.server.services.report_document import build_report_document, resolve_report_options
+from sentinel.server.services.report_pdf import render_report_pdf, report_download_filename
 from sentinel.server.services.commissioning_user import (
     COMMISSIONING_STUB_COMPANY_ID,
     COMMISSIONING_STUB_COMPANY_NAME,
@@ -64,16 +67,27 @@ def _technician_payload(tech) -> dict:
     }
 
 
-def _tech_link_payload(link, *, techUrl: str = "") -> dict:
+def _issued_tech_url(link, *, techUrl: str | None = None) -> str:
+    if techUrl:
+        return str(techUrl)
+    path = str(getattr(link, "issuedPath", None) or "").strip()
+    return path
+
+
+def _tech_link_payload(link, *, techUrl: str | None = None) -> dict:
     name = str(link.label or "").strip()
-    return {
+    issued = getattr(link, "issuedAtUtc", None)
+    payload = {
         "techLinkId": link.techLinkId,
         "technicianId": link.technicianId,
         "name": name,
         "label": name or link.label,
         "createdAtUtc": link.createdAtUtc,
-        "techUrl": techUrl,
+        "techUrl": _issued_tech_url(link, techUrl=techUrl),
     }
+    if issued:
+        payload["issuedAtUtc"] = issued
+    return payload
 
 
 def _map_tech_key_error(exc: KeyError, *, default_code: str, default_message: str) -> None:
@@ -219,10 +233,14 @@ def create_tech_link(request: Request, projectId: str, payload: dict) -> dict:
     except KeyError as e:
         _map_tech_key_error(e, default_code="TECHNICIAN_NAME_REQUIRED", default_message="Technician name is required.")
         raise
-    return {
+    issued_at = getattr(token, "issuedAtUtc", None)
+    created = {
         **_tech_link_payload(link, techUrl=f"/testing/{token.techToken}"),
         "techUrl": f"/testing/{token.techToken}",
     }
+    if issued_at:
+        created["issuedAtUtc"] = issued_at
+    return created
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/rotate")
@@ -233,7 +251,11 @@ def rotate_tech_link(request: Request, projectId: str, techLinkId: str) -> dict:
         token = repo.rotate_tech_link_token(projectId=projectId, techLinkId=techLinkId)
     except KeyError:
         raise http_error(404, code="TECH_LINK_NOT_FOUND", message="Tech link not found.")
-    return {"techLinkId": techLinkId, "techUrl": f"/testing/{token.techToken}"}
+    rotated = {"techLinkId": techLinkId, "techUrl": f"/testing/{token.techToken}"}
+    issued_at = getattr(token, "issuedAtUtc", None)
+    if issued_at:
+        rotated["issuedAtUtc"] = issued_at
+    return rotated
 
 
 @router.get("/projects/{projectId}/tech-links")
@@ -242,7 +264,7 @@ def list_active_tech_links(request: Request, projectId: str) -> list[dict]:
     _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
     links = repo.list_active_tech_links(projectId=projectId)
     # Read-only list endpoint: do not rotate/revoke tokens as a side effect.
-    return [_tech_link_payload(l, techUrl="") for l in links]
+    return [_tech_link_payload(l) for l in links]
 
 
 @router.post("/projects/{projectId}/tech-links/{techLinkId}/revoke")
@@ -308,6 +330,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         generation=generation if isinstance(generation, dict) else {},
     )
     repo.set_project_active_upload(projectId=projectId, uploadId=upload_id)
+    repo.set_project_status(projectId=projectId, status="READY")
     repo.prune_project_upload_retention(
         projectId=projectId,
         activeUploadId=str(upload_id),
@@ -387,6 +410,7 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     )
     repo.record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
     repo.set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
+    repo.set_project_status(projectId=projectId, status="READY")
     repo.prune_project_upload_retention(
         projectId=projectId,
         activeUploadId=str(upload_id),
@@ -556,17 +580,101 @@ async def project_events(request: Request, projectId: str, once: bool = False):
     raise http_error(410, code="SSE_REMOVED", message="SSE endpoints have been removed; use WebSocket.")
 
 
-@router.post("/projects/{projectId}/clear-tests")
-def clear_project_tests(request: Request, projectId: str) -> dict:
+def _start_test_pass_response(
+    request: Request,
+    *,
+    projectId: str,
+    confirmName: str | None,
+    reason: str | None,
+) -> dict:
     repo = _repo(request)
-    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
-    repo.clear_project_testing_data(projectId=projectId)
-    snapshot = commissioning_snapshots.commissioning_snapshot(repo=repo, projectId=projectId)
+    user_id = _commissioning_user_id(request)
+    _require_project_for_user(repo, user_id=user_id, project_id=projectId)
+    recorded_by = {"role": "PROGRAMMER", "userId": user_id}
     try:
+        started = repo.start_project_test_pass(
+            projectId=projectId,
+            recordedBy=recorded_by,
+            reason=reason,
+            confirmName=confirmName,
+        )
+    except KeyError:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    snapshot = commissioning_snapshots.commissioning_snapshot(repo=repo, projectId=projectId)
+    event = {
+        "type": "test_pass.started",
+        "projectId": projectId,
+        "testPassId": started.get("testPassId"),
+        "startedAtUtc": started.get("startedAtUtc"),
+        "recordedBy": started.get("recordedBy") or recorded_by,
+        "reason": started.get("reason"),
+        "confirmName": started.get("confirmName"),
+    }
+    try:
+        _broker(request).publish(projectId=projectId, event=event)
         _broker(request).publish(projectId=projectId, event=snapshot)
     except Exception:
-        log.exception("[commissioning-ws] publish:clear-tests-failed projectId=%s", projectId)
-    return snapshot
+        log.exception("[commissioning-ws] publish:test-pass-failed projectId=%s", projectId)
+    return {
+        **snapshot,
+        "testPassId": started.get("testPassId"),
+        "startedAtUtc": started.get("startedAtUtc"),
+        "recordedBy": started.get("recordedBy") or recorded_by,
+        "reason": started.get("reason"),
+    }
+
+
+@router.post("/projects/{projectId}/test-passes")
+def start_project_test_pass(request: Request, projectId: str, payload: dict) -> dict:
+    repo = _repo(request)
+    user_id = _commissioning_user_id(request)
+    project = _require_project_for_user(repo, user_id=user_id, project_id=projectId)
+    confirm = str((payload or {}).get("confirmName") or "").strip()
+    if not confirm:
+        raise http_error(400, code="CONFIRM_NAME_REQUIRED", message="Type the project name to confirm.")
+    if confirm != str(project.name or "").strip():
+        raise http_error(400, code="CONFIRM_NAME_MISMATCH", message="Project name does not match.")
+    reason = str((payload or {}).get("reason") or "").strip() or None
+    return _start_test_pass_response(request, projectId=projectId, confirmName=confirm, reason=reason)
+
+
+@router.post("/projects/{projectId}/clear-tests")
+def clear_project_tests(request: Request, projectId: str) -> dict:
+    # Deprecated alias: start a new test pass. Does not DELETE history.
+    return _start_test_pass_response(
+        request,
+        projectId=projectId,
+        confirmName=None,
+        reason="clear-tests-alias",
+    )
+
+
+def _report_file_response(request: Request, *, projectId: str, payload: dict | None) -> Response:
+    repo = _repo(request)
+    user_id = _commissioning_user_id(request)
+    _require_project_for_user(repo, user_id=user_id, project_id=projectId)
+    try:
+        options = resolve_report_options(payload)
+    except ValueError:
+        raise http_error(400, code="UNKNOWN_REPORT_PRESET", message="Unknown report preset.")
+    document = build_report_document(repo=repo, projectId=projectId, options=options)
+    pdf = render_report_pdf(document)
+    filename = report_download_filename(document)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/projects/{projectId}/reports")
+def create_project_report(request: Request, projectId: str, payload: dict) -> Response:
+    return _report_file_response(request, projectId=projectId, payload=payload)
+
+
+@router.get("/projects/{projectId}/reports")
+def get_project_report(request: Request, projectId: str, preset: str = "closeout") -> Response:
+    return _report_file_response(request, projectId=projectId, payload={"preset": preset})
 
 
 @router.websocket("/projects/{projectId}/ws")

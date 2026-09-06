@@ -49,9 +49,18 @@ class PostgresPersistenceMvpTest(unittest.TestCase):
 
         tech_link = queries.create_tech_link(database_url, project_id=project_id, label="Onsite Tech")
         token1 = queries.rotate_tech_link_token(database_url, tech_link_id=tech_link["techLinkId"])
+        self.assertEqual(token1.get("issuedPath"), f"/testing/{token1['techToken']}")
+        listed1 = queries.list_active_tech_links(database_url, project_id=project_id)
+        self.assertEqual(len(listed1), 1)
+        self.assertEqual(listed1[0].get("issuedPath"), token1["issuedPath"])
+
         token2 = queries.rotate_tech_link_token(database_url, tech_link_id=tech_link["techLinkId"])
 
         self.assertNotEqual(token1["techToken"], token2["techToken"])
+        listed2 = queries.list_active_tech_links(database_url, project_id=project_id)
+        self.assertEqual(len(listed2), 1)
+        self.assertEqual(listed2[0].get("issuedPath"), f"/testing/{token2['techToken']}")
+        self.assertNotEqual(listed2[0].get("issuedPath"), token1["issuedPath"])
 
         resolved = queries.resolve_active_tech_token(database_url, tech_token=token2["techToken"])
         self.assertEqual(resolved["projectId"], project_id)

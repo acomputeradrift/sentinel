@@ -95,12 +95,12 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 ## Now
 
 - **Updated:** 2026-09-05
-- **Branch:** `main`
-- **Repo HEAD:** `79f4ce2` (Mac = GitHub `main`)
-- **Droplet HEAD:** `79f4ce2` at `/opt/sentinel/app` — service `active`
+- **Branch:** `cursor/management-tokens-reports-629d`
+- **Repo HEAD:** slices 2–11 on this PR (not merged, not deployed)
+- **Droplet HEAD:** unchanged — do not deploy this branch
 - **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** Management / token / new-pass / PDF plan at `docs/management_surface_and_reports_plan.md`. Refresh 410 is `TECH_LINK_REVOKED` (blank `techUrl` after reload, not DB wipe). Shell Fail retest color is live.
-- **Next:** plan item 3 — persist-and-return `techUrl`. Do not rediscover SSH/droplets.
+- **Open:** https://github.com/acomputeradrift/sentinel/pull/7 — remaining work is item 12 (deploy) only. Do not deploy until Jamie says deploy.
+- **Next:** Jamie review + deploy when he says deploy.
 
 ---
 

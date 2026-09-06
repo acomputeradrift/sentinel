@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sentinel Management</title>
+    <link rel="stylesheet" href="./management.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="topbar-brand">
+            <h1>Sentinel Management</h1>
+            <p class="sub">Shop roster, technician links, start-new-pass, and reports.</p>
+          </div>
+          <div class="user-chip" aria-label="Signed in as Jamie" title="Jamie">
+            <span class="user-chip-avatar" aria-hidden="true">J</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="card" id="contextCard">
+          <h2>Context</h2>
+          <p class="sub">Select a client and project. Management is the token editor for this shop.</p>
+          <div class="row">
+            <label class="field">
+              <span>Client</span>
+              <select id="clientSelect" aria-label="Client"></select>
+            </label>
+            <label class="field grow" id="newClientRow" hidden>
+              <span>New client name</span>
+              <input id="newClientName" type="text" autocomplete="off" />
+            </label>
+            <button id="newClientSubmit" type="button" hidden>Create client</button>
+            <label class="field">
+              <span>Project</span>
+              <select id="projectSelect" aria-label="Project"></select>
+            </label>
+            <label class="field grow" id="newProjectRow" hidden>
+              <span>New project name</span>
+              <input id="newProjectName" type="text" autocomplete="off" />
+            </label>
+            <button id="newProjectSubmit" type="button" hidden>Create project</button>
+          </div>
+          <div id="contextStatus" class="status" role="status"></div>
+        </section>
+
+        <section class="card" id="techniciansCard">
+          <h2>Technicians</h2>
+          <p class="sub">Company roster. Find-or-create by name.</p>
+          <div class="row">
+            <label class="field grow">
+              <span>Technician name</span>
+              <input id="newTechnicianName" type="text" placeholder="e.g. Alex" autocomplete="off" />
+            </label>
+            <button id="createTechnicianBtn" type="button">Add technician</button>
+          </div>
+          <div id="technicianStatus" class="status" role="status"></div>
+          <ul id="technicianRoster" class="roster" data-testid="technician-roster"></ul>
+        </section>
+
+        <section class="card" id="testPassCard">
+          <h2>Start new test pass</h2>
+          <p class="sub">History stays. Current derived state becomes untested. Type the project name to confirm. Field techs never see this control.</p>
+          <p class="sub" id="testPassHint">Select a project to start a new test pass.</p>
+          <div id="testPassBodyWrap" hidden>
+            <div class="row">
+              <label class="field grow">
+                <span>Type project name to confirm</span>
+                <input id="testPassConfirmName" type="text" autocomplete="off" />
+              </label>
+              <label class="field grow">
+                <span>Reason (optional)</span>
+                <input id="testPassReason" type="text" autocomplete="off" />
+              </label>
+              <button id="startTestPassBtn" class="danger" type="button">Start new test pass</button>
+            </div>
+            <div id="testPassStatus" class="status" role="status"></div>
+          </div>
+        </section>
+
+        <section class="card" id="reportsCard">
+          <h2>Reports</h2>
+          <p class="sub">Build a PDF from stored progress, fails, and full history. No photos, signatures, or raw tokens.</p>
+          <p class="sub" id="reportsHint">Select a project to generate a report.</p>
+          <div id="reportsBodyWrap" hidden>
+            <div class="row">
+              <label class="field">
+                <span>Preset</span>
+                <select id="reportPreset" aria-label="Report preset">
+                  <option value="closeout">Closeout / owner</option>
+                  <option value="dealer_punch_list">Dealer punch list</option>
+                  <option value="full_audit">Full audit</option>
+                </select>
+              </label>
+            </div>
+            <fieldset class="checks">
+              <legend>Scope</legend>
+              <label><input id="scopeSystemEvents" type="checkbox" checked /> System events</label>
+              <label><input id="scopeDriverEvents" type="checkbox" checked /> Driver events</label>
+              <label><input id="scopeDevices" type="checkbox" checked /> Devices</label>
+              <label><input id="scopeIncludeDisabledTypes" type="checkbox" /> Include types turned off on the job</label>
+              <div id="reportDeviceChecks" class="checks" data-testid="report-device-checks"></div>
+            </fieldset>
+            <fieldset class="checks">
+              <legend>Content</legend>
+              <label><input id="includeCover" type="checkbox" /> Cover</label>
+              <label><input id="includeProgressSummary" type="checkbox" /> Progress summary</label>
+              <label><input id="includeEventSectionCounts" type="checkbox" /> Event section counts</label>
+              <label><input id="includeDeviceCounts" type="checkbox" /> Device counts</label>
+              <label><input id="includeCurrentTargets" type="checkbox" /> Current target list</label>
+              <label><input id="includeFailDetail" type="checkbox" /> Fail detail</label>
+              <label><input id="includeProgrammerFields" type="checkbox" /> Programmer fields</label>
+              <label><input id="includeFullHistory" type="checkbox" /> Full history</label>
+              <label><input id="includePriorPasses" type="checkbox" /> Prior passes</label>
+              <label><input id="includeTestingTypeLegend" type="checkbox" /> Testing-type legend</label>
+              <label><input id="includeOperatorAppendix" type="checkbox" /> Operator appendix (names only)</label>
+            </fieldset>
+            <div class="row">
+              <button id="generateReportBtn" type="button">Generate PDF</button>
+            </div>
+            <div id="reportStatus" class="status" role="status"></div>
+          </div>
+        </section>
+
+        <section class="card" id="techLinksCard">
+          <h2>Tech links</h2>
+          <p class="sub" id="techLinksHint">Select a project to issue or reuse the one active link per technician.</p>
+          <div id="techLinksBodyWrap" hidden>
+            <div class="row">
+              <label class="field grow">
+                <span>Technician name</span>
+                <input id="techLinkName" type="text" list="rosterNames" placeholder="e.g. Alex" autocomplete="off" />
+              </label>
+              <datalist id="rosterNames"></datalist>
+              <button id="issueTechLinkBtn" type="button">Issue or reuse link</button>
+            </div>
+            <div id="techLinkStatus" class="status" role="status"></div>
+            <div class="table-wrap">
+              <table class="mini-table" aria-label="Project tech links">
+                <thead>
+                  <tr>
+                    <th>Technician</th>
+                    <th>Link</th>
+                    <th>Issued (UTC)</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="techLinksBody"></tbody>
+              </table>
+              <div class="empty" id="techLinksEmpty">No active tech links for this project.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="./management.js"></script>
+  </body>
+</html>

@@ -91,7 +91,7 @@ class ServerRoutesSmokeTest(unittest.TestCase):
                 self.assertEqual(links[0]["label"], "Onsite")
                 self.assertIn("createdAtUtc", links[0])
                 self.assertIn("techUrl", links[0])
-                self.assertEqual(str(links[0]["techUrl"] or ""), "")
+                self.assertEqual(str(links[0]["techUrl"] or ""), initial_tech_url)
 
                 # Listing links must be read-only and must not revoke existing tokens.
                 initial_token_still_works = client.post(

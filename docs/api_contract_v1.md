@@ -242,9 +242,10 @@ The server is the source of truth for test state by storing **append-only** hist
 ### Per-target current state
 
 For a given `projectId + targetKey`:
-- `currentOutcome` is the outcome of the most recent `TestResultRecord` by `recordedAtUtc`.
-- If no record exists for that `targetKey` within the project, `currentOutcome = UNTESTED`.
-- `lastTestedAtUtc` is the `recordedAtUtc` of the most recent record (or `null` if untested).
+- `currentOutcome` is the outcome of the most recent `TestResultRecord` by `recordedAtUtc` **in the current test pass** (records at or after the latest `test-passes.startedAtUtc`).
+- If no record exists for that `targetKey` in the current pass, `currentOutcome = UNTESTED`.
+- Full append-only history remains queryable across passes.
+- `lastTestedAtUtc` is the `recordedAtUtc` of the most recent current-pass record (or `null` if untested).
 
 Tie-breaker rule:
 - If two records have the same `recordedAtUtc`, the server uses `testResultId` as a deterministic tie-breaker.
@@ -384,7 +385,7 @@ Named technicians live under the commissioning operator (the company stub user u
 
 ### Technician link issuance/rotation (Diagnostics)
 - `POST /api/v1/commissioning/projects/{projectId}/tech-links`
-  - behavior: bind a named company technician to this job and issue a tech-link token. A different named technician on the same project is a clean handoff (history is append-only). The same name find-or-creates the same `technicianId`.
+  - behavior: bind a named company technician to this job and issue **or reuse** the one active tech-link for that name on this project. Reuse returns the persisted `techUrl` and does not mint or rotate a second active token. A different named technician on the same project is a clean handoff (history is append-only). The same name find-or-creates the same `technicianId`. After revoke, create issues a new active link.
   - req (any one of):
     ```json
     { "technicianId": "uuid" }
@@ -401,11 +402,33 @@ Named technicians live under the commissioning operator (the company stub user u
     { "techLinkId": "uuid", "technicianId": "uuid", "name": "string", "label": "string", "techUrl": "/testing/{techToken}" }
     ```
 
+- `GET /api/v1/commissioning/projects/{projectId}/tech-links`
+  - behavior: list **active** tech links for the project. Returns the persisted `techUrl` for each active token. **Read-only:** does not mint, rotate, or revoke tokens.
+  - resp: array of
+    ```json
+    {
+      "techLinkId": "uuid",
+      "technicianId": "uuid",
+      "name": "string",
+      "label": "string",
+      "createdAtUtc": "2026-03-19T12:02:00Z",
+      "issuedAtUtc": "2026-03-19T12:02:00Z",
+      "techUrl": "/testing/{techToken}"
+    }
+    ```
+
 - `POST /api/v1/commissioning/projects/{projectId}/tech-links/{techLinkId}/rotate`
-  - behavior: revoke prior token for this `techLinkId`, issue a new token (techLinkId remains stable)
+  - behavior: revoke prior token for this `techLinkId`, issue a new token (techLinkId remains stable). Old URL becomes `410 TECH_LINK_REVOKED`.
   - resp:
     ```json
     { "techLinkId": "uuid", "techUrl": "/testing/{techToken}" }
+    ```
+
+- `POST /api/v1/commissioning/projects/{projectId}/tech-links/{techLinkId}/revoke`
+  - behavior: revoke the active token. Old URL becomes `410 TECH_LINK_REVOKED`. Link disappears from the active list.
+  - resp:
+    ```json
+    { "projectId": "uuid", "techLinkId": "uuid", "revoked": true }
     ```
 
 ### Uploads + regeneration (Diagnostics)
@@ -429,6 +452,61 @@ Named technicians live under the commissioning operator (the company stub user u
   - also accepts `{ "types": [{ "id": "button:Bitmap", "enabled": false }] }`
   - resp: same shape as GET
   - Off-behavior is `exclude` (not auto-pass). Controls remain drawn on generated technician pages.
+
+### Start new test pass (dealer-scoped; this project only)
+- `POST /api/v1/commissioning/projects/{projectId}/test-passes`
+  - behavior: record a pass boundary. **Does not DELETE** `test_results`. Derived `currentOutcome` is `UNTESTED` for targets after the boundary. Current fail tags are archived (history kept) and become inactive for the new pass. Confirm by typing the project name.
+  - req:
+    ```json
+    { "confirmName": "string", "reason": "string|null" }
+    ```
+  - resp: commissioning snapshot plus
+    ```json
+    { "projectId": "uuid", "testPassId": "uuid", "startedAtUtc": "2026-03-19T12:05:00Z", "recordedBy": { "role": "PROGRAMMER", "userId": "uuid" }, "reason": "string|null" }
+    ```
+  - `400 CONFIRM_NAME_REQUIRED` when `confirmName` is empty
+  - `400 CONFIRM_NAME_MISMATCH` when `confirmName` does not match the project name
+  - publishes `test_pass.started` (who / when / project / optional reason) then a commissioning snapshot
+- `POST /api/v1/commissioning/projects/{projectId}/clear-tests`
+  - **Deprecated alias** for start-new-pass. Same pass-boundary behavior (no DELETE of history). Existing clients may omit `confirmName`.
+
+### Reports (additive; Management builder)
+- `POST /api/v1/commissioning/projects/{projectId}/reports`
+  - Builds a report for **this project only** from the same progress / fails / append-only history queries as the console. Does **not** use the 50-row snapshot `activities` cap.
+  - req option bag (presets set defaults; `include` / `scope` override):
+    ```json
+    {
+      "preset": "closeout|dealer_punch_list|full_audit",
+      "scope": {
+        "includeSystemEvents": true,
+        "includeDriverEvents": true,
+        "includeDevices": true,
+        "deviceIds": ["string"] ,
+        "includeDisabledTypes": false
+      },
+      "include": {
+        "cover": true,
+        "progressSummary": true,
+        "eventSectionCounts": true,
+        "deviceCounts": true,
+        "currentTargets": true,
+        "currentTargetOutcomes": ["PASS", "FAIL", "UNTESTED"],
+        "failDetail": true,
+        "programmerFields": false,
+        "fullHistory": false,
+        "includePriorPasses": false,
+        "testingTypeLegend": false,
+        "operatorAppendix": false
+      }
+    }
+    ```
+  - Preset defaults:
+    - `closeout`: cover + project progress + device counts + current fail notes. No history, no programmer tags, no operator appendix.
+    - `dealer_punch_list`: cover + fail detail (notes, placement, room/source, tech name, task tag).
+    - `full_audit`: cover + progress + event/device counts + all current targets + full history (including prior passes) + testing-type legend. Operator appendix still default off.
+  - `operatorAppendix` lists **active technician names only** (never raw tokens or `techUrl`).
+  - Do not send photos, signatures, site address, page pies, or live screenshots — those fields are not in this contract.
+  - resp (v1 file): PDF bytes with `Content-Disposition` filename `{client}-{project}-{preset}-{date}.pdf`. The structured document used to render the PDF is the option-filtered bag (cover / progressSummary / eventSectionCounts / deviceCounts / currentTargets / failDetail / history / testingTypeLegend / operatorAppendix). Omitted checkboxes are absent from that bag.
 
 ### Technician surface (token-scoped)
 - `GET /testing/{techToken}` -> returns technician HTML for the project's current generated artifact
@@ -476,4 +554,7 @@ Minimum event types:
 - `EXTRACT_FAILED`
 - `GENERATE_FAILED`
 - `FAIL_NOTE_REQUIRED`
+- `CONFIRM_NAME_REQUIRED`
+- `CONFIRM_NAME_MISMATCH`
+- `UNKNOWN_REPORT_PRESET`
 
