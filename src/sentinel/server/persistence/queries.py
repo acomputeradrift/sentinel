@@ -202,7 +202,7 @@ def list_projects_for_client(database_url: str, *, client_id: str) -> list[dict[
 def list_all_project_ids(database_url: str) -> list[str]:
     con = db.connect(database_url)
     try:
-        rows = db.fetch_all(con, "select project_id as \"projectId\" from projects")
+        rows = db.fetch_all(con, "select project_id as \"projectId\" from projects", ())
         return [str(row["projectId"]) for row in rows if row.get("projectId")]
     finally:
         con.close()

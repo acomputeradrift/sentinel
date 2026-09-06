@@ -295,6 +295,23 @@ class StorageOrphanPruneTest(unittest.TestCase):
             self.assertFalse(orphan_gen.exists())
             self.assertTrue(keep_path.exists())
 
+    def test_list_all_project_ids_passes_empty_params_to_fetch_all(self):
+        from sentinel.server.persistence import queries
+
+        fake_con = mock.Mock()
+        with mock.patch.object(queries.db, "connect", return_value=fake_con):
+            with mock.patch.object(
+                queries.db, "fetch_all", return_value=[{"projectId": "p1"}]
+            ) as fetch_all:
+                ids = queries.list_all_project_ids("postgres://example")
+        fetch_all.assert_called_once()
+        args = fetch_all.call_args.args
+        self.assertEqual(len(args), 3)
+        self.assertIs(args[0], fake_con)
+        self.assertIn("from projects", args[1])
+        self.assertEqual(args[2], ())
+        self.assertEqual(ids, ["p1"])
+
 
 if __name__ == "__main__":
     unittest.main()
