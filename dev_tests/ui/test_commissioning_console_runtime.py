@@ -833,7 +833,24 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(tabs.nth(4)).to_have_text("Reports")
         expect(tabs.nth(5)).to_have_text("Settings")
         expect(tabs.nth(6)).to_have_text("Management")
-        expect(page.get_by_role("link", name="Management")).to_have_attribute("href", "/management/")
+        expect(page.get_by_role("button", name="Management")).to_be_visible()
+        management = page.locator("#tab-management")
+        file_tab = page.locator("#tab-file")
+        self.assertEqual(management.evaluate("el => el.tagName"), "BUTTON")
+        self.assertEqual(
+            management.evaluate("el => getComputedStyle(el).fontFamily"),
+            file_tab.evaluate("el => getComputedStyle(el).fontFamily"),
+        )
+        self.assertEqual(
+            management.evaluate("el => getComputedStyle(el).fontSize"),
+            file_tab.evaluate("el => getComputedStyle(el).fontSize"),
+        )
+        nav_box = page.locator("nav.sidenav").bounding_box()
+        mgmt_box = management.bounding_box()
+        self.assertIsNotNone(nav_box)
+        self.assertIsNotNone(mgmt_box)
+        self.assertGreater(mgmt_box["y"] - nav_box["y"], 200)
+        self.assertLess((nav_box["y"] + nav_box["height"]) - (mgmt_box["y"] + mgmt_box["height"]), 24)
         expect(page.locator("#panel-file")).to_be_visible()
         expect(page.locator("#panel-commission")).to_be_hidden()
         expect(page.locator("#panel-file #manageProjectCard")).to_be_visible()

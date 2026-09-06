@@ -34,7 +34,7 @@
     "#" + ACTIONS_ID + " .group-status{width:100%;font-size:12px;line-height:1.25;color:#274258;}",
     "#" + ACTIONS_ID + " .group-status.is-error{color:#8f1f1f;}",
     "body.sentinel-group-mode .btn-wrap.is-group-selected{outline:3px solid #7c3aed;outline-offset:2px;}",
-    "body.sentinel-group-mode #rtiCanvas,body.sentinel-group-mode #rtiDeviceCanvas,body.sentinel-group-mode .device-page{touch-action:none;}",
+    "body.sentinel-group-mode #rtiCanvas,body.sentinel-group-mode #rtiDeviceCanvas,body.sentinel-group-mode .device-page,body.sentinel-group-mode .vp-popup,body.sentinel-group-mode .vp-popup-stage,body.sentinel-group-mode .vp-popup-vcontent{touch-action:none;}",
     "#" + MARQUEE_ID + "{position:fixed;z-index:10900;pointer-events:none;box-sizing:border-box;border:1px dashed #7c3aed;background:rgba(124,58,237,.12);}",
     "body.sentinel-group-dragging{user-select:none;}",
   ].join("\n");
@@ -123,8 +123,7 @@
   function actionsShouldShow() {
     if (!groupMode || hideActionsWhileDragging) return false;
     if (posting) return true;
-    if (selected.size > 0) return true;
-    return !!statusText();
+    return selected.size > 0;
   }
 
   function positionActions() {
@@ -327,8 +326,8 @@
     if (el.closest("#topControls") || el.closest("#topControlsStatic")) return true;
     if (el.closest("#zoomControls") || el.closest("#zoomControlsStatic") || el.closest("#orientationControls")) return true;
     if (el.closest("#deviceViewControlsCanvas") || el.closest(".deviceViewControlsContent")) return true;
-    if (el.closest(".vp-popup-stage") || el.closest(".vp-popup-vcontent")) return false;
-    if (el.closest("#layerControls") || el.closest("#vpPopup")) return true;
+    if (el.closest(".vp-popup-close") || el.closest(".vp-popup-nav")) return true;
+    if (el.closest("#vpPopup")) return false;
     if (el.closest("#rtiDeviceCanvas") || el.closest("#rtiCanvas") || el.closest(".device-page")) return false;
     return true;
   }
@@ -548,7 +547,7 @@
     if (e && e.cancelable && typeof e.preventDefault === "function") e.preventDefault();
     const rect = rectFromPoints(start, { x: e.clientX, y: e.clientY });
     const n = addWraps(wrapsIntersecting(rect));
-    setStatus(n ? "Added " + n + " from selection." : "No new targets in that region.", false);
+    setStatus(n ? "Added " + n + " from selection." : "", false);
     updateChrome();
   }
 

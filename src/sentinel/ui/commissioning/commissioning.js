@@ -108,6 +108,12 @@ function revealManagementTabForOperator() {
   const chip = document.querySelector(".user-chip");
   const who = String((chip && (chip.getAttribute("aria-label") || chip.getAttribute("title"))) || "");
   tab.hidden = !/\bJamie\b/i.test(who);
+  if (!tab.dataset.bound) {
+    tab.dataset.bound = "1";
+    tab.addEventListener("click", () => {
+      window.location.assign("/management/");
+    });
+  }
 }
 
 async function jsonFetch(url, options) {

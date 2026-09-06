@@ -1877,6 +1877,76 @@ class TestingResultPostingTest(unittest.TestCase):
         finally:
             server.stop()
 
+    def test_empty_marquee_does_not_open_group_dialogue(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._two_button_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenEmptyMarquee"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            canvas = page.locator("#rtiDeviceCanvas")
+            canvas.wait_for()
+            page.click("#sentinelGroupToggle")
+            box = canvas.bounding_box()
+            self.assertIsNotNone(box)
+            start_x = box["x"] + box["width"] - 24
+            start_y = box["y"] + box["height"] - 24
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(start_x - 30, start_y - 30, steps=8)
+            page.mouse.up()
+            page.wait_for_timeout(50)
+            self.assertTrue(bool(page.evaluate("() => window.__sentinelGroupPass.isGroupMode()")))
+            self.assertEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 0)
+            self.assertTrue(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
+    def test_drag_select_inside_viewport_zoom_selects_popup_buttons(self):
+        from sentinel.generation.render_core import render_single_device_html, load_json
+
+        app_ui = load_json(ROOT / "src" / "sentinel" / "contracts" / "app_ui_structure.json")
+        html = render_single_device_html(self._viewport_child_device_project(), app_ui, "unittest", device_index=0)
+        token = "techTokenGroupViewportDrag"
+        server = _CaptureServer(html_by_path={f"/testing/{token}": html})
+        port = server.start()
+        try:
+            page = self._browser.new_page()
+            self._install_fake_ws(page)
+            page.goto(f"http://127.0.0.1:{port}/testing/{token}")
+            page.locator(".vp-box").first.wait_for()
+            page.locator(".vp-box").first.click()
+            page.wait_for_timeout(80)
+            self.assertTrue(bool(page.evaluate("() => document.body.classList.contains('viewport-mode')")))
+            page.click("#sentinelGroupToggle")
+            popup_btn = page.locator(".vp-popup-stage .test-btn, .vp-popup-vcontent .test-btn").first
+            popup_btn.wait_for()
+            panel = page.locator("#vpPopupPanel")
+            btn_box = popup_btn.bounding_box()
+            panel_box = panel.bounding_box()
+            self.assertIsNotNone(btn_box)
+            self.assertIsNotNone(panel_box)
+            start_x = panel_box["x"] + 16
+            start_y = panel_box["y"] + 16
+            end_x = btn_box["x"] + btn_box["width"] + 8
+            end_y = btn_box["y"] + btn_box["height"] + 8
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(end_x, end_y, steps=16)
+            page.mouse.up()
+            page.wait_for_timeout(50)
+            self.assertGreaterEqual(int(page.evaluate("() => window.__sentinelGroupPass.selectedCount()") or 0), 1)
+            self.assertFalse(bool(page.locator("#sentinelGroupActions").evaluate("el => el.hidden")))
+            self.assertEqual(page.locator("#ov.open").count(), 0)
+        finally:
+            server.stop()
+
     def test_group_pass_selects_buttons_inside_open_viewport(self):
         from sentinel.generation.render_core import render_single_device_html, load_json
 

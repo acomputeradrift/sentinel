@@ -180,6 +180,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  align-self: stretch;
+  min-height: calc(100vh - 86px);
 }
 
 .content {
@@ -233,13 +235,6 @@ body {
   font-weight: 700;
   text-align: left;
   cursor: pointer;
-}
-
-a.tab {
-  display: flex;
-  align-items: center;
-  text-decoration: none;
-  box-sizing: border-box;
 }
 
 .tab--pin-bottom {
