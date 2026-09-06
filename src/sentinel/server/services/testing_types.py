@@ -1,7 +1,8 @@
 """Canonical testing-target types and per-project on/off filtering.
 
 Off means exclude from the required/progress set (not auto-pass). Controls still
-render on generated technician pages; they are not work in popups, group select, or pies.
+render on generated technician pages; they are not work in pies or group select.
+Popups still open and show "{type} are not included in testing".
 
 Type ids are namespaced by family because the same extracted label can appear on
 buttons and on events (System Macro, Macro Step).
@@ -89,6 +90,17 @@ _TRIGGER_ALIASES = frozenset({"trigger", "triggers", "event trigger", "event tri
 _PAGE_LINK_ALIASES = frozenset({"pagelink", "page link", "pagelinks", "page links"})
 _TEXT_ALIASES = frozenset({"text", "texts"})
 
+# Settings labels, pluralized for the excluded-type dialogue. "Text Labels" is Jamie's wording.
+_EXCLUDED_PLURAL_DISPLAY: dict[str, str] = {
+    "Text": "Text Labels",
+    "System Macro": "System Macros",
+    "Macro Step": "Macro Steps",
+    "Event Trigger": "Event Triggers",
+    "Page Link": "Page Links",
+    "Bitmap": "Bitmaps",
+    "Icon": "Icons",
+}
+
 
 def canonicalize_label(label: str) -> str:
     """Map extracted aliases / key suffixes to catalog labels. Do not invent types."""
@@ -117,6 +129,19 @@ def canonicalize_label(label: str) -> str:
         tail = s.split(".", 1)[1].strip() if "." in s else ""
         return f"Variable - {tail[:1].upper()}{tail[1:]}" if tail else s
     return s
+
+
+def excluded_testing_display_name(label: str) -> str:
+    """Plural settings-type label for the excluded-from-testing dialogue."""
+    name = canonicalize_label(label) or str(label or "").strip()
+    return _EXCLUDED_PLURAL_DISPLAY.get(name, name)
+
+
+def excluded_from_testing_message(label: str) -> str:
+    display = excluded_testing_display_name(label)
+    if not display:
+        return "are not included in testing"
+    return f"{display} are not included in testing"
 
 
 def family_for_target_key(target_key: str) -> str:

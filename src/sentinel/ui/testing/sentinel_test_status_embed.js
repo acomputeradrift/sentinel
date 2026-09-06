@@ -56,6 +56,15 @@
   };
   const TRIGGER_ALIASES = { trigger: 1, triggers: 1, "event trigger": 1, "event triggers": 1 };
   const PAGE_LINK_ALIASES = { pagelink: 1, "page link": 1, pagelinks: 1, "page links": 1 };
+  const EXCLUDED_PLURAL_DISPLAY = {
+    Text: "Text Labels",
+    "System Macro": "System Macros",
+    "Macro Step": "Macro Steps",
+    "Event Trigger": "Event Triggers",
+    "Page Link": "Page Links",
+    Bitmap: "Bitmaps",
+    Icon: "Icons",
+  };
 
   let disabledTypeIds = new Set();
 
@@ -120,6 +129,47 @@
     return buttonTargetsFromMeta(m).filter(function (label) {
       return isWorkLabelEnabled(label, m.kind);
     });
+  }
+
+  function excludedTestingDisplayName(label) {
+    const name = canonicalizeTestingLabel(label) || String(label || "").trim();
+    return EXCLUDED_PLURAL_DISPLAY[name] || name;
+  }
+
+  function excludedFromTestingMessage(label) {
+    const display = excludedTestingDisplayName(label);
+    if (!display) return "are not included in testing";
+    return display + " are not included in testing";
+  }
+
+  function enabledDialogueRowHtml(label, escFn) {
+    const esc = typeof escFn === "function" ? escFn : function (s) { return String(s || ""); };
+    return (
+      "<div class='row'><div class='row-head'><div class='n'>" +
+      esc(label) +
+      "</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>"
+    );
+  }
+
+  function dialogueRowsHtml(meta, escFn) {
+    const m = meta && typeof meta === "object" ? meta : {};
+    const esc = typeof escFn === "function" ? escFn : function (s) { return String(s || ""); };
+    const labels = buttonTargetsFromMeta(m);
+    if (!labels.length) {
+      return "<div class='row'><div class='n'>No true test targets.</div></div>";
+    }
+    return labels
+      .map(function (label) {
+        if (isWorkLabelEnabled(label, m.kind)) {
+          return enabledDialogueRowHtml(label, esc);
+        }
+        return (
+          "<div class='row'><div class='row-head'><div class='n'>" +
+          esc(excludedFromTestingMessage(label)) +
+          "</div></div></div>"
+        );
+      })
+      .join("");
   }
 
   /**
@@ -228,6 +278,8 @@
     applySettingsPayload: applySettingsPayload,
     isWorkLabelEnabled: isWorkLabelEnabled,
     filterWorkTargets: filterWorkTargets,
+    excludedFromTestingMessage: excludedFromTestingMessage,
+    dialogueRowsHtml: dialogueRowsHtml,
     aggregateTestOutcomeState: aggregateTestOutcomeState,
     applyTestTrimToWrap: applyTestTrimToWrap,
     refreshButtonWraps: refreshButtonWraps,

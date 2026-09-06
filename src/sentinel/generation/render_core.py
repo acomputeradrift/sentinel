@@ -3629,7 +3629,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
      const suffix=(APP_UI.testingPopup?.includeButtonTypeInTitle&&m.buttonType)?` (${{m.buttonType}})`:''; 
      pt.textContent=(APP_UI.testingPopup?.titleTemplate||'{{category}} Test - {{identity}}').replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
      const targets = workTargets(m);
-     rows.innerHTML=targets.map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.dialogueRowsHtml === "function") {{
+      rows.innerHTML = globalThis.__sentinelTestStatus.dialogueRowsHtml(m, esc);
+     }} else {{
+      rows.innerHTML=targets.map(t=>`<div class='row'><div class='row-head'><div class='n'>${{esc(t)}}</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>`).join('')||"<div class='row'><div class='n'>No true test targets.</div></div>";
+     }}
      clearPassAllQueue();
      setPostStatus('','');
      if (passAllBtn) {{
@@ -6299,7 +6303,11 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
    const titleTemplate=popupCfg.titleTemplate || '{{category}} Test - {{identity}}';
    pt.textContent=titleTemplate.replace('{{category}}',m.category).replace('{{identity}}',m.identity)+suffix;
    const targets=workTargets(m);
-    rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    if (globalThis.__sentinelTestStatus && typeof globalThis.__sentinelTestStatus.dialogueRowsHtml === "function") {{
+     rows.innerHTML = globalThis.__sentinelTestStatus.dialogueRowsHtml(m, esc);
+    }} else {{
+     rows.innerHTML=targets.map(function(t){{return "<div class='row'><div class='row-head'><div class='n'>" + esc(t) + "</div></div><div class='row-meta'><div class='actions'><button>Pass</button><button disabled title='Enter a fail note to enable'>Fail</button></div><div class='row-last-test' aria-live='polite'></div></div><textarea placeholder='Fail note (required for Fail)' style='min-height:70px;'></textarea></div>";}}).join('') || "<div class='row'><div class='n'>No true test targets.</div></div>";
+    }}
     clearPassAllQueue();
     setPostStatus('','');
     if (passAllBtn) {{

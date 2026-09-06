@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -110,6 +112,44 @@ class TestingTypesCatalogTest(unittest.TestCase):
         self.assertEqual(
             payload["graphicsTypeIds"],
             ["button:Bitmap", "button:Icon", "button:Variable - Image"],
+        )
+
+    def test_excluded_from_testing_message_uses_settings_plurals(self):
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Text"),
+            "Text Labels are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("text"),
+            "Text Labels are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Bitmap"),
+            "Bitmaps are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("System Macro"),
+            "System Macros are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Macro Step"),
+            "Macro Steps are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Event Trigger"),
+            "Event Triggers are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Page Link"),
+            "Page Links are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Icon"),
+            "Icons are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Variable - Reversed"),
+            "Variable - Reversed are not included in testing",
         )
 
 
@@ -325,6 +365,56 @@ class TestingTypeEmbedTest(unittest.TestCase):
         html = (root / "src" / "sentinel" / "ui" / "commissioning" / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="tab-settings"', html)
         self.assertIn("settings_tab.js", html)
+
+    def test_technician_dialogue_shows_excluded_type_message(self):
+        root = Path(__file__).resolve().parents[2]
+        status_js = (root / "src" / "sentinel" / "ui" / "testing" / "sentinel_test_status_embed.js").read_text(
+            encoding="utf-8"
+        )
+        render = (root / "src" / "sentinel" / "generation" / "render_core.py").read_text(encoding="utf-8")
+        self.assertIn("excludedFromTestingMessage", status_js)
+        self.assertIn("dialogueRowsHtml", status_js)
+        self.assertIn(" are not included in testing", status_js)
+        for display in (
+            "Text Labels",
+            "System Macros",
+            "Macro Steps",
+            "Event Triggers",
+            "Page Links",
+            "Bitmaps",
+            "Icons",
+        ):
+            self.assertIn(display, status_js)
+        self.assertIn("dialogueRowsHtml", render)
+        self.assertGreaterEqual(render.count("dialogueRowsHtml"), 2)
+        self.assertIn("workTargets(m)", render)
+
+    def test_disabled_type_dialogue_html_uses_plural_message(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        root = Path(__file__).resolve().parents[2]
+        embed = root / "src" / "sentinel" / "ui" / "testing" / "sentinel_test_status_embed.js"
+        script = (
+            "const fs=require('fs');"
+            f"const src=fs.readFileSync({str(embed)!r},'utf8');"
+            "const globalThis={};"
+            "eval(src);"
+            "const api=globalThis.__sentinelTestStatus;"
+            "api.setDisabledTypeIds(['button:Text']);"
+            "const mixed=api.dialogueRowsHtml({kind:'BUTTON',targets:['Text','Bitmap']},s=>String(s));"
+            "const only=api.dialogueRowsHtml({kind:'BUTTON',targets:['Text']},s=>String(s));"
+            "process.stdout.write(JSON.stringify({mixed:mixed,only:only}));"
+        )
+        proc = subprocess.run([node, "-e", script], capture_output=True, text=True, check=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+        body = json.loads(proc.stdout)
+        self.assertIn("Text Labels are not included in testing", body["mixed"])
+        self.assertIn(">Bitmap<", body["mixed"])
+        self.assertIn("Pass", body["mixed"])
+        self.assertIn("Text Labels are not included in testing", body["only"])
+        self.assertNotIn("Pass", body["only"])
+        self.assertNotIn("Fail", body["only"])
 
 
 if __name__ == "__main__":
