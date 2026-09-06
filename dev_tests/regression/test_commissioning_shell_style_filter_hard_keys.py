@@ -151,6 +151,20 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertTrue(_shell_style_selector_allowed("#close"))
         self.assertTrue(_shell_style_selector_allowed("#passAll:disabled"))
 
+    def test_live_shell_html_allows_overlay_action_button_rules(self) -> None:
+        from pathlib import Path
+
+        html = (
+            Path(__file__).resolve().parents[2]
+            / "src/sentinel/ui/commissioning/project_device_static_layout.html"
+        ).read_text(encoding="utf-8")
+        start = html.find("const allowTokens = [")
+        self.assertGreaterEqual(start, 0)
+        block = html[start : html.find("];", start) + 2]
+        self.assertIn('".ov"', block)
+        self.assertIn('".actions"', block)
+        self.assertIn('".pop"', block)
+
 
 if __name__ == "__main__":
     unittest.main()

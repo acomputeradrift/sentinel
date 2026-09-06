@@ -349,6 +349,8 @@ body {
 }
 
 .actions button {
+  -webkit-appearance: none;
+  appearance: none;
   border: 1px solid #a9bccd;
   background: #f7fbff;
   border-radius: 10px;
@@ -378,7 +380,8 @@ body {
   font-weight: 700;
 }
 
-.actions button.is-fail-active.is-retest-ready {
+.actions button.is-fail-active.is-retest-ready,
+#ov .actions button.is-fail-active.is-retest-ready {
   color: #86198f;
   background: #fae8ff;
   border-color: #c026d3;

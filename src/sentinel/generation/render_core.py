@@ -2676,11 +2676,11 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .n{{font-weight:600;margin:0;font-size:14px;line-height:1.1;}}
  .row-meta{{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;}}
  .actions{{display:flex;gap:10px;margin:0;}}
- .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+ .actions button{{-webkit-appearance:none;appearance:none;border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
- .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready,.ov .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}
@@ -5597,11 +5597,11 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .n{{font-weight:600;margin:0;font-size:14px;line-height:1.1;}}
  .row-meta{{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;}}
  .actions{{display:flex;gap:10px;margin:0;}}
- .actions button{{border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
+ .actions button{{-webkit-appearance:none;appearance:none;border:1px solid #a9bccd;background:#f7fbff;border-radius:10px;padding:6px 16px;font-size:13px;line-height:1;cursor:pointer;color:#14324b;}}
  .actions button:disabled{{opacity:.55;cursor:not-allowed;}}
  .actions button.is-pass-active{{color:#1f5d2d;background:#eaf7ef;border-color:#39b54a;font-weight:700;}}
  .actions button.is-fail-active{{color:#7f1d1d;background:#fdeeee;border-color:#ef4444;font-weight:700;}}
- .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
+ .actions button.is-fail-active.is-retest-ready,.ov .actions button.is-fail-active.is-retest-ready{{color:#86198f;background:#fae8ff;border-color:#c026d3;font-weight:700;}}
  .row-last-test{{font-size:13px;line-height:1.2;color:#274258;}}
  textarea{{display:block;box-sizing:border-box;width:100%;max-width:100%;border:1px solid #ccd8e2;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.2;resize:vertical;}}
  .post-status{{margin:10px 0 10px;font-size:13px;line-height:1.25;border-radius:12px;padding:10px 12px;border:1px solid #ccd8e2;background:#f8fbfe;color:#274258;}}

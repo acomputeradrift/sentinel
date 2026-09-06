@@ -642,6 +642,29 @@ class ProjectDeviceStaticLayoutRuntimeTest(unittest.TestCase):
 """
             )
             self.assertNotEqual(colors["pass"], colors["fail"])
+            retest = page.evaluate(
+                """
+() => {
+  const ov = document.getElementById('ov') || document.body;
+  const root = document.createElement('div');
+  root.innerHTML = '<div class="actions"><button class="is-fail-active is-retest-ready">Fail</button></div>';
+  ov.appendChild(root);
+  const fail = root.querySelector('.is-fail-active.is-retest-ready');
+  const cs = getComputedStyle(fail);
+  const out = {
+    bg: cs.getPropertyValue("background-color"),
+    border: cs.getPropertyValue("border-top-color"),
+    color: cs.getPropertyValue("color"),
+    hrefs: Array.from(document.styleSheets).map((s) => String(s.href || "")),
+  };
+  root.remove();
+  return out;
+}
+"""
+            )
+            self.assertIn("250, 232, 255", str(retest.get("bg") or ""))
+            self.assertIn("192, 38, 211", str(retest.get("border") or ""))
+            self.assertIn("134, 25, 143", str(retest.get("color") or ""))
         finally:
             page.close()
             server.stop()
