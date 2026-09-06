@@ -1318,6 +1318,182 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         )
         page.close()
 
+    def test_event_rows_show_target_name_identity_and_blank_viewport(self):
+        from playwright.sync_api import expect
+
+        page = self._browser.new_page()
+        state: dict[str, object] = {
+            "clients": [],
+            "clients_by_id": {},
+            "projects_by_client": {},
+            "projects_by_id": {},
+        }
+
+        def fulfill_json(route, payload, status: int = 200):
+            route.fulfill(
+                status=status,
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(payload),
+            )
+
+        def handle_clients(route, request):
+            if request.method == "GET":
+                fulfill_json(route, state["clients"])
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                client = {"clientId": "client-1", "name": data.get("name", ""), "createdAtUtc": "2026-03-21T00:00:00Z"}
+                state["clients"] = [client]
+                state["clients_by_id"]["client-1"] = client
+                state["projects_by_client"]["client-1"] = []
+                fulfill_json(route, client)
+                return
+            route.fulfill(status=405, body="method not allowed")
+
+        def handle_projects(route, request):
+            parts = request.url.split("/commissioning/clients/")[-1].split("/projects")
+            client_id = parts[0].strip("/")
+            if request.method == "GET":
+                fulfill_json(route, state["projects_by_client"].get(client_id, []))
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                proj = {
+                    "projectId": "proj-1",
+                    "clientId": client_id,
+                    "name": data.get("name", ""),
+                    "createdAtUtc": "2026-03-21T00:00:00Z",
+                    "status": "EMPTY",
+                }
+                state["projects_by_client"][client_id] = [proj]
+                state["projects_by_id"][proj["projectId"]] = proj
+                fulfill_json(route, proj)
+                return
+            route.fulfill(status=405, body="method not allowed")
+
+        page.route("**/api/v1/commissioning/technicians", lambda route, request: fulfill_json(route, {"technicians": []}))
+        page.route("**/api/v1/commissioning/clients", handle_clients)
+        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
+        page.route("**/api/v1/commissioning/projects/**", lambda route, request: fulfill_json(route, {}))
+
+        page.add_init_script(
+            """
+(() => {
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      setTimeout(() => { if (this.onopen) this.onopen({}); }, 0);
+    }
+    send() {}
+    close() { this.readyState = 3; if (this.onclose) this.onclose({}); }
+  }
+  window.WebSocket = FakeWebSocket;
+})();
+"""
+        )
+        page.goto(f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html")
+        _commissioning_click_file_tab(page)
+        _commissioning_create_client_via_modal(page, "Client A")
+        _commissioning_create_project_via_modal(page, "Project 1")
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "commissioning_snapshot",
+    projectId: "proj-1",
+    progress: {
+      projectId: "proj-1",
+      counts: { totalTargets: 2, testedTargets: 2, pass: 0, fail: 2, untested: 0, percentComplete: 1 },
+      lastTestedAtUtc: "2026-03-21T00:00:01Z",
+      eventSections: {
+        system: { counts: { totalTargets: 1, testedTargets: 1, pass: 0, fail: 1, untested: 0, percentComplete: 1 }, lastTestedAtUtc: "2026-03-21T00:00:01Z" },
+        driver: { counts: { totalTargets: 0, testedTargets: 0, pass: 0, fail: 0, untested: 0, percentComplete: 0 }, lastTestedAtUtc: null },
+      },
+      devices: [
+        { deviceId: "dev-1", deviceName: "Device A", counts: { totalTargets: 1, testedTargets: 1, pass: 0, fail: 1, untested: 0, percentComplete: 1 }, lastTestedAtUtc: "2026-03-21T00:00:00Z" },
+      ],
+    },
+    rollups: { projectId: "proj-1", counts: { totalTargets: 2, firstTimeFailTargets: 2 }, currentFailures: { byTargetName: { trigger: 1, macro: 1 } } },
+    fails: [
+      {
+        targetKey: "event:126:Event Trigger",
+        targetName: "Event Trigger",
+        kind: "EVENT",
+        eventKind: "SYSTEM",
+        deviceName: "",
+        pageName: "",
+        buttonName: "",
+        viewport: "No",
+        scope: "EVENT_SECTION",
+        tag: "NOT_STARTED",
+        currentOutcome: "FAIL",
+        lastTestedAtUtc: "2026-03-21T00:00:01Z",
+        lastFailNote: "Trigger not firing",
+      },
+      {
+        targetKey: "btn:81:513:48551:Macro",
+        targetName: "Macro",
+        deviceName: "Device A",
+        pageName: "Home",
+        buttonName: "Lights",
+        viewport: "No",
+        scope: "BUTTON",
+        tag: "NOT_STARTED",
+        currentOutcome: "FAIL",
+        lastTestedAtUtc: "2026-03-21T00:00:00Z",
+        lastFailNote: "Macro did not run",
+      },
+    ],
+    activities: [
+      {
+        type: "test_result",
+        projectId: "proj-1",
+        recordedAtUtc: "2026-03-21T00:00:01Z",
+        targetKey: "event:126:Event Trigger",
+        outcome: "FAIL",
+        targetName: "Event Trigger",
+        kind: "EVENT",
+        refs: { eventId: 126, eventKind: "SYSTEM" },
+        techName: "Taylor",
+      },
+      {
+        type: "test_result",
+        projectId: "proj-1",
+        recordedAtUtc: "2026-03-21T00:00:00Z",
+        targetKey: "btn:81:513:48551:Macro",
+        outcome: "FAIL",
+        targetName: "Macro",
+        kind: "BUTTON",
+        refs: { deviceName: "Device A", pageName: "Home", buttonName: "Lights" },
+        techName: "Taylor",
+      },
+    ],
+  });
+}
+"""
+        )
+        page.get_by_role("button", name="Commissioning").click()
+        event_live = page.locator("#commissionActivityBody tr").filter(has_text="Event Trigger")
+        expect(event_live).to_have_count(1)
+        expect(event_live.locator("td").nth(1)).to_have_text("System Event")
+        expect(event_live.locator("td").nth(4)).to_have_text("")
+        expect(event_live.locator("td").nth(5)).to_have_text("Event Trigger")
+        button_live = page.locator("#commissionActivityBody tr").filter(has_text="Lights")
+        expect(button_live.locator("td").nth(4)).to_have_text("No")
+        expect(button_live.locator("td").nth(5)).to_have_text("Lights")
+
+        page.get_by_role("button", name="Diagnostics").click()
+        event_diag = page.locator("#diagnosticsTaskTable tbody tr").filter(has_text="Event Trigger")
+        expect(event_diag).to_have_count(1)
+        expect(event_diag.locator("td").nth(2)).to_have_text("System Event")
+        expect(event_diag.locator("td").nth(5)).to_have_text("")
+        expect(event_diag.locator("td").nth(6)).to_have_text("Event Trigger")
+        button_diag = page.locator("#diagnosticsTaskTable tbody tr").filter(has_text="Lights")
+        expect(button_diag.locator("td").nth(5)).to_have_text("No")
+        expect(button_diag.locator("td").nth(6)).to_have_text("Lights")
+        page.close()
+
     def test_live_smoke_real_asset_no_unexpected_ws_disconnects(self):
         from playwright.sync_api import expect
 

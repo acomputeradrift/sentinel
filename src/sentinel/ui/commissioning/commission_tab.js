@@ -336,7 +336,11 @@ function normalizeEventMessage(ev) {
   const rawOutcome = String(data?.outcome || data?.currentOutcome || "").trim().toUpperCase();
   const eventKind = String(data?.eventKind || refs?.eventKind || "").trim().toUpperCase();
   const targetKey = String(data?.targetKey || "");
-  const eventDeviceLabel = targetKey.startsWith("event:") ? (eventKind === "DRIVER" ? "Driver Event" : "System Event") : "";
+  const isEvent = targetKey.startsWith("event:");
+  const eventDeviceLabel = isEvent ? (eventKind === "DRIVER" ? "Driver Event" : "System Event") : "";
+  const explicitButton = String(refs?.buttonName || data?.buttonName || refs?.identity || data?.identity || "").trim();
+  const eventIdentity = String(data?.targetName || "").trim();
+  const viewportRaw = String(refs?.viewport || data?.viewport || "").trim();
   return {
     timestamp: formatTimestampUtc(recordedAtUtc),
     timestampRaw: recordedAtUtc,
@@ -344,8 +348,8 @@ function normalizeEventMessage(ev) {
     device: String(eventDeviceLabel || refs?.deviceName || ""),
     pageName: String(refs?.pageName || ""),
     layer: String(refs?.layerName || data?.layerName || ""),
-    viewport: String(refs?.viewport || data?.viewport || "No"),
-    buttonName: String(refs?.buttonName || ""),
+    viewport: isEvent ? "" : (viewportRaw || "No"),
+    buttonName: explicitButton || (isEvent ? eventIdentity : ""),
     testTarget: String(data?.targetName || ""),
     passFail: rawOutcome === "PASS" ? "Pass" : rawOutcome === "FAIL" ? "Fail" : "",
     who: String(data?.techName || data?.recordedBy?.name || ""),
@@ -382,7 +386,7 @@ function appendActivityRow(msg) {
   tdDevice.textContent = msg.device || "";
   tdPage.textContent = msg.pageName || "";
   tdLayer.textContent = msg.layer || "";
-  tdViewport.textContent = msg.viewport || "No";
+  tdViewport.textContent = String(msg.viewport || "");
   tdButton.textContent = msg.buttonName || "";
   tdTarget.textContent = msg.testTarget || msg.targetKey || "";
   const st = String(msg.passFail || "").trim();

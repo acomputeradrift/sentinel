@@ -249,6 +249,20 @@ function _eventDeviceLabel(taskLike) {
   return eventKind === "DRIVER" ? "Driver Event" : "System Event";
 }
 
+function _buttonIdentityLabel(taskLike) {
+  const task = taskLike && typeof taskLike === "object" ? taskLike : {};
+  const explicit = String(task.buttonName || "").trim();
+  if (explicit) return explicit;
+  const identity = String(task.identity || "").trim();
+  if (identity) return identity;
+  const ident = parseIdentity(task.targetKey);
+  if (ident.button) return `b${ident.button}`;
+  if (String(task.targetKey || "").startsWith("event:")) {
+    return String(task.targetName || ident.testTarget || "").trim();
+  }
+  return "";
+}
+
 function _isTruePageLinkTarget(targetName, targetKey) {
   const name = normalizeTargetLabel(targetName);
   if (name === "pageLinks") return true;
@@ -317,6 +331,7 @@ function formatEffectiveScope(taskLike) {
 
 function formatViewport(taskLike) {
   const task = taskLike && typeof taskLike === "object" ? taskLike : {};
+  if (String(task.targetKey || "").startsWith("event:")) return "";
   const explicit = String(task.viewport || "").trim();
   if (explicit) return explicit;
   const frameIndexRti = task.frameIndexRti;
@@ -544,7 +559,7 @@ function _diagSortTasks(rows) {
     } else if (sortKey === "viewport") {
       cmp = _diagCompareText(formatViewport(a), formatViewport(b), direction);
     } else if (sortKey === "buttonIdentity") {
-      cmp = _diagCompareText(a?.buttonName, b?.buttonName, direction);
+      cmp = _diagCompareText(_buttonIdentityLabel(a), _buttonIdentityLabel(b), direction);
     } else if (sortKey === "testTarget") {
       cmp = _diagCompareText(normalizeTargetLabel(a?.targetName || _targetNameFromTargetKey(a?.targetKey || "")), normalizeTargetLabel(b?.targetName || _targetNameFromTargetKey(b?.targetKey || "")), direction);
     } else if (sortKey === "effectiveScope") {
@@ -733,7 +748,7 @@ function renderTaskList(projectId, fails) {
     });
 
     const tdButton = document.createElement("td");
-    tdButton.textContent = String(rec?.buttonName || (ident.button ? `b${ident.button}` : ""));
+    tdButton.textContent = _buttonIdentityLabel(rec);
 
     const tdTarget = document.createElement("td");
     tdTarget.textContent = formatTargetLabelForTaskList(rec?.targetName || ident.testTarget || "");
@@ -1015,7 +1030,7 @@ function _makeTaskRow(projectId, task) {
   tdPage.textContent = String(task?.pageName || (ident.page ? `p${ident.page}` : ""));
   tdLayer.textContent = String(task?.layerName || "");
   tdViewport.textContent = formatViewport(task);
-  tdButton.textContent = String(task?.buttonName || (ident.button ? `b${ident.button}` : ""));
+  tdButton.textContent = _buttonIdentityLabel(task);
   tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
   tdTarget.textContent = formatTargetLabelForTaskList(task?.targetName || ident.testTarget || "");
   const noteBtn = document.createElement("button");
@@ -1046,7 +1061,7 @@ function _updateTaskRowDom(row, task) {
   row.tdPage.textContent = String(task?.pageName || "");
   row.tdLayer.textContent = String(task?.layerName || "");
   row.tdViewport.textContent = formatViewport(task);
-  row.tdButton.textContent = String(task?.buttonName || "");
+  row.tdButton.textContent = _buttonIdentityLabel(task);
   row.tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
   row.tdTarget.textContent = formatTargetLabelForTaskList(task?.targetName || "");
   row.tdResolved.innerHTML = "";
