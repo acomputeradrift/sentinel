@@ -30,6 +30,12 @@ class ManagementUiServingTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/html", r.headers.get("content-type", ""))
         self.assertIn("Sentinel Management", r.text)
+        self.assertIn("allTechLinksByUser", r.text)
+        self.assertNotIn("contextCard", r.text)
+        self.assertNotIn("techniciansCard", r.text)
+        self.assertNotIn("testPassCard", r.text)
+        self.assertNotIn("reportsCard", r.text)
+        self.assertNotIn("techLinksCard", r.text)
 
         js = client.get("/management/management.js")
         self.assertEqual(js.status_code, 200)

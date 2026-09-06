@@ -104,14 +104,21 @@ def _issued_tech_url(link, *, techUrl: str | None = None) -> str:
 
 def _all_tech_link_payload(row: dict) -> dict:
     name = str(row.get("name") or row.get("label") or "").strip()
+    owner_id = str(row.get("ownerUserId") or "").strip()
+    owner_name = str(row.get("ownerName") or "").strip()
+    if not owner_name or owner_name == owner_id:
+        if owner_id == COMMISSIONING_STUB_USER_ID:
+            owner_name = COMMISSIONING_STUB_COMPANY_NAME
+        else:
+            owner_name = owner_id
     payload = {
         "techLinkId": row.get("techLinkId"),
         "projectId": row.get("projectId"),
         "projectName": row.get("projectName") or "",
         "clientId": row.get("clientId") or "",
         "clientName": row.get("clientName") or "",
-        "ownerUserId": row.get("ownerUserId") or "",
-        "ownerName": row.get("ownerName") or row.get("ownerUserId") or "",
+        "ownerUserId": owner_id,
+        "ownerName": owner_name,
         "technicianId": row.get("technicianId") or "",
         "name": name,
         "label": name or row.get("label"),

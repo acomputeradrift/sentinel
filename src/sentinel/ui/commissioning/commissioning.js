@@ -90,7 +90,7 @@ function _safeStorageSetJsonObject(key, obj) {
 }
 
 function setActiveTab(tabName) {
-  const tabs = ["commission", "diagnostics", "file", "settings", "tech-links", "reports"];
+  const tabs = ["file", "tech-links", "commission", "diagnostics", "reports", "settings"];
   for (const t of tabs) {
     const btn = document.getElementById(`tab-${t}`);
     const panel = document.getElementById(`panel-${t}`);
@@ -100,6 +100,14 @@ function setActiveTab(tabName) {
     btn.setAttribute("aria-selected", active ? "true" : "false");
     panel.hidden = !active;
   }
+}
+
+function revealManagementTabForOperator() {
+  const tab = document.getElementById("tab-management");
+  if (!tab) return;
+  const chip = document.querySelector(".user-chip");
+  const who = String((chip && (chip.getAttribute("aria-label") || chip.getAttribute("title"))) || "");
+  tab.hidden = !/\bJamie\b/i.test(who);
 }
 
 async function jsonFetch(url, options) {
@@ -1111,7 +1119,8 @@ async function run() {
   try {
     window.dispatchEvent(new Event("sentinel:commissioning-hydrated"));
   } catch (_e) {}
-  setActiveTab("commission");
+  revealManagementTabForOperator();
+  setActiveTab("file");
 }
 
 run();

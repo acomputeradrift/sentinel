@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 import sys
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -81,3 +82,18 @@ class ManagementAllTechLinksTest(unittest.TestCase):
         client, _repo = self._app()
         missing = client.post("/api/v1/commissioning/tech-links/not-a-real-link/revoke")
         self.assertEqual(missing.status_code, 404, missing.text)
+
+    def test_list_all_active_tech_links_passes_empty_params_to_fetch_all(self):
+        from sentinel.server.persistence import queries
+
+        fake_con = mock.Mock()
+        with mock.patch.object(queries.db, "connect", return_value=fake_con):
+            with mock.patch.object(queries.db, "fetch_all", return_value=[]) as fetch_all:
+                rows = queries.list_all_active_tech_links("postgres://example")
+        fetch_all.assert_called_once()
+        args = fetch_all.call_args.args
+        self.assertEqual(len(args), 3)
+        self.assertIs(args[0], fake_con)
+        self.assertIn("from tech_links", args[1])
+        self.assertEqual(args[2], ())
+        self.assertEqual(rows, [])

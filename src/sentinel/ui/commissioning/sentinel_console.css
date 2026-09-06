@@ -235,6 +235,17 @@ body {
   cursor: pointer;
 }
 
+a.tab {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.tab--pin-bottom {
+  margin-top: auto;
+}
+
 .tab.active {
   border-color: #0f5d8a;
   background: #177bb5;

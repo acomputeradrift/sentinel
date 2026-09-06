@@ -428,6 +428,7 @@ def list_all_active_tech_links(database_url: str) -> list[dict[str, Any]]:
             "left join technicians t on t.technician_id=tl.technician_id "
             "where tlt.revoked_at_utc is null "
             "order by tl.created_at_utc desc",
+            (),
         )
     finally:
         con.close()

@@ -75,122 +75,7 @@ class ManagementRuntimeTest(unittest.TestCase):
             cls._pw.stop()
             cls._static.stop()
 
-    def test_management_page_create_list_copy_open(self):
-        from playwright.sync_api import expect
-
-        page = self._browser.new_page()
-        state: dict[str, object] = {
-            "clients": [],
-            "projects": [],
-            "technicians": [],
-            "tech_links": [],
-        }
-
-        def fulfill_json(route, body, status=200):
-            route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
-
-        def handle_clients(route, request):
-            if request.method == "GET":
-                fulfill_json(route, state["clients"])
-                return
-            data = json.loads(request.post_data or "{}")
-            client = {"clientId": "client-1", "name": data.get("name") or "Acme", "createdAtUtc": "2026-03-21T00:00:00Z"}
-            state["clients"] = [client]
-            fulfill_json(route, client)
-
-        def handle_projects(route, request):
-            if request.method == "GET":
-                fulfill_json(route, state["projects"])
-                return
-            data = json.loads(request.post_data or "{}")
-            proj = {
-                "projectId": "proj-1",
-                "clientId": "client-1",
-                "name": data.get("name") or "Job One",
-                "status": "READY",
-                "createdAtUtc": "2026-03-21T00:00:00Z",
-            }
-            state["projects"] = [proj]
-            fulfill_json(route, proj)
-
-        def handle_technicians(route, request):
-            if request.method == "GET":
-                fulfill_json(
-                    route,
-                    {"companyId": "company-1", "companyName": "Jamie", "technicians": state["technicians"]},
-                )
-                return
-            data = json.loads(request.post_data or "{}")
-            tech = {
-                "technicianId": "tech-1",
-                "companyId": "company-1",
-                "name": data.get("name") or "Alex",
-                "createdAtUtc": "2026-03-21T00:00:00Z",
-            }
-            state["technicians"] = [tech]
-            fulfill_json(route, tech)
-
-        def handle_tech_links(route, request):
-            path = request.url.split("?")[0]
-            if request.method == "GET":
-                fulfill_json(route, state["tech_links"])
-                return
-            if request.method == "POST" and path.endswith("/tech-links"):
-                data = json.loads(request.post_data or "{}")
-                if state["tech_links"]:
-                    fulfill_json(route, state["tech_links"][0])
-                    return
-                link = {
-                    "techLinkId": "tl-1",
-                    "technicianId": "tech-1",
-                    "name": data.get("name") or "Alex",
-                    "label": data.get("name") or "Alex",
-                    "createdAtUtc": "2026-03-21T00:01:00Z",
-                    "issuedAtUtc": "2026-03-21T00:01:00Z",
-                    "techUrl": "/testing/token-persist-1",
-                }
-                state["tech_links"] = [link]
-                fulfill_json(route, link)
-                return
-            route.fulfill(status=405, body="method not allowed")
-
-        page.route("**/api/v1/commissioning/clients", handle_clients)
-        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
-        page.route("**/api/v1/commissioning/technicians", handle_technicians)
-        page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
-
-        url = f"{self._static.base_url}/src/sentinel/ui/management/index.html"
-        page.goto(url)
-        expect(page.get_by_role("heading", name="Sentinel Management")).to_be_visible()
-
-        page.locator("#clientSelect").select_option(value="__new_client__")
-        page.locator("#newClientName").fill("Acme")
-        page.locator("#newClientSubmit").click()
-        expect(page.locator("#clientSelect")).to_have_value("client-1")
-
-        page.locator("#projectSelect").select_option(value="__new_project__")
-        page.locator("#newProjectName").fill("Job One")
-        page.locator("#newProjectSubmit").click()
-        expect(page.locator("#projectSelect")).to_have_value("proj-1")
-
-        page.locator("#newTechnicianName").fill("Alex")
-        page.locator("#createTechnicianBtn").click()
-        expect(page.locator("#technicianRoster")).to_contain_text("Alex")
-
-        page.locator("#techLinkName").fill("Alex")
-        page.locator("#issueTechLinkBtn").click()
-        expect(page.get_by_test_id("tech-url")).to_contain_text("/testing/token-persist-1")
-        expect(page.get_by_role("button", name="Copy")).to_be_visible()
-        expect(page.get_by_role("button", name="Open")).to_be_visible()
-        expect(page.get_by_role("button", name="Rotate")).to_be_visible()
-        expect(page.get_by_role("button", name="Revoke")).to_be_visible()
-
-        page.locator("#techLinkName").fill("Alex")
-        page.locator("#issueTechLinkBtn").click()
-        expect(page.locator("[data-testid='tech-url']")).to_have_count(1)
-        page.close()
-
-    def test_management_all_links_lists_and_revokes_across_companies(self):
+    def test_management_is_only_active_links_grouped_by_user(self):
         from playwright.sync_api import expect
 
         page = self._browser.new_page()
@@ -202,6 +87,7 @@ class ManagementRuntimeTest(unittest.TestCase):
                     "clientName": "Acme",
                     "projectName": "Acme Job",
                     "ownerUserId": "user-jamie",
+                    "ownerName": "Jamie",
                     "name": "Alex",
                     "techUrl": "/testing/token-acme",
                     "issuedAtUtc": "2026-03-21T00:01:00Z",
@@ -212,6 +98,7 @@ class ManagementRuntimeTest(unittest.TestCase):
                     "clientName": "Other Co",
                     "projectName": "Other Job",
                     "ownerUserId": "user-other",
+                    "ownerName": "Other",
                     "name": "Sam",
                     "techUrl": "/testing/token-other",
                     "issuedAtUtc": "2026-03-21T00:02:00Z",
@@ -236,175 +123,33 @@ class ManagementRuntimeTest(unittest.TestCase):
                 return
             route.fulfill(status=405, body="method not allowed")
 
-        page.route("**/api/v1/commissioning/clients", lambda route, request: fulfill_json(route, []))
-        page.route(
-            "**/api/v1/commissioning/technicians",
-            lambda route, request: fulfill_json(route, {"technicians": []}),
-        )
         page.route("**/api/v1/commissioning/tech-links**", handle_all_links)
 
         url = f"{self._static.base_url}/src/sentinel/ui/management/index.html"
         page.goto(url)
-        expect(page.get_by_role("heading", name="All tech links")).to_be_visible()
-        expect(page.locator("#allTechLinksBody")).to_contain_text("Acme")
-        expect(page.locator("#allTechLinksBody")).to_contain_text("Other Co")
-        expect(page.locator("#allTechLinksBody")).to_contain_text("Alex")
-        expect(page.locator("#allTechLinksBody")).to_contain_text("Sam")
-        page.locator("#allTechLinksBody tr").filter(has_text="Other Co").get_by_role("button", name="Revoke").click()
-        expect(page.locator("#allTechLinksBody")).not_to_contain_text("Other Co")
-        expect(page.locator("#allTechLinksBody")).to_contain_text("Acme")
+        expect(page.get_by_role("heading", name="Sentinel Management")).to_be_visible()
+        expect(page.get_by_role("heading", name="Active tech links")).to_be_visible()
+        expect(page.get_by_role("heading", name="Context")).to_have_count(0)
+        expect(page.get_by_role("heading", name="Technicians")).to_have_count(0)
+        expect(page.get_by_role("heading", name="Start new test pass")).to_have_count(0)
+        expect(page.get_by_role("heading", name="Reports")).to_have_count(0)
+        expect(page.locator("#clientSelect")).to_have_count(0)
+
+        users = page.get_by_test_id("tech-link-user")
+        expect(users).to_have_count(2)
+        expect(users.nth(0)).to_have_text("Jamie")
+        expect(users.nth(1)).to_have_text("Other")
+        jamie = page.locator(".user-group").filter(has_text="Jamie")
+        other = page.locator(".user-group").filter(has_text="Other")
+        expect(jamie).to_contain_text("Acme")
+        expect(jamie).to_contain_text("Alex")
+        expect(jamie).to_contain_text("/testing/token-acme")
+        expect(other).to_contain_text("Other Co")
+        expect(other).to_contain_text("Sam")
+
+        other.get_by_role("button", name="Revoke").click()
+        expect(page.get_by_test_id("tech-link-user")).to_have_count(1)
+        expect(page.locator("#allTechLinksByUser")).to_contain_text("Jamie")
+        expect(page.locator("#allTechLinksByUser")).not_to_contain_text("Other Co")
         self.assertEqual(state["revoked"], ["tl-other"])
-        page.close()
-
-    def test_management_start_new_pass_confirms_project_name(self):
-        from playwright.sync_api import expect
-
-        page = self._browser.new_page()
-        state: dict[str, object] = {
-            "clients": [{"clientId": "client-1", "name": "Acme", "createdAtUtc": "2026-03-21T00:00:00Z"}],
-            "projects": [
-                {
-                    "projectId": "proj-1",
-                    "clientId": "client-1",
-                    "name": "Job One",
-                    "status": "READY",
-                    "createdAtUtc": "2026-03-21T00:00:00Z",
-                }
-            ],
-            "pass_posts": [],
-        }
-
-        def fulfill_json(route, body, status=200):
-            route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
-
-        def handle_clients(route, request):
-            fulfill_json(route, state["clients"])
-
-        def handle_projects(route, request):
-            fulfill_json(route, state["projects"])
-
-        def handle_technicians(route, request):
-            fulfill_json(route, {"companyId": "company-1", "companyName": "Jamie", "technicians": []})
-
-        def handle_tech_links(route, request):
-            fulfill_json(route, [])
-
-        def handle_test_passes(route, request):
-            data = json.loads(request.post_data or "{}")
-            state["pass_posts"].append(data)
-            confirm = str(data.get("confirmName") or "").strip()
-            if confirm != "Job One":
-                fulfill_json(
-                    route,
-                    {"error": {"code": "CONFIRM_NAME_MISMATCH", "message": "Project name does not match."}},
-                    status=400,
-                )
-                return
-            fulfill_json(
-                route,
-                {
-                    "type": "commissioning_snapshot",
-                    "projectId": "proj-1",
-                    "testPassId": "pass-1",
-                    "startedAtUtc": "2026-03-21T01:00:00Z",
-                    "reason": data.get("reason"),
-                },
-            )
-
-        page.route("**/api/v1/commissioning/clients", handle_clients)
-        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
-        page.route("**/api/v1/commissioning/technicians", handle_technicians)
-        page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
-        page.route("**/api/v1/commissioning/projects/*/test-passes", handle_test_passes)
-
-        url = f"{self._static.base_url}/src/sentinel/ui/management/index.html"
-        page.goto(url)
-        expect(page.get_by_role("heading", name="Start new test pass")).to_be_visible()
-        page.locator("#clientSelect").select_option(value="client-1")
-        page.locator("#projectSelect").select_option(value="proj-1")
-        expect(page.locator("#testPassBodyWrap")).to_be_visible()
-
-        page.locator("#testPassConfirmName").fill("Wrong Name")
-        page.locator("#testPassReason").fill("retest after firmware")
-        page.locator("#startTestPassBtn").click()
-        expect(page.locator("#testPassStatus")).to_contain_text("Project name does not match.")
-        self.assertEqual(state["pass_posts"], [])
-
-        page.locator("#testPassConfirmName").fill("Job One")
-        page.locator("#startTestPassBtn").click()
-        expect(page.locator("#testPassStatus")).to_contain_text("New test pass started")
-        self.assertEqual(state["pass_posts"], [{"confirmName": "Job One", "reason": "retest after firmware"}])
-        page.close()
-
-    def test_management_report_builder_posts_option_bag(self):
-        from playwright.sync_api import expect
-
-        page = self._browser.new_page()
-        state: dict[str, object] = {
-            "clients": [{"clientId": "client-1", "name": "Acme", "createdAtUtc": "2026-03-21T00:00:00Z"}],
-            "projects": [
-                {
-                    "projectId": "proj-1",
-                    "clientId": "client-1",
-                    "name": "Job One",
-                    "status": "READY",
-                    "createdAtUtc": "2026-03-21T00:00:00Z",
-                }
-            ],
-            "report_posts": [],
-        }
-
-        def fulfill_json(route, body, status=200):
-            route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
-
-        def handle_clients(route, request):
-            fulfill_json(route, state["clients"])
-
-        def handle_projects(route, request):
-            fulfill_json(route, state["projects"])
-
-        def handle_technicians(route, request):
-            fulfill_json(route, {"companyId": "company-1", "companyName": "Jamie", "technicians": []})
-
-        def handle_tech_links(route, request):
-            fulfill_json(route, [])
-
-        def handle_reports(route, request):
-            data = json.loads(request.post_data or "{}")
-            state["report_posts"].append(data)
-            route.fulfill(
-                status=200,
-                headers={
-                    "content-type": "application/pdf",
-                    "content-disposition": 'attachment; filename="Acme-Job One-closeout-2026-03-21.pdf"',
-                },
-                body=b"%PDF-1.4 mock",
-            )
-
-        page.route("**/api/v1/commissioning/clients", handle_clients)
-        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
-        page.route("**/api/v1/commissioning/technicians", handle_technicians)
-        page.route("**/api/v1/commissioning/projects/*/tech-links**", handle_tech_links)
-        page.route("**/api/v1/commissioning/projects/*/reports**", handle_reports)
-
-        url = f"{self._static.base_url}/src/sentinel/ui/management/index.html"
-        page.goto(url)
-        expect(page.get_by_role("heading", name="Reports")).to_be_visible()
-        page.locator("#clientSelect").select_option(value="client-1")
-        page.locator("#projectSelect").select_option(value="proj-1")
-        expect(page.locator("#reportsBodyWrap")).to_be_visible()
-        expect(page.locator("#reportPreset")).to_be_visible()
-        expect(page.locator("#includeCover")).to_be_checked()
-        page.locator("#reportPreset").select_option(value="full_audit")
-        expect(page.locator("#includeFullHistory")).to_be_checked()
-        expect(page.locator("#includeOperatorAppendix")).not_to_be_checked()
-        with page.expect_download() as download_info:
-            page.locator("#generateReportBtn").click()
-        download = download_info.value
-        self.assertTrue(str(download.suggested_filename).endswith(".pdf"))
-        self.assertEqual(len(state["report_posts"]), 1)
-        posted = state["report_posts"][0]
-        self.assertEqual(posted["preset"], "full_audit")
-        self.assertTrue(posted["include"]["fullHistory"])
-        self.assertFalse(posted["include"]["operatorAppendix"])
         page.close()
