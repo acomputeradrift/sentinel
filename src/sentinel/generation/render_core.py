@@ -12,6 +12,43 @@ def load_json(path: Path) -> Any:
         return json.load(f)
 
 
+def _commissioning_meta_tags(*, client_name: str = "", project_name: str = "") -> str:
+    parts: list[str] = []
+    client = str(client_name or "").strip()
+    project = str(project_name or "").strip()
+    if client:
+        parts.append(f'<meta name="sentinel-client-name" content="{escape(client, quote=True)}">')
+    if project:
+        parts.append(f'<meta name="sentinel-project-name" content="{escape(project, quote=True)}">')
+    return "".join(parts)
+
+
+def format_page_header_title(
+    template: str,
+    *,
+    client_name: str,
+    project_name: str,
+    device_name: str,
+    page_name: str,
+) -> str:
+    out = str(template or "")
+    for key, value in (
+        ("{clientName}", client_name),
+        ("{projectName}", project_name),
+        ("{deviceName}", device_name),
+        ("{pageName}", page_name),
+    ):
+        out = out.replace(key, str(value or ""))
+    return out
+
+
+def format_row_status_line(tech_label: str, timestamp: str, *, template: str | None = None) -> str:
+    row_template = str(template or "Passed by {techLabel}: {timestamp}")
+    return (
+        row_template.replace("{techLabel}", str(tech_label or "").strip()).replace("{timestamp}", str(timestamp or "").strip())
+    )
+
+
 _SENTINEL_UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
@@ -732,6 +769,273 @@ def _hard_key_quarter_band_layout(
             }
         usable_u += max(8, max_right - (pad_px + usable_u))
     return None
+
+
+def _hard_key_layout_display_height(
+    touch_w: int,
+    touch_h: int,
+    hk_design_w: int,
+    hk_design_h: int,
+) -> int:
+    """Logical device height for contain scaling when the strip is width-matched to touch."""
+    if touch_h <= 0:
+        return 1
+    if touch_w <= 0 or hk_design_w <= 0 or hk_design_h <= 0:
+        return max(1, int(touch_h))
+    strip_h_at_touch_w = max(1, int(round(touch_w * hk_design_h / hk_design_w)))
+    return max(int(touch_h), strip_h_at_touch_w)
+
+
+def _contain_scale(
+    intrinsic_w: float,
+    intrinsic_h: float,
+    fit_w: float,
+    fit_h: float,
+) -> float:
+    """Uniform scale so intrinsic rect fits inside fit_w x fit_h (aspect preserved)."""
+    iw = float(intrinsic_w)
+    ih = float(intrinsic_h)
+    fw = float(fit_w)
+    fh = float(fit_h)
+    if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
+        return 0.0
+    return max(0.0, min(fw / iw, fh / ih))
+
+
+def _layout_touchscreen_device(
+    usable_w: int,
+    usable_h: int,
+    touch_w: int,
+    touch_h: int,
+    *,
+    margin: int = 20,
+) -> dict[str, float] | None:
+    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    fit_w = max(1.0, uw - 2.0 * float(margin))
+    fit_h = max(1.0, uh - 2.0 * float(margin))
+    scale = _contain_scale(touch_w, touch_h, fit_w, fit_h)
+    if scale <= 0:
+        return None
+    width = float(touch_w) * scale
+    height = float(touch_h) * scale
+    return {
+        "scale": scale,
+        "left": (uw - width) / 2.0,
+        "top": (uh - height) / 2.0,
+        "width": width,
+        "height": height,
+    }
+
+
+def _layout_hard_key_touch_column(
+    usable_w: int,
+    usable_h: int,
+    touch_w: int,
+    touch_h: int,
+    *,
+    margin: int = 20,
+) -> dict[str, float] | None:
+    """HK touch column only: contain in half padded width x padded height; center at 25% of usable."""
+    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    half_w = max(1.0, (uw - 2.0 * float(margin)) / 2.0)
+    fit_h = max(1.0, uh - 2.0 * float(margin))
+    scale = _contain_scale(float(touch_w), float(touch_h), half_w, fit_h)
+    if scale <= 0:
+        return None
+    width = float(touch_w) * scale
+    height = float(touch_h) * scale
+    top = max(0.0, (uh - height) / 2.0)
+    left = 0.25 * uw - width / 2.0
+    return {
+        "scale": scale,
+        "left": left,
+        "top": top,
+        "width": width,
+        "height": height,
+        "centerX": 0.25 * uw,
+        "centerY": top + height / 2.0,
+    }
+
+
+def _layout_hard_key_strip_column(
+    usable_w: int,
+    usable_h: int,
+    touch_h: int,
+    hk_design_w: int,
+    hk_design_h: int,
+    touch_column_width: float,
+    *,
+    margin: int = 20,
+) -> dict[str, float] | None:
+    """HK strip column: contain in half padded width and padded height; width capped by scaled touch column."""
+    if usable_w <= 0 or usable_h <= 0 or touch_h <= 0:
+        return None
+    if hk_design_w <= 0 or hk_design_h <= 0:
+        return None
+    touch_col_w = float(touch_column_width)
+    if touch_col_w <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    th = float(touch_h)
+    dw = float(hk_design_w)
+    dh = float(hk_design_h)
+    half_w = max(1.0, (uw - 2.0 * float(margin)) / 2.0)
+    fit_h = max(1.0, uh - 2.0 * float(margin))
+    strip_w0 = th * dw / dh
+    candidates = [_contain_scale(strip_w0, th, half_w, fit_h)]
+    if strip_w0 > 0:
+        candidates.append(touch_col_w / strip_w0)
+    scale = min(c for c in candidates if c > 0)
+    if scale <= 0:
+        return None
+    height = th * scale
+    width = height * dw / dh
+    top = max(0.0, (uh - height) / 2.0)
+    left = 0.75 * uw - width / 2.0
+    return {
+        "scale": scale,
+        "left": left,
+        "top": top,
+        "width": width,
+        "height": height,
+        "centerX": 0.75 * uw,
+        "centerY": top + height / 2.0,
+    }
+
+
+def _hard_key_boxes_at_scales(
+    usable_w: float,
+    usable_h: float,
+    touch_w: float,
+    touch_h: float,
+    hk_design_w: float,
+    hk_design_h: float,
+    touch_scale: float,
+    strip_scale: float,
+) -> dict[str, dict[str, float] | float]:
+    th_touch = float(touch_h) * float(touch_scale)
+    tw_s = float(touch_w) * float(touch_scale)
+    strip_th = float(touch_h) * float(strip_scale)
+    strip_w = strip_th * float(hk_design_w) / float(hk_design_h)
+    touch_left = 0.25 * usable_w - tw_s / 2.0
+    hk_left = 0.75 * usable_w - strip_w / 2.0
+    touch_top = max(0.0, (float(usable_h) - th_touch) / 2.0)
+    strip_top = max(0.0, (float(usable_h) - strip_th) / 2.0)
+    touch = {
+        "left": touch_left,
+        "top": touch_top,
+        "width": tw_s,
+        "height": th_touch,
+        "centerX": 0.25 * usable_w,
+        "centerY": touch_top + th_touch / 2.0,
+    }
+    strip = {
+        "left": hk_left,
+        "top": strip_top,
+        "width": strip_w,
+        "height": strip_th,
+        "centerX": 0.75 * usable_w,
+        "centerY": strip_top + strip_th / 2.0,
+    }
+    asm_left = min(touch_left, hk_left)
+    asm_top = min(touch_top, strip_top)
+    asm_right = max(touch_left + tw_s, hk_left + strip_w)
+    asm_bottom = max(touch_top + th_touch, strip_top + strip_th)
+    assembly = {
+        "left": asm_left,
+        "top": asm_top,
+        "width": asm_right - asm_left,
+        "height": asm_bottom - asm_top,
+        "centerX": 0.5 * usable_w,
+        "centerY": asm_top + (asm_bottom - asm_top) / 2.0,
+    }
+    return {
+        "touchScale": float(touch_scale),
+        "stripScale": float(strip_scale),
+        "scale": float(strip_scale),
+        "touch": touch,
+        "strip": strip,
+        "assembly": assembly,
+    }
+
+
+def _layout_hard_key_split(
+    usable_w: int,
+    usable_h: int,
+    touch_w: int,
+    touch_h: int,
+    hk_design_w: int,
+    hk_design_h: int,
+    *,
+    margin: int = 20,
+) -> dict[str, dict[str, float] | float] | None:
+    """Anchor at 25% / 75% of usable width; each zone capped at half the padded usable width."""
+    if usable_w <= 0 or usable_h <= 0 or touch_w <= 0 or touch_h <= 0:
+        return None
+    if hk_design_w <= 0 or hk_design_h <= 0:
+        return None
+    uw = float(usable_w)
+    uh = float(usable_h)
+    tw = float(touch_w)
+    th = float(touch_h)
+    dw = float(hk_design_w)
+    dh = float(hk_design_h)
+    touch_col = _layout_hard_key_touch_column(
+        int(uw), int(uh), int(tw), int(th), margin=margin
+    )
+    if touch_col is None:
+        return None
+    touch_scale = float(touch_col["scale"])
+    strip_col = _layout_hard_key_strip_column(
+        int(uw),
+        int(uh),
+        int(th),
+        int(dw),
+        int(dh),
+        float(touch_col["width"]),
+        margin=margin,
+    )
+    if strip_col is None:
+        return None
+    strip_scale = float(strip_col["scale"])
+    out = _hard_key_boxes_at_scales(uw, uh, tw, th, dw, dh, touch_scale, strip_scale)
+    out["_usableW"] = uw
+    out["_usableH"] = uh
+    out["_touchW"] = tw
+    out["_touchH"] = th
+    out["_designW"] = dw
+    out["_designH"] = dh
+    return out
+
+
+def _layout_hard_key_split_at_scale(
+    layout: dict[str, dict[str, float] | float],
+    touch_scale: float,
+    strip_scale: float | None = None,
+) -> dict[str, dict[str, float] | float]:
+    """Recompute box geometry at new touch/strip scales (e.g. after zoom)."""
+    uw = float(layout["_usableW"])
+    uh = float(layout["_usableH"])
+    tw = float(layout["_touchW"])
+    th = float(layout["_touchH"])
+    dw = float(layout["_designW"])
+    dh = float(layout["_designH"])
+    ss = float(strip_scale) if strip_scale is not None else float(touch_scale)
+    out = _hard_key_boxes_at_scales(uw, uh, tw, th, dw, dh, float(touch_scale), ss)
+    out["_usableW"] = uw
+    out["_usableH"] = uh
+    out["_touchW"] = tw
+    out["_touchH"] = th
+    out["_designW"] = dw
+    out["_designH"] = dh
+    return out
 
 
 def _hard_key_model_key(device: dict[str, Any]) -> str | None:
@@ -2533,6 +2837,8 @@ def _render_document(
     hard_key_design_w: int = 0,
     hard_key_design_h: int = 0,
     device_profile_class: str = "",
+    client_name: str = "",
+    project_name: str = "",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -2554,8 +2860,9 @@ def _render_document(
         '<style data-sentinel-hard-key-template="1">\n' + _hk_css_stripped + "\n</style>" if _hk_css_stripped else ""
     )
     device_theme_css = _sentinel_device_theme_css()
+    commissioning_meta = _commissioning_meta_tags(client_name=client_name, project_name=project_name)
     return f"""<!doctype html>
-<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{header}</title>
+<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{commissioning_meta}<title>{header}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
 {device_theme_css}
@@ -3222,12 +3529,17 @@ function _connectTechWs() {{
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function formatRowStatusLine(techLabel, timestamp) {{
+  const template=(APP_UI.testingPopup && APP_UI.testingPopup.rowStatusLineTemplate) || 'Passed by {{techLabel}}: {{timestamp}}';
+  return template.replace('{{techLabel}}', String(techLabel || '').trim()).replace('{{timestamp}}', String(timestamp || '').trim());
+ }}
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
+  const techLabel=String(rowUi.recordedByTechLabel || '').trim();
   const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
   if (outcome === "PASS" && times.PASS) {{
-    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    rowUi.lastTestEl.textContent = formatRowStatusLine(techLabel, times.PASS);
     return;
   }}
   if (outcome === "FAIL" && rowUi.retestReady) {{
@@ -4677,11 +4989,28 @@ function renderLayerPanel() {{
    applyViewportPopupLayerVisibility();
   }}
  }}
+function readCommissioningTitles() {{
+ const client=document.querySelector('meta[name="sentinel-client-name"]')?.getAttribute('content')||'';
+ const project=document.querySelector('meta[name="sentinel-project-name"]')?.getAttribute('content')||'';
+ return {{ clientName: client, projectName: project }};
+}}
 function syncHeader() {{
- const headerEl=document.querySelector('#topControls .header');
+ const headerRoot=document.getElementById('topControls');
+ const headerEl=headerRoot ? headerRoot.querySelector('.header') : null;
  if (!headerEl) return;
+ const titles=readCommissioningTitles();
+ const deviceName=PAGE_STATE[0]?.deviceName || '';
+ const pageName=activePageState().pageName || '';
  const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
- headerEl.textContent=titleTemplate.replace('{{deviceName}}', PAGE_STATE[0]?.deviceName || '').replace('{{pageName}}', activePageState().pageName || '');
+ if (titles.clientName || titles.projectName) {{
+  headerEl.textContent=titleTemplate
+   .replace('{{clientName}}', titles.clientName)
+   .replace('{{projectName}}', titles.projectName)
+   .replace('{{deviceName}}', deviceName)
+   .replace('{{pageName}}', pageName);
+ }} else {{
+  headerEl.textContent=`${{deviceName}} - ${{pageName}}`.trim();
+ }}
  syncSelectedRoomIndicator();
 }}
  function syncViewportControls() {{}}
@@ -5499,10 +5828,22 @@ def _count_label(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
 
-def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any], project_stem: str) -> str:
+def render_project_home_html(
+    project_data: dict[str, Any],
+    app_ui: dict[str, Any],
+    project_stem: str,
+    *,
+    client_name: str = "",
+    project_name: str = "",
+) -> str:
     source = project_data.get("source", {})
     source_file = str(source.get("file") or project_stem)
-    project_title = Path(source_file).stem if source_file else project_stem
+    source_basename = Path(source_file).name if source_file else project_stem
+    client_display = str(client_name or "").strip()
+    project_display = str(project_name or "").strip()
+    if not project_display:
+        project_display = Path(source_file).stem if source_file else project_stem
+    page_title = project_display
     system_events = _event_section_items(project_data, "system")
     driver_events = _event_section_items(project_data, "driver")
     devices = project_data.get("devices", [])
@@ -5554,8 +5895,9 @@ def render_project_home_html(project_data: dict[str, Any], app_ui: dict[str, Any
     app_json = json.dumps(app_ui)
     _ts_embed = _sentinel_test_status_embed_js()
     _group_embed = _sentinel_group_pass_embed_js()
+    commissioning_meta = _commissioning_meta_tags(client_name=client_display, project_name=project_display)
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{project_title}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{commissioning_meta}<title>{escape(page_title)}</title>
 <style>
 html,body{{margin:0;min-height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#eef3f7 0%,#dce7ef 100%);color:#183247;}}
@@ -5563,6 +5905,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 .home-header{{margin-bottom:24px;padding:24px 28px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
 .home-kicker{{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#5a7387;margin-bottom:10px;}}
 .home-title{{margin:0;font-size:32px;line-height:1.05;}}
+.home-title + .home-title{{margin-top:4px;}}
 .home-source{{margin-top:10px;font-size:14px;color:#4d6678;word-break:break-word;}}
 .home-section{{margin-top:28px;padding:22px 24px;border:1px solid #c6d2dd;border-radius:20px;background:#f8fbfe;box-shadow:0 14px 34px rgba(24,50,71,.08);}}
 .section-toggle{{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;box-sizing:border-box;margin:0;padding:0;border:0;background:transparent;color:#183247;cursor:pointer;text-align:left;}}
@@ -5619,8 +5962,9 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <main class='home-shell'>
 <section class='home-header'>
 <div class='home-kicker'>Project Home</div>
-<h1 class='home-title'>{project_title}</h1>
-<div class='home-source'>{source_file}</div>
+<h1 class='home-title home-client-name'>{escape(client_display)}</h1>
+<h1 class='home-title home-project-name'>{escape(project_display)}</h1>
+<div class='home-source'>Current File: {escape(source_basename)}</div>
 </section>
 <section class='home-section'>
 <button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-system'>0%</span></button>
@@ -5907,12 +6251,17 @@ const APP_UI={app_json};
   const ss = pad2(d.getUTCSeconds());
   return `${{yyyy}}-${{mm}}-${{dd}} ${{hh}}:${{mi}}:${{ss}}Z`;
  }}
+ function formatRowStatusLine(techLabel, timestamp) {{
+  const template=(APP_UI.testingPopup && APP_UI.testingPopup.rowStatusLineTemplate) || 'Passed by {{techLabel}}: {{timestamp}}';
+  return template.replace('{{techLabel}}', String(techLabel || '').trim()).replace('{{timestamp}}', String(timestamp || '').trim());
+ }}
  function _renderRowStatusTimes(rowUi) {{
   if (!rowUi || !rowUi.lastTestEl) return;
   const times = rowUi.statusTimes || {{}};
+  const techLabel=String(rowUi.recordedByTechLabel || '').trim();
   const outcome = String(rowUi.currentOutcome || "").trim().toUpperCase();
   if (outcome === "PASS" && times.PASS) {{
-    rowUi.lastTestEl.textContent = `Passed: ${{times.PASS}}`;
+    rowUi.lastTestEl.textContent = formatRowStatusLine(techLabel, times.PASS);
     return;
   }}
   if (outcome === "FAIL" && rowUi.retestReady) {{
@@ -6330,6 +6679,9 @@ def build_device_render_bundle(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
+    *,
+    client_name: str = "",
+    project_name: str = "",
 ) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
@@ -6369,7 +6721,13 @@ def build_device_render_bundle(
     )
     title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
-    header = title.replace("{deviceName}", uf.get("displayName", "")).replace("{pageName}", first_page_name)
+    header = format_page_header_title(
+        title,
+        client_name=client_name,
+        project_name=project_name,
+        device_name=str(uf.get("displayName", "") or ""),
+        page_name=first_page_name,
+    )
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
     product_model_key = _hard_key_model_key(device)
@@ -6494,6 +6852,8 @@ def build_device_render_bundle(
         hard_key_design_w=hard_key_design_w,
         hard_key_design_h=hard_key_design_h,
         device_profile_class=device_profile_class,
+        client_name=client_name,
+        project_name=project_name,
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):
