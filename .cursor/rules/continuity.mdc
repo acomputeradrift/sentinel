@@ -8,6 +8,8 @@ alwaysApply: true
 - **Start:** Read `CONTINUITY.md` before searching the repo for what the product is, how to continue development, SSH, deploy, droplet IP, or “what branch is live.”
 - Cloud/Grokbot agents read `CONTINUITY.md`. `bootstrap.md` is the optional long architecture brief, not the start file.
 - Open another doc only when a **Where to look** row in `CONTINUITY.md` applies to this task. Do not hunt `docs/` blindly.
-- **End (local and cloud/Grokbot):** If HEAD, live URL, SSH, deploy method, or open work changed, edit the **Now** / **Facts** sections in place. Bump `Updated`. Replace stale bullets. Do not append a session log.
+- `CONTINUITY.md` is **onboarding only**. Keep it under 110 lines. Never put todos, bug lists, or session work there.
+- **Todos:** create or append `docs/todos/YYYY-MM-DD.md` (date = file creation). Point **Now → Work list** at that file. Do not copy the items into Continuity.
+- **End (local and cloud/Grokbot):** If HEAD, live URL, SSH, or deploy method changed, edit **Now** / **Facts** in place. Bump `Updated`. Replace stale bullets. Do not append a session log.
 - Never put secrets or private keys in `CONTINUITY.md`.
 - `AGENTS.md` remains policy (approval, tests, blast radius). Deploy steps stay in `docs/directives/dev_environment_and_workflow.md` — this file only tells you that is where they live.
