@@ -429,6 +429,7 @@ def _iter_page_buttons(page: dict[str, Any]) -> list[tuple[dict[str, Any], str, 
         ("screenLabels", "Screen Label"),
         ("screenButtons", "Screen Button"),
         ("hardButtons", "Hard Button"),
+        ("emptyTag", "Empty Tag"),
         ("uiItems", "UI Item"),
     ]
     layers = _page_layers(page)
@@ -608,6 +609,7 @@ def _iter_viewport_buttons(page: dict[str, Any], orientation: str) -> list[dict[
                     ("screenLabels", "Screen Label"),
                     ("screenButtons", "Screen Button"),
                     ("hardButtons", "Hard Button"),
+                    ("emptyTag", "Empty Tag"),
                     ("uiItems", "UI Item"),
                 )
             ):
@@ -1677,7 +1679,7 @@ def _room_list_row_slot_rects(
 
 
 def _max_button_order_for_page_layer(page: dict[str, Any], layer_key: str) -> int:
-    category_defs = ("screenLabels", "screenButtons", "hardButtons", "uiItems")
+    category_defs = ("screenLabels", "screenButtons", "hardButtons", "emptyTag", "uiItems")
     max_order = 0
     layers = _page_layers(page)
     if layers and layer_key.startswith("layer-"):

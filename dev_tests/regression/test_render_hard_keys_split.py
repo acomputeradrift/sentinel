@@ -8,6 +8,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from sentinel.generation import render_core
 from sentinel.generation.render_core import _page_link_markup, build_device_payload, render_single_device_html
 
 
@@ -174,12 +175,10 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"t4x\"", html)
         self.assertIn("hk-touch-stack", html)
-        self.assertRegex(html, r"class='hk-split-left'>")
-        self.assertNotRegex(html, r"class='hk-split-left' style=")
-        self.assertIn("layoutHardKeyTouchColumn", html)
-        self.assertIn("layoutHardKeyStripColumn", html)
-        self.assertIn("layoutHardKeySplit", html)
-        self.assertIn("applyHardKeySplitLayout", html)
+        self.assertRegex(html, r"class='hk-split-left' style=")
+        self.assertIn("applyHkTightClusterLayout", html)
+        self.assertIn("hkTouchSourceSize", html)
+        self.assertIn("scheduleRtiLayout", html)
 
     def test_payload_orientation_sizes_include_hard_key_layout(self) -> None:
         slot_lefts = list(range(128, 148))
@@ -193,9 +192,14 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIsInstance(hkl, dict)
         self.assertEqual(hkl.get("touchSourceWidth"), 480)
         self.assertEqual(hkl.get("touchSourceHeight"), 854)
-        self.assertEqual(hkl.get("stripDesignWidth"), 608)
-        self.assertEqual(hkl.get("stripDesignHeight"), 732)
-        self.assertEqual(int(portrait.get("width") or 0), 480)
+        self.assertEqual(
+            hkl.get("stripWidth"),
+            render_core._hard_key_strip_width_for_height(854, 608, 732),
+        )
+        self.assertEqual(int(portrait.get("width") or 0), int(hkl.get("virtualWidth") or 0))
+        self.assertGreater(int(hkl.get("virtualWidth") or 0), 480)
+        self.assertIn("usableU", hkl)
+        self.assertIn("padPx", hkl)
 
     def test_split_layout_emitted_for_isr2(self) -> None:
         slot_lefts = list(range(128, 162))
@@ -216,12 +220,11 @@ class HardKeysSplitRenderTest(unittest.TestCase):
             app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
             project_stem="render_test",
         )
-        self.assertIn("layoutHardKeyTouchColumn", html)
-        self.assertIn("layoutHardKeyStripColumn", html)
-        self.assertIn("layoutHardKeySplit", html)
-        self.assertIn("applyHardKeySplitLayout", html)
-        self.assertIn("layoutHardKeySplitAtScale", html)
+        self.assertIn("applyHkTightClusterLayout", html)
+        self.assertIn("hkTouchSourceSize", html)
+        self.assertIn("scheduleRtiLayout", html)
         self.assertIn("var(--sentinel-device-frame-ring-width)", html)
+        self.assertRegex(html, r"class='hk-split-left' style=")
 
     def test_hard_key_page_link_anchor_when_resolved_and_navigation_enabled(self) -> None:
         """Hard-key strip should emit page-link-hit like touchscreen buttons when link resolves."""
