@@ -493,6 +493,7 @@ class InMemoryRepository:
             old = self._active_token_by_link.pop(techLinkId, None)
             if old is not None:
                 self._active_tokens.pop(old, None)
+            self._tech_links.pop(techLinkId, None)
 
     def _who_for_link_locked(self, *, techLinkId: str) -> tuple[str | None, str | None]:
         link = self._tech_links.get(techLinkId)
@@ -568,20 +569,20 @@ class InMemoryRepository:
         from sentinel.server.services import pipeline
 
         with self._lock:
+            keep_id = str(activeUploadId)
             items = [u for u in self._uploads.values() if u.projectId == projectId]
-            items.sort(key=lambda u: (u.uploadedAtUtc, u.uploadId), reverse=True)
-            ordered_ids = [u.uploadId for u in items]
-            keep: set[str] = set(ordered_ids[:2])
-            if str(activeUploadId) not in keep and ordered_ids:
-                keep = {ordered_ids[0], str(activeUploadId)}
-            elif str(activeUploadId) not in keep:
-                keep = {str(activeUploadId)}
-            for uid in ordered_ids:
-                if uid in keep:
+            for upload in items:
+                if upload.uploadId == keep_id:
                     continue
-                self._uploads.pop(uid, None)
+                self._uploads.pop(upload.uploadId, None)
+            pointed = self._active_upload_by_project.get(projectId)
+            if pointed and pointed not in self._uploads:
+                self._active_upload_by_project.pop(projectId, None)
+            keep_project_ids = set(self._projects.keys())
         keep_path = Path(activeStoragePath).resolve()
         pipeline.prune_project_upload_dir_to_single_file(projectId=projectId, keep_path=keep_path)
+        pipeline.prune_orphan_upload_dirs(keep_project_ids=keep_project_ids)
+        pipeline.prune_orphan_generated_dirs(keep_project_ids=keep_project_ids)
 
     def append_test_result(
         self,
@@ -1173,9 +1174,14 @@ class PostgresRepository:
     def prune_project_upload_retention(self, *, projectId: str, activeUploadId: str, activeStoragePath: str) -> None:
         from sentinel.server.services import pipeline
 
-        self._q.prune_project_uploads_keep_latest_two(self._database_url, project_id=projectId)
+        self._q.prune_project_uploads_keep_one(
+            self._database_url, project_id=projectId, keep_upload_id=str(activeUploadId)
+        )
         keep_path = Path(activeStoragePath).resolve()
         pipeline.prune_project_upload_dir_to_single_file(projectId=projectId, keep_path=keep_path)
+        keep_project_ids = set(self._q.list_all_project_ids(self._database_url))
+        pipeline.prune_orphan_upload_dirs(keep_project_ids=keep_project_ids)
+        pipeline.prune_orphan_generated_dirs(keep_project_ids=keep_project_ids)
 
     def append_test_result(
         self,

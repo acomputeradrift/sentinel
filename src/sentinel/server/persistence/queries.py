@@ -199,6 +199,15 @@ def list_projects_for_client(database_url: str, *, client_id: str) -> list[dict[
         con.close()
 
 
+def list_all_project_ids(database_url: str) -> list[str]:
+    con = db.connect(database_url)
+    try:
+        rows = db.fetch_all(con, "select project_id as \"projectId\" from projects")
+        return [str(row["projectId"]) for row in rows if row.get("projectId")]
+    finally:
+        con.close()
+
+
 def upsert_upload_record(
     database_url: str,
     *,
@@ -264,39 +273,37 @@ def list_uploads_for_project(database_url: str, *, project_id: str) -> list[dict
         con.close()
 
 
-def prune_project_uploads_keep_latest_two(database_url: str, *, project_id: str) -> list[str]:
+def prune_project_uploads_keep_one(database_url: str, *, project_id: str, keep_upload_id: str) -> list[str]:
     """
-    Keep at most two upload rows per project: the two most recent by time, unless the active
-    upload is older — then keep the newest row plus the active row.
+    Keep exactly one upload row per project: keep_upload_id.
+
+    If the project's active_upload_id is a different row, it is cleared first so the
+    old row can be deleted. Callers set the active pointer on successful generate.
 
     Returns storage_path values for deleted rows (for logging/diagnostics).
     """
+    keep_id = str(keep_upload_id)
     con = db.connect(database_url)
     try:
         cur = con.cursor()
         cur.execute("select active_upload_id from projects where project_id=%s", (project_id,))
         row = cur.fetchone()
         active_id = str(row[0]) if row and row[0] is not None else None
+        if active_id and active_id != keep_id:
+            cur.execute("update projects set active_upload_id=null where project_id=%s", (project_id,))
         cur.execute(
             "select upload_id, storage_path from uploads where project_id=%s "
             "order by uploaded_at_utc desc, upload_id desc",
             (project_id,),
         )
         rows = cur.fetchall()
-        if not rows:
-            con.commit()
-            return []
-        ordered_ids = [str(r[0]) for r in rows]
-        id_to_path = {str(r[0]): str(r[1]) if r[1] is not None else "" for r in rows}
-        keep: set[str] = set(ordered_ids[:2])
-        if active_id and active_id not in keep:
-            keep = {ordered_ids[0], active_id}
         deleted_paths: list[str] = []
-        for uid in ordered_ids:
-            if uid in keep:
+        for upload_row in rows:
+            uid = str(upload_row[0])
+            if uid == keep_id:
                 continue
             cur.execute("delete from uploads where upload_id=%s and project_id=%s", (uid, project_id))
-            deleted_paths.append(id_to_path.get(uid, ""))
+            deleted_paths.append(str(upload_row[1]) if upload_row[1] is not None else "")
         con.commit()
         return deleted_paths
     finally:
@@ -403,7 +410,6 @@ def list_active_tech_links(database_url: str, *, project_id: str) -> list[dict[s
 
 
 def revoke_tech_link_tokens(database_url: str, *, project_id: str, tech_link_id: str) -> None:
-    revoked_at = _utc_now()
     con = db.connect(database_url)
     try:
         exists = db.fetch_one(
@@ -415,9 +421,13 @@ def revoke_tech_link_tokens(database_url: str, *, project_id: str, tech_link_id:
             raise KeyError("TECH_LINK_NOT_FOUND")
         cur = con.cursor()
         cur.execute(
-            "update tech_link_tokens set revoked_at_utc=%s "
-            "where tech_link_id=%s and revoked_at_utc is null",
-            (revoked_at, tech_link_id),
+            "update test_results set recorded_by_tech_link_id=null where recorded_by_tech_link_id=%s",
+            (tech_link_id,),
+        )
+        cur.execute("delete from tech_link_tokens where tech_link_id=%s", (tech_link_id,))
+        cur.execute(
+            "delete from tech_links where tech_link_id=%s and project_id=%s",
+            (tech_link_id, project_id),
         )
         con.commit()
     finally:
@@ -442,7 +452,7 @@ def rotate_tech_link_token(database_url: str, *, tech_link_id: str, project_id: 
                 raise KeyError("TECH_LINK_NOT_FOUND")
         cur = con.cursor()
         issued_path = f"/testing/{tech_token}"
-        cur.execute("update tech_link_tokens set revoked_at_utc=%s where tech_link_id=%s and revoked_at_utc is null", (issued_at, tech_link_id))
+        cur.execute("delete from tech_link_tokens where tech_link_id=%s", (tech_link_id,))
         cur.execute(
             "insert into tech_link_tokens (tech_link_token_id, tech_link_id, token_hash, issued_at_utc, revoked_at_utc, issued_path) "
             "values (%s,%s,%s,%s,null,%s)",

@@ -93,6 +93,80 @@ def prune_project_upload_dir_to_single_file(*, projectId: str, keep_path: Path) 
             )
 
 
+def prune_orphan_upload_dirs(*, keep_project_ids: set[str]) -> list[str]:
+    """
+    Remove empty project upload dirs and dirs whose name is not a live projectId.
+    """
+    root = _upload_root()
+    if not root.exists():
+        return []
+    keep = {str(pid) for pid in keep_project_ids}
+    removed: list[str] = []
+    for child in list(root.iterdir()):
+        if not child.is_dir():
+            continue
+        name = child.name
+        try:
+            empty = not any(child.iterdir())
+        except OSError:
+            continue
+        if name in keep and not empty:
+            continue
+        try:
+            if name in keep and empty:
+                child.rmdir()
+            else:
+                shutil.rmtree(child)
+            removed.append(name)
+        except OSError as exc:
+            _log.warning("[pipeline] upload-orphan-prune: failed to remove %s err=%s", child, exc)
+    return removed
+
+
+def prune_orphan_generated_dirs(*, keep_project_ids: set[str]) -> list[str]:
+    """
+    Remove generated/{projectId} trees that have no matching project.
+
+    Leaves `.staging` alone so an in-flight regenerate is not deleted.
+    """
+    root = _generated_root()
+    if not root.exists():
+        return []
+    keep = {str(pid) for pid in keep_project_ids}
+    removed: list[str] = []
+    for child in list(root.iterdir()):
+        if not child.is_dir():
+            continue
+        if child.name == ".staging":
+            continue
+        if child.name in keep:
+            continue
+        try:
+            shutil.rmtree(child)
+            removed.append(child.name)
+        except OSError as exc:
+            _log.warning("[pipeline] generated-orphan-prune: failed to remove %s err=%s", child, exc)
+    return removed
+
+
+def retire_project_generated(*, projectId: str) -> bool:
+    """
+    Delete the generated HTML tree for one project so an abandoned job leaves no files.
+    """
+    wanted = str(projectId or "").strip()
+    if not wanted or wanted == ".staging":
+        return False
+    out_dir = _project_out_dir(projectId=wanted)
+    if not out_dir.exists() or not out_dir.is_dir():
+        return False
+    try:
+        shutil.rmtree(out_dir)
+        return True
+    except OSError as exc:
+        _log.warning("[pipeline] retire-generated: failed to remove %s err=%s", out_dir, exc)
+        return False
+
+
 def _call_phase_hook(phase_hook, phase: str, percent: float) -> None:
     if not callable(phase_hook):
         return

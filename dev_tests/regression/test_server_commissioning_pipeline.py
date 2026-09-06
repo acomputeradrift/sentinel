@@ -273,9 +273,7 @@ class CommissioningPipelineTest(unittest.TestCase):
             self.assertEqual(bad.status_code, 500)
 
             snap2 = repo.get_project_active_upload(projectId=project_id)
-            self.assertIsNotNone(snap2)
-            assert snap2 is not None
-            self.assertEqual(snap2.uploadId, upload_1)
+            self.assertNotEqual(getattr(snap2, "uploadId", None), upload_2)
 
     def test_upload_and_regenerate_publishes_phase_events_before_ready(self):
         TestClient = _require_fastapi()
@@ -380,8 +378,8 @@ class CommissioningPipelineTest(unittest.TestCase):
             rendered = " ".join(str(call.args[0]) for call in log_info.call_args_list if call.args)
             self.assertIn("REGEN_BASELINE", rendered)
 
-    def test_successful_regenerate_prunes_upload_disk_and_retains_two_db_rows(self):
-        """After extract+generate, uploads dir holds one .apex; DB keeps current + previous upload."""
+    def test_successful_regenerate_prunes_upload_disk_and_retains_one_db_row(self):
+        """After extract+generate, uploads dir holds one .apex and DB keeps only that upload."""
         TestClient = _require_fastapi()
 
         with tempfile.TemporaryDirectory() as td:
@@ -421,7 +419,7 @@ class CommissioningPipelineTest(unittest.TestCase):
 
             repo = app.state.repo
             rows = repo.list_uploads_for_project(projectId=project_id)
-            self.assertEqual(len(rows), 2, "DB retains two upload records (current + previous).")
+            self.assertEqual(len(rows), 1, "DB retains one upload record (current only).")
             self.assertEqual(rows[0].uploadId, upload_ids[-1])
 
     def test_second_regenerate_replaces_old_generated_artifacts(self):

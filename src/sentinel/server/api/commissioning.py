@@ -38,6 +38,34 @@ def _repo(request: Request) -> Repository:
     return request.app.state.repo
 
 
+def _prune_upload_retention(repo: Repository, *, projectId: str, keep_upload_id: str, keep_path) -> None:
+    repo.prune_project_upload_retention(
+        projectId=projectId,
+        activeUploadId=str(keep_upload_id),
+        activeStoragePath=str(keep_path),
+    )
+
+
+def _prune_after_failed_generate(
+    repo: Repository, *, projectId: str, fallback_upload_id: str, fallback_path
+) -> None:
+    previous = repo.get_project_active_upload(projectId=projectId)
+    if previous is not None:
+        _prune_upload_retention(
+            repo,
+            projectId=projectId,
+            keep_upload_id=previous.uploadId,
+            keep_path=previous.storagePath,
+        )
+        return
+    _prune_upload_retention(
+        repo,
+        projectId=projectId,
+        keep_upload_id=fallback_upload_id,
+        keep_path=fallback_path,
+    )
+
+
 def _commissioning_user_id(_request: Request) -> str:
     return COMMISSIONING_STUB_USER_ID
 
@@ -290,6 +318,7 @@ async def upload_apex(request: Request, projectId: str, apex: UploadFile) -> dic
     upload_id = str(uuid4())
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
     repo.record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
+    _prune_upload_retention(repo, projectId=projectId, keep_upload_id=upload_id, keep_path=path)
     return {"uploadId": upload_id, "projectId": projectId, "originalFilename": apex.filename, "storagePath": str(path)}
 
 
@@ -322,6 +351,9 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
             ),
         )
     except Exception as e:
+        _prune_after_failed_generate(
+            repo, projectId=projectId, fallback_upload_id=upload_id, fallback_path=path
+        )
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
     commissioning_snapshots.log_regen_baseline(
         projectId=projectId,
@@ -331,11 +363,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
     )
     repo.set_project_active_upload(projectId=projectId, uploadId=upload_id)
     repo.set_project_status(projectId=projectId, status="READY")
-    repo.prune_project_upload_retention(
-        projectId=projectId,
-        activeUploadId=str(upload_id),
-        activeStoragePath=str(path),
-    )
+    _prune_upload_retention(repo, projectId=projectId, keep_upload_id=upload_id, keep_path=path)
     active_upload = commissioning_snapshots.active_upload_payload(repo=repo, projectId=projectId)
     _publish_generation_phase(
         request,
@@ -399,6 +427,9 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
             ),
         )
     except Exception as e:
+        _prune_after_failed_generate(
+            repo, projectId=projectId, fallback_upload_id=str(upload_id), fallback_path=apex_path
+        )
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
 
     original_filename = apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name
@@ -411,11 +442,7 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     repo.record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
     repo.set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
     repo.set_project_status(projectId=projectId, status="READY")
-    repo.prune_project_upload_retention(
-        projectId=projectId,
-        activeUploadId=str(upload_id),
-        activeStoragePath=str(apex_path),
-    )
+    _prune_upload_retention(repo, projectId=projectId, keep_upload_id=str(upload_id), keep_path=apex_path)
     active_upload = commissioning_snapshots.active_upload_payload(repo=repo, projectId=projectId)
     _publish_generation_phase(
         request,
