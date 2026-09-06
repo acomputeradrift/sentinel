@@ -326,6 +326,30 @@ def find_active_tech_link_for_technician(
         con.close()
 
 
+def find_active_tech_link_for_name(
+    database_url: str, *, project_id: str, name: str
+) -> dict[str, Any] | None:
+    wanted = str(name or "").strip()
+    if not wanted:
+        return None
+    con = db.connect(database_url)
+    try:
+        return db.fetch_one(
+            con,
+            "select tl.tech_link_id as \"techLinkId\", tl.label, tl.created_at_utc as \"createdAtUtc\", "
+            "tl.technician_id as \"technicianId\", t.name as \"technicianName\", "
+            "tlt.issued_path as \"issuedPath\", tlt.issued_at_utc as \"issuedAtUtc\" "
+            "from tech_links tl join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
+            "left join technicians t on t.technician_id=tl.technician_id "
+            "where tl.project_id=%s and tlt.revoked_at_utc is null "
+            "and lower(coalesce(nullif(trim(t.name), ''), nullif(trim(tl.label), ''))) = lower(%s) "
+            "order by tlt.issued_at_utc desc",
+            (project_id, wanted),
+        )
+    finally:
+        con.close()
+
+
 def token_from_issued_path(issued_path: str | None) -> str | None:
     path = str(issued_path or "").strip()
     prefix = "/testing/"

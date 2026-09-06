@@ -395,6 +395,8 @@ class InMemoryRepository:
             existing = self._active_link_for_technician_locked(
                 projectId=projectId, technicianId=tech.technicianId
             )
+            if existing is None:
+                existing = self._active_link_for_name_locked(projectId=projectId, name=tech.name)
             if existing is not None:
                 token = self._active_tokens.get(self._active_token_by_link[existing.techLinkId])
                 if token is not None:
@@ -422,6 +424,29 @@ class InMemoryRepository:
             if link.techLinkId not in self._active_token_by_link:
                 continue
             return link
+        return None
+
+    def _link_display_name_locked(self, link: TechLink) -> str:
+        tid = str(link.technicianId or "").strip()
+        if tid:
+            tech = self._technicians.get(tid)
+            if tech is not None:
+                name = str(tech.name or "").strip()
+                if name:
+                    return name
+        return str(link.label or "").strip()
+
+    def _active_link_for_name_locked(self, *, projectId: str, name: str) -> TechLink | None:
+        wanted = str(name or "").strip().casefold()
+        if not wanted:
+            return None
+        for link in self._tech_links.values():
+            if link.projectId != projectId:
+                continue
+            if link.techLinkId not in self._active_token_by_link:
+                continue
+            if self._link_display_name_locked(link).casefold() == wanted:
+                return link
         return None
 
     def rotate_tech_link_token(self, *, projectId: str, techLinkId: str) -> ActiveToken:
@@ -1000,6 +1025,10 @@ class PostgresRepository:
         existing = self._q.find_active_tech_link_for_technician(
             self._database_url, project_id=projectId, technician_id=tech.technicianId
         )
+        if existing is None:
+            existing = self._q.find_active_tech_link_for_name(
+                self._database_url, project_id=projectId, name=tech.name
+            )
         if existing is not None:
             token_plain = self._q.token_from_issued_path(existing.get("issuedPath"))
             if token_plain:

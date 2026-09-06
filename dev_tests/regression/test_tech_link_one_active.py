@@ -131,6 +131,122 @@ class TechLinkOneActivePerNameTest(unittest.TestCase):
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["techUrl"], again["techUrl"])
 
+    def test_reuse_then_revoke_one_name_leaves_other_name_active(self):
+        client = self._app_client()
+        _c, p = self._job(client, client_name="Revoke Isolate Client", project_name="Revoke Isolate Job")
+        project_id = p["projectId"]
+
+        alex = client.post(
+            f"/api/v1/commissioning/projects/{project_id}/tech-links",
+            json={"name": "Alex"},
+        ).json()
+        morgan = client.post(
+            f"/api/v1/commissioning/projects/{project_id}/tech-links",
+            json={"name": "Morgan"},
+        ).json()
+        again = client.post(
+            f"/api/v1/commissioning/projects/{project_id}/tech-links",
+            json={"name": "alex"},
+        ).json()
+        self.assertEqual(again["techLinkId"], alex["techLinkId"])
+
+        revoked = client.post(
+            f"/api/v1/commissioning/projects/{project_id}/tech-links/{alex['techLinkId']}/revoke"
+        )
+        self.assertEqual(revoked.status_code, 200, revoked.text)
+
+        listed = client.get(f"/api/v1/commissioning/projects/{project_id}/tech-links").json()
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["techLinkId"], morgan["techLinkId"])
+        self.assertEqual(listed[0]["techUrl"], morgan["techUrl"])
+
+        alex_token = str(alex["techUrl"]).split("/testing/")[1]
+        morgan_token = str(morgan["techUrl"]).split("/testing/")[1]
+        self.assertEqual(client.get(f"/testing/{alex_token}").status_code, 410)
+        self.assertEqual(client.get(f"/testing/{morgan_token}").status_code, 200)
+
+
+class TechLinkReuseNullTechnicianIdTest(unittest.TestCase):
+    def _repo_job(self, *, client_name="Null Tech Id Client", project_name="Null Tech Id Job"):
+        from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        repo = InMemoryRepository()
+        client = repo.create_client(userId=COMMISSIONING_STUB_USER_ID, name=client_name)
+        project = repo.create_project(
+            userId=COMMISSIONING_STUB_USER_ID, clientId=client.clientId, name=project_name
+        )
+        return repo, project
+
+    def _plant_null_technician_link(self, repo, *, project_id, label):
+        from sentinel.server.services.repositories import TechLink, new_uuid, utc_now
+
+        link = TechLink(
+            techLinkId=new_uuid(),
+            projectId=project_id,
+            label=label,
+            createdAtUtc=utc_now(),
+            technicianId=None,
+        )
+        with repo._lock:
+            repo._tech_links[link.techLinkId] = link
+            token = repo._issue_token_locked(projectId=project_id, techLinkId=link.techLinkId)
+        return link, token
+
+    def test_create_same_name_twice_reuses_active_link_and_token(self):
+        repo, project = self._repo_job(client_name="Repo Reuse Client", project_name="Repo Reuse Job")
+        first, first_token = repo.create_tech_link(projectId=project.projectId, label="Alex")
+        second, second_token = repo.create_tech_link(projectId=project.projectId, label="alex")
+        self.assertEqual(second.techLinkId, first.techLinkId)
+        self.assertEqual(second_token.techToken, first_token.techToken)
+        active = repo.list_active_tech_links(projectId=project.projectId)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0].techLinkId, first.techLinkId)
+
+    def test_reuse_then_revoke_one_name_leaves_other_name_active(self):
+        repo, project = self._repo_job(
+            client_name="Repo Revoke Isolate Client", project_name="Repo Revoke Isolate Job"
+        )
+        alex, alex_token = repo.create_tech_link(projectId=project.projectId, label="Alex")
+        morgan, morgan_token = repo.create_tech_link(projectId=project.projectId, label="Morgan")
+        again, again_token = repo.create_tech_link(projectId=project.projectId, label="alex")
+        self.assertEqual(again.techLinkId, alex.techLinkId)
+        self.assertEqual(again_token.techToken, alex_token.techToken)
+        repo.revoke_tech_link(projectId=project.projectId, techLinkId=alex.techLinkId)
+        active = repo.list_active_tech_links(projectId=project.projectId)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0].techLinkId, morgan.techLinkId)
+        self.assertEqual(repo.resolve_active_token(techToken=morgan_token.techToken).techLinkId, morgan.techLinkId)
+        with self.assertRaises(KeyError):
+            repo.resolve_active_token(techToken=alex_token.techToken)
+
+    def test_create_reuses_active_null_technician_id_link_by_name(self):
+        repo, project = self._repo_job()
+        planted, token = self._plant_null_technician_link(
+            repo, project_id=project.projectId, label="Sung"
+        )
+        reused, reused_token = repo.create_tech_link(projectId=project.projectId, label="sung")
+        self.assertEqual(reused.techLinkId, planted.techLinkId)
+        self.assertEqual(reused_token.techToken, token.techToken)
+        active = repo.list_active_tech_links(projectId=project.projectId)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0].techLinkId, planted.techLinkId)
+
+    def test_revoke_one_planted_same_name_duplicate_leaves_the_other(self):
+        repo, project = self._repo_job(client_name="Dup Sung Client", project_name="Dup Sung Job")
+        first, _first_token = self._plant_null_technician_link(
+            repo, project_id=project.projectId, label="Sung"
+        )
+        second, second_token = self._plant_null_technician_link(
+            repo, project_id=project.projectId, label="Sung"
+        )
+        repo.revoke_tech_link(projectId=project.projectId, techLinkId=first.techLinkId)
+        active = repo.list_active_tech_links(projectId=project.projectId)
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0].techLinkId, second.techLinkId)
+        resolved = repo.resolve_active_token(techToken=second_token.techToken)
+        self.assertEqual(resolved.techLinkId, second.techLinkId)
+
 
 if __name__ == "__main__":
     unittest.main()
