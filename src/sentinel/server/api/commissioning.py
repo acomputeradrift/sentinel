@@ -102,6 +102,27 @@ def _issued_tech_url(link, *, techUrl: str | None = None) -> str:
     return path
 
 
+def _all_tech_link_payload(row: dict) -> dict:
+    name = str(row.get("name") or row.get("label") or "").strip()
+    payload = {
+        "techLinkId": row.get("techLinkId"),
+        "projectId": row.get("projectId"),
+        "projectName": row.get("projectName") or "",
+        "clientId": row.get("clientId") or "",
+        "clientName": row.get("clientName") or "",
+        "ownerUserId": row.get("ownerUserId") or "",
+        "ownerName": row.get("ownerName") or row.get("ownerUserId") or "",
+        "technicianId": row.get("technicianId") or "",
+        "name": name,
+        "label": name or row.get("label"),
+        "createdAtUtc": row.get("createdAtUtc") or "",
+        "techUrl": row.get("techUrl") or "",
+    }
+    if row.get("issuedAtUtc"):
+        payload["issuedAtUtc"] = row.get("issuedAtUtc")
+    return payload
+
+
 def _tech_link_payload(link, *, techUrl: str | None = None) -> dict:
     name = str(link.label or "").strip()
     issued = getattr(link, "issuedAtUtc", None)
@@ -242,6 +263,21 @@ def create_project(request: Request, clientId: str, payload: dict) -> dict:
         "createdAtUtc": p.createdAtUtc,
         "activeTechLinkIds": [],
     }
+
+
+@router.get("/tech-links")
+def list_all_active_tech_links(request: Request) -> list[dict]:
+    rows = _repo(request).list_all_active_tech_links()
+    return [_all_tech_link_payload(row) for row in rows]
+
+
+@router.post("/tech-links/{techLinkId}/revoke")
+def revoke_tech_link_anywhere(request: Request, techLinkId: str) -> dict:
+    try:
+        project_id = _repo(request).revoke_tech_link_anywhere(techLinkId=techLinkId)
+    except KeyError:
+        raise http_error(404, code="TECH_LINK_NOT_FOUND", message="Tech link not found.")
+    return {"techLinkId": techLinkId, "projectId": project_id, "revoked": True}
 
 
 @router.post("/projects/{projectId}/tech-links")

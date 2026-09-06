@@ -12,7 +12,7 @@
         <div class="topbar-inner">
           <div class="topbar-brand">
             <h1>Sentinel Management</h1>
-            <p class="sub">Shop roster, technician links, start-new-pass, and reports.</p>
+            <p class="sub">All technician links across companies. Revoke any of them.</p>
           </div>
           <div class="user-chip" aria-label="Signed in as Jamie" title="Jamie">
             <span class="user-chip-avatar" aria-hidden="true">J</span>
@@ -21,6 +21,28 @@
       </header>
 
       <main class="content">
+        <section class="card" id="allTechLinksCard">
+          <h2>All tech links</h2>
+          <p class="sub">Every active technician URL. Revoke any company, any job.</p>
+          <div id="allTechLinkStatus" class="status" role="status"></div>
+          <div class="table-wrap">
+            <table class="mini-table" aria-label="All active tech links">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Project</th>
+                  <th>Technician</th>
+                  <th>Link</th>
+                  <th>Issued (UTC)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="allTechLinksBody"></tbody>
+            </table>
+            <div class="empty" id="allTechLinksEmpty">No active tech links.</div>
+          </div>
+        </section>
+
         <section class="card" id="contextCard">
           <h2>Context</h2>
           <p class="sub">Select a client and project. Management is the token editor for this shop.</p>

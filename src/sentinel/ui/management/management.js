@@ -115,6 +115,7 @@ const state = {
   projects: [],
   technicians: [],
   techLinks: [],
+  allTechLinks: [],
   reportDevices: [],
 };
 
@@ -169,6 +170,61 @@ function renderRoster() {
     opt.value = tech.name;
     names.appendChild(opt);
   }
+}
+
+function renderAllTechLinks() {
+  const body = $("allTechLinksBody");
+  const empty = $("allTechLinksEmpty");
+  body.innerHTML = "";
+  const items = state.allTechLinks;
+  empty.style.display = items.length ? "none" : "";
+  for (const link of items) {
+    const tr = document.createElement("tr");
+    const tdClient = document.createElement("td");
+    tdClient.textContent = link.clientName || "";
+    const tdProject = document.createElement("td");
+    tdProject.textContent = link.projectName || "";
+    const tdName = document.createElement("td");
+    tdName.textContent = link.name || link.label || "(unnamed)";
+    const tdUrl = document.createElement("td");
+    tdUrl.className = "mono";
+    tdUrl.setAttribute("data-testid", "all-tech-url");
+    tdUrl.textContent = String(link.techUrl || "");
+    const tdIssued = document.createElement("td");
+    tdIssued.textContent = formatUtc(link.issuedAtUtc || link.createdAtUtc || "");
+    const tdActions = document.createElement("td");
+    tdActions.className = "tech-link-actions";
+    const revoke = document.createElement("button");
+    revoke.type = "button";
+    revoke.className = "danger";
+    revoke.textContent = "Revoke";
+    revoke.addEventListener("click", () => {
+      void revokeAnyLink(link);
+    });
+    tdActions.appendChild(revoke);
+    tr.appendChild(tdClient);
+    tr.appendChild(tdProject);
+    tr.appendChild(tdName);
+    tr.appendChild(tdUrl);
+    tr.appendChild(tdIssued);
+    tr.appendChild(tdActions);
+    body.appendChild(tr);
+  }
+}
+
+async function loadAllTechLinks() {
+  const rows = await jsonFetch(api("/commissioning/tech-links"));
+  state.allTechLinks = Array.isArray(rows) ? rows : [];
+  renderAllTechLinks();
+}
+
+async function revokeAnyLink(link) {
+  if (!link?.techLinkId) return;
+  await jsonFetch(api(`/commissioning/tech-links/${encodeURIComponent(link.techLinkId)}/revoke`), {
+    method: "POST",
+  });
+  await loadAllTechLinks();
+  if (currentProjectId()) await loadTechLinks();
 }
 
 function renderTechLinks() {
@@ -385,6 +441,7 @@ async function issueOrReuseLink() {
   });
   await loadTechLinks();
   await loadTechnicians();
+  await loadAllTechLinks();
   setStatus($("techLinkStatus"), "");
 }
 
@@ -521,6 +578,7 @@ async function revokeLink(link) {
     { method: "POST" }
   );
   await loadTechLinks();
+  await loadAllTechLinks();
 }
 
 async function onClientChange() {
@@ -577,6 +635,7 @@ async function run() {
     updateContextVisibility();
     applyReportPreset();
     renderTechLinks();
+    await loadAllTechLinks();
   } catch (e) {
     setStatus($("contextStatus"), String(e?.message || e));
   }

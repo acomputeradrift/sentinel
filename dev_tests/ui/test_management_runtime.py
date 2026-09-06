@@ -190,6 +190,72 @@ class ManagementRuntimeTest(unittest.TestCase):
         expect(page.locator("[data-testid='tech-url']")).to_have_count(1)
         page.close()
 
+    def test_management_all_links_lists_and_revokes_across_companies(self):
+        from playwright.sync_api import expect
+
+        page = self._browser.new_page()
+        state: dict[str, object] = {
+            "links": [
+                {
+                    "techLinkId": "tl-acme",
+                    "projectId": "proj-acme",
+                    "clientName": "Acme",
+                    "projectName": "Acme Job",
+                    "ownerUserId": "user-jamie",
+                    "name": "Alex",
+                    "techUrl": "/testing/token-acme",
+                    "issuedAtUtc": "2026-03-21T00:01:00Z",
+                },
+                {
+                    "techLinkId": "tl-other",
+                    "projectId": "proj-other",
+                    "clientName": "Other Co",
+                    "projectName": "Other Job",
+                    "ownerUserId": "user-other",
+                    "name": "Sam",
+                    "techUrl": "/testing/token-other",
+                    "issuedAtUtc": "2026-03-21T00:02:00Z",
+                },
+            ],
+            "revoked": [],
+        }
+
+        def fulfill_json(route, body, status=200):
+            route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
+
+        def handle_all_links(route, request):
+            path = request.url.split("?")[0]
+            if request.method == "GET" and path.endswith("/tech-links"):
+                fulfill_json(route, state["links"])
+                return
+            if request.method == "POST" and path.endswith("/revoke"):
+                tech_link_id = path.rstrip("/").split("/tech-links/")[-1].split("/")[0]
+                state["revoked"].append(tech_link_id)
+                state["links"] = [row for row in state["links"] if row["techLinkId"] != tech_link_id]
+                fulfill_json(route, {"techLinkId": tech_link_id, "revoked": True})
+                return
+            route.fulfill(status=405, body="method not allowed")
+
+        page.route("**/api/v1/commissioning/clients", lambda route, request: fulfill_json(route, []))
+        page.route(
+            "**/api/v1/commissioning/technicians",
+            lambda route, request: fulfill_json(route, {"technicians": []}),
+        )
+        page.route("**/api/v1/commissioning/tech-links**", handle_all_links)
+
+        url = f"{self._static.base_url}/src/sentinel/ui/management/index.html"
+        page.goto(url)
+        expect(page.get_by_role("heading", name="All tech links")).to_be_visible()
+        expect(page.locator("#allTechLinksBody")).to_contain_text("Acme")
+        expect(page.locator("#allTechLinksBody")).to_contain_text("Other Co")
+        expect(page.locator("#allTechLinksBody")).to_contain_text("Alex")
+        expect(page.locator("#allTechLinksBody")).to_contain_text("Sam")
+        page.locator("#allTechLinksBody tr").filter(has_text="Other Co").get_by_role("button", name="Revoke").click()
+        expect(page.locator("#allTechLinksBody")).not_to_contain_text("Other Co")
+        expect(page.locator("#allTechLinksBody")).to_contain_text("Acme")
+        self.assertEqual(state["revoked"], ["tl-other"])
+        page.close()
+
     def test_management_start_new_pass_confirms_project_name(self):
         from playwright.sync_api import expect
 

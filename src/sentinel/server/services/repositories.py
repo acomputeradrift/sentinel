@@ -170,7 +170,11 @@ class Repository(Protocol):
 
     def list_active_tech_links(self, *, projectId: str) -> list[TechLink]: ...
 
+    def list_all_active_tech_links(self) -> list[dict[str, Any]]: ...
+
     def revoke_tech_link(self, *, projectId: str, techLinkId: str) -> None: ...
+
+    def revoke_tech_link_anywhere(self, *, techLinkId: str) -> str: ...
 
     def resolve_active_token(self, *, techToken: str) -> ActiveToken: ...
 
@@ -485,6 +489,37 @@ class InMemoryRepository:
             out.sort(key=lambda l: l.createdAtUtc, reverse=True)
             return out
 
+    def list_all_active_tech_links(self) -> list[dict[str, Any]]:
+        with self._lock:
+            out: list[dict[str, Any]] = []
+            for link in self._tech_links.values():
+                token = self._active_token_by_link.get(link.techLinkId)
+                if not token:
+                    continue
+                project = self._projects.get(link.projectId)
+                client = self._clients.get(project.clientId) if project is not None else None
+                active = self._active_tokens.get(token)
+                issued_at = active.issuedAtUtc if active is not None else None
+                out.append(
+                    {
+                        "techLinkId": link.techLinkId,
+                        "projectId": link.projectId,
+                        "projectName": project.name if project is not None else "",
+                        "clientId": client.clientId if client is not None else "",
+                        "clientName": client.name if client is not None else "",
+                        "ownerUserId": client.userId if client is not None else "",
+                        "ownerName": client.userId if client is not None else "",
+                        "name": self._link_display_name_locked(link),
+                        "label": self._link_display_name_locked(link) or link.label,
+                        "technicianId": link.technicianId,
+                        "createdAtUtc": link.createdAtUtc,
+                        "issuedAtUtc": issued_at,
+                        "techUrl": f"/testing/{token}",
+                    }
+                )
+            out.sort(key=lambda row: str(row.get("createdAtUtc") or ""), reverse=True)
+            return out
+
     def revoke_tech_link(self, *, projectId: str, techLinkId: str) -> None:
         with self._lock:
             link = self._tech_links.get(techLinkId)
@@ -494,6 +529,15 @@ class InMemoryRepository:
             if old is not None:
                 self._active_tokens.pop(old, None)
             self._tech_links.pop(techLinkId, None)
+
+    def revoke_tech_link_anywhere(self, *, techLinkId: str) -> str:
+        with self._lock:
+            link = self._tech_links.get(techLinkId)
+            if link is None:
+                raise KeyError("TECH_LINK_NOT_FOUND")
+            project_id = link.projectId
+        self.revoke_tech_link(projectId=project_id, techLinkId=techLinkId)
+        return project_id
 
     def _who_for_link_locked(self, *, techLinkId: str) -> tuple[str | None, str | None]:
         link = self._tech_links.get(techLinkId)
@@ -1105,6 +1149,37 @@ class PostgresRepository:
 
     def revoke_tech_link(self, *, projectId: str, techLinkId: str) -> None:
         self._q.revoke_tech_link_tokens(self._database_url, project_id=projectId, tech_link_id=techLinkId)
+
+    def list_all_active_tech_links(self) -> list[dict[str, Any]]:
+        rows = self._q.list_all_active_tech_links(self._database_url)
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            created = r.get("createdAtUtc")
+            created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
+            issued = r.get("issuedAtUtc")
+            issued_str = issued.isoformat() if hasattr(issued, "isoformat") else (str(issued) if issued else None)
+            name = str(r.get("technicianName") or r.get("label") or "").strip()
+            out.append(
+                {
+                    "techLinkId": str(r["techLinkId"]),
+                    "projectId": str(r["projectId"]),
+                    "projectName": str(r.get("projectName") or ""),
+                    "clientId": str(r.get("clientId") or ""),
+                    "clientName": str(r.get("clientName") or ""),
+                    "ownerUserId": str(r.get("ownerUserId") or ""),
+                    "ownerName": str(r.get("ownerName") or r.get("ownerUserId") or ""),
+                    "name": name,
+                    "label": name or r.get("label"),
+                    "technicianId": str(r["technicianId"]) if r.get("technicianId") else None,
+                    "createdAtUtc": created_str,
+                    "issuedAtUtc": issued_str,
+                    "techUrl": str(r.get("issuedPath") or "").strip(),
+                }
+            )
+        return out
+
+    def revoke_tech_link_anywhere(self, *, techLinkId: str) -> str:
+        return self._q.revoke_tech_link_by_id(self._database_url, tech_link_id=techLinkId)
 
     def resolve_active_token(self, *, techToken: str) -> ActiveToken:
         resolved = self._q.resolve_active_tech_token(self._database_url, tech_token=techToken)

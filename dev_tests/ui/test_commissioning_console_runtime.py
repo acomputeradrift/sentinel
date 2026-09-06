@@ -200,6 +200,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             "rollups_fetch_count": 0,
             "clear_tests_count": 0,  # kept for older mock traces; Clear Tests tab is gone
             "company_technicians": [],
+            "pass_posts": [],
         }
 
         def is_blue_rgb(value: str) -> bool:
@@ -494,6 +495,29 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
             state["fail_tags_by_target_key"][target_key] = tag
             fulfill_json(route, {"projectId": "proj-1", "targetKey": target_key, "tag": tag})
 
+        def handle_test_passes(route, request):
+            self.assertEqual(request.method, "POST")
+            data = json.loads(request.post_data or "{}")
+            state["pass_posts"].append(data)
+            confirm = str(data.get("confirmName") or "").strip()
+            if confirm != "Project 1":
+                fulfill_json(
+                    route,
+                    {"error": {"code": "CONFIRM_NAME_MISMATCH", "message": "Project name does not match."}},
+                    status=400,
+                )
+                return
+            fulfill_json(
+                route,
+                {
+                    "type": "commissioning_snapshot",
+                    "projectId": "proj-1",
+                    "testPassId": "pass-1",
+                    "startedAtUtc": "2026-03-21T01:00:00Z",
+                    "reason": data.get("reason"),
+                },
+            )
+
         def handle_clear_tests(route, request):
             self.assertEqual(request.method, "POST")
             state["clear_tests_count"] = int(state.get("clear_tests_count") or 0) + 1
@@ -533,6 +557,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         page.route("**/api/v1/commissioning/projects/*/fails", handle_fails)
         page.route("**/api/v1/commissioning/projects/*/rollups", handle_rollups)
         page.route("**/api/v1/commissioning/projects/*/fail-tags", handle_fail_tags)
+        page.route("**/api/v1/commissioning/projects/*/test-passes", handle_test_passes)
         page.route("**/api/v1/commissioning/projects/*/clear-tests", handle_clear_tests)
 
         url = f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html"
@@ -865,6 +890,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         _commissioning_click_file_tab(page)
         apex_path = ROOT / "Assets" / "TEST - System Manager v11.3.apex"
+        if not apex_path.exists():
+            apex_path = Path(tempfile.mkdtemp()) / "TEST - System Manager v11.3.apex"
+            apex_path.write_bytes(b"stub")
         self.assertTrue(apex_path.exists(), f"Missing apex fixture: {apex_path}")
         page.set_input_files("input[type=file][name=apex]", str(apex_path))
         page.get_by_role("button", name="Load File").click()
@@ -872,6 +900,9 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#uploadProgressLabel")).to_have_count(1)
         self.assertIn(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), (0, 100))
         expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name)
+        deadline = time.time() + 5
+        while time.time() < deadline and state["last_upload_content_type"] is None:
+            page.wait_for_timeout(50)
         self.assertIsNotNone(state["last_upload_content_type"])
         self.assertIn("multipart/form-data", str(state["last_upload_content_type"]))
         self.assertEqual(state["last_upload_body_contains_expected"], True)
@@ -879,8 +910,11 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("button", name="Regenerate")).to_have_count(0)
 
         page.get_by_role("button", name="Tech Links").click()
-        expect(page.get_by_role("button", name="Create tech link")).to_have_count(0)
-        expect(page.get_by_role("button", name="Revoke")).to_have_count(0)
+        expect(page.get_by_role("button", name="Create tech link")).to_be_visible()
+        expect(page.get_by_role("button", name="Create tech link")).to_be_enabled()
+        expect(page.locator("#techLabel")).to_be_visible()
+        expect(page.locator("#companyTechniciansLine")).to_be_visible()
+        expect(page.get_by_role("button", name="Revoke")).to_have_count(1)
         expect(page.get_by_test_id("tech-url").first).to_contain_text("/testing/token-abc?runtime=shell")
         expect(page.get_by_role("button", name="Copy")).to_be_visible()
         with page.expect_popup() as open_popup_info:
@@ -890,12 +924,35 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         open_popup.close()
         expect(page.get_by_role("button", name="Legacy")).to_have_count(0)
         row_actions = page.locator("#techLinksBody tr").first.locator("td").nth(3).locator("button")
-        expect(row_actions).to_have_count(2)
+        expect(row_actions).to_have_count(3)
         expect(row_actions.nth(0)).to_have_text("Copy")
         expect(row_actions.nth(1)).to_have_text("Open")
+        expect(row_actions.nth(2)).to_have_text("Revoke")
         expect(page.locator("#techLinksBody")).to_contain_text("Onsite Tech")
         expect(page.locator("#panel-tech-links")).to_contain_text(re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}Z"))
-        expect(page.locator("#panel-tech-links")).to_contain_text("Management")
+        expect(page.locator("#panel-tech-links")).not_to_contain_text("Management")
+        expect(page.locator("#panel-reports")).not_to_contain_text("Management")
+
+        page.locator("#techLinksBody tr").filter(has_text="Onsite Tech").get_by_role("button", name="Revoke").click()
+        expect(page.locator("#techLinksBody")).not_to_contain_text("Onsite Tech")
+        page.locator("#techLabel").fill("Onsite Tech")
+        page.get_by_role("button", name="Create tech link").click()
+        expect(page.locator("#techLinksBody")).to_contain_text("Onsite Tech")
+        state["company_technicians"] = []
+
+        page.get_by_role("button", name="Settings").click()
+        expect(page.locator("#panel-settings")).to_be_visible()
+        expect(page.get_by_role("heading", name="Start new test pass")).to_be_visible()
+        expect(page.locator("#panel-settings")).not_to_contain_text("Management")
+        page.locator("#testPassConfirmName").fill("Wrong Name")
+        page.locator("#testPassReason").fill("retest after firmware")
+        page.get_by_role("button", name="Start new test pass").click()
+        expect(page.locator("#testPassStatus")).to_contain_text("Project name does not match.")
+        self.assertEqual(state["pass_posts"], [])
+        page.locator("#testPassConfirmName").fill("Project 1")
+        page.get_by_role("button", name="Start new test pass").click()
+        expect(page.locator("#testPassStatus")).to_contain_text("New test pass started")
+        self.assertEqual(state["pass_posts"], [{"confirmName": "Project 1", "reason": "retest after firmware"}])
 
         # Tab switching
         page.get_by_role("button", name="Commissioning").click()
@@ -1147,7 +1204,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 
         page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show").click()
         expect(page.get_by_role("dialog", name="Tech Notes")).to_be_visible()
-        expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Remote Tech says: "Bitmap mismatch."')
+        expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Onsite Tech says: "Bitmap mismatch."')
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog", name="Tech Notes")).to_have_count(0)
 

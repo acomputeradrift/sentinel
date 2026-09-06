@@ -175,6 +175,8 @@ function resetProjectDetailsUi() {
   setStatus($("uploadProgressLabel"), "");
   const techStatus = document.getElementById("techLinkStatus");
   if (techStatus) setStatus(techStatus, "");
+  const techLabel = document.getElementById("techLabel");
+  if (techLabel) techLabel.value = "";
   const fin = $("apexFile");
   if (fin) fin.value = "";
   setProgressHidden($("uploadProgressRow"), true);
@@ -290,7 +292,11 @@ function setProgress(el, pct) {
 }
 
 function updateTechLinkEnabled() {
-  // Console Tech Links is Copy/Open only. Management issues tokens.
+  const btn = $("createTechLinkBtn");
+  if (!btn) return;
+  const projectId = currentProjectId();
+  const ready = projectId ? !!state.generationReadyByProject[projectId] : false;
+  btn.disabled = !projectId || !ready;
 }
 
 function techLinksForProject(projectId) {
@@ -437,6 +443,14 @@ function renderTechLinks() {
       window.open(url, "_blank", "noopener");
     });
     tdActions.appendChild(open);
+    const revoke = document.createElement("button");
+    revoke.type = "button";
+    revoke.className = "danger tech-link-action-btn";
+    revoke.textContent = "Revoke";
+    revoke.addEventListener("click", () => {
+      void revokeTechLink(link);
+    });
+    tdActions.appendChild(revoke);
 
     tr.appendChild(tdLabel);
     tr.appendChild(tdLink);
@@ -875,6 +889,74 @@ async function loadCompanyTechnicians() {
   }
 }
 
+async function createTechLink() {
+  const projectId = currentProjectId();
+  const label = $("techLabel").value.trim();
+  if (!projectId) return;
+  const statusEl = document.getElementById("techLinkStatus");
+  if (!label) {
+    if (statusEl) statusEl.textContent = "Technician name is required.";
+    return;
+  }
+  await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: label, label }),
+  });
+  if (statusEl) statusEl.textContent = "";
+  await loadTechLinks();
+  await loadCompanyTechnicians();
+}
+
+function currentProjectName() {
+  const sel = document.getElementById("projectSelect");
+  if (!sel) return "";
+  const opt = sel.options[sel.selectedIndex];
+  return opt ? String(opt.textContent || "").trim() : "";
+}
+
+async function startNewTestPass() {
+  const projectId = currentProjectId();
+  if (!projectId) return;
+  const confirmName = $("testPassConfirmName").value.trim();
+  const reason = $("testPassReason").value.trim();
+  const statusEl = $("testPassStatus");
+  if (!confirmName) {
+    setStatus(statusEl, "Type the project name to confirm.");
+    return;
+  }
+  if (confirmName !== currentProjectName()) {
+    setStatus(statusEl, "Project name does not match.");
+    return;
+  }
+  const body = { confirmName };
+  if (reason) body.reason = reason;
+  await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}/test-passes`), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  $("testPassConfirmName").value = "";
+  $("testPassReason").value = "";
+  setStatus(statusEl, "New test pass started.");
+}
+
+async function revokeTechLink(link) {
+  const projectId = currentProjectId();
+  if (!projectId || !link?.techLinkId) return;
+  const statusEl = document.getElementById("techLinkStatus");
+  if (statusEl) statusEl.textContent = "";
+  try {
+    await jsonFetch(
+      api(`/commissioning/projects/${encodeURIComponent(projectId)}/tech-links/${encodeURIComponent(link.techLinkId)}/revoke`),
+      { method: "POST" }
+    );
+    await loadTechLinks();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = String(e?.message || e);
+  }
+}
+
 async function run() {
   window.__sentinelCommissioningHydrating = true;
   const modalClientStatusEl = document.getElementById("modalNewClientStatus");
@@ -1008,6 +1090,8 @@ async function run() {
     });
   }
   $("uploadBtn").addEventListener("click", () => safe(uploadAndRegenerate, $("uploadStatus")));
+  $("createTechLinkBtn").addEventListener("click", () => safe(createTechLink, $("techLinkStatus")));
+  $("startTestPassBtn").addEventListener("click", () => safe(startNewTestPass, $("testPassStatus")));
 
   await safe(refreshClients, null);
   state.lastValidClientId = currentClientId();

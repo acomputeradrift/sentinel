@@ -409,6 +409,47 @@ def list_active_tech_links(database_url: str, *, project_id: str) -> list[dict[s
         con.close()
 
 
+def list_all_active_tech_links(database_url: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        return db.fetch_all(
+            con,
+            "select tl.tech_link_id as \"techLinkId\", tl.project_id as \"projectId\", "
+            "p.name as \"projectName\", c.client_id as \"clientId\", c.name as \"clientName\", "
+            "c.user_id as \"ownerUserId\", u.display_name as \"ownerName\", "
+            "tl.label, tl.created_at_utc as \"createdAtUtc\", "
+            "tl.technician_id as \"technicianId\", t.name as \"technicianName\", "
+            "tlt.issued_path as \"issuedPath\", tlt.issued_at_utc as \"issuedAtUtc\" "
+            "from tech_links tl "
+            "join tech_link_tokens tlt on tlt.tech_link_id=tl.tech_link_id "
+            "join projects p on p.project_id=tl.project_id "
+            "join clients c on c.client_id=p.client_id "
+            "left join users u on u.user_id=c.user_id "
+            "left join technicians t on t.technician_id=tl.technician_id "
+            "where tlt.revoked_at_utc is null "
+            "order by tl.created_at_utc desc",
+        )
+    finally:
+        con.close()
+
+
+def revoke_tech_link_by_id(database_url: str, *, tech_link_id: str) -> str:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select project_id as \"projectId\" from tech_links where tech_link_id=%s",
+            (tech_link_id,),
+        )
+    finally:
+        con.close()
+    if row is None:
+        raise KeyError("TECH_LINK_NOT_FOUND")
+    project_id = str(row["projectId"])
+    revoke_tech_link_tokens(database_url, project_id=project_id, tech_link_id=tech_link_id)
+    return project_id
+
+
 def revoke_tech_link_tokens(database_url: str, *, project_id: str, tech_link_id: str) -> None:
     con = db.connect(database_url)
     try:
