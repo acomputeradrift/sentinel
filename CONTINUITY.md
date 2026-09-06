@@ -95,12 +95,12 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 ## Now
 
 - **Updated:** 2026-09-05
-- **Branch:** `cursor/management-tokens-reports-629d`
-- **Repo HEAD:** slices 2–11 on this PR (not merged, not deployed)
-- **Droplet HEAD:** unchanged — do not deploy this branch
-- **Live:** `http://24.199.106.213/commissioning/` · health `http://24.199.106.213/health`
-- **Open:** https://github.com/acomputeradrift/sentinel/pull/7 — remaining work is item 12 (deploy) only. Do not deploy until Jamie says deploy.
-- **Next:** Jamie review + deploy when he says deploy.
+- **Branch:** `main`
+- **Repo HEAD:** `f6f4e60` (Mac = GitHub `main`)
+- **Droplet HEAD:** `f6f4e60` at `/opt/sentinel/app` — service `active`
+- **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
+- **Open:** none from the management plan. Item 12 deployed. CI `regression` on GitHub is still red for pre-existing `render_core` gaps (`format_page_header_title`, hard-key layout helpers).
+- **Next:** use `/management/` for tokens, start-new-pass, and reports. Do not rediscover SSH/droplets.
 
 ---
 
