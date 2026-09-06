@@ -165,6 +165,36 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertIn('".actions"', block)
         self.assertIn('".pop"', block)
 
+    def test_live_shell_html_allows_viewport_indicator_rules(self) -> None:
+        from pathlib import Path
+
+        html = (
+            Path(__file__).resolve().parents[2]
+            / "src/sentinel/ui/commissioning/project_device_static_layout.html"
+        ).read_text(encoding="utf-8")
+        start = html.find("const allowTokens = [")
+        self.assertGreaterEqual(start, 0)
+        block = html[start : html.find("];", start) + 2]
+        self.assertIn('".vp-popup-indicator"', block)
+        self.assertIn('".vp-indicator"', block)
+        self.assertIn('".dot"', block)
+
+    def test_shell_css_defines_viewport_indicator_dots(self) -> None:
+        from pathlib import Path
+
+        css = (
+            Path(__file__).resolve().parents[2]
+            / "src/sentinel/ui/commissioning/project_device_static_layout.css"
+        ).read_text(encoding="utf-8")
+        self.assertIn(".vp-popup-indicator", css)
+        self.assertIn(".vp-popup-indicator.is-vertical", css)
+        self.assertIn(".vp-indicator", css)
+        self.assertIn(".dot", css)
+        self.assertIn(".dot.active", css)
+        self.assertIn("z-index: 205", css)
+        self.assertIn("#9fb4c6", css)
+        self.assertIn("#2d5f81", css)
+
 
 if __name__ == "__main__":
     unittest.main()

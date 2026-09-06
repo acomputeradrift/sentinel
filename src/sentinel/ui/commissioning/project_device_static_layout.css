@@ -214,6 +214,41 @@ body {
   display: block;
 }
 
+.vp-popup-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translateY(-50%);
+  z-index: 205;
+  pointer-events: none;
+  width: fit-content;
+}
+
+.vp-popup-indicator.is-vertical {
+  flex-direction: column;
+}
+
+.vp-indicator {
+  display: flex;
+  gap: 8px;
+  min-height: 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #9fb4c6;
+  background: #e2ebf2;
+}
+
+.dot.active {
+  background: #2d5f81;
+  border-color: #2d5f81;
+}
+
 #ov {
   position: fixed;
   inset: 0;
