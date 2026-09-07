@@ -78,11 +78,11 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 - **Updated:** 2026-09-07
 - **Branch:** `main`
-- **Repo HEAD:** `646c4a4` (Mac = GitHub `main`)
-- **Droplet HEAD:** `646c4a4` at `/opt/sentinel/app` — service restarted, `/health` ok
+- **Repo HEAD:** `6802612` (Mac = GitHub `main`)
+- **Droplet HEAD:** `6802612` at `/opt/sentinel/app` — service restarted, `/health` ok
 - **Live DB:** wiped empty 2026-09-06. `uploads/` empty. `generated/` only `.staging`.
 - **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
-- **Work list:** `docs/todos/2026-09-06.md` (RTSP Video graphics type + File tab copy + layer locks by projectId live; regenerate needed for RTSP; not this file)
+- **Work list:** `docs/todos/2026-09-06.md` (layer locks remap stem keys on snapshot; RTSP dialogue is UI Item - Graphics; regen needed for RTSP title; not this file)
 
 ---
 
