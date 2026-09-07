@@ -39,7 +39,9 @@ function updateDiagnosticsTitle() {
   const clientName = _selectedText("clientSelect");
   const projectName = _selectedText("projectSelect");
   const filenameEl = document.getElementById("lastGeneratedLabel");
-  const filename = String(filenameEl && filenameEl.textContent ? filenameEl.textContent : "").trim();
+  const raw = String(filenameEl && filenameEl.textContent ? filenameEl.textContent : "").trim();
+  const filename =
+    typeof filenameFromFilePanelLabel === "function" ? filenameFromFilePanelLabel(raw) : raw;
   const titleEl = document.querySelector("#panel-diagnostics .panel-context .panel-context-title");
   if (!titleEl) return;
   const parts = [clientName, projectName].map((s) => String(s || "").trim()).filter(Boolean);
@@ -920,7 +922,7 @@ function _failCategoryFromTask(task) {
   if (label === "pageLinks") return "pageLinks";
   if (label === "event triggers" || String(task?.targetKey || "").startsWith("event:")) return "eventTriggers";
   if (label.startsWith("variable")) return "variables";
-  if (label.includes("icon") || label.includes("bitmap") || label.includes("graphic")) return "graphics";
+  if (label.includes("icon") || label.includes("bitmap") || label.includes("graphic") || label.includes("rtsp")) return "graphics";
   return "text";
 }
 

@@ -215,7 +215,8 @@
                         },
                         "graphics": {
                           "bitmap": false,
-                          "icon": false
+                          "icon": false,
+                          "rtspVideo": false
                         },
                         "pageLink": false
                       },
@@ -353,7 +354,8 @@
                                     },
                                     "graphics": {
                                       "bitmap": false,
-                                      "icon": false
+                                      "icon": false,
+                                      "rtspVideo": false
                                     },
                                     "pageLink": false
                                   },

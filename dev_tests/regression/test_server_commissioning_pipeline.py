@@ -553,3 +553,34 @@ class CommissioningPipelineTest(unittest.TestCase):
                     project_out,
                     "Staging dir must not be nested under project output dir to avoid long-path failures.",
                 )
+
+    def test_regenerate_passes_project_id_to_generate_html(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.services import pipeline
+
+            project_id = "proj-lock-key"
+            apex_path = Path(td) / "sample.apex"
+            apex_path.write_bytes(b"apex")
+            generate_args: list[list[str]] = []
+
+            def _fake_run(*, args, cwd, env, phase_hook=None):
+                out_idx = args.index("--out-dir")
+                stage_dir = Path(args[out_idx + 1])
+                script = Path(args[1]).name
+                if script == "extract_project_data.py":
+                    (stage_dir / "sample_project_data.json").write_text("{}", encoding="utf-8")
+                elif script == "generate_html.py":
+                    generate_args.append(list(args))
+                    (stage_dir / "sample_project_data__project-home.html").write_text("<html></html>", encoding="utf-8")
+                return "", ""
+
+            with mock.patch.object(pipeline, "_run_subprocess_with_progress", side_effect=_fake_run):
+                pipeline.regenerate_project(projectId=project_id, apex_path=apex_path)
+
+            self.assertEqual(len(generate_args), 1)
+            args = generate_args[0]
+            self.assertIn("--project-id", args)
+            self.assertEqual(args[args.index("--project-id") + 1], project_id)

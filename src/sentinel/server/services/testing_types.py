@@ -37,6 +37,7 @@ _BUTTON_LABELS: tuple[str, ...] = (
     "Variable - List",
     "Bitmap",
     "Icon",
+    "RTSP Video",
     "Page Link",
 )
 
@@ -46,7 +47,7 @@ _EVENT_LABELS: tuple[str, ...] = (
     "Macro Step",
 )
 
-_GRAPHICS_LABELS = frozenset({"Bitmap", "Icon", "Variable - Image"})
+_GRAPHICS_LABELS = frozenset({"Bitmap", "Icon", "Variable - Image", "RTSP Video"})
 
 
 def _type_id(*, family: str, label: str) -> str:
@@ -80,6 +81,7 @@ GRAPHICS_TYPE_IDS: tuple[str, ...] = (
     "button:Bitmap",
     "button:Icon",
     "button:Variable - Image",
+    "button:RTSP Video",
 )
 
 _MACRO_ALIASES = frozenset({"macro", "macros", "system macro", "system macros"})
@@ -99,6 +101,7 @@ _EXCLUDED_PLURAL_DISPLAY: dict[str, str] = {
     "Page Link": "Page Links",
     "Bitmap": "Bitmaps",
     "Icon": "Icons",
+    "RTSP Video": "RTSP Videos",
 }
 
 
@@ -122,6 +125,8 @@ def canonicalize_label(label: str) -> str:
         return "Bitmap"
     if lower == "icon":
         return "Icon"
+    if lower in {"rtsp video", "rtsp videos"}:
+        return "RTSP Video"
     if lower.startswith("variable - "):
         tail = s.split("-", 1)[1].strip() if "-" in s else ""
         return f"Variable - {tail[:1].upper()}{tail[1:]}" if tail else s

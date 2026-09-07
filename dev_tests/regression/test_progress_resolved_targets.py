@@ -88,6 +88,21 @@ class ProgressResolvedTargetsTest(unittest.TestCase):
         self.assertIn("Bitmap", labels)
         self.assertIn("Icon", labels)
 
+    def test_button_target_labels_include_graphics_rtsp_video(self):
+        btn = {
+            "testTargets": {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "graphics": {"bitmap": False, "icon": False, "rtspVideo": True},
+                "pageLink": False,
+            }
+        }
+        labels = progress._button_target_labels(btn)
+        self.assertEqual(labels, ["RTSP Video"])
+        self.assertNotIn("Text", labels)
+
     def test_derive_device_targets_uses_scope_button_id_for_textless_bitmap_button(self):
         project_data = {
             "devices": [

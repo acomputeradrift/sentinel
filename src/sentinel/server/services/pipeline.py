@@ -318,6 +318,7 @@ def regenerate_project(
                 generate_args.extend(["--client-name", client_display])
             if project_display:
                 generate_args.extend(["--project-name", project_display])
+            generate_args.extend(["--project-id", str(projectId)])
             _run_subprocess_with_progress(
                 args=generate_args,
                 cwd=root,

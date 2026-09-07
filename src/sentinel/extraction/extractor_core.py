@@ -14,6 +14,19 @@ from sentinel.generation.hard_keys import registry as hard_keys_registry
 
 
 _STYLE_TO_TYPE = {5: "Slider", 6: "Image", 9: "Slider", 7: "Toggle", 10: "Toggle", 11: "LevelIndicatorBar", 14: "Image"}
+_RTSP_VIDEO_STYLE = 4
+
+
+def _is_rtsp_video_style(style: int) -> bool:
+    return int(style or 0) == _RTSP_VIDEO_STYLE
+
+
+def _rtsp_video_and_text_targets(*, style: int, text: str) -> tuple[bool, bool]:
+    is_rtsp = _is_rtsp_video_style(style)
+    has_literal_text = not _empty(text) and not _is_token_only_text(text) and not is_rtsp
+    return is_rtsp, has_literal_text
+
+
 _TOKEN_ONLY_RE = re.compile(r"^\s*(?:\$%(?:TAG|VARIABLE)!.*?%\$\s*)+$", re.IGNORECASE | re.DOTALL)
 _TEXT_TOKEN_RE = re.compile(r"\$%(TAG|VARIABLE)!(.*?)%\$", re.IGNORECASE | re.DOTALL)
 _DRIVER_TOKEN_RE = re.compile(r"%%([^%]+)%%")
@@ -1318,7 +1331,7 @@ def _resolve_button(
     variable_ids = [int(v["VariableId"]) for v in variables_rows if v["VariableId"] is not None]
 
     has_var_text = any(not _empty(v["ButtonText"]) for v in variables_rows) or button_id in button_text_tag_ids or _is_token_only_text(text)
-    has_literal_text = not _empty(text) and not _is_token_only_text(text)
+    is_rtsp_video, has_literal_text = _rtsp_video_and_text_targets(style=style, text=text)
 
     object_data_tokens = [tok for tok in object_tokens if tok]
     has_object_data = bool(object_data_tokens)
@@ -1597,6 +1610,7 @@ def _resolve_button(
             "graphics": {
                 "bitmap": bitmap_enabled,
                 "icon": icon_enabled,
+                "rtspVideo": is_rtsp_video,
             },
             "pageLink": resolved_page_link is not None,
         },
@@ -2440,6 +2454,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             or _has_any_variable_target(user_button)
                             or bool((user_button["testTargets"].get("graphics") or {}).get("bitmap"))
                             or bool((user_button["testTargets"].get("graphics") or {}).get("icon"))
+                            or bool((user_button["testTargets"].get("graphics") or {}).get("rtspVideo"))
                             or isinstance((user_button.get("apexScopeSource") or {}).get("audioScope"), dict)
                         ),
                     )
@@ -2646,6 +2661,7 @@ def _resolve_viewport_frames(
                     or _has_any_variable_target(user_button)
                     or bool((user_button["testTargets"].get("graphics") or {}).get("bitmap"))
                     or bool((user_button["testTargets"].get("graphics") or {}).get("icon"))
+                    or bool((user_button["testTargets"].get("graphics") or {}).get("rtspVideo"))
                     or isinstance((user_button.get("apexScopeSource") or {}).get("audioScope"), dict)
                 ),
             )

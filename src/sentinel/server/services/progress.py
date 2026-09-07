@@ -293,6 +293,8 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
         out.append("Bitmap")
     if graphics_t.get("icon"):
         out.append("Icon")
+    if graphics_t.get("rtspVideo"):
+        out.append("RTSP Video")
     if t.get("pageLink"):
         out.append("Page Link")
     return out

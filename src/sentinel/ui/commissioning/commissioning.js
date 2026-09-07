@@ -346,7 +346,7 @@ function setLastGeneratedLabel() {
   }
   const activeUpload = state.activeUploadByProject[projectId] || null;
   const name = activeUpload && activeUpload.originalFilename ? String(activeUpload.originalFilename).trim() : "";
-  el.textContent = name || "None";
+  el.textContent = name ? `Currently Testing ${name}` : "None";
   setFileUploadedAtLabel();
   refreshContextTitlesAfterFilename(projectId);
 }
@@ -363,8 +363,17 @@ function setFileUploadedAtLabel() {
     return;
   }
   const formatted = formatUtc(raw);
-  el.textContent = formatted ? `Uploaded: ${formatted}` : "";
+  el.textContent = formatted ? `Uploaded ${formatted}` : "";
   el.hidden = !formatted;
+}
+
+function filenameFromFilePanelLabel(raw) {
+  const s = String(raw || "").trim();
+  const lower = s.toLowerCase();
+  if (!s || lower === "none") return "";
+  if (lower.startsWith("currently testing ")) return s.slice("currently testing ".length).trim();
+  if (lower.startsWith("last generated:")) return s.slice("last generated:".length).trim();
+  return s;
 }
 
 function setPanelContext() {

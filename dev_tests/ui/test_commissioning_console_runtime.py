@@ -39,8 +39,8 @@ def _commissioning_create_project_via_modal(page, name: str) -> None:
 
 
 def _expect_commissioning_live_upload_finished(expect, page, apex_path: Path) -> None:
-    """commissioning.js: success clears upload-status; lastGeneratedLabel shows filename."""
-    expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name, timeout=120000)
+    """commissioning.js: success clears upload-status; lastGeneratedLabel shows Currently Testing filename."""
+    expect(page.locator("#lastGeneratedLabel")).to_have_text(f"Currently Testing {apex_path.name}", timeout=120000)
     expect(page.get_by_test_id("upload-status")).to_have_text("")
 
 
@@ -902,7 +902,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 }
 """
         )
-        expect(page.locator("#lastGeneratedLabel")).to_have_text("TEST - System Manager v11.3.apex")
+        expect(page.locator("#lastGeneratedLabel")).to_have_text("Currently Testing TEST - System Manager v11.3.apex")
         expect(page.locator("#panel-commission .panel-context-title")).to_have_text(
             "Client A -> Project 1 -> TEST - System Manager v11.3.apex"
         )
@@ -926,7 +926,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("upload-status")).to_have_text("")
         expect(page.locator("#uploadProgressLabel")).to_have_count(1)
         self.assertIn(page.locator("#uploadProgress").evaluate("el => Number(el.value)"), (0, 100))
-        expect(page.locator("#lastGeneratedLabel")).to_have_text(apex_path.name)
+        expect(page.locator("#lastGeneratedLabel")).to_have_text(f"Currently Testing {apex_path.name}")
         deadline = time.time() + 5
         while time.time() < deadline and state["last_upload_content_type"] is None:
             page.wait_for_timeout(50)
@@ -1393,7 +1393,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
 }
 """
         )
-        expect(page.locator("#lastGeneratedLabel")).to_have_text("TEST - System Manager v11.3.apex")
+        expect(page.locator("#lastGeneratedLabel")).to_have_text("Currently Testing TEST - System Manager v11.3.apex")
         expect(page.locator("#panel-commission .panel-context-title")).to_have_text(
             "Client A -> Project 1 -> TEST - System Manager v11.3.apex"
         )

@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", help="Output directory. Defaults to the project data file directory.")
     p.add_argument("--client-name", default="", help="Commissioning client display name for generated titles.")
     p.add_argument("--project-name", default="", help="Commissioning project display name for generated titles.")
+    p.add_argument("--project-id", default="", help="Stable project id for layer-lock session keys across file versions.")
     return p.parse_args()
 
 
@@ -145,6 +146,7 @@ def main() -> int:
                 resolved_targets=resolved_targets,
                 client_name=str(args.client_name or "").strip(),
                 project_name=str(args.project_name or "").strip(),
+                project_id=str(args.project_id or "").strip(),
             )
             html = str(bundle.get("html") or "")
             device_name = user.get("displayName", f"device-{device_index}")

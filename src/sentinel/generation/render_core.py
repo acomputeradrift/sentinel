@@ -271,6 +271,8 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
         out.append("Bitmap")
     if graphics_t.get("icon"):
         out.append("Icon")
+    if graphics_t.get("rtspVideo"):
+        out.append("RTSP Video")
     if _page_link_enabled(t):
         out.append("Page Link")
     return out
@@ -297,7 +299,7 @@ def _is_ui_only_button(btn: dict[str, Any]) -> bool:
     vars_t = t.get("variables", {})
     graphics_t = t.get("graphics", {})
     has_any_var = any(bool(vars_t.get(k)) for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"))
-    has_any_graphics = bool(graphics_t.get("bitmap")) or bool(graphics_t.get("icon"))
+    has_any_graphics = bool(graphics_t.get("bitmap")) or bool(graphics_t.get("icon")) or bool(graphics_t.get("rtspVideo"))
     return (
         not str(identity.get("buttonTagName") or "").strip()
         and not str(identity.get("text") or "").strip()
@@ -6675,6 +6677,13 @@ _connectTechWs();
 document.getElementById('close').addEventListener('click', function(){{ clearPassAllQueue(); ov.classList.remove('open'); }});
 ov.addEventListener('click', function(e){{if(e.target===ov){{ clearPassAllQueue(); ov.classList.remove('open'); }}}});
 </script></body></html>"""
+def _layer_lock_session_key(*, project_stem: str, project_id: str = "") -> str:
+    stable = str(project_id or "").strip()
+    if stable:
+        return stable
+    return str(project_stem or "")
+
+
 def build_device_render_bundle(
     project_data: dict[str, Any],
     app_ui: dict[str, Any],
@@ -6684,6 +6693,7 @@ def build_device_render_bundle(
     *,
     client_name: str = "",
     project_name: str = "",
+    project_id: str = "",
 ) -> dict[str, Any]:
     device = project_data["devices"][device_index]
     uf = device["userFacing"]
@@ -6843,7 +6853,7 @@ def build_device_render_bundle(
         initial_page_markup,
         json.dumps(page_html_by_index),
         json.dumps(page_state),
-        project_stem,
+        _layer_lock_session_key(project_stem=project_stem, project_id=project_id),
         json.dumps(orientation_state),
         show_orientation_toggle,
         home_href=project_home_filename(project_stem),
@@ -6893,6 +6903,8 @@ def render_single_device_html(
     project_stem: str,
     device_index: int = 0,
     resolved_targets: dict[str, Any] | None = None,
+    *,
+    project_id: str = "",
 ) -> str:
     bundle = build_device_render_bundle(
         project_data,
@@ -6900,6 +6912,7 @@ def render_single_device_html(
         project_stem,
         device_index=device_index,
         resolved_targets=resolved_targets,
+        project_id=project_id,
     )
     return str(bundle.get("html") or "")
 

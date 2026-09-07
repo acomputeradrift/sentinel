@@ -45,7 +45,7 @@ class TestingTypesCatalogTest(unittest.TestCase):
                         "Image": True,
                         "List": True,
                     },
-                    "graphics": {"bitmap": True, "icon": True},
+                    "graphics": {"bitmap": True, "icon": True, "rtspVideo": True},
                     "pageLink": True,
                 }
             }
@@ -67,6 +67,7 @@ class TestingTypesCatalogTest(unittest.TestCase):
                 "Variable - List",
                 "Bitmap",
                 "Icon",
+                "RTSP Video",
                 "Page Link",
             ],
         )
@@ -111,7 +112,7 @@ class TestingTypesCatalogTest(unittest.TestCase):
         self.assertTrue(all(row["enabled"] for row in payload["types"]))
         self.assertEqual(
             payload["graphicsTypeIds"],
-            ["button:Bitmap", "button:Icon", "button:Variable - Image"],
+            ["button:Bitmap", "button:Icon", "button:Variable - Image", "button:RTSP Video"],
         )
 
     def test_excluded_from_testing_message_uses_settings_plurals(self):

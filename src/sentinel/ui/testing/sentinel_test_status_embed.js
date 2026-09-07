@@ -79,6 +79,7 @@
     if (lower === "text" || lower === "texts") return "Text";
     if (lower === "bitmap") return "Bitmap";
     if (lower === "icon") return "Icon";
+    if (lower === "rtsp video" || lower === "rtsp videos") return "RTSP Video";
     if (lower.indexOf("variable - ") === 0) {
       const tail = s.split("-").slice(1).join("-").trim();
       return tail ? "Variable - " + tail.charAt(0).toUpperCase() + tail.slice(1) : s;

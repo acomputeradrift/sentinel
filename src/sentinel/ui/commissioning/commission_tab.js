@@ -125,7 +125,8 @@ async function refreshCommissionTopboxTitle(projectId) {
   const projectName = selectedOptionText("projectSelect");
   const lastGen = document.getElementById("lastGeneratedLabel");
   const raw = lastGen ? String(lastGen.textContent || "").trim() : "";
-  const filename = raw.toLowerCase().startsWith("last generated:") ? raw.slice("last generated:".length).trim() : raw;
+  const filename =
+    typeof filenameFromFilePanelLabel === "function" ? filenameFromFilePanelLabel(raw) : raw;
 
   const parts = [clientName, projectName].map((s) => String(s || "").trim()).filter(Boolean);
   if (filename && filename.toLowerCase() !== "none") parts.push(filename);

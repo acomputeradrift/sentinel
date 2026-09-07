@@ -65,11 +65,11 @@ function renderTestingTypeSettings(payload) {
   html += '<div class="settings-type-group" data-family="graphics">';
   html += "<h3>Graphics</h3>";
   html +=
-    '<p class="sub">Icons and bitmaps still draw when off; they are not required testing work.</p>';
+    '<p class="sub">Icons, bitmaps, and RTSP video still draw when off; they are not required testing work.</p>';
   html +=
     '<label class="settings-type-row settings-family-row"><input type="checkbox" data-testid="settings-graphics-family" data-family-toggle="graphics"' +
     (graphicsOn ? " checked" : "") +
-    " /><span>Require graphics (Bitmap, Icon, Variable - Image)</span></label>";
+    " /><span>Require graphics (Bitmap, Icon, Variable - Image, RTSP Video)</span></label>";
   html += '<div class="settings-type-list">';
   graphicsRows.forEach((row) => {
     html += checkboxRow(row, "");
@@ -112,7 +112,7 @@ function syncGraphicsFamilyToggle() {
   if (!family) return;
   const boxes = Array.from(host.querySelectorAll('input[data-type-id]')).filter((el) => {
     const id = String(el.getAttribute("data-type-id") || "");
-    return id === "button:Bitmap" || id === "button:Icon" || id === "button:Variable - Image";
+    return id === "button:Bitmap" || id === "button:Icon" || id === "button:Variable - Image" || id === "button:RTSP Video";
   });
   family.checked = boxes.length > 0 && boxes.every((el) => el.checked);
 }
@@ -153,7 +153,7 @@ function bindSettingsHandlers() {
       const on = !!family.checked;
       host.querySelectorAll('input[data-type-id]').forEach((el) => {
         const id = String(el.getAttribute("data-type-id") || "");
-        if (id === "button:Bitmap" || id === "button:Icon" || id === "button:Variable - Image") {
+        if (id === "button:Bitmap" || id === "button:Icon" || id === "button:Variable - Image" || id === "button:RTSP Video") {
           el.checked = on;
         }
       });
