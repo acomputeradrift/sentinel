@@ -45,6 +45,59 @@ class ExtractorRtspVideoGraphicsTest(unittest.TestCase):
         )
         self.assertEqual(labels, ["RTSP Video"])
 
+    def test_rtsp_style_stores_empty_identity_text(self):
+        display_text, identifier_text = extractor_core._identity_texts_for_style(style=4, text="RTSP Video")
+        self.assertEqual(display_text, "")
+        self.assertEqual(identifier_text, "")
+
+    def test_rtsp_empty_text_classifies_as_ui_item(self):
+        button = {
+            "buttonIdentity": {"buttonType": None, "buttonTagName": ""},
+            "buttonUI": {
+                "orientations": {
+                    "portrait": {"coordinates": {"height": 12, "width": 20}},
+                    "landscape": {"coordinates": {"height": 12, "width": 20}},
+                }
+            },
+            "testTargets": {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {"Text": False},
+                "pageLink": False,
+            },
+        }
+        category = extractor_core._classify_user_button_category(
+            button=button,
+            has_tag_field=False,
+            raw_text="",
+            has_macros_target=False,
+            has_any_variable_target=False,
+        )
+        self.assertEqual(category, "uiItems")
+
+    def test_rtsp_dialogue_title_is_ui_item_graphics(self):
+        btn = {
+            "buttonIdentity": {"buttonTagName": "", "text": "", "buttonType": None},
+            "testTargets": {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "graphics": {"bitmap": False, "icon": False, "rtspVideo": True},
+                "pageLink": False,
+            },
+        }
+        self.assertEqual(render_core._button_identity_label(btn), "Graphics")
+        self.assertEqual(render_core._targets(btn, "Variable - {variableType}"), ["RTSP Video"])
+        leftover = dict(btn)
+        leftover["buttonIdentity"] = {"buttonTagName": "", "text": "RTSP Video", "buttonType": None}
+        self.assertEqual(render_core._button_identity_label(leftover), "Graphics")
+
+    def test_canonicalize_rtsp_video_row_to_catalog_id(self):
+        self.assertEqual(testing_types.canonicalize_label("RTSP Video"), "RTSP Video")
+        self.assertEqual(testing_types.type_id_for_label(family="button", label="RTSP Video"), "button:RTSP Video")
+
 
 if __name__ == "__main__":
     unittest.main()

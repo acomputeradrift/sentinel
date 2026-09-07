@@ -108,14 +108,22 @@ def _btn_text(identity: dict[str, Any]) -> str:
     return text if text else tag
 
 
+_RTSP_IDENTITY_PLACEHOLDERS = frozenset({"rtsp video"})
+
+
+def _graphics_targets(btn: dict[str, Any]) -> dict[str, Any]:
+    targets = btn.get("testTargets", {}) if isinstance(btn, dict) else {}
+    graphics = targets.get("graphics", {}) if isinstance(targets, dict) else {}
+    return graphics if isinstance(graphics, dict) else {}
+
+
 def _button_identity_label(btn: dict[str, Any]) -> str:
     identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
     value = _btn_text(identity if isinstance(identity, dict) else {})
-    if value:
+    graphics = _graphics_targets(btn)
+    has_graphics = bool(graphics.get("bitmap")) or bool(graphics.get("icon")) or bool(graphics.get("rtspVideo"))
+    if value and value.strip().lower() not in _RTSP_IDENTITY_PLACEHOLDERS:
         return value
-    targets = btn.get("testTargets", {}) if isinstance(btn, dict) else {}
-    graphics = targets.get("graphics", {}) if isinstance(targets, dict) else {}
-    has_graphics = bool(graphics.get("bitmap")) or bool(graphics.get("icon"))
     return "Graphics" if has_graphics else ""
 
 

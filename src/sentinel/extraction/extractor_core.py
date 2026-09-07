@@ -151,6 +151,13 @@ def _is_token_only_text(text: str | None) -> bool:
     return bool(text and _TOKEN_ONLY_RE.match(text))
 
 
+def _identity_texts_for_style(*, style: int, text: str | None) -> tuple[str, str]:
+    if _is_rtsp_video_style(style):
+        return "", ""
+    raw = str(text or "")
+    return _display_button_text(raw), raw
+
+
 def _display_button_text(text: str | None) -> str:
     raw = str(text or "")
     if not raw:
@@ -1306,8 +1313,8 @@ def _resolve_button(
     button_id = int(button_row["ButtonId"])
     tag_id = int(button_row["ButtonTagId"] or -1)
     text = button_row["Text"] or ""
-    display_text = _display_button_text(text)
     style = int(button_row["ButtonStyle"] or 0)
+    display_text, identifier_text = _identity_texts_for_style(style=style, text=text)
     button_type = _STYLE_TO_TYPE.get(style)
     tag_name = tag_name_by_id.get(tag_id)
 
@@ -1657,7 +1664,7 @@ def _resolve_button(
             "buttonOrder": int(button_order or 0),
             "frameNumber": int(frame_number or 0),
         },
-        "identifiers": {"buttonTagId": tag_id if tag_id > 0 else None, "text": text},
+        "identifiers": {"buttonTagId": tag_id if tag_id > 0 else None, "text": identifier_text},
         "testTargets": {
             "macro": {
                 "scope": "Global",

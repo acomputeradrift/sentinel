@@ -133,13 +133,28 @@ def _build_test_result_event(*, rec) -> dict:
     }
 
 
+def _normalize_layer_lock_scope_key(*, projectId: str, scopeKey: str) -> str:
+    raw = str(scopeKey or "").strip()
+    pid = str(projectId or "").strip()
+    if not raw or not pid:
+        return raw
+    head, sep, tail = raw.partition("::")
+    if not sep or head == pid:
+        return raw
+    if head.endswith("_project_data"):
+        return f"{pid}::{tail}"
+    return raw
+
+
 def _build_layer_lock_rows(*, repo: Repository, projectId: str) -> list[dict[str, Any]]:
     rows = repo.list_layer_lock_states_for_project(projectId=projectId, scopeKey=None)
     out: list[dict[str, Any]] = []
     for row in rows:
         out.append(
             {
-                "scopeKey": str(row.get("scopeKey") or ""),
+                "scopeKey": _normalize_layer_lock_scope_key(
+                    projectId=projectId, scopeKey=str(row.get("scopeKey") or "")
+                ),
                 "layerKey": str(row.get("layerKey") or ""),
                 "visible": bool(row.get("visible")),
                 "locked": bool(row.get("locked")),
