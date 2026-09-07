@@ -1402,6 +1402,166 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         )
         page.close()
 
+    def test_file_uploaded_at_keeps_newer_time_after_generation_phase(self):
+        from playwright.sync_api import expect
+
+        page = self._browser.new_page()
+        state: dict[str, object] = {
+            "clients": [],
+            "clients_by_id": {},
+            "projects_by_client": {},
+            "projects_by_id": {},
+        }
+
+        def fulfill_json(route, payload, status: int = 200):
+            route.fulfill(
+                status=status,
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(payload),
+            )
+
+        def handle_clients(route, request):
+            if request.method == "GET":
+                fulfill_json(route, state["clients"])
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                client = {"clientId": "client-1", "name": data.get("name", ""), "createdAtUtc": "2026-03-21T00:00:00Z"}
+                state["clients"] = [client]
+                state["clients_by_id"]["client-1"] = client
+                state["projects_by_client"]["client-1"] = []
+                fulfill_json(route, client)
+                return
+            route.fulfill(status=405, body="method not allowed")
+
+        def handle_projects(route, request):
+            parts = request.url.split("/commissioning/clients/")[-1].split("/projects")
+            client_id = parts[0].strip("/")
+            if request.method == "GET":
+                fulfill_json(route, state["projects_by_client"].get(client_id, []))
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                proj = {
+                    "projectId": "proj-1",
+                    "clientId": client_id,
+                    "name": data.get("name", ""),
+                    "createdAtUtc": "2026-03-21T00:00:00Z",
+                    "status": "EMPTY",
+                }
+                state["projects_by_client"][client_id] = [proj]
+                state["projects_by_id"][proj["projectId"]] = proj
+                fulfill_json(route, proj)
+                return
+            route.fulfill(status=405, body="method not allowed")
+
+        page.route("**/api/v1/commissioning/technicians", lambda route, request: fulfill_json(route, {"technicians": []}))
+        page.route("**/api/v1/commissioning/clients", handle_clients)
+        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
+        page.route("**/api/v1/commissioning/projects/**", lambda route, request: fulfill_json(route, {}))
+
+        page.add_init_script(
+            """
+(() => {
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      setTimeout(() => { if (this.onopen) this.onopen({}); }, 0);
+    }
+    send() {}
+    close() { this.readyState = 3; if (this.onclose) this.onclose({}); }
+  }
+  window.WebSocket = FakeWebSocket;
+})();
+"""
+        )
+        page.goto(f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html")
+        _commissioning_click_file_tab(page)
+        _commissioning_create_client_via_modal(page, "Client A")
+        _commissioning_create_project_via_modal(page, "Project 1")
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation",
+    projectId: "proj-1",
+    originalFilename: "1790 High Rd (Simple v29.2).apex",
+    activeUpload: {
+      uploadId: "up-old",
+      originalFilename: "1790 High Rd (Simple v29.2).apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-07T20:16:58Z",
+    },
+  });
+}
+"""
+        )
+        expect(page.get_by_test_id("file-uploaded-at")).to_have_text("Uploaded 2026-09-07 20:16:58Z")
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation_phase",
+    projectId: "proj-1",
+    status: "EXTRACTING",
+    percent: 10,
+  });
+}
+"""
+        )
+        expect(page.get_by_test_id("file-uploaded-at")).to_have_text("Uploaded 2026-09-07 20:16:58Z")
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation_phase",
+    projectId: "proj-1",
+    status: "READY",
+    percent: 100,
+    activeUpload: {
+      uploadId: "up-new",
+      originalFilename: "1790 High Rd (Simple v29.2).apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-07T20:57:47Z",
+    },
+  });
+}
+"""
+        )
+        expect(page.get_by_test_id("file-uploaded-at")).to_have_text("Uploaded 2026-09-07 20:57:47Z")
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation_phase",
+    projectId: "proj-1",
+    status: "GENERATING",
+    percent: 40,
+  });
+}
+"""
+        )
+        expect(page.get_by_test_id("file-uploaded-at")).to_have_text("Uploaded 2026-09-07 20:57:47Z")
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "commissioning_snapshot",
+    projectId: "proj-1",
+    activeUpload: {
+      uploadId: "up-old",
+      originalFilename: "1790 High Rd (Simple v29.2).apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-07T20:16:58Z",
+    },
+  });
+}
+"""
+        )
+        expect(page.get_by_test_id("file-uploaded-at")).to_have_text("Uploaded 2026-09-07 20:57:47Z")
+        page.close()
+
     def test_event_rows_show_target_name_identity_and_blank_viewport(self):
         from playwright.sync_api import expect
 

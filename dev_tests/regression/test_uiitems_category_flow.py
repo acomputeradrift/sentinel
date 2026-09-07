@@ -12,7 +12,13 @@ from sentinel.generation import render_core
 from sentinel.server.services import progress
 
 
-def _ui_item_button() -> dict:
+_APP_UI = {
+    "buttonPresentation": {"fallbackFontSize": 10},
+    "appNavigation": {"pageLinks": {"enabled": False}},
+}
+
+
+def _ui_item_button(*, bitmap: bool = False) -> dict:
     return {
         "buttonIdentity": {"buttonTagName": "", "text": "", "buttonType": None},
         "buttonUI": {
@@ -36,6 +42,7 @@ def _ui_item_button() -> dict:
                 "Image": False,
                 "List": False,
             },
+            "graphics": {"bitmap": bitmap, "icon": False, "rtspVideo": False},
             "pageLink": False,
         },
     }
@@ -237,6 +244,89 @@ class UiItemsCategoryFlowTest(unittest.TestCase):
         }
         items = progress._iter_page_buttons(page)
         self.assertEqual(len(items), 1)
+
+    def test_no_target_ui_item_is_blank_and_marked_not_a_test(self):
+        html = render_core._render_button_control(
+            _ui_item_button(),
+            "UI Item",
+            0,
+            0,
+            "Variable - {variableType}",
+            _APP_UI,
+            {},
+        )
+        self.assertIn("data-no-test='1'", html)
+        self.assertRegex(html, r"<button class='test-btn'[^>]*>\s*</button>")
+        self.assertNotIn(">Graphics<", html)
+        theme = (ROOT / "src" / "sentinel" / "ui" / "testing" / "sentinel_device_theme.css").read_text(encoding="utf-8")
+        self.assertIn('[data-no-test="1"]', theme)
+        source = (ROOT / "src" / "sentinel" / "generation" / "render_core.py").read_text(encoding="utf-8")
+        self.assertIn("dataset.noTest", source)
+        group = (ROOT / "src" / "sentinel" / "ui" / "testing" / "sentinel_group_pass_embed.js").read_text(encoding="utf-8")
+        self.assertIn('data-no-test', group)
+
+    def test_graphics_ui_item_stays_named_and_clickable(self):
+        html = render_core._render_button_control(
+            _ui_item_button(bitmap=True),
+            "UI Item",
+            0,
+            0,
+            "Variable - {variableType}",
+            _APP_UI,
+            {},
+        )
+        self.assertNotIn("data-no-test=", html)
+        self.assertIn(">Graphics<", html)
+        self.assertEqual(render_core._button_identity_label(_ui_item_button(bitmap=True)), "Graphics")
+        self.assertEqual(render_core._button_identity_label(_ui_item_button()), "")
+
+    def test_progress_does_not_count_no_target_ui_item_in_pie(self):
+        project_data = {
+            "devices": [
+                {
+                    "diagnostics": {
+                        "deviceId": 89,
+                        "pages": [
+                            {
+                                "pageId": 353,
+                                "buttons": [
+                                    {"buttonId": 41391, "buttonTagName": None, "identifiers": {"text": ""}},
+                                    {"buttonId": 41392, "buttonTagName": None, "identifiers": {"text": ""}},
+                                ],
+                            }
+                        ],
+                    },
+                    "userFacing": {
+                        "displayName": "Panel",
+                        "pages": [
+                            {
+                                "layers": [
+                                    {
+                                        "buttonCategories": {
+                                            "uiItems": [
+                                                {
+                                                    **_ui_item_button(),
+                                                    "apexScopeSource": {"button": {"buttonId": 41391}},
+                                                },
+                                                {
+                                                    **_ui_item_button(bitmap=True),
+                                                    "apexScopeSource": {"button": {"buttonId": 41392}},
+                                                },
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+        rows = progress._derive_device_targets(project_data)
+        self.assertEqual(len(rows), 1)
+        expected = set(rows[0].get("expected") or set())
+        self.assertIn("btn:89:353:41392:Bitmap", expected)
+        self.assertFalse(any(key.endswith(":UI Item") or ":41391:" in key for key in expected))
 
 
 if __name__ == "__main__":

@@ -524,6 +524,13 @@ function reduceProjectStore(prevState, payload) {
     return state;
   }
 
+  if (t === "generation_phase") {
+    if (payload?.activeUpload && typeof payload.activeUpload === "object") {
+      project.activeUpload = _cloneValue(payload.activeUpload);
+    }
+    return state;
+  }
+
   if (t === "generation") {
     project.activeUpload = payload?.activeUpload
       ? _cloneValue(payload.activeUpload)

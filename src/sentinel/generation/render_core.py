@@ -1424,15 +1424,16 @@ def _render_button_control(
     height = int(c.get("height") or 0)
     fs = int(btn["buttonUI"].get("fontSize") or app_ui.get("buttonPresentation", {}).get("fallbackFontSize", 10))
     identity = btn.get("buttonIdentity", {})
-    targets = btn.get("testTargets", {})
     identity_label = _button_identity_label(btn)
     category_key = _category_key_from_label(label)
+    target_labels = _targets(btn, variable_label)
+    no_test = category_key == "uiItems" and not target_labels
     meta = {
         "category": label,
         "categoryKey": category_key,
         "identity": identity_label,
         "buttonType": identity.get("buttonType") or "",
-        "targets": _targets(btn, variable_label),
+        "targets": target_labels,
     }
     if isinstance(btn.get("apexScopeSource"), dict):
         meta["apexScopeSource"] = btn.get("apexScopeSource")
@@ -1442,6 +1443,8 @@ def _render_button_control(
     tag_name = _button_tag_name(btn)
     link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
     standard_attrs = f"data-button-tag='{escape(tag_name, quote=True)}'"
+    if no_test:
+        standard_attrs += " data-no-test='1'"
     return (
         f"<div class='{classes}' style='{extra_style}' data-left='{left}' data-top='{top}' data-width='{width}' data-height='{height}' data-font-size='{fs}' data-visible='{visibility_attr}' data-button-category='{escape(category_key, quote=True)}' {orientation_attrs} {standard_attrs} {extra_attrs}>"
         f"<button class='test-btn' data-meta='{meta_attr}'>{escape(identity_label)}</button>"
@@ -3943,8 +3946,9 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   scope.querySelectorAll('.test-btn').forEach(b=>{{
    if (b.dataset.boundTestBtn) return;
    b.dataset.boundTestBtn='1';
-   b.addEventListener('click',(e)=>{{
+    b.addEventListener('click',(e)=>{{
     const wrap=b.closest('.btn-wrap');
+    if (wrap && String(wrap.dataset.noTest || '') === '1') return;
     if (wrap && String(wrap.dataset.syntheticRoomList || '') === '1') {{
       setSelectedRoom(wrap.dataset.syntheticRoomId);
     }}

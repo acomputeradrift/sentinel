@@ -418,6 +418,8 @@
 
   function isSelectableTarget(el) {
     if (!el) return false;
+    const wrap = el.classList && el.classList.contains("btn-wrap") ? el : el.closest ? el.closest(".btn-wrap") : null;
+    if (wrap && String(wrap.getAttribute("data-no-test") || "") === "1") return false;
     if (inViewportPopup(el)) return isViewportMode();
     if (isViewportChild(el)) return false;
     if (isInsideDeviceViewportBox(el)) return false;

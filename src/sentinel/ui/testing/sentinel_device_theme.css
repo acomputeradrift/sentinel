@@ -157,6 +157,22 @@
   padding: 0;
 }
 
+.btn-wrap[data-no-test="1"] .test-btn {
+  cursor: default;
+  pointer-events: none;
+  background-color: var(--btn-fill-color);
+  background-image: repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.08) 0 1px,
+      transparent 1px 11px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(255, 255, 255, 0.06) 0 1px,
+      transparent 1px 11px
+    );
+}
+
 .btn-pass-total {
   display: none !important;
   visibility: hidden !important;

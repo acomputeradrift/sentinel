@@ -760,6 +760,16 @@ async function uploadAndRegenerate() {
       storagePath: String(activeFromApi?.storagePath || uploadObj?.storagePath || ""),
       uploadedAtUtc,
     };
+    const store = getSharedProjectStore();
+    if (store && typeof store.dispatch === "function") {
+      store.dispatch({
+        type: "generation",
+        projectId,
+        uploadId,
+        originalFilename: nextName,
+        activeUpload: state.activeUploadByProject[projectId],
+      });
+    }
     setLastGeneratedLabel();
     let msg = "";
     if (prevName && nextName) {
@@ -805,16 +815,30 @@ function getSharedProjectStore() {
   return window.__sentinelProjectStore || null;
 }
 
+function _uploadedAtMs(raw) {
+  const d = new Date(String(raw || "").trim());
+  const t = d.getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 function applyActiveUpload(projectId, activeUpload) {
   const pid = String(projectId || "").trim();
   if (!pid) return;
   if (activeUpload && typeof activeUpload === "object") {
-    state.activeUploadByProject[pid] = {
+    const incoming = {
       uploadId: activeUpload.uploadId || null,
       originalFilename: activeUpload.originalFilename || "",
       storagePath: activeUpload.storagePath || "",
       uploadedAtUtc: activeUpload.uploadedAtUtc || "",
     };
+    const prev = state.activeUploadByProject[pid];
+    const prevMs = _uploadedAtMs(prev && prev.uploadedAtUtc);
+    const incomingMs = _uploadedAtMs(incoming.uploadedAtUtc);
+    if (prev && prevMs > incomingMs) {
+      if (pid === currentProjectId()) setLastGeneratedLabel();
+      return;
+    }
+    state.activeUploadByProject[pid] = incoming;
   } else {
     state.activeUploadByProject[pid] = null;
   }

@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel_ops
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel_ops"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_URL: postgresql://sentinel:sentinel@db:5432/sentinel_ops
+      SENTINEL_UPLOAD_ROOT: /tmp/sentinel-uploads
+      SENTINEL_GENERATED_ROOT: /tmp/sentinel-generated
+      PYTHONPATH: /app/src
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - app.internal
+    command:
+      - sh
+      - -c
+      - pip install -q -e . "uvicorn[standard]" && python -m uvicorn sentinel.server.app.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health")
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 45s
+
+  ops:
+    image: mcr.microsoft.com/playwright/python:v1.62.0-noble
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      SENTINEL_OPS_BASE_URL: http://app.internal:8000
+      PYTHONPATH: /app:/app/src
+    depends_on:
+      app:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - pip install -q playwright==1.62.0 && python -m unittest dev_tests.ops.test_ops_full_run -v
