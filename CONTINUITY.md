@@ -76,13 +76,13 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 ## Now
 
-- **Updated:** 2026-09-06
-- **Branch:** `main`
-- **Repo HEAD:** `c9e13d5` (Mac = GitHub `main`)
-- **Droplet HEAD:** `c9e13d5` at `/opt/sentinel/app` — service restarted, `/health` ok
+- **Updated:** 2026-09-07
+- **Branch:** `main` — this is the live product. GitHub `default_branch` is still `hard_keys` (`5863cde`, 2026-05-12), a strict ancestor, 81 commits behind. Do not start work from `hard_keys`.
+- **Repo HEAD:** `c6eaf10` (GitHub `main`). Last Continuity deploy record pointed droplet at `c9e13d5`.
+- **Droplet HEAD:** last recorded `c9e13d5` at `/opt/sentinel/app` (2026-09-06). This status pass did not SSH.
 - **Live DB:** wiped empty 2026-09-06. `uploads/` empty. `generated/` only `.staging`.
 - **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
-- **Work list:** `docs/todos/2026-09-06.md` (morning list done; Management tab pin + group-select zoom live; not this file)
+- **Work list:** `docs/todos/2026-09-07.md` (status pass: Select past; next slice is console operators beyond stub Jamie; not this file)
 
 ---
 
