@@ -85,14 +85,38 @@ def _project(
     viewport_layers=None,
     viewport_button_id=11483,
     viewport_tag="VIEWPORT - Cameras",
+    place_buttons="page",
 ):
     host = _button(button_id=viewport_button_id, tag=viewport_tag, page_id=page_id, device_id=device_id)
+    vp_layers_spec = list(viewport_layers or [])
+    if place_buttons == "viewport" and not vp_layers_spec:
+        vp_layers_spec = [(0, "Feeds")]
+    page_buttons = [] if place_buttons == "viewport" else list(buttons)
+    frame_buttons = list(buttons) if place_buttons == "viewport" else []
+    frame_payload = []
+    if frame_buttons:
+        frame_payload = [
+            {
+                "frameId": 0,
+                "buttonCategories": {
+                    "screenLabels": [],
+                    "screenButtons": frame_buttons,
+                    "hardButtons": [],
+                    "emptyTag": [],
+                    "uiItems": [],
+                },
+            }
+        ]
     viewport = {
         "viewportIdentity": {"viewportButtonId": viewport_button_id},
         "viewportUI": {"navigationMode": "page", "orientations": host["buttonUI"]["orientations"]},
         "layers": [
-            {"layerName": name, "layerOrder": order, "frames": []}
-            for order, name in (viewport_layers or [])
+            {
+                "layerName": name,
+                "layerOrder": order,
+                "frames": frame_payload if index == 0 else [],
+            }
+            for index, (order, name) in enumerate(vp_layers_spec)
         ],
     }
     return {
@@ -110,12 +134,12 @@ def _project(
                                     "layerOrder": 0,
                                     "buttonCategories": {
                                         "screenLabels": [],
-                                        "screenButtons": [host, *buttons],
+                                        "screenButtons": [host, *page_buttons],
                                         "hardButtons": [],
                                         "emptyTag": [],
                                         "uiItems": [],
                                     },
-                                    "viewports": [viewport] if viewport_layers is not None else [],
+                                    "viewports": [viewport] if vp_layers_spec else [],
                                 }
                             ],
                         }
@@ -176,7 +200,10 @@ class UploadChangelogBuilderTest(unittest.TestCase):
         )
         joined = " ".join(doc["testable"]).lower()
         self.assertEqual(doc["status"], "ok")
-        self.assertIn("rTiPanel (Simple) / Cameras (Overview) v2 / Lights".lower(), joined)
+        self.assertIn(
+            "rTiPanel (Simple) / Cameras (Overview) v2 / Page / Screen Button / Lights".lower(),
+            joined,
+        )
         self.assertTrue("test target" in joined or "binding" in joined)
         self.assertEqual(doc["layoutOnly"], [])
 
@@ -217,13 +244,45 @@ class UploadChangelogBuilderTest(unittest.TestCase):
             doc["heading"],
             "Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)",
         )
-        layout = " ".join(doc["layoutOnly"]).lower()
-        self.assertIn("nav - go to camera 1", layout)
-        self.assertIn("portrait left 15", layout)
-        self.assertIn("14", layout)
-        self.assertIn("layer order", layout)
-        self.assertIn("1, 2, 3", layout)
-        self.assertIn("0, 1, 2", layout)
+        self.assertIn(
+            "RTiPanel (Simple) / Cameras (Overview) v2 / Page / Screen Button / NAV - Go to CAMERA 1: moved 1 px (portrait left 15 → 14)",
+            doc["layoutOnly"],
+        )
+        self.assertIn(
+            "RTiPanel (Simple) / Cameras (Overview) v2 / Page / VIEWPORT - Cameras: layer order 1, 2, 3 → 0, 1, 2 (Loading, Feeds, Select). Relative stack unchanged.",
+            doc["layoutOnly"],
+        )
+
+    def test_viewport_frame_button_includes_viewport_in_path(self):
+        from sentinel.server.services import upload_changelog
+
+        old_btn = _button(
+            button_id=99,
+            tag="POWER OFF - All TOGGLE",
+            portrait=_coords(left=1062),
+            landscape=_coords(left=100),
+        )
+        new_btn = _button(
+            button_id=99,
+            tag="POWER OFF - All TOGGLE",
+            portrait=_coords(left=1022),
+            landscape=_coords(left=100),
+        )
+        doc = upload_changelog.build_changelog(
+            old_project_data=_project(buttons=[old_btn], place_buttons="viewport"),
+            new_project_data=_project(buttons=[new_btn], place_buttons="viewport"),
+            old_resolved=_resolved(keys=[]),
+            new_resolved=_resolved(keys=[]),
+            previous_filename="v1.apex",
+            current_filename="v2.apex",
+        )
+        self.assertEqual(doc["status"], "ok")
+        self.assertEqual(
+            doc["layoutOnly"],
+            [
+                "RTiPanel (Simple) / Cameras (Overview) v2 / Feeds / Frame 1 / Screen Button / POWER OFF - All TOGGLE: moved 40 px (portrait left 1062 → 1022)"
+            ],
+        )
 
     def test_first_file_and_no_changes(self):
         from sentinel.server.services import upload_changelog

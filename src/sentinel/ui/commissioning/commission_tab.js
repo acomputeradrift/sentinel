@@ -350,6 +350,7 @@ function normalizeEventMessage(ev) {
     pageName: String(refs?.pageName || ""),
     layer: String(refs?.layerName || data?.layerName || ""),
     viewport: isEvent ? "" : (viewportRaw || "No"),
+    itemType: String(refs?.itemType || data?.itemType || ""),
     buttonName: explicitButton || (isEvent ? eventIdentity : ""),
     testTarget: String(data?.targetName || ""),
     passFail: rawOutcome === "PASS" ? "Pass" : rawOutcome === "FAIL" ? "Fail" : "",
@@ -369,6 +370,7 @@ function appendActivityRow(msg) {
   const tdPage = document.createElement("td");
   const tdLayer = document.createElement("td");
   const tdViewport = document.createElement("td");
+  const tdType = document.createElement("td");
   const tdButton = document.createElement("td");
   const tdTarget = document.createElement("td");
   const tdStatus = document.createElement("td");
@@ -388,6 +390,7 @@ function appendActivityRow(msg) {
   tdPage.textContent = msg.pageName || "";
   tdLayer.textContent = msg.layer || "";
   tdViewport.textContent = String(msg.viewport || "");
+  tdType.textContent = String(msg.itemType || "");
   tdButton.textContent = msg.buttonName || "";
   tdTarget.textContent = msg.testTarget || msg.targetKey || "";
   const st = String(msg.passFail || "").trim();
@@ -400,6 +403,7 @@ function appendActivityRow(msg) {
   tr.appendChild(tdPage);
   tr.appendChild(tdLayer);
   tr.appendChild(tdViewport);
+  tr.appendChild(tdType);
   tr.appendChild(tdButton);
   tr.appendChild(tdTarget);
   tr.appendChild(tdStatus);
@@ -484,6 +488,7 @@ function _upsertFailRecord(fails, payload) {
     pageName: String(refs?.pageName || prev?.pageName || ""),
     layerName: String(refs?.layerName || prev?.layerName || ""),
     viewport: String(refs?.viewport || prev?.viewport || ""),
+    itemType: String(refs?.itemType || prev?.itemType || ""),
     buttonName: String(refs?.buttonName || prev?.buttonName || ""),
     scope: String(refs?.scope || prev?.scope || ""),
     targetName: String(payload?.targetName || prev?.targetName || ""),
@@ -977,6 +982,7 @@ function _sortCommissionRows(rows) {
     else if (key === "pageName") cmp = _commissionCompareText(a?.pageName, b?.pageName, direction);
     else if (key === "layer") cmp = _commissionCompareText(a?.layer, b?.layer, direction);
     else if (key === "viewport") cmp = _commissionCompareText(a?.viewport, b?.viewport, direction);
+    else if (key === "itemType") cmp = _commissionCompareText(a?.itemType, b?.itemType, direction);
     else if (key === "buttonName") cmp = _commissionCompareText(a?.buttonName, b?.buttonName, direction);
     else if (key === "testTarget") cmp = _commissionCompareText(a?.testTarget || a?.targetKey, b?.testTarget || b?.targetKey, direction);
     else if (key === "who") cmp = _commissionCompareText(a?.who, b?.who, direction);

@@ -3658,6 +3658,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (pageState && pageState.deviceName) refs.deviceName = String(pageState.deviceName || "");
   if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
   if (buttonName) refs.buttonName = buttonName;
+  if (categoryName) refs.itemType = categoryName;
   const ownerLayerName = wrap && wrap.dataset ? String(wrap.dataset.ownerLayerName || "").trim() : "";
   const vpLayerName = wrap && wrap.dataset ? String(wrap.dataset.vpLayerName || "").trim() : "";
   const frameRaw = wrap && wrap.dataset ? wrap.dataset.frame : null;
@@ -6381,6 +6382,7 @@ function buildTargetPayload(ctxBtn, meta, targetLabel) {{
   if (pageState && pageState.deviceName) refs.deviceName = String(pageState.deviceName || "");
   if (pageState && pageState.pageName) refs.pageName = String(pageState.pageName || "");
   if (buttonName) refs.buttonName = buttonName;
+  if (categoryName) refs.itemType = categoryName;
   const ownerLayerName = wrap && wrap.dataset ? String(wrap.dataset.ownerLayerName || "").trim() : "";
   const vpLayerName = wrap && wrap.dataset ? String(wrap.dataset.vpLayerName || "").trim() : "";
   const frameRaw = wrap && wrap.dataset ? wrap.dataset.frame : null;

@@ -609,6 +609,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                   pageName: "Home",
                   layerName: "Layer Alpha",
                   viewport: "No",
+                  itemType: "Screen Button",
                   buttonName: "Button 1",
                   scope: "BUTTON",
                   scopeType: "ROOM",
@@ -708,6 +709,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 pageName: "Scene",
                 layerName: "Layer Gamma",
                 viewport: "No",
+                itemType: "Screen Button",
                 buttonName: "Button 9",
                 scope: "BUTTON",
                 scopeType: "GLOBAL",
@@ -1014,7 +1016,26 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(0)).to_contain_text(re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$"))
         expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(3)).to_contain_text("Layer Gamma")
         expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(4)).to_contain_text("No")
-        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(7)).to_contain_text("Fail")
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(5)).to_contain_text("Screen Button")
+        expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(8)).to_contain_text("Fail")
+        self.assertEqual(
+            page.evaluate(
+                """() => Array.from(document.querySelectorAll("#commissionActivity .activity-table thead th"))
+                  .map((th) => String(th.textContent || "").trim())"""
+            ),
+            [
+                "Timestamp",
+                "Device",
+                "Page Name",
+                "Layer",
+                "Viewport",
+                "Type",
+                "Button Identity",
+                "Test Target",
+                "Pass/Fail",
+                "Who",
+            ],
+        )
         page.get_by_role("columnheader", name="Device").click()
         expect(page.locator("#commissionActivityBody tr").first.locator("td").nth(1)).to_contain_text("Device A")
         page.get_by_role("columnheader", name="Device").click()
@@ -1143,6 +1164,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_role("columnheader", name="Page Name")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Layer")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Viewport")).to_be_visible()
+        expect(page.get_by_role("columnheader", name="Type")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Button Identity")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Test Target")).to_be_visible()
         expect(page.get_by_role("columnheader", name="Effective Scope")).to_be_visible()
@@ -1175,6 +1197,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
                 "Page Name",
                 "Layer",
                 "Viewport",
+                "Type",
                 "Button Identity",
                 "Test Target",
                 "Effective Scope",
@@ -1196,8 +1219,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Living Room -> Main AVR")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global -> Lighting Processor")
         expect(page.locator("#diagnosticsTaskTable tbody")).to_contain_text("Global")
-        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(8)).to_contain_text("Global")
-        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show")).to_be_visible()
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9)).to_contain_text("Global")
+        expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(10).get_by_role("button", name="Show")).to_be_visible()
         expect(page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(0).locator("select")).to_have_class(re.compile(r"status-template-select"))
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("System Macros")
         expect(page.get_by_test_id("diagnostics-pie-failure-types")).to_contain_text("Page Links")
@@ -1229,7 +1252,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("In Progress (0")
         expect(page.get_by_test_id("diagnostics-pie-task-completion")).to_contain_text("Complete (0")
 
-        page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(9).get_by_role("button", name="Show").click()
+        page.locator("#diagnosticsTaskTable tbody tr").first.locator("td").nth(10).get_by_role("button", name="Show").click()
         expect(page.get_by_role("dialog", name="Tech Notes")).to_be_visible()
         expect(page.get_by_test_id("tech-notes-content")).to_contain_text('Onsite Tech says: "Bitmap mismatch."')
         page.keyboard.press("Escape")
@@ -1717,8 +1740,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
           emptyMessage: null,
           testable: [],
           layoutOnly: [
-            "RTiPanel (Simple) / Cameras (Overview) v2 / VIEWPORT - Cameras: layer order 1, 2, 3 → 0, 1, 2 (Loading, Feeds, Select). Relative stack unchanged.",
-            "RTiPanel (Simple) / Cameras (Overview) v2 / NAV - Go to CAMERA 1: moved 1 px (portrait left 15 → 14)."
+            "RTiPanel (Simple) / Cameras (Overview) v2 / Page / VIEWPORT - Cameras: layer order 1, 2, 3 → 0, 1, 2 (Loading, Feeds, Select). Relative stack unchanged.",
+            "RTiPanel (Simple) / Cameras (Overview) v2 / Page / Screen Button / NAV - Go to CAMERA 1: moved 1 px (portrait left 15 → 14)."
           ],
           testableOmitted: 0,
           layoutOnlyOmitted: 0
@@ -1874,6 +1897,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         deviceName: "Device A",
         pageName: "Home",
         buttonName: "Lights",
+        itemType: "Screen Button",
         viewport: "No",
         scope: "BUTTON",
         tag: "NOT_STARTED",
@@ -1902,7 +1926,7 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         outcome: "FAIL",
         targetName: "Macro",
         kind: "BUTTON",
-        refs: { deviceName: "Device A", pageName: "Home", buttonName: "Lights" },
+        refs: { deviceName: "Device A", pageName: "Home", itemType: "Screen Button", buttonName: "Lights" },
         techName: "Taylor",
       },
     ],
@@ -1915,20 +1939,24 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(event_live).to_have_count(1)
         expect(event_live.locator("td").nth(1)).to_have_text("System Event")
         expect(event_live.locator("td").nth(4)).to_have_text("")
-        expect(event_live.locator("td").nth(5)).to_have_text("Event Trigger")
+        expect(event_live.locator("td").nth(5)).to_have_text("")
+        expect(event_live.locator("td").nth(6)).to_have_text("Event Trigger")
         button_live = page.locator("#commissionActivityBody tr").filter(has_text="Lights")
         expect(button_live.locator("td").nth(4)).to_have_text("No")
-        expect(button_live.locator("td").nth(5)).to_have_text("Lights")
+        expect(button_live.locator("td").nth(5)).to_have_text("Screen Button")
+        expect(button_live.locator("td").nth(6)).to_have_text("Lights")
 
         page.get_by_role("button", name="Diagnostics").click()
         event_diag = page.locator("#diagnosticsTaskTable tbody tr").filter(has_text="Event Trigger")
         expect(event_diag).to_have_count(1)
         expect(event_diag.locator("td").nth(2)).to_have_text("System Event")
         expect(event_diag.locator("td").nth(5)).to_have_text("")
-        expect(event_diag.locator("td").nth(6)).to_have_text("Event Trigger")
+        expect(event_diag.locator("td").nth(6)).to_have_text("")
+        expect(event_diag.locator("td").nth(7)).to_have_text("Event Trigger")
         button_diag = page.locator("#diagnosticsTaskTable tbody tr").filter(has_text="Lights")
         expect(button_diag.locator("td").nth(5)).to_have_text("No")
-        expect(button_diag.locator("td").nth(6)).to_have_text("Lights")
+        expect(button_diag.locator("td").nth(6)).to_have_text("Screen Button")
+        expect(button_diag.locator("td").nth(7)).to_have_text("Lights")
         page.close()
 
     def test_live_smoke_real_asset_no_unexpected_ws_disconnects(self):

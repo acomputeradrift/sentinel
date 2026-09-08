@@ -560,6 +560,8 @@ function _diagSortTasks(rows) {
       cmp = _diagCompareText(a?.layerName, b?.layerName, direction);
     } else if (sortKey === "viewport") {
       cmp = _diagCompareText(formatViewport(a), formatViewport(b), direction);
+    } else if (sortKey === "itemType") {
+      cmp = _diagCompareText(a?.itemType, b?.itemType, direction);
     } else if (sortKey === "buttonIdentity") {
       cmp = _diagCompareText(_buttonIdentityLabel(a), _buttonIdentityLabel(b), direction);
     } else if (sortKey === "testTarget") {
@@ -749,6 +751,9 @@ function renderTaskList(projectId, fails) {
       frameIndexRti: rec?.frameIndexRti,
     });
 
+    const tdType = document.createElement("td");
+    tdType.textContent = String(rec?.itemType || "");
+
     const tdButton = document.createElement("td");
     tdButton.textContent = _buttonIdentityLabel(rec);
 
@@ -781,6 +786,7 @@ function renderTaskList(projectId, fails) {
     tr.appendChild(tdPage);
     tr.appendChild(tdLayer);
     tr.appendChild(tdViewport);
+    tr.appendChild(tdType);
     tr.appendChild(tdButton);
     tr.appendChild(tdTarget);
     tr.appendChild(tdScope);
@@ -796,6 +802,7 @@ function renderTaskList(projectId, fails) {
       layerName: String(rec?.layerName || ""),
       viewport: String(rec?.viewport || ""),
       frameIndexRti: rec?.frameIndexRti,
+      itemType: String(rec?.itemType || ""),
       buttonName: String(rec?.buttonName || ""),
       targetName: String(rec?.targetName || ""),
       kind: String(rec?.kind || ""),
@@ -1022,6 +1029,7 @@ function _makeTaskRow(projectId, task) {
   const tdPage = document.createElement("td");
   const tdLayer = document.createElement("td");
   const tdViewport = document.createElement("td");
+  const tdType = document.createElement("td");
   const tdButton = document.createElement("td");
   const tdTarget = document.createElement("td");
   const tdScope = document.createElement("td");
@@ -1032,6 +1040,7 @@ function _makeTaskRow(projectId, task) {
   tdPage.textContent = String(task?.pageName || (ident.page ? `p${ident.page}` : ""));
   tdLayer.textContent = String(task?.layerName || "");
   tdViewport.textContent = formatViewport(task);
+  tdType.textContent = String(task?.itemType || "");
   tdButton.textContent = _buttonIdentityLabel(task);
   tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
   tdTarget.textContent = formatTargetLabelForTaskList(task?.targetName || ident.testTarget || "");
@@ -1048,12 +1057,13 @@ function _makeTaskRow(projectId, task) {
   tr.appendChild(tdPage);
   tr.appendChild(tdLayer);
   tr.appendChild(tdViewport);
+  tr.appendChild(tdType);
   tr.appendChild(tdButton);
   tr.appendChild(tdTarget);
   tr.appendChild(tdScope);
   tr.appendChild(tdResolved);
 
-  return { tr, sel, tdAt, tdDevice, tdPage, tdLayer, tdViewport, tdButton, tdScope, tdTarget, tdResolved };
+  return { tr, sel, tdAt, tdDevice, tdPage, tdLayer, tdViewport, tdType, tdButton, tdScope, tdTarget, tdResolved };
 }
 
 function _updateTaskRowDom(row, task) {
@@ -1063,6 +1073,7 @@ function _updateTaskRowDom(row, task) {
   row.tdPage.textContent = String(task?.pageName || "");
   row.tdLayer.textContent = String(task?.layerName || "");
   row.tdViewport.textContent = formatViewport(task);
+  row.tdType.textContent = String(task?.itemType || "");
   row.tdButton.textContent = _buttonIdentityLabel(task);
   row.tdScope.textContent = String(task?.effectiveScopeNames || formatEffectiveScope(task));
   row.tdTarget.textContent = formatTargetLabelForTaskList(task?.targetName || "");

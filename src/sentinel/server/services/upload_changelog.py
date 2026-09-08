@@ -129,10 +129,76 @@ def _button_label(button: dict[str, Any]) -> str:
     return f"button {bid}" if bid is not None else "button"
 
 
-def _located_line(device_name: str, page_name: str, label: str, what: str) -> str:
-    parts = [p for p in (device_name.strip(), page_name.strip(), label.strip()) if p]
+_ITEM_TYPE_LABELS = {
+    "screenLabels": "Screen Label",
+    "screenButtons": "Screen Button",
+    "hardButtons": "Hard Button",
+    "emptyTag": "Empty Tag",
+    "uiItems": "UI Item",
+}
+
+
+def _item_type_label(category_key: str) -> str:
+    key = str(category_key or "").strip()
+    return _ITEM_TYPE_LABELS.get(key, "")
+
+
+def _viewport_label(frame: dict[str, Any] | None, *, index: int) -> str:
+    if not isinstance(frame, dict):
+        return f"Frame {index + 1}"
+    raw = frame.get("frameId")
+    try:
+        frame_id = int(raw)
+    except (TypeError, ValueError):
+        return f"Frame {index + 1}"
+    return f"Frame {frame_id + 1}"
+
+
+def _located_line(
+    device_name: str,
+    page_name: str,
+    label: str,
+    what: str,
+    *,
+    layer_name: str = "",
+    viewport: str = "",
+    item_type: str = "",
+) -> str:
+    parts = [
+        p
+        for p in (
+            device_name.strip(),
+            page_name.strip(),
+            layer_name.strip(),
+            viewport.strip(),
+            item_type.strip(),
+            label.strip(),
+        )
+        if p
+    ]
     where = " / ".join(parts) if parts else "Item"
     return f"{where}: {what}"
+
+
+def _button_record(
+    *,
+    device_name: str,
+    device_id: Any,
+    page_name: str,
+    layer_name: str,
+    viewport: str,
+    item_type: str,
+    button: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "deviceName": device_name,
+        "deviceId": device_id,
+        "pageName": page_name,
+        "layerName": layer_name,
+        "viewport": viewport,
+        "itemType": item_type,
+        "button": button,
+    }
 
 
 def _iter_buttons(project_data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -151,17 +217,22 @@ def _iter_buttons(project_data: dict[str, Any]) -> list[dict[str, Any]]:
             for layer in _as_list(page.get("layers")):
                 if not isinstance(layer, dict):
                     continue
+                layer_name = str(layer.get("layerName") or "").strip()
                 cats = _as_dict(layer.get("buttonCategories"))
-                for items in cats.values():
+                for cat_key, items in cats.items():
+                    item_type = _item_type_label(str(cat_key))
                     for btn in _as_list(items):
                         if isinstance(btn, dict):
                             out.append(
-                                {
-                                    "deviceName": device_name,
-                                    "deviceId": device_id,
-                                    "pageName": page_name,
-                                    "button": btn,
-                                }
+                                _button_record(
+                                    device_name=device_name,
+                                    device_id=device_id,
+                                    page_name=page_name,
+                                    layer_name=layer_name,
+                                    viewport="",
+                                    item_type=item_type,
+                                    button=btn,
+                                )
                             )
                 for vp in _as_list(layer.get("viewports")):
                     if not isinstance(vp, dict):
@@ -169,19 +240,25 @@ def _iter_buttons(project_data: dict[str, Any]) -> list[dict[str, Any]]:
                     for vpl in _as_list(vp.get("layers")):
                         if not isinstance(vpl, dict):
                             continue
-                        for frame in _as_list(vpl.get("frames")):
+                        vp_layer_name = str(vpl.get("layerName") or layer_name).strip()
+                        for frame_index, frame in enumerate(_as_list(vpl.get("frames"))):
                             if not isinstance(frame, dict):
                                 continue
-                            for items in _as_dict(frame.get("buttonCategories")).values():
+                            viewport = _viewport_label(frame, index=frame_index)
+                            for cat_key, items in _as_dict(frame.get("buttonCategories")).items():
+                                item_type = _item_type_label(str(cat_key))
                                 for btn in _as_list(items):
                                     if isinstance(btn, dict):
                                         out.append(
-                                            {
-                                                "deviceName": device_name,
-                                                "deviceId": device_id,
-                                                "pageName": page_name,
-                                                "button": btn,
-                                            }
+                                            _button_record(
+                                                device_name=device_name,
+                                                device_id=device_id,
+                                                page_name=page_name,
+                                                layer_name=vp_layer_name,
+                                                viewport=viewport,
+                                                item_type=item_type,
+                                                button=btn,
+                                            )
                                         )
     return out
 
@@ -250,6 +327,7 @@ def _iter_viewports(project_data: dict[str, Any]) -> list[dict[str, Any]]:
                             "key": (device_id, page_id, vpid),
                             "deviceName": device_name,
                             "pageName": page_name,
+                            "layerName": str(layer.get("layerName") or "").strip(),
                             "label": host_labels.get(vpid) or f"VIEWPORT {vpid}",
                             "layers": layers,
                         }
@@ -425,14 +503,37 @@ def build_changelog(
         new_btn = new_rec["button"]
         device_name = str(new_rec.get("deviceName") or old_rec.get("deviceName") or "")
         page_name = str(new_rec.get("pageName") or old_rec.get("pageName") or "")
+        layer_name = str(new_rec.get("layerName") or old_rec.get("layerName") or "")
+        viewport = str(new_rec.get("viewport") or old_rec.get("viewport") or "")
+        item_type = str(new_rec.get("itemType") or old_rec.get("itemType") or "")
         label = _button_label(new_btn)
         testable_what = _describe_testable_button(old_btn, new_btn)
         if testable_what:
-            testable.append(_located_line(device_name, page_name, label, testable_what))
+            testable.append(
+                _located_line(
+                    device_name,
+                    page_name,
+                    label,
+                    testable_what,
+                    layer_name=layer_name,
+                    viewport=viewport,
+                    item_type=item_type,
+                )
+            )
             continue
         layout_what = _describe_layout_button(old_btn, new_btn)
         if layout_what:
-            layout_only.append(_located_line(device_name, page_name, label, layout_what))
+            layout_only.append(
+                _located_line(
+                    device_name,
+                    page_name,
+                    label,
+                    layout_what,
+                    layer_name=layer_name,
+                    viewport=viewport,
+                    item_type=item_type,
+                )
+            )
 
     old_vps = {rec["key"]: rec for rec in _iter_viewports(old_project_data)}
     new_vps = {rec["key"]: rec for rec in _iter_viewports(new_data)}
@@ -450,6 +551,7 @@ def build_changelog(
                 str(new_vp.get("pageName") or ""),
                 str(new_vp.get("label") or "VIEWPORT"),
                 what,
+                layer_name=str(new_vp.get("layerName") or old_vp.get("layerName") or ""),
             )
         )
 

@@ -70,6 +70,7 @@ def fails_from_latest(*, repo: Repository, projectId: str, latest_results: dict)
                 "pageName": refs.get("pageName") if isinstance(refs, dict) else None,
                 "layerName": refs.get("layerName") if isinstance(refs, dict) else None,
                 "viewport": refs.get("viewport") if isinstance(refs, dict) else None,
+                "itemType": refs.get("itemType") if isinstance(refs, dict) else None,
                 "buttonName": refs.get("buttonName") if isinstance(refs, dict) else None,
                 "scope": refs.get("scope") if isinstance(refs, dict) else None,
                 "targetName": rec.target.get("targetName"),
