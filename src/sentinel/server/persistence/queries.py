@@ -247,6 +247,59 @@ def set_upload_changelog(database_url: str, *, upload_id: str, changelog: dict[s
         con.close()
 
 
+def _parse_changelog_history(raw: Any) -> list[dict[str, Any]]:
+    if isinstance(raw, str) and raw.strip():
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return []
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def append_project_changelog(
+    database_url: str, *, project_id: str, changelog: dict[str, Any], cap: int = 100
+) -> None:
+    if not isinstance(changelog, dict):
+        return
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select changelog_history_json as \"history\" from projects where project_id=%s",
+            (project_id,),
+        )
+        if row is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        items = _parse_changelog_history(row.get("history"))
+        items.insert(0, changelog)
+        items = items[: max(1, int(cap or 100))]
+        cur = con.cursor()
+        cur.execute(
+            "update projects set changelog_history_json=%s::jsonb where project_id=%s",
+            (json.dumps(items), project_id),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def list_project_changelogs(database_url: str, *, project_id: str) -> list[dict[str, Any]]:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select changelog_history_json as \"history\" from projects where project_id=%s",
+            (project_id,),
+        )
+        if not row:
+            return []
+        return _parse_changelog_history(row.get("history"))
+    finally:
+        con.close()
+
+
 def set_project_active_upload(database_url: str, *, project_id: str, upload_id: str) -> None:
     con = db.connect(database_url)
     try:

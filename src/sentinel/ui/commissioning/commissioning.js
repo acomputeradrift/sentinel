@@ -374,6 +374,26 @@ function _changelogFromActiveUpload(activeUpload) {
   return raw && typeof raw === "object" ? raw : null;
 }
 
+function _changelogHistoryFromActiveUpload(activeUpload) {
+  const hist = activeUpload && activeUpload.changelogHistory;
+  if (Array.isArray(hist) && hist.length) {
+    return hist.filter((item) => item && typeof item === "object");
+  }
+  const one = _changelogFromActiveUpload(activeUpload);
+  return one ? [one] : [];
+}
+
+function _changelogDisplayHeading(entry) {
+  if (entry && entry.heading) return String(entry.heading);
+  const ts = formatUtc(entry && entry.uploadedAtUtc);
+  const prev = String((entry && entry.previousFilename) || "").trim();
+  const curr = String((entry && entry.currentFilename) || "").trim();
+  let base = "Change Log";
+  if (prev && curr) base = `Change Log (${prev} -> ${curr})`;
+  else if (curr) base = `Change Log (${curr})`;
+  return ts ? `${ts} ${base}` : base;
+}
+
 function _fillChangelogList(el, items, omitted) {
   if (!el) return;
   el.replaceChildren();
@@ -400,48 +420,88 @@ function _fillChangelogList(el, items, omitted) {
   el.appendChild(ul);
 }
 
+function _renderChangelogEntry(entry) {
+  const wrap = document.createElement("section");
+  wrap.className = "changelog-entry";
+  const heading = document.createElement("h3");
+  heading.className = "changelog-heading";
+  heading.textContent = _changelogDisplayHeading(entry);
+  wrap.appendChild(heading);
+
+  const status = String((entry && entry.status) || "");
+  if (status === "ok") {
+    const testTitle = document.createElement("h4");
+    testTitle.textContent = "Testable";
+    wrap.appendChild(testTitle);
+    const testableEl = document.createElement("div");
+    _fillChangelogList(testableEl, entry.testable, entry.testableOmitted);
+    wrap.appendChild(testableEl);
+    const layoutTitle = document.createElement("h4");
+    layoutTitle.textContent = "Non-testable but changed";
+    wrap.appendChild(layoutTitle);
+    const layoutEl = document.createElement("div");
+    _fillChangelogList(layoutEl, entry.layoutOnly, entry.layoutOnlyOmitted);
+    wrap.appendChild(layoutEl);
+    return wrap;
+  }
+
+  const emptyEl = document.createElement("p");
+  emptyEl.className = "changelog-empty";
+  if (status === "no_changes") {
+    emptyEl.textContent = String((entry && entry.emptyMessage) || "No changes since last file.");
+  } else if (status === "error") {
+    emptyEl.textContent = String((entry && entry.emptyMessage) || "Changelog could not be computed.");
+  } else {
+    emptyEl.textContent = String(
+      (entry && entry.emptyMessage) || "No previous file. Changelog starts on the next load."
+    );
+  }
+  wrap.appendChild(emptyEl);
+  return wrap;
+}
+
+function _fitChangelogBox() {
+  const box = document.getElementById("fileChangelogBox");
+  if (!box || box.hidden) return;
+  const top = box.getBoundingClientRect().top;
+  const pad = 24;
+  box.style.maxHeight = `${Math.max(160, Math.floor(window.innerHeight - top - pad))}px`;
+}
+
 function renderFileChangelog() {
   const box = document.getElementById("fileChangelogBox");
-  const heading = document.getElementById("fileChangelogHeading");
-  const emptyEl = document.getElementById("fileChangelogEmpty");
-  const sections = document.getElementById("fileChangelogSections");
-  const testableEl = document.getElementById("fileChangelogTestable");
-  const layoutEl = document.getElementById("fileChangelogLayout");
-  if (!box || !heading || !emptyEl || !sections || !testableEl || !layoutEl) return;
+  const entriesEl = document.getElementById("fileChangelogEntries");
+  if (!box || !entriesEl) return;
 
   const projectId = currentProjectId();
   const activeUpload = projectId ? state.activeUploadByProject[projectId] : null;
   if (!projectId || !activeUpload) {
     box.hidden = true;
+    entriesEl.replaceChildren();
     return;
   }
   box.hidden = false;
-  const changelog = _changelogFromActiveUpload(activeUpload);
-  const status = changelog ? String(changelog.status || "") : "first_file";
-  heading.textContent = changelog && changelog.heading ? String(changelog.heading) : "Change Log";
-
-  if (status === "ok") {
-    emptyEl.hidden = true;
-    emptyEl.textContent = "";
-    sections.hidden = false;
-    _fillChangelogList(testableEl, changelog.testable, changelog.testableOmitted);
-    _fillChangelogList(layoutEl, changelog.layoutOnly, changelog.layoutOnlyOmitted);
+  const history = _changelogHistoryFromActiveUpload(activeUpload);
+  if (!history.length) {
+    entriesEl.replaceChildren(
+      _renderChangelogEntry({
+        status: "first_file",
+        heading: "Change Log",
+        emptyMessage: "No previous file. Changelog starts on the next load.",
+      })
+    );
+    _fitChangelogBox();
     return;
   }
+  entriesEl.replaceChildren(...history.map((entry) => _renderChangelogEntry(entry)));
+  _fitChangelogBox();
+}
 
-  sections.hidden = true;
-  testableEl.replaceChildren();
-  layoutEl.replaceChildren();
-  emptyEl.hidden = false;
-  if (status === "no_changes") {
-    emptyEl.textContent = String((changelog && changelog.emptyMessage) || "No changes since last file.");
-  } else if (status === "error") {
-    emptyEl.textContent = String((changelog && changelog.emptyMessage) || "Changelog could not be computed.");
-  } else {
-    emptyEl.textContent = String(
-      (changelog && changelog.emptyMessage) || "No previous file. Changelog starts on the next load."
-    );
-  }
+if (typeof window !== "undefined" && !window.__sentinelChangelogResizeBound) {
+  window.__sentinelChangelogResizeBound = true;
+  window.addEventListener("resize", () => {
+    _fitChangelogBox();
+  });
 }
 
 function filenameFromFilePanelLabel(raw) {
@@ -837,6 +897,7 @@ async function uploadAndRegenerate() {
       storagePath: String(activeFromApi?.storagePath || uploadObj?.storagePath || ""),
       uploadedAtUtc,
       changelog: activeFromApi?.changelog && typeof activeFromApi.changelog === "object" ? activeFromApi.changelog : null,
+      changelogHistory: Array.isArray(activeFromApi?.changelogHistory) ? activeFromApi.changelogHistory : [],
     };
     const store = getSharedProjectStore();
     if (store && typeof store.dispatch === "function") {
@@ -903,14 +964,19 @@ function applyActiveUpload(projectId, activeUpload) {
   const pid = String(projectId || "").trim();
   if (!pid) return;
   if (activeUpload && typeof activeUpload === "object") {
+    const prev = state.activeUploadByProject[pid];
     const incoming = {
       uploadId: activeUpload.uploadId || null,
       originalFilename: activeUpload.originalFilename || "",
       storagePath: activeUpload.storagePath || "",
       uploadedAtUtc: activeUpload.uploadedAtUtc || "",
       changelog: activeUpload.changelog && typeof activeUpload.changelog === "object" ? activeUpload.changelog : null,
+      changelogHistory: Array.isArray(activeUpload.changelogHistory)
+        ? activeUpload.changelogHistory
+        : prev && Array.isArray(prev.changelogHistory)
+          ? prev.changelogHistory
+          : [],
     };
-    const prev = state.activeUploadByProject[pid];
     const prevMs = _uploadedAtMs(prev && prev.uploadedAtUtc);
     const incomingMs = _uploadedAtMs(incoming.uploadedAtUtc);
     if (prev && prevMs > incomingMs) {

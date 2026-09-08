@@ -255,6 +255,19 @@ class UploadChangelogBuilderTest(unittest.TestCase):
         self.assertEqual(same["status"], "no_changes")
         self.assertIn("no changes", same["emptyMessage"].lower())
 
+    def test_display_heading_prefixes_upload_timestamp(self):
+        from sentinel.server.services import upload_changelog
+
+        heading = upload_changelog.display_heading(
+            previous_filename="1790 High Rd (Simple v28).apex",
+            current_filename="1790 High Rd (Simple v29).apex",
+            uploaded_at_utc="2026-09-08T16:20:00Z",
+        )
+        self.assertEqual(
+            heading,
+            "2026-09-08 16:20:00Z Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)",
+        )
+
     def test_builder_exception_is_fail_soft(self):
         from sentinel.server.services import upload_changelog
 
@@ -327,6 +340,120 @@ class UploadChangelogPersistTest(unittest.TestCase):
         assert payload is not None
         self.assertEqual(payload["changelog"]["heading"], changelog["heading"])
         self.assertEqual(payload["changelog"]["layoutOnly"], changelog["layoutOnly"])
+        self.assertEqual(payload["changelogHistory"], [])
+
+    def test_changelog_history_survives_upload_prune(self):
+        from sentinel.server.api.commissioning_snapshots import active_upload_payload
+        from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        repo = InMemoryRepository()
+        client = repo.create_client(userId=COMMISSIONING_STUB_USER_ID, name="History Client")
+        project = repo.create_project(
+            userId=COMMISSIONING_STUB_USER_ID, clientId=client.clientId, name="History Job"
+        )
+        first = repo.record_upload(
+            projectId=project.projectId,
+            uploadId="up-old",
+            originalFilename="v28.apex",
+            storagePath="/tmp/v28.apex",
+        )
+        repo.set_project_active_upload(projectId=project.projectId, uploadId=first.uploadId)
+        older = {
+            "status": "ok",
+            "heading": "2026-09-07 11:00:00Z Change Log (v27.apex -> v28.apex)",
+            "previousFilename": "v27.apex",
+            "currentFilename": "v28.apex",
+            "uploadedAtUtc": "2026-09-07T11:00:00Z",
+            "testable": [],
+            "layoutOnly": ["old line"],
+        }
+        newer = {
+            "status": "ok",
+            "heading": "2026-09-08 16:20:00Z Change Log (v28.apex -> v29.apex)",
+            "previousFilename": "v28.apex",
+            "currentFilename": "v29.apex",
+            "uploadedAtUtc": "2026-09-08T16:20:00Z",
+            "testable": [],
+            "layoutOnly": ["new line"],
+        }
+        repo.append_project_changelog(projectId=project.projectId, changelog=older)
+        second = repo.record_upload(
+            projectId=project.projectId,
+            uploadId="up-new",
+            originalFilename="v29.apex",
+            storagePath="/tmp/v29.apex",
+        )
+        repo.set_upload_changelog(uploadId=second.uploadId, changelog=newer)
+        repo.append_project_changelog(projectId=project.projectId, changelog=newer)
+        repo.set_project_active_upload(projectId=project.projectId, uploadId=second.uploadId)
+        repo.prune_project_upload_retention(
+            projectId=project.projectId,
+            activeUploadId=second.uploadId,
+            activeStoragePath=second.storagePath,
+        )
+        self.assertEqual(len(repo.list_uploads_for_project(projectId=project.projectId)), 1)
+        history = repo.list_project_changelogs(projectId=project.projectId)
+        self.assertEqual([item["currentFilename"] for item in history], ["v29.apex", "v28.apex"])
+        payload = active_upload_payload(repo=repo, projectId=project.projectId)
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(len(payload["changelogHistory"]), 2)
+        self.assertEqual(payload["changelogHistory"][0]["heading"], newer["heading"])
+
+    def test_persist_helper_seeds_existing_upload_changelog_into_history(self):
+        from sentinel.server.api import commissioning as commissioning_api
+        from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        repo = InMemoryRepository()
+        client = repo.create_client(userId=COMMISSIONING_STUB_USER_ID, name="Seed Client")
+        project = repo.create_project(
+            userId=COMMISSIONING_STUB_USER_ID, clientId=client.clientId, name="Seed Job"
+        )
+        old = repo.record_upload(
+            projectId=project.projectId,
+            uploadId="up-old",
+            originalFilename="v28.apex",
+            storagePath="/tmp/v28.apex",
+        )
+        repo.set_project_active_upload(projectId=project.projectId, uploadId=old.uploadId)
+        repo.set_upload_changelog(
+            uploadId=old.uploadId,
+            changelog={
+                "status": "ok",
+                "heading": "Change Log (v27.apex -> v28.apex)",
+                "previousFilename": "v27.apex",
+                "currentFilename": "v28.apex",
+                "testable": [],
+                "layoutOnly": ["seeded"],
+            },
+        )
+        new = repo.record_upload(
+            projectId=project.projectId,
+            uploadId="up-new",
+            originalFilename="v29.apex",
+            storagePath="/tmp/v29.apex",
+        )
+        commissioning_api._persist_generation_changelog(
+            repo,
+            projectId=project.projectId,
+            uploadId=new.uploadId,
+            generation={
+                "changelog": {
+                    "status": "ok",
+                    "previousFilename": "v28.apex",
+                    "currentFilename": "v29.apex",
+                    "testable": [],
+                    "layoutOnly": ["fresh"],
+                }
+            },
+        )
+        history = repo.list_project_changelogs(projectId=project.projectId)
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["currentFilename"], "v29.apex")
+        self.assertEqual(history[1]["currentFilename"], "v28.apex")
+        self.assertIn("Change Log (v27.apex -> v28.apex)", history[1]["heading"])
 
 
 if __name__ == "__main__":

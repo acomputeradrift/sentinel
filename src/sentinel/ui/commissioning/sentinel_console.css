@@ -321,6 +321,8 @@ h2 {
   border-radius: 12px;
   background: #f7fbff;
   padding: 12px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 #manageProjectDetails .changelog-box h3 {
@@ -366,6 +368,12 @@ h2 {
   color: #4e6a7f;
   font-size: 13px;
   font-style: italic;
+}
+
+.changelog-entry + .changelog-entry {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #c6d2dd;
 }
 
 .row {

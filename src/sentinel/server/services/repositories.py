@@ -22,6 +22,9 @@ def new_token() -> str:
     return uuid4().hex
 
 
+CHANGELOG_HISTORY_CAP = 100
+
+
 def _changelog_value(raw: Any) -> dict[str, Any] | None:
     if isinstance(raw, dict):
         return raw
@@ -216,6 +219,10 @@ class Repository(Protocol):
 
     def set_upload_changelog(self, *, uploadId: str, changelog: dict[str, Any] | None) -> None: ...
 
+    def append_project_changelog(self, *, projectId: str, changelog: dict[str, Any]) -> None: ...
+
+    def list_project_changelogs(self, *, projectId: str) -> list[dict[str, Any]]: ...
+
     def get_project_active_upload(self, *, projectId: str) -> UploadRecord | None: ...
 
     def list_uploads_for_project(self, *, projectId: str) -> list[UploadRecord]: ...
@@ -306,6 +313,7 @@ class InMemoryRepository:
         self._testing_type_disabled_by_project: dict[str, list[str]] = {}
         self._test_passes_by_project: dict[str, list[dict[str, Any]]] = {}
         self._fail_tag_history: list[dict[str, Any]] = []
+        self._changelog_history_by_project: dict[str, list[dict[str, Any]]] = {}
 
     @staticmethod
     def _latest_record(items: list[TestResultRecord]) -> TestResultRecord | None:
@@ -637,6 +645,20 @@ class InMemoryRepository:
             if upload is None:
                 raise KeyError("UPLOAD_NOT_FOUND")
             upload.changelog = changelog if isinstance(changelog, dict) else None
+
+    def append_project_changelog(self, *, projectId: str, changelog: dict[str, Any]) -> None:
+        if not isinstance(changelog, dict):
+            return
+        with self._lock:
+            if projectId not in self._projects:
+                raise KeyError("PROJECT_NOT_FOUND")
+            items = list(self._changelog_history_by_project.get(projectId) or [])
+            items.insert(0, dict(changelog))
+            self._changelog_history_by_project[projectId] = items[:CHANGELOG_HISTORY_CAP]
+
+    def list_project_changelogs(self, *, projectId: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(item) for item in (self._changelog_history_by_project.get(projectId) or [])]
 
     def get_project_active_upload(self, *, projectId: str) -> UploadRecord | None:
         with self._lock:
@@ -1252,6 +1274,17 @@ class PostgresRepository:
 
     def set_upload_changelog(self, *, uploadId: str, changelog: dict[str, Any] | None) -> None:
         self._q.set_upload_changelog(self._database_url, upload_id=uploadId, changelog=changelog)
+
+    def append_project_changelog(self, *, projectId: str, changelog: dict[str, Any]) -> None:
+        self._q.append_project_changelog(
+            self._database_url,
+            project_id=projectId,
+            changelog=changelog,
+            cap=CHANGELOG_HISTORY_CAP,
+        )
+
+    def list_project_changelogs(self, *, projectId: str) -> list[dict[str, Any]]:
+        return self._q.list_project_changelogs(self._database_url, project_id=projectId)
 
     def get_project_active_upload(self, *, projectId: str) -> UploadRecord | None:
         row = self._q.get_project_active_upload(self._database_url, project_id=projectId)

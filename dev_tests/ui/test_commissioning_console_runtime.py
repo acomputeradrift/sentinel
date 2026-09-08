@@ -1660,9 +1660,8 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         )
         box = page.get_by_test_id("file-changelog")
         expect(box).to_be_visible()
-        expect(box.locator("#fileChangelogHeading")).to_have_text("Change Log (1790 High Rd (Simple v29).apex)")
-        expect(box.locator("#fileChangelogEmpty")).to_contain_text("No previous file")
-        expect(box.locator("#fileChangelogSections")).to_be_hidden()
+        expect(box.locator(".changelog-heading")).to_have_text("Change Log (1790 High Rd (Simple v29).apex)")
+        expect(box.locator(".changelog-empty")).to_contain_text("No previous file")
 
         page.evaluate(
             """
@@ -1678,18 +1677,26 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
       uploadedAtUtc: "2026-09-08T16:10:00Z",
       changelog: {
         status: "no_changes",
-        heading: "Change Log (1790 High Rd (Simple v29).apex -> 1790 High Rd (Simple v29).apex)",
+        heading: "2026-09-08 16:10:00Z Change Log (1790 High Rd (Simple v29).apex -> 1790 High Rd (Simple v29).apex)",
         emptyMessage: "No changes since last file.",
         testable: [],
         layoutOnly: []
-      }
+      },
+      changelogHistory: [
+        {
+          status: "no_changes",
+          heading: "2026-09-08 16:10:00Z Change Log (1790 High Rd (Simple v29).apex -> 1790 High Rd (Simple v29).apex)",
+          emptyMessage: "No changes since last file.",
+          testable: [],
+          layoutOnly: []
+        }
+      ]
     }
   });
 }
 """
         )
-        expect(box.locator("#fileChangelogEmpty")).to_have_text("No changes since last file.")
-        expect(box.locator("#fileChangelogSections")).to_be_hidden()
+        expect(box.locator(".changelog-empty")).to_have_text("No changes since last file.")
 
         page.evaluate(
             """
@@ -1703,30 +1710,49 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
       originalFilename: "1790 High Rd (Simple v29).apex",
       storagePath: "",
       uploadedAtUtc: "2026-09-08T16:20:00Z",
-      changelog: {
-        status: "ok",
-        heading: "Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)",
-        emptyMessage: null,
-        testable: [],
-        layoutOnly: [
-          "RTiPanel (Simple) / Cameras (Overview) v2 / VIEWPORT - Cameras: layer order 1, 2, 3 → 0, 1, 2 (Loading, Feeds, Select). Relative stack unchanged.",
-          "RTiPanel (Simple) / Cameras (Overview) v2 / NAV - Go to CAMERA 1: moved 1 px (portrait left 15 → 14)."
-        ],
-        testableOmitted: 0,
-        layoutOnlyOmitted: 0
-      }
+      changelogHistory: [
+        {
+          status: "ok",
+          heading: "2026-09-08 16:20:00Z Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)",
+          emptyMessage: null,
+          testable: [],
+          layoutOnly: [
+            "RTiPanel (Simple) / Cameras (Overview) v2 / VIEWPORT - Cameras: layer order 1, 2, 3 → 0, 1, 2 (Loading, Feeds, Select). Relative stack unchanged.",
+            "RTiPanel (Simple) / Cameras (Overview) v2 / NAV - Go to CAMERA 1: moved 1 px (portrait left 15 → 14)."
+          ],
+          testableOmitted: 0,
+          layoutOnlyOmitted: 0
+        },
+        {
+          status: "ok",
+          heading: "2026-09-07 11:00:00Z Change Log (v27.apex -> 1790 High Rd (Simple v28).apex)",
+          emptyMessage: null,
+          testable: [],
+          layoutOnly: ["older layout line"],
+          testableOmitted: 0,
+          layoutOnlyOmitted: 0
+        }
+      ]
     }
   });
 }
 """
         )
-        expect(box.locator("#fileChangelogHeading")).to_have_text(
-            "Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)"
+        headings = box.locator(".changelog-heading")
+        expect(headings).to_have_count(2)
+        expect(headings.nth(0)).to_have_text(
+            "2026-09-08 16:20:00Z Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)"
         )
-        expect(box.locator("#fileChangelogSections")).to_be_visible()
-        expect(box.locator("#fileChangelogTestable")).to_have_text("None")
-        expect(box.locator("#fileChangelogLayout")).to_contain_text("VIEWPORT - Cameras")
-        expect(box.locator("#fileChangelogLayout")).to_contain_text("NAV - Go to CAMERA 1")
+        expect(headings.nth(1)).to_have_text(
+            "2026-09-07 11:00:00Z Change Log (v27.apex -> 1790 High Rd (Simple v28).apex)"
+        )
+        expect(box.locator(".changelog-entry").nth(0)).to_contain_text("None")
+        expect(box.locator(".changelog-entry").nth(0)).to_contain_text("VIEWPORT - Cameras")
+        expect(box.locator(".changelog-entry").nth(1)).to_contain_text("older layout line")
+        overflow = box.evaluate("el => getComputedStyle(el).overflowY")
+        self.assertIn(overflow, ("auto", "scroll"))
+        max_height = box.evaluate("el => parseFloat(el.style.maxHeight || '0')")
+        self.assertGreater(max_height, 0)
         page.close()
 
     def test_event_rows_show_target_name_identity_and_blank_viewport(self):

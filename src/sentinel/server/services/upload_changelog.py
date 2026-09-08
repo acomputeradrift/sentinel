@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,21 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def format_uploaded_at(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if hasattr(raw, "isoformat"):
+        text = raw.isoformat()
+    if not text:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+
+
 def _heading(previous_filename: str, current_filename: str) -> str:
     prev = str(previous_filename or "").strip()
     curr = str(current_filename or "").strip()
@@ -27,6 +43,28 @@ def _heading(previous_filename: str, current_filename: str) -> str:
     if curr:
         return f"Change Log ({curr})"
     return "Change Log"
+
+
+def display_heading(
+    *,
+    previous_filename: str,
+    current_filename: str,
+    uploaded_at_utc: Any = "",
+) -> str:
+    base = _heading(previous_filename, current_filename)
+    stamp = format_uploaded_at(uploaded_at_utc)
+    return f"{stamp} {base}" if stamp else base
+
+
+def stamp_changelog_entry(changelog: dict[str, Any], *, uploaded_at_utc: Any) -> dict[str, Any]:
+    entry = dict(changelog)
+    entry["uploadedAtUtc"] = str(uploaded_at_utc or "")
+    entry["heading"] = display_heading(
+        previous_filename=str(entry.get("previousFilename") or ""),
+        current_filename=str(entry.get("currentFilename") or ""),
+        uploaded_at_utc=uploaded_at_utc,
+    )
+    return entry
 
 
 def _empty_doc(

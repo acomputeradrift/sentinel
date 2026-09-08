@@ -73,16 +73,48 @@ def _previous_upload_filename(repo: Repository, *, projectId: str) -> str:
     return str(previous.originalFilename or "").strip()
 
 
-def _persist_generation_changelog(repo: Repository, *, uploadId: str, generation: dict | None) -> None:
+def _persist_generation_changelog(
+    repo: Repository, *, projectId: str, uploadId: str, generation: dict | None
+) -> None:
     if not isinstance(generation, dict):
         return
     changelog = generation.get("changelog")
     if not isinstance(changelog, dict):
         return
+    from sentinel.server.services import upload_changelog
+
+    uploaded_at = ""
     try:
-        repo.set_upload_changelog(uploadId=str(uploadId), changelog=changelog)
+        for upload in repo.list_uploads_for_project(projectId=projectId):
+            if upload.uploadId == str(uploadId):
+                uploaded_at = str(upload.uploadedAtUtc or "")
+                break
+    except Exception:
+        uploaded_at = ""
+    entry = upload_changelog.stamp_changelog_entry(changelog, uploaded_at_utc=uploaded_at)
+    try:
+        repo.set_upload_changelog(uploadId=str(uploadId), changelog=entry)
     except Exception:
         log.exception("[commissioning] persist-changelog-failed uploadId=%s", uploadId)
+        return
+    if str(entry.get("status") or "") == "first_file":
+        return
+    try:
+        if not repo.list_project_changelogs(projectId=projectId):
+            previous = repo.get_project_active_upload(projectId=projectId)
+            prev_doc = previous.changelog if previous is not None else None
+            if (
+                previous is not None
+                and isinstance(prev_doc, dict)
+                and str(prev_doc.get("status") or "") != "first_file"
+            ):
+                seeded = upload_changelog.stamp_changelog_entry(
+                    prev_doc, uploaded_at_utc=previous.uploadedAtUtc
+                )
+                repo.append_project_changelog(projectId=projectId, changelog=seeded)
+        repo.append_project_changelog(projectId=projectId, changelog=entry)
+    except Exception:
+        log.exception("[commissioning] persist-changelog-history-failed projectId=%s", projectId)
 
 
 def _commissioning_user_id(_request: Request) -> str:
@@ -426,7 +458,12 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         originalFilename=apex.filename,
         generation=generation if isinstance(generation, dict) else {},
     )
-    _persist_generation_changelog(repo, uploadId=upload_id, generation=generation if isinstance(generation, dict) else None)
+    _persist_generation_changelog(
+        repo,
+        projectId=projectId,
+        uploadId=upload_id,
+        generation=generation if isinstance(generation, dict) else None,
+    )
     repo.set_project_active_upload(projectId=projectId, uploadId=upload_id)
     repo.set_project_status(projectId=projectId, status="READY")
     _prune_upload_retention(repo, projectId=projectId, keep_upload_id=upload_id, keep_path=path)
@@ -509,7 +546,12 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         generation=generation if isinstance(generation, dict) else {},
     )
     repo.record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
-    _persist_generation_changelog(repo, uploadId=str(upload_id), generation=generation if isinstance(generation, dict) else None)
+    _persist_generation_changelog(
+        repo,
+        projectId=projectId,
+        uploadId=str(upload_id),
+        generation=generation if isinstance(generation, dict) else None,
+    )
     repo.set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
     repo.set_project_status(projectId=projectId, status="READY")
     _prune_upload_retention(repo, projectId=projectId, keep_upload_id=str(upload_id), keep_path=apex_path)
