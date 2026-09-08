@@ -130,6 +130,7 @@ def active_upload_payload(*, repo: Repository, projectId: str) -> dict | None:
         "originalFilename": active.originalFilename,
         "storagePath": active.storagePath,
         "uploadedAtUtc": active.uploadedAtUtc,
+        "changelog": active.changelog if isinstance(active.changelog, dict) else None,
     }
 
 

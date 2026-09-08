@@ -231,6 +231,22 @@ def upsert_upload_record(
         con.close()
 
 
+def set_upload_changelog(database_url: str, *, upload_id: str, changelog: dict[str, Any] | None) -> None:
+    con = db.connect(database_url)
+    try:
+        cur = con.cursor()
+        payload = json.dumps(changelog) if isinstance(changelog, dict) else None
+        cur.execute(
+            "update uploads set changelog_json=%s::jsonb where upload_id=%s",
+            (payload, upload_id),
+        )
+        if cur.rowcount == 0:
+            raise KeyError("UPLOAD_NOT_FOUND")
+        con.commit()
+    finally:
+        con.close()
+
+
 def set_project_active_upload(database_url: str, *, project_id: str, upload_id: str) -> None:
     con = db.connect(database_url)
     try:
@@ -250,7 +266,8 @@ def get_project_active_upload(database_url: str, *, project_id: str) -> dict[str
         return db.fetch_one(
             con,
             "select u.upload_id as \"uploadId\", u.project_id as \"projectId\", u.original_filename as \"originalFilename\", "
-            "u.storage_path as \"storagePath\", u.uploaded_at_utc as \"uploadedAtUtc\" "
+            "u.storage_path as \"storagePath\", u.uploaded_at_utc as \"uploadedAtUtc\", "
+            "u.changelog_json as \"changelog\" "
             "from projects p left join uploads u on u.upload_id=p.active_upload_id "
             "where p.project_id=%s",
             (project_id,),
@@ -265,7 +282,7 @@ def list_uploads_for_project(database_url: str, *, project_id: str) -> list[dict
         return db.fetch_all(
             con,
             "select upload_id as \"uploadId\", project_id as \"projectId\", original_filename as \"originalFilename\", "
-            "storage_path as \"storagePath\", uploaded_at_utc as \"uploadedAtUtc\" "
+            "storage_path as \"storagePath\", uploaded_at_utc as \"uploadedAtUtc\", changelog_json as \"changelog\" "
             "from uploads where project_id=%s order by uploaded_at_utc desc, upload_id desc",
             (project_id,),
         )

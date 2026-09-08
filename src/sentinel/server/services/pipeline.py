@@ -248,6 +248,8 @@ def regenerate_project(
     phase_hook=None,
     client_name: str = "",
     project_name: str = "",
+    previous_filename: str = "",
+    current_filename: str = "",
 ) -> dict:
     with _ACTIVE_REGENERATES_LOCK:
         if projectId in _ACTIVE_REGENERATE_PROJECT_IDS:
@@ -329,6 +331,28 @@ def regenerate_project(
         except Exception as e:
             raise RuntimeError(f"Generation failed: {e}") from e
 
+        from sentinel.server.services import upload_changelog
+
+        try:
+            changelog = upload_changelog.write_stage_changelog(
+                old_dir=out_dir,
+                stage_dir=stage_dir,
+                previous_filename=previous_filename,
+                current_filename=current_filename or Path(apex_path).name,
+            )
+        except Exception:
+            changelog = {
+                "status": "error",
+                "previousFilename": str(previous_filename or ""),
+                "currentFilename": str(current_filename or Path(apex_path).name),
+                "heading": "Change Log",
+                "emptyMessage": "Changelog could not be computed.",
+                "testable": [],
+                "layoutOnly": [],
+                "testableOmitted": 0,
+                "layoutOnlyOmitted": 0,
+            }
+
         # Move new artifacts into the project directory first, then remove anything stale.
         new_names: set[str] = set()
         for child in sorted(stage_dir.iterdir(), key=lambda p: p.name):
@@ -361,6 +385,7 @@ def regenerate_project(
             "outDir": str(out_dir),
             "projectData": str(final_project_data),
             "resolvedTargets": str(resolved_targets) if resolved_targets.exists() else None,
+            "changelog": changelog,
             "timings": {
                 "extractSec": round(float(extract_elapsed_s), 3),
                 "generateSec": round(float(generate_elapsed_s), 3),

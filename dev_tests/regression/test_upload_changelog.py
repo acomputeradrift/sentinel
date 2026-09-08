@@ -1,0 +1,333 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+import sys
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+
+def _coords(*, top=0, left=0, height=40, width=80):
+    return {"top": top, "left": left, "height": height, "width": width}
+
+
+def _test_targets(**overrides):
+    payload = {
+        "text": False,
+        "macros": True,
+        "macroSteps": False,
+        "variables": {},
+        "graphics": {"bitmap": False, "icon": False, "rtspVideo": False},
+        "pageLink": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _button(
+    *,
+    button_id,
+    tag,
+    text="",
+    page_id=110,
+    device_id=57,
+    test_targets=None,
+    portrait=None,
+    landscape=None,
+    layer_order=0,
+    button_order=0,
+    macro_ids=None,
+    variable_ids=None,
+    page_link_id=None,
+    target_page_id=None,
+):
+    ident_text = text or tag
+    resolved = None
+    if target_page_id is not None:
+        resolved = {"targetPageId": target_page_id, "targetPageName": "Dest"}
+    return {
+        "buttonIdentity": {"buttonTagName": tag, "text": ident_text, "buttonType": "regular"},
+        "buttonUI": {
+            "fontSize": 12,
+            "orientations": {
+                "portrait": {"visible": True, "coordinates": portrait or _coords(left=15)},
+                "landscape": {"visible": True, "coordinates": landscape or _coords(left=100)},
+            },
+            "stack": {"layerOrder": layer_order, "buttonOrder": button_order, "frameNumber": 0},
+        },
+        "testTargets": test_targets if test_targets is not None else _test_targets(),
+        "resolvedPageLink": resolved,
+        "apexScopeSource": {
+            "page": {"pageId": page_id, "deviceId": device_id},
+            "button": {"buttonId": button_id, "buttonTagId": 1},
+            "bindings": {
+                "macroIds": list(macro_ids or [12]),
+                "variableIds": list(variable_ids or []),
+                "macroStepIds": [],
+                "pageLinkId": page_link_id,
+            },
+        },
+    }
+
+
+def _project(
+    *,
+    buttons,
+    device_id=57,
+    device_name="RTiPanel (Simple)",
+    page_id=110,
+    page_name="Cameras (Overview) v2",
+    viewport_layers=None,
+    viewport_button_id=11483,
+    viewport_tag="VIEWPORT - Cameras",
+):
+    host = _button(button_id=viewport_button_id, tag=viewport_tag, page_id=page_id, device_id=device_id)
+    viewport = {
+        "viewportIdentity": {"viewportButtonId": viewport_button_id},
+        "viewportUI": {"navigationMode": "page", "orientations": host["buttonUI"]["orientations"]},
+        "layers": [
+            {"layerName": name, "layerOrder": order, "frames": []}
+            for order, name in (viewport_layers or [])
+        ],
+    }
+    return {
+        "source": {"extractedAtUtc": "2026-01-01T00:00:00Z", "file": "ignored.apex"},
+        "devices": [
+            {
+                "userFacing": {
+                    "displayName": device_name,
+                    "pages": [
+                        {
+                            "pageName": page_name,
+                            "layers": [
+                                {
+                                    "layerName": "Page",
+                                    "layerOrder": 0,
+                                    "buttonCategories": {
+                                        "screenLabels": [],
+                                        "screenButtons": [host, *buttons],
+                                        "hardButtons": [],
+                                        "emptyTag": [],
+                                        "uiItems": [],
+                                    },
+                                    "viewports": [viewport] if viewport_layers is not None else [],
+                                }
+                            ],
+                        }
+                    ],
+                },
+                "diagnostics": {
+                    "deviceId": device_id,
+                    "displayName": device_name,
+                    "pages": [{"pageId": page_id, "pageName": page_name}],
+                },
+            }
+        ],
+        "events": {"system": [], "driver": []},
+    }
+
+
+def _resolved(*, keys, device_id=57, device_name="RTiPanel (Simple)"):
+    return {
+        "format": "sentinel-resolved-targets-v1",
+        "events": {"system": [], "driver": []},
+        "devices": [{"deviceId": device_id, "displayName": device_name, "expected": list(keys)}],
+    }
+
+
+class UploadChangelogBuilderTest(unittest.TestCase):
+    def test_added_and_removed_target_keys_are_testable(self):
+        from sentinel.server.services import upload_changelog
+
+        old_btn = _button(button_id=10, tag="NAV - Go to CAMERA 1")
+        new_btn = _button(button_id=10, tag="NAV - Go to CAMERA 1")
+        old = _project(buttons=[old_btn])
+        new = _project(buttons=[new_btn])
+        doc = upload_changelog.build_changelog(
+            old_project_data=old,
+            new_project_data=new,
+            old_resolved=_resolved(keys=["tt2:57:110:10:Macro"]),
+            new_resolved=_resolved(keys=["tt2:57:110:11:Macro"]),
+            previous_filename="old.apex",
+            current_filename="new.apex",
+        )
+        self.assertEqual(doc["status"], "ok")
+        self.assertTrue(any("added" in line.lower() for line in doc["testable"]))
+        self.assertTrue(any("removed" in line.lower() for line in doc["testable"]))
+        self.assertEqual(doc["layoutOnly"], [])
+
+    def test_test_target_flag_and_binding_changes_are_testable(self):
+        from sentinel.server.services import upload_changelog
+
+        old_btn = _button(button_id=20, tag="Lights", test_targets=_test_targets(macros=True), macro_ids=[12])
+        new_btn = _button(button_id=20, tag="Lights", test_targets=_test_targets(macros=False), macro_ids=[99])
+        doc = upload_changelog.build_changelog(
+            old_project_data=_project(buttons=[old_btn]),
+            new_project_data=_project(buttons=[new_btn]),
+            old_resolved=_resolved(keys=[]),
+            new_resolved=_resolved(keys=[]),
+            previous_filename="v1.apex",
+            current_filename="v2.apex",
+        )
+        joined = " ".join(doc["testable"]).lower()
+        self.assertEqual(doc["status"], "ok")
+        self.assertIn("rTiPanel (Simple) / Cameras (Overview) v2 / Lights".lower(), joined)
+        self.assertTrue("test target" in joined or "binding" in joined)
+        self.assertEqual(doc["layoutOnly"], [])
+
+    def test_coordinate_and_layer_order_changes_are_layout_only(self):
+        from sentinel.server.services import upload_changelog
+
+        old_btn = _button(
+            button_id=11514,
+            tag="NAV - Go to CAMERA 1",
+            portrait=_coords(left=15),
+            landscape=_coords(left=100),
+        )
+        new_btn = _button(
+            button_id=11514,
+            tag="NAV - Go to CAMERA 1",
+            portrait=_coords(left=14),
+            landscape=_coords(left=100),
+        )
+        old = _project(
+            buttons=[old_btn],
+            viewport_layers=[(1, "Loading"), (2, "Feeds"), (3, "Select")],
+        )
+        new = _project(
+            buttons=[new_btn],
+            viewport_layers=[(0, "Loading"), (1, "Feeds"), (2, "Select")],
+        )
+        doc = upload_changelog.build_changelog(
+            old_project_data=old,
+            new_project_data=new,
+            old_resolved=_resolved(keys=["tt2:57:110:11514:Macro"]),
+            new_resolved=_resolved(keys=["tt2:57:110:11514:Macro"]),
+            previous_filename="1790 High Rd (Simple v28).apex",
+            current_filename="1790 High Rd (Simple v29).apex",
+        )
+        self.assertEqual(doc["status"], "ok")
+        self.assertEqual(doc["testable"], [])
+        self.assertEqual(
+            doc["heading"],
+            "Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)",
+        )
+        layout = " ".join(doc["layoutOnly"]).lower()
+        self.assertIn("nav - go to camera 1", layout)
+        self.assertIn("portrait left 15", layout)
+        self.assertIn("14", layout)
+        self.assertIn("layer order", layout)
+        self.assertIn("1, 2, 3", layout)
+        self.assertIn("0, 1, 2", layout)
+
+    def test_first_file_and_no_changes(self):
+        from sentinel.server.services import upload_changelog
+
+        btn = _button(button_id=1, tag="Home")
+        project = _project(buttons=[btn])
+        resolved = _resolved(keys=["tt2:57:110:1:Macro"])
+        first = upload_changelog.build_changelog(
+            old_project_data=None,
+            new_project_data=project,
+            old_resolved=None,
+            new_resolved=resolved,
+            previous_filename="",
+            current_filename="first.apex",
+        )
+        self.assertEqual(first["status"], "first_file")
+        self.assertIn("previous file", first["emptyMessage"].lower())
+        self.assertEqual(first["testable"], [])
+        self.assertEqual(first["layoutOnly"], [])
+
+        same = upload_changelog.build_changelog(
+            old_project_data=project,
+            new_project_data=project,
+            old_resolved=resolved,
+            new_resolved=resolved,
+            previous_filename="same.apex",
+            current_filename="same.apex",
+        )
+        self.assertEqual(same["status"], "no_changes")
+        self.assertIn("no changes", same["emptyMessage"].lower())
+
+    def test_builder_exception_is_fail_soft(self):
+        from sentinel.server.services import upload_changelog
+
+        with mock.patch.object(upload_changelog, "build_changelog", side_effect=RuntimeError("boom")):
+            doc = upload_changelog.safe_build_changelog(
+                old_project_data={},
+                new_project_data={},
+                old_resolved={},
+                new_resolved={},
+                previous_filename="a.apex",
+                current_filename="b.apex",
+            )
+        self.assertEqual(doc["status"], "error")
+        self.assertTrue(doc["emptyMessage"])
+
+    def test_stage_writer_survives_builder_exception(self):
+        from sentinel.server.services import upload_changelog
+
+        with tempfile.TemporaryDirectory() as td:
+            old_dir = Path(td) / "old"
+            stage_dir = Path(td) / "stage"
+            old_dir.mkdir()
+            stage_dir.mkdir()
+            (old_dir / "x_project_data.json").write_text("{}", encoding="utf-8")
+            (stage_dir / "x_project_data.json").write_text("{}", encoding="utf-8")
+            with mock.patch.object(upload_changelog, "build_changelog", side_effect=ValueError("nope")):
+                doc = upload_changelog.write_stage_changelog(
+                    old_dir=old_dir,
+                    stage_dir=stage_dir,
+                    previous_filename="old.apex",
+                    current_filename="new.apex",
+                )
+            self.assertEqual(doc["status"], "error")
+            written = json.loads((stage_dir / "upload_changelog.json").read_text(encoding="utf-8"))
+            self.assertEqual(written["status"], "error")
+
+
+class UploadChangelogPersistTest(unittest.TestCase):
+    def test_inmemory_active_upload_changelog_round_trips_on_snapshot(self):
+        from sentinel.server.api.commissioning_snapshots import active_upload_payload
+        from sentinel.server.services.commissioning_user import COMMISSIONING_STUB_USER_ID
+        from sentinel.server.services.repositories import InMemoryRepository
+
+        repo = InMemoryRepository()
+        client = repo.create_client(userId=COMMISSIONING_STUB_USER_ID, name="Changelog Client")
+        project = repo.create_project(
+            userId=COMMISSIONING_STUB_USER_ID, clientId=client.clientId, name="Changelog Job"
+        )
+        upload = repo.record_upload(
+            projectId=project.projectId,
+            uploadId="up-1",
+            originalFilename="v29.apex",
+            storagePath="/tmp/v29.apex",
+        )
+        repo.set_project_active_upload(projectId=project.projectId, uploadId=upload.uploadId)
+        changelog = {
+            "status": "ok",
+            "heading": "Change Log (v28.apex -> v29.apex)",
+            "previousFilename": "v28.apex",
+            "currentFilename": "v29.apex",
+            "emptyMessage": None,
+            "testable": [],
+            "layoutOnly": ["RTiPanel (Simple) / Cameras (Overview) v2 / NAV - Go to CAMERA 1: moved 1 px"],
+            "testableOmitted": 0,
+            "layoutOnlyOmitted": 0,
+        }
+        repo.set_upload_changelog(uploadId=upload.uploadId, changelog=changelog)
+        payload = active_upload_payload(repo=repo, projectId=project.projectId)
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["changelog"]["heading"], changelog["heading"])
+        self.assertEqual(payload["changelog"]["layoutOnly"], changelog["layoutOnly"])
+
+
+if __name__ == "__main__":
+    unittest.main()

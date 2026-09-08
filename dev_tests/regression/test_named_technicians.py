@@ -273,7 +273,7 @@ class NamedTechnicianHandoffTest(unittest.TestCase):
             os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
             os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
 
-            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None) -> dict:  # noqa: ARG001
+            def _regen_stub(*, projectId: str, apex_path: Path, phase_hook=None, **_kwargs) -> dict:  # noqa: ARG001
                 if callable(phase_hook):
                     phase_hook("extracting", 100)
                     phase_hook("generating", 100)

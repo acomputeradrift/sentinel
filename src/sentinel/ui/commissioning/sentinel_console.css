@@ -316,6 +316,58 @@ h2 {
   display: none;
 }
 
+.changelog-box {
+  border: 1px solid #c6d2dd;
+  border-radius: 12px;
+  background: #f7fbff;
+  padding: 12px 14px;
+}
+
+#manageProjectDetails .changelog-box h3 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #173246;
+  word-break: break-word;
+}
+
+.changelog-box h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: #4e6a7f;
+}
+
+.changelog-box h4 + ul,
+.changelog-box h4 + p,
+.changelog-box h4 + div {
+  margin-top: 0;
+}
+
+.changelog-box ul + h4,
+.changelog-box p + h4,
+.changelog-box div + h4 {
+  margin-top: 14px;
+}
+
+.changelog-box ul {
+  margin: 0;
+  padding: 0 0 0 18px;
+  color: #173246;
+  font-size: 13px;
+}
+
+.changelog-box li {
+  margin: 4px 0;
+}
+
+.changelog-empty {
+  margin: 0;
+  color: #4e6a7f;
+  font-size: 13px;
+  font-style: italic;
+}
+
 .row {
   display: flex;
   gap: 10px;

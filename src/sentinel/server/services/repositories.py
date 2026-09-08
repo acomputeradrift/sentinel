@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import os
 import threading
 from pathlib import Path
@@ -19,6 +20,36 @@ def new_uuid() -> str:
 
 def new_token() -> str:
     return uuid4().hex
+
+
+def _changelog_value(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _upload_record_from_row(row: dict[str, Any], *, fallback_uploaded_at: str | None = None) -> UploadRecord:
+    uploaded_at = row.get("uploadedAtUtc")
+    if hasattr(uploaded_at, "isoformat"):
+        uploaded_at_str = uploaded_at.isoformat()
+    elif uploaded_at is not None:
+        uploaded_at_str = str(uploaded_at)
+    else:
+        uploaded_at_str = str(fallback_uploaded_at or utc_now())
+    return UploadRecord(
+        uploadId=str(row["uploadId"]),
+        projectId=str(row["projectId"]),
+        originalFilename=str(row["originalFilename"]),
+        storagePath=str(row["storagePath"]),
+        uploadedAtUtc=uploaded_at_str,
+        changelog=_changelog_value(row.get("changelog")),
+    )
 
 
 def project_has_generated_artifacts(*, projectId: str) -> bool:
@@ -126,6 +157,7 @@ class UploadRecord:
     originalFilename: str
     storagePath: str
     uploadedAtUtc: str
+    changelog: dict[str, Any] | None = None
 
 
 @dataclass
@@ -181,6 +213,8 @@ class Repository(Protocol):
     def record_upload(self, *, projectId: str, uploadId: str, originalFilename: str, storagePath: str) -> UploadRecord: ...
 
     def set_project_active_upload(self, *, projectId: str, uploadId: str) -> None: ...
+
+    def set_upload_changelog(self, *, uploadId: str, changelog: dict[str, Any] | None) -> None: ...
 
     def get_project_active_upload(self, *, projectId: str) -> UploadRecord | None: ...
 
@@ -585,6 +619,7 @@ class InMemoryRepository:
                 originalFilename=originalFilename,
                 storagePath=storagePath,
                 uploadedAtUtc=utc_now(),
+                changelog=None,
             )
             self._uploads[uploadId] = uploaded
             return uploaded
@@ -595,6 +630,13 @@ class InMemoryRepository:
             if upload is None or upload.projectId != projectId:
                 raise KeyError("UPLOAD_NOT_FOUND")
             self._active_upload_by_project[projectId] = uploadId
+
+    def set_upload_changelog(self, *, uploadId: str, changelog: dict[str, Any] | None) -> None:
+        with self._lock:
+            upload = self._uploads.get(uploadId)
+            if upload is None:
+                raise KeyError("UPLOAD_NOT_FOUND")
+            upload.changelog = changelog if isinstance(changelog, dict) else None
 
     def get_project_active_upload(self, *, projectId: str) -> UploadRecord | None:
         with self._lock:
@@ -1195,56 +1237,31 @@ class PostgresRepository:
         )
         row = self._q.get_project_active_upload(self._database_url, project_id=projectId)
         if row and str(row.get("uploadId") or "") == str(uploadId):
-            uploaded_at = row.get("uploadedAtUtc")
-            uploaded_at_str = uploaded_at.isoformat() if hasattr(uploaded_at, "isoformat") else str(uploaded_at)
-            return UploadRecord(
-                uploadId=str(row["uploadId"]),
-                projectId=str(row["projectId"]),
-                originalFilename=str(row["originalFilename"]),
-                storagePath=str(row["storagePath"]),
-                uploadedAtUtc=uploaded_at_str,
-            )
+            return _upload_record_from_row(row)
         return UploadRecord(
             uploadId=uploadId,
             projectId=projectId,
             originalFilename=originalFilename,
             storagePath=storagePath,
             uploadedAtUtc=utc_now(),
+            changelog=None,
         )
 
     def set_project_active_upload(self, *, projectId: str, uploadId: str) -> None:
         self._q.set_project_active_upload(self._database_url, project_id=projectId, upload_id=uploadId)
 
+    def set_upload_changelog(self, *, uploadId: str, changelog: dict[str, Any] | None) -> None:
+        self._q.set_upload_changelog(self._database_url, upload_id=uploadId, changelog=changelog)
+
     def get_project_active_upload(self, *, projectId: str) -> UploadRecord | None:
         row = self._q.get_project_active_upload(self._database_url, project_id=projectId)
         if not row or not row.get("uploadId"):
             return None
-        uploaded_at = row.get("uploadedAtUtc")
-        uploaded_at_str = uploaded_at.isoformat() if hasattr(uploaded_at, "isoformat") else str(uploaded_at)
-        return UploadRecord(
-            uploadId=str(row["uploadId"]),
-            projectId=str(row["projectId"]),
-            originalFilename=str(row["originalFilename"]),
-            storagePath=str(row["storagePath"]),
-            uploadedAtUtc=uploaded_at_str,
-        )
+        return _upload_record_from_row(row)
 
     def list_uploads_for_project(self, *, projectId: str) -> list[UploadRecord]:
         rows = self._q.list_uploads_for_project(self._database_url, project_id=projectId)
-        out: list[UploadRecord] = []
-        for row in rows:
-            uploaded_at = row.get("uploadedAtUtc")
-            uploaded_at_str = uploaded_at.isoformat() if hasattr(uploaded_at, "isoformat") else str(uploaded_at)
-            out.append(
-                UploadRecord(
-                    uploadId=str(row["uploadId"]),
-                    projectId=str(row["projectId"]),
-                    originalFilename=str(row["originalFilename"]),
-                    storagePath=str(row["storagePath"]),
-                    uploadedAtUtc=uploaded_at_str,
-                )
-            )
-        return out
+        return [_upload_record_from_row(row) for row in rows]
 
     def prune_project_upload_retention(self, *, projectId: str, activeUploadId: str, activeStoragePath: str) -> None:
         from sentinel.server.services import pipeline

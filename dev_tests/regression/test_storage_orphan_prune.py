@@ -119,7 +119,7 @@ class StorageOrphanPruneTest(unittest.TestCase):
             apex_path = Path(td) / "sample.apex"
             apex_path.write_bytes(b"apex-bytes")
 
-            def _ok_regenerate(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = ""):
+            def _ok_regenerate(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = "", **_kwargs):
                 return {
                     "projectId": projectId,
                     "outDir": str(Path(td) / "generated" / projectId),
@@ -203,7 +203,7 @@ class StorageOrphanPruneTest(unittest.TestCase):
             apex_path = Path(td) / "sample.apex"
             apex_path.write_bytes(b"apex-bytes")
 
-            def _ok_regenerate(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = ""):
+            def _ok_regenerate(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = "", **_kwargs):
                 if callable(phase_hook):
                     phase_hook("extracting", 100)
                     phase_hook("generating", 100)

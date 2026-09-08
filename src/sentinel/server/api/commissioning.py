@@ -66,6 +66,25 @@ def _prune_after_failed_generate(
     )
 
 
+def _previous_upload_filename(repo: Repository, *, projectId: str) -> str:
+    previous = repo.get_project_active_upload(projectId=projectId)
+    if previous is None:
+        return ""
+    return str(previous.originalFilename or "").strip()
+
+
+def _persist_generation_changelog(repo: Repository, *, uploadId: str, generation: dict | None) -> None:
+    if not isinstance(generation, dict):
+        return
+    changelog = generation.get("changelog")
+    if not isinstance(changelog, dict):
+        return
+    try:
+        repo.set_upload_changelog(uploadId=str(uploadId), changelog=changelog)
+    except Exception:
+        log.exception("[commissioning] persist-changelog-failed uploadId=%s", uploadId)
+
+
 def _commissioning_user_id(_request: Request) -> str:
     return COMMISSIONING_STUB_USER_ID
 
@@ -377,6 +396,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
 
     upload_id = str(uuid4())
     path = pipeline.save_upload(projectId=projectId, uploadId=upload_id, filename=apex.filename, content=content)
+    previous_filename = _previous_upload_filename(repo, projectId=projectId)
     repo.record_upload(projectId=projectId, uploadId=upload_id, originalFilename=apex.filename, storagePath=str(path))
 
     try:
@@ -392,6 +412,8 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
                 uploadId=upload_id,
                 originalFilename=apex.filename,
             ),
+            previous_filename=previous_filename,
+            current_filename=apex.filename,
         )
     except Exception as e:
         _prune_after_failed_generate(
@@ -404,6 +426,7 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
         originalFilename=apex.filename,
         generation=generation if isinstance(generation, dict) else {},
     )
+    _persist_generation_changelog(repo, uploadId=upload_id, generation=generation if isinstance(generation, dict) else None)
     repo.set_project_active_upload(projectId=projectId, uploadId=upload_id)
     repo.set_project_status(projectId=projectId, status="READY")
     _prune_upload_retention(repo, projectId=projectId, keep_upload_id=upload_id, keep_path=path)
@@ -454,6 +477,8 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     if not candidates:
         raise http_error(404, code="UPLOAD_NOT_FOUND", message="Upload not found.")
     apex_path = candidates[0]
+    original_filename = apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name
+    previous_filename = _previous_upload_filename(repo, projectId=projectId)
     generation: dict | None = None
     try:
         generation = await asyncio.to_thread(
@@ -466,8 +491,10 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
                 status=str(phase or ""),
                 percent=percent,
                 uploadId=str(upload_id),
-                originalFilename=apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name,
+                originalFilename=original_filename,
             ),
+            previous_filename=previous_filename,
+            current_filename=original_filename,
         )
     except Exception as e:
         _prune_after_failed_generate(
@@ -475,7 +502,6 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         )
         raise http_error(500, code="REGENERATE_FAILED", message=str(e))
 
-    original_filename = apex_path.name.split("__", 1)[1] if "__" in apex_path.name else Path(apex_path.name).name
     commissioning_snapshots.log_regen_baseline(
         projectId=projectId,
         uploadId=str(upload_id),
@@ -483,6 +509,7 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
         generation=generation if isinstance(generation, dict) else {},
     )
     repo.record_upload(projectId=projectId, uploadId=str(upload_id), originalFilename=original_filename, storagePath=str(apex_path))
+    _persist_generation_changelog(repo, uploadId=str(upload_id), generation=generation if isinstance(generation, dict) else None)
     repo.set_project_active_upload(projectId=projectId, uploadId=str(upload_id))
     repo.set_project_status(projectId=projectId, status="READY")
     _prune_upload_retention(repo, projectId=projectId, keep_upload_id=str(upload_id), keep_path=apex_path)

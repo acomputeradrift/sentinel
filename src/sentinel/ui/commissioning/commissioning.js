@@ -341,6 +341,7 @@ function setLastGeneratedLabel() {
   if (!projectId) {
     el.textContent = "None";
     setFileUploadedAtLabel();
+    renderFileChangelog();
     refreshContextTitlesAfterFilename("");
     return;
   }
@@ -348,6 +349,7 @@ function setLastGeneratedLabel() {
   const name = activeUpload && activeUpload.originalFilename ? String(activeUpload.originalFilename).trim() : "";
   el.textContent = name ? `Currently Testing ${name}` : "None";
   setFileUploadedAtLabel();
+  renderFileChangelog();
   refreshContextTitlesAfterFilename(projectId);
 }
 
@@ -365,6 +367,81 @@ function setFileUploadedAtLabel() {
   const formatted = formatUtc(raw);
   el.textContent = formatted ? `Uploaded ${formatted}` : "";
   el.hidden = !formatted;
+}
+
+function _changelogFromActiveUpload(activeUpload) {
+  const raw = activeUpload && activeUpload.changelog;
+  return raw && typeof raw === "object" ? raw : null;
+}
+
+function _fillChangelogList(el, items, omitted) {
+  if (!el) return;
+  el.replaceChildren();
+  const lines = Array.isArray(items) ? items.map((line) => String(line)) : [];
+  if (!lines.length) {
+    const p = document.createElement("p");
+    p.className = "changelog-empty";
+    p.textContent = "None";
+    el.appendChild(p);
+    return;
+  }
+  const ul = document.createElement("ul");
+  for (const line of lines) {
+    const li = document.createElement("li");
+    li.textContent = line;
+    ul.appendChild(li);
+  }
+  const extra = Number(omitted) || 0;
+  if (extra > 0) {
+    const li = document.createElement("li");
+    li.textContent = `and ${extra} more`;
+    ul.appendChild(li);
+  }
+  el.appendChild(ul);
+}
+
+function renderFileChangelog() {
+  const box = document.getElementById("fileChangelogBox");
+  const heading = document.getElementById("fileChangelogHeading");
+  const emptyEl = document.getElementById("fileChangelogEmpty");
+  const sections = document.getElementById("fileChangelogSections");
+  const testableEl = document.getElementById("fileChangelogTestable");
+  const layoutEl = document.getElementById("fileChangelogLayout");
+  if (!box || !heading || !emptyEl || !sections || !testableEl || !layoutEl) return;
+
+  const projectId = currentProjectId();
+  const activeUpload = projectId ? state.activeUploadByProject[projectId] : null;
+  if (!projectId || !activeUpload) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const changelog = _changelogFromActiveUpload(activeUpload);
+  const status = changelog ? String(changelog.status || "") : "first_file";
+  heading.textContent = changelog && changelog.heading ? String(changelog.heading) : "Change Log";
+
+  if (status === "ok") {
+    emptyEl.hidden = true;
+    emptyEl.textContent = "";
+    sections.hidden = false;
+    _fillChangelogList(testableEl, changelog.testable, changelog.testableOmitted);
+    _fillChangelogList(layoutEl, changelog.layoutOnly, changelog.layoutOnlyOmitted);
+    return;
+  }
+
+  sections.hidden = true;
+  testableEl.replaceChildren();
+  layoutEl.replaceChildren();
+  emptyEl.hidden = false;
+  if (status === "no_changes") {
+    emptyEl.textContent = String((changelog && changelog.emptyMessage) || "No changes since last file.");
+  } else if (status === "error") {
+    emptyEl.textContent = String((changelog && changelog.emptyMessage) || "Changelog could not be computed.");
+  } else {
+    emptyEl.textContent = String(
+      (changelog && changelog.emptyMessage) || "No previous file. Changelog starts on the next load."
+    );
+  }
 }
 
 function filenameFromFilePanelLabel(raw) {
@@ -759,6 +836,7 @@ async function uploadAndRegenerate() {
       originalFilename: nextName,
       storagePath: String(activeFromApi?.storagePath || uploadObj?.storagePath || ""),
       uploadedAtUtc,
+      changelog: activeFromApi?.changelog && typeof activeFromApi.changelog === "object" ? activeFromApi.changelog : null,
     };
     const store = getSharedProjectStore();
     if (store && typeof store.dispatch === "function") {
@@ -830,6 +908,7 @@ function applyActiveUpload(projectId, activeUpload) {
       originalFilename: activeUpload.originalFilename || "",
       storagePath: activeUpload.storagePath || "",
       uploadedAtUtc: activeUpload.uploadedAtUtc || "",
+      changelog: activeUpload.changelog && typeof activeUpload.changelog === "object" ? activeUpload.changelog : null,
     };
     const prev = state.activeUploadByProject[pid];
     const prevMs = _uploadedAtMs(prev && prev.uploadedAtUtc);

@@ -1562,6 +1562,173 @@ class CommissioningConsoleRuntimeTest(unittest.TestCase):
         expect(page.get_by_test_id("file-uploaded-at")).to_have_text("Uploaded 2026-09-07 20:57:47Z")
         page.close()
 
+    def test_file_tab_changelog_box_from_mocked_snapshot(self):
+        from playwright.sync_api import expect
+
+        page = self._browser.new_page()
+        state: dict[str, object] = {
+            "clients": [],
+            "clients_by_id": {},
+            "projects_by_client": {},
+            "projects_by_id": {},
+        }
+
+        def fulfill_json(route, payload, status: int = 200):
+            route.fulfill(
+                status=status,
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(payload),
+            )
+
+        def handle_clients(route, request):
+            if request.method == "GET":
+                fulfill_json(route, state["clients"])
+                return
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                client = {"clientId": "client-1", "name": data.get("name", ""), "createdAtUtc": "2026-03-21T00:00:00Z"}
+                state["clients"].append(client)
+                state["clients_by_id"][client["clientId"]] = client
+                state["projects_by_client"][client["clientId"]] = []
+                fulfill_json(route, client)
+                return
+            fulfill_json(route, {})
+
+        def handle_projects(route, request):
+            if request.method == "POST":
+                data = json.loads(request.post_data or "{}")
+                project = {
+                    "projectId": "proj-1",
+                    "clientId": "client-1",
+                    "name": data.get("name", ""),
+                    "createdAtUtc": "2026-03-21T00:00:00Z",
+                    "status": "EMPTY",
+                }
+                state["projects_by_id"][project["projectId"]] = project
+                state["projects_by_client"].setdefault("client-1", []).append(project)
+                fulfill_json(route, project)
+                return
+            fulfill_json(route, state["projects_by_client"].get("client-1", []))
+
+        page.route("**/api/v1/commissioning/clients", handle_clients)
+        page.route("**/api/v1/commissioning/clients/*/projects", handle_projects)
+        page.route("**/api/v1/commissioning/projects/**", lambda route, request: fulfill_json(route, {}))
+        page.add_init_script(
+            """
+(() => {
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      setTimeout(() => { if (this.onopen) this.onopen({}); }, 0);
+    }
+    send() {}
+    close() { this.readyState = 3; if (this.onclose) this.onclose({}); }
+  }
+  window.WebSocket = FakeWebSocket;
+})();
+"""
+        )
+        page.goto(f"{self._static.base_url}/src/sentinel/ui/commissioning/index.html")
+        _commissioning_click_file_tab(page)
+        _commissioning_create_client_via_modal(page, "Client A")
+        _commissioning_create_project_via_modal(page, "Project 1")
+
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation",
+    projectId: "proj-1",
+    originalFilename: "1790 High Rd (Simple v29).apex",
+    activeUpload: {
+      uploadId: "up-first",
+      originalFilename: "1790 High Rd (Simple v29).apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-08T16:00:00Z",
+      changelog: {
+        status: "first_file",
+        heading: "Change Log (1790 High Rd (Simple v29).apex)",
+        emptyMessage: "No previous file. Changelog starts on the next load.",
+        testable: [],
+        layoutOnly: []
+      }
+    }
+  });
+}
+"""
+        )
+        box = page.get_by_test_id("file-changelog")
+        expect(box).to_be_visible()
+        expect(box.locator("#fileChangelogHeading")).to_have_text("Change Log (1790 High Rd (Simple v29).apex)")
+        expect(box.locator("#fileChangelogEmpty")).to_contain_text("No previous file")
+        expect(box.locator("#fileChangelogSections")).to_be_hidden()
+
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation",
+    projectId: "proj-1",
+    originalFilename: "1790 High Rd (Simple v29).apex",
+    activeUpload: {
+      uploadId: "up-same",
+      originalFilename: "1790 High Rd (Simple v29).apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-08T16:10:00Z",
+      changelog: {
+        status: "no_changes",
+        heading: "Change Log (1790 High Rd (Simple v29).apex -> 1790 High Rd (Simple v29).apex)",
+        emptyMessage: "No changes since last file.",
+        testable: [],
+        layoutOnly: []
+      }
+    }
+  });
+}
+"""
+        )
+        expect(box.locator("#fileChangelogEmpty")).to_have_text("No changes since last file.")
+        expect(box.locator("#fileChangelogSections")).to_be_hidden()
+
+        page.evaluate(
+            """
+() => {
+  window.__sentinelProjectWsManager.dispatchIncoming({
+    type: "generation",
+    projectId: "proj-1",
+    originalFilename: "1790 High Rd (Simple v29).apex",
+    activeUpload: {
+      uploadId: "up-v29",
+      originalFilename: "1790 High Rd (Simple v29).apex",
+      storagePath: "",
+      uploadedAtUtc: "2026-09-08T16:20:00Z",
+      changelog: {
+        status: "ok",
+        heading: "Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)",
+        emptyMessage: null,
+        testable: [],
+        layoutOnly: [
+          "RTiPanel (Simple) / Cameras (Overview) v2 / VIEWPORT - Cameras: layer order 1, 2, 3 → 0, 1, 2 (Loading, Feeds, Select). Relative stack unchanged.",
+          "RTiPanel (Simple) / Cameras (Overview) v2 / NAV - Go to CAMERA 1: moved 1 px (portrait left 15 → 14)."
+        ],
+        testableOmitted: 0,
+        layoutOnlyOmitted: 0
+      }
+    }
+  });
+}
+"""
+        )
+        expect(box.locator("#fileChangelogHeading")).to_have_text(
+            "Change Log (1790 High Rd (Simple v28).apex -> 1790 High Rd (Simple v29).apex)"
+        )
+        expect(box.locator("#fileChangelogSections")).to_be_visible()
+        expect(box.locator("#fileChangelogTestable")).to_have_text("None")
+        expect(box.locator("#fileChangelogLayout")).to_contain_text("VIEWPORT - Cameras")
+        expect(box.locator("#fileChangelogLayout")).to_contain_text("NAV - Go to CAMERA 1")
+        page.close()
+
     def test_event_rows_show_target_name_identity_and_blank_viewport(self):
         from playwright.sync_api import expect
 
