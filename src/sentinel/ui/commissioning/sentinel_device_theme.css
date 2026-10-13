@@ -106,6 +106,69 @@
   border-radius: 0 !important;
 }
 
+/* T2x traced strip: grey sits on the frame. A scaled child on the near-white surround leaves a white seam. */
+.rti-device-canvas-hk .device-page .hk-split-right.hk-model-t2x {
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.rti-device-canvas-hk .device-page .hk-split-right.hk-model-t2x .hk-traced-frame {
+  background: #363739 !important;
+  border: var(--sentinel-device-frame-ring-width) solid var(--sentinel-device-frame-ring-color) !important;
+  box-sizing: content-box !important;
+  overflow: hidden !important;
+  border-radius: 0 !important;
+  max-height: none !important;
+  position: relative !important;
+  flex: 0 0 auto !important;
+}
+
+.rti-device-canvas-hk .hk-traced-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  background: #363739;
+}
+
+.rti-device-canvas-hk .hk-traced-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.rti-device-canvas-hk .hk-traced-svg path {
+  fill: var(--sentinel-fill-hard-button);
+  stroke: var(--sentinel-device-button-border-color);
+  stroke-width: 2;
+}
+
+.rti-device-canvas-hk .hk-traced-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.1;
+  text-align: center;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-line;
+}
+
+.rti-device-canvas-hk .hk-traced .test-btn {
+  border-radius: 6px !important;
+}
+
+.rti-device-canvas-hk .hk-traced-hit .test-btn {
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color) !important;
+}
+
 /* Stretch splits to .device-page height (top/bottom beats fragile height:100% + flex). */
 .rti-device-canvas-hk .device-page.active {
   min-height: 0 !important;

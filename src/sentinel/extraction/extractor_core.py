@@ -833,7 +833,7 @@ def _row_value(row: Any, key: str, default: Any = None) -> Any:
 def _resolve_product_model(rti_device_row: Any) -> str | None:
     """Resolve hard-key productModel from RTIDeviceData.ProductId per Phase 0 lock-in.
 
-    Returns one of {"t4x", "isr2", "isr4"} or None when ProductId is missing or unmapped.
+    Returns one of {"t2x", "t4x", "isr2", "isr4"} or None when ProductId is missing or unmapped.
     """
     return hard_keys_registry.product_model_for_product_id(_row_value(rti_device_row, "ProductId"))
 

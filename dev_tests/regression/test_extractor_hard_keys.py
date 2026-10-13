@@ -32,6 +32,7 @@ class ExtractorProductModelTest(unittest.TestCase):
     def test_resolve_product_model_via_extractor_helper(self) -> None:
         from sentinel.extraction import extractor_core
 
+        self.assertEqual(extractor_core._resolve_product_model({"ProductId": 70}), "t2x")
         self.assertEqual(extractor_core._resolve_product_model({"ProductId": 102}), "t4x")
         self.assertEqual(extractor_core._resolve_product_model({"ProductId": 110}), "isr2")
         self.assertEqual(extractor_core._resolve_product_model({"ProductId": 111}), "isr4")
@@ -76,6 +77,20 @@ class ExtractorHardKeyClassificationTest(unittest.TestCase):
         ]
         result = extractor_core._classify_hard_key_rows(rows, product_model="t4x")
         self.assertEqual([s["slotKey"] for s in result["slots"]], [128, 129, 130])
+
+    def test_t2x_keeps_slots_128_through_179(self) -> None:
+        from sentinel.extraction import extractor_core
+
+        rows = [
+            _btn(button_id=1, button_left=128, frame=254, order=0, tag_id=1),
+            _btn(button_id=2, button_left=179, frame=254, order=1, tag_id=2),
+            _btn(button_id=3, button_left=180, frame=254, order=2, tag_id=3),
+            _btn(button_id=4, button_left=0, frame=252, order=3, tag_id=4),
+        ]
+        result = extractor_core._classify_hard_key_rows(rows, product_model="t2x")
+        self.assertEqual([s["slotKey"] for s in result["slots"]], [128, 179])
+        self.assertEqual([u["slotKey"] for u in result["unmappedSlots"]], [180])
+        self.assertEqual([g["slotKey"] for g in result["gestures"]], [0])
 
     def test_unknown_product_model_yields_none(self) -> None:
         from sentinel.extraction import extractor_core

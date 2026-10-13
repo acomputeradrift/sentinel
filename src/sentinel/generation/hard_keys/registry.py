@@ -6,6 +6,8 @@ Locked rules from `hard_keys.md` (Phase 0 lock-in):
 * T4x = ProductId 102 / slot range 128..147 (20 slots).
 * ISR-2 = ProductId 110 / slot range 128..161 (34 slots).
 * ISR-4 = ProductId 111 / slot range 128..149 (22 slots).
+* T2x = ProductId 70 / slot range 128..179 (52 slots). Geometry is the traced
+  crop in ``t2x_trace.py`` (not a flexbox ``.box`` template).
 * Physical hard-key rows live at `FrameNumber = 254` with `ButtonLeft >= 128`; rows at
   `FrameNumber = 252` (gestures: Rotate Clockwise, Rotate Counterclockwise, Shake) are
   recorded but not rendered on the hard-key strip.
@@ -35,6 +37,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from sentinel.generation.hard_keys.t2x_trace import DESIGN_SIZE as T2X_DESIGN_SIZE
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -163,6 +167,14 @@ MODELS: dict[str, HardKeyModel] = {
         design_size=(602, 734),
         template_html_path=TEMPLATE_DIR / "isr4_hard_keys.html",
         slot_by_data_label=ISR4_SLOT_BY_DATA_LABEL,
+    ),
+    "t2x": HardKeyModel(
+        key="t2x",
+        product_id=70,
+        slot_range=(128, 179),
+        slot_dom_order=_sequential_range(128, 179),
+        design_size=T2X_DESIGN_SIZE,
+        template_html_path=TEMPLATE_DIR / "t2x_hard_keys.html",
     ),
 }
 

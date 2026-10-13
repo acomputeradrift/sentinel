@@ -81,7 +81,7 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 - **Branch:** `main`
 - **Repo HEAD:** this commit on `main` (parent `bfc490b`). Not deployed.
 - **Droplet HEAD:** `22e2edd` at `/opt/sentinel/app` — Type column + changelog path live, `/health` ok
-- **T2x mockup:** locked in `docs/handheld_hard_key_remotes.md`. Black frame, `#363739` fill, traced test buttons, no photo. Scratch file `../remote_trace/mockup.html`. Not in `src/` yet.
+- **T2x:** ProductId 70 renders the traced strip beside the touchscreen (`t2x_trace.py`, crop 338×958, black frame, `#363739`). Mockup stays `../remote_trace/mockup.html`. Not deployed.
 - **Live DB:** wiped empty 2026-09-06. `uploads/` empty. `generated/` only `.staging`.
 - **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
 - **Work list:** `docs/todos/2026-10-13.md` (not this file)

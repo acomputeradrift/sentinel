@@ -1340,6 +1340,156 @@ def _augment_template_with_slots(
     return augmented
 
 
+def _hard_key_buttons_by_slot(
+    hard_key_layer: dict[str, Any],
+    layer_hard_buttons: list[dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    button_by_id: dict[int, dict[str, Any]] = {}
+    for ub in layer_hard_buttons or []:
+        if not isinstance(ub, dict):
+            continue
+        scope = ub.get("apexScopeSource") if isinstance(ub.get("apexScopeSource"), dict) else {}
+        bid_obj = scope.get("button") if isinstance(scope.get("button"), dict) else {}
+        bid = bid_obj.get("buttonId")
+        if bid is None:
+            continue
+        button_by_id[int(bid)] = ub
+    slot_buttons_by_left: dict[int, dict[str, Any]] = {}
+    for slot in (hard_key_layer or {}).get("slots", []) or []:
+        if not isinstance(slot, dict):
+            continue
+        bid = slot.get("buttonId")
+        if bid is None:
+            continue
+        button = button_by_id.get(int(bid))
+        if button is None:
+            continue
+        slot_key = int(slot.get("slotKey") or slot.get("buttonLeft") or 0)
+        slot_buttons_by_left[slot_key] = button
+    return slot_buttons_by_left
+
+
+def _t2x_fmt(value: float) -> str:
+    rounded = round(float(value), 1)
+    if abs(rounded - round(rounded)) < 1e-9:
+        return str(int(round(rounded)))
+    return f"{rounded:.1f}"
+
+
+def _render_t2x_hit(
+    btn: dict[str, Any],
+    *,
+    slot: int,
+    variable_label: str,
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
+    rendering_page_id: int | None,
+    wrap_style: str,
+    button_style: str,
+    visible_label: str,
+    wrap_class: str = "btn-wrap hk-btn-wrap hk-traced",
+) -> str:
+    """One traced target. Visible label is empty for joystick wedges."""
+    identity_label = _button_identity_label(btn)
+    tag_name = _button_tag_name(btn)
+    category_key = _category_key_from_label("hardButtons")
+    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui)
+    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
+    title = f"{identity_label} · {int(slot)}" if identity_label else str(int(slot))
+    return (
+        f"<div class='{wrap_class}' style='{wrap_style}' "
+        f"data-hard-key-slot='{int(slot)}'"
+        f" data-button-category='{escape(category_key, quote=True)}'"
+        f" data-button-tag='{escape(tag_name, quote=True)}'>"
+        f"<button class='test-btn' type='button' data-meta='{meta_attr}' "
+        f"title='{escape(title, quote=True)}' style='{button_style}'>{escape(visible_label)}</button>"
+        f"{link_html}"
+        f"<div class='btn-pass-total' aria-hidden='true'></div>"
+        f"</div>"
+    )
+
+
+def _render_t2x_strip(
+    *,
+    hard_key_layer: dict[str, Any],
+    layer_hard_buttons: list[dict[str, Any]],
+    variable_label: str,
+    app_ui: dict[str, Any],
+    page_targets: dict[int, str],
+    page_target_indexes: dict[int, int] | None,
+    rendering_page_id: int | None = None,
+) -> str:
+    """Black frame, #363739 fill, traced shapes. Layout scale is applied at runtime."""
+    from sentinel.generation.hard_keys import t2x_trace
+
+    slots = _hard_key_buttons_by_slot(hard_key_layer, layer_hard_buttons)
+    cw, ch = t2x_trace.DESIGN_SIZE
+    svg_parts: list[str] = []
+    label_parts: list[str] = []
+    hit_parts: list[str] = []
+    for shape in t2x_trace.SHAPES:
+        btn = slots.get(shape.slot)
+        if btn is None:
+            continue
+        identity = _button_identity_label(btn)
+        svg_parts.append(f"<path d='{shape.d}'/>")
+        if shape.label_box is not None and identity:
+            x, y, w, h = shape.label_box
+            label_parts.append(
+                f"<div class='hk-traced-label' style='left:{_t2x_fmt(x)}px;top:{_t2x_fmt(y)}px;"
+                f"width:{_t2x_fmt(w)}px;height:{_t2x_fmt(h)}px'>{escape(identity)}</div>"
+            )
+        hit_parts.append(
+            _render_t2x_hit(
+                btn,
+                slot=shape.slot,
+                variable_label=variable_label,
+                app_ui=app_ui,
+                page_targets=page_targets,
+                page_target_indexes=page_target_indexes,
+                rendering_page_id=rendering_page_id,
+                wrap_style=f"left:0;top:0;width:{cw}px;height:{ch}px;pointer-events:none",
+                wrap_class="btn-wrap hk-btn-wrap hk-traced hk-traced-hit",
+                button_style=f"pointer-events:auto;clip-path:path(\"{shape.d}\")",
+                visible_label="",
+            )
+        )
+    rect_parts: list[str] = []
+    for rect in t2x_trace.RECTS:
+        btn = slots.get(rect.slot)
+        if btn is None:
+            continue
+        identity = _button_identity_label(btn)
+        rect_parts.append(
+            _render_t2x_hit(
+                btn,
+                slot=rect.slot,
+                variable_label=variable_label,
+                app_ui=app_ui,
+                page_targets=page_targets,
+                page_target_indexes=page_target_indexes,
+                rendering_page_id=rendering_page_id,
+                wrap_style=(
+                    f"left:{rect.x}px;top:{rect.y}px;width:{rect.w}px;height:{rect.h}px"
+                ),
+                button_style="border-radius:6px",
+                visible_label=identity,
+            )
+        )
+    return (
+        f"<div class='frame hk-traced-frame'>"
+        f"<div class='hk-traced-stage' data-crop-w='{cw}' data-crop-h='{ch}' "
+        f"style='width:{cw}px;height:{ch}px'>"
+        f"<svg class='hk-traced-svg' width='{cw}' height='{ch}' aria-hidden='true'>"
+        f"{''.join(svg_parts)}</svg>"
+        f"{''.join(label_parts)}"
+        f"{''.join(hit_parts)}"
+        f"{''.join(rect_parts)}"
+        f"</div></div>"
+    )
+
+
 def _render_hard_key_strip(
     *,
     model_key: str,
@@ -1352,6 +1502,16 @@ def _render_hard_key_strip(
     rendering_page_id: int | None = None,
 ) -> str:
     """Build the right-zone HTML for one page using the registry template + layer rows."""
+    if model_key == "t2x":
+        return _render_t2x_strip(
+            hard_key_layer=hard_key_layer,
+            layer_hard_buttons=layer_hard_buttons,
+            variable_label=variable_label,
+            app_ui=app_ui,
+            page_targets=page_targets,
+            page_target_indexes=page_target_indexes,
+            rendering_page_id=rendering_page_id,
+        )
     _, body = _load_hard_key_template(model_key)
     if not body:
         return ""
@@ -5220,6 +5380,57 @@ function syncHeader() {{
     frame.dataset.sentinelHkTightApplied='1';
    }});
   }}
+ function layoutT2xLikeMockup(uw, uh, touchW, touchH, cropW, cropH) {{
+  const MARGIN=20;
+  const halfW=Math.max(1,(uw-2*MARGIN)/2);
+  const fitH=Math.max(1,uh-2*MARGIN);
+  const contain=(iw,ih,fw,fh)=>{{
+   if (!(iw>0)||!(ih>0)||!(fw>0)||!(fh>0)) return 0;
+   return Math.max(0, Math.min(fw/iw, fh/ih));
+  }};
+  const ts=contain(touchW, touchH, halfW, fitH);
+  const touch={{w:touchW*ts, h:touchH*ts}};
+  touch.left=0.25*uw-touch.w/2;
+  touch.top=Math.max(0,(uh-touch.h)/2);
+  const stripW0=(cropH>0)?(touchH*cropW/cropH):0;
+  let ss=contain(stripW0, touchH, halfW, fitH);
+  if (stripW0>0) ss=Math.min(ss, touch.w/stripW0);
+  const strip={{h:touchH*ss}};
+  strip.w=(cropH>0)?(strip.h*cropW/cropH):0;
+  strip.left=0.75*uw-strip.w/2;
+  strip.top=Math.max(0,(uh-strip.h)/2);
+  return {{touch, strip}};
+ }}
+ function applyT2xMockupPositions(activePage, lay) {{
+  if (!activePage||!lay) return;
+  const z=Number(lay.zoom||1);
+  const ringRaw=getComputedStyle(document.documentElement).getPropertyValue('--sentinel-device-frame-ring-width').trim();
+  const ring=Math.max(0, parseFloat(ringRaw)||0)||3;
+  const touch=lay.touch;
+  const strip=lay.strip;
+  const leftCol=activePage.querySelector('.hk-split-left');
+  const right=activePage.querySelector('.hk-split-right');
+  if (leftCol) {{
+   leftCol.style.left=`${{touch.left*z}}px`;
+   leftCol.style.width=`${{touch.w*z}}px`;
+  }}
+  if (!right) return;
+  right.style.left=`${{strip.left*z-ring}}px`;
+  right.style.width=`${{strip.w*z+2*ring}}px`;
+  const frame=right.querySelector('.hk-traced-frame');
+  const stage=right.querySelector('.hk-traced-stage');
+  if (frame) {{
+   frame.style.width=`${{strip.w*z}}px`;
+   frame.style.height=`${{strip.h*z}}px`;
+  }}
+  if (!stage) return;
+  const cropW=Number(stage.dataset.cropW||0);
+  const s=cropW>0?(strip.w*z)/cropW:1;
+  stage.style.transformOrigin='0 0';
+  stage.style.transform=`scale(${{s}})`;
+  const labelPx=Math.max(1, 12*textZoomFactor());
+  stage.querySelectorAll('.hk-traced-label').forEach((el)=>{{ el.style.fontSize=`${{labelPx}}px`; }});
+ }}
 function applyRtiLayout() {{
  const _layoutT0=_perfNow();
  try {{
@@ -5276,9 +5487,22 @@ const heightScale=fitHeight/sourceSize.height;
    scale=Math.min(scale,1);
  }}
  scale=Math.min(maxScale, Math.max(minScale, scale));
- const totalScale=scale*(currentZoomPercent/100);
-const fittedWidth=sourceSize.width*totalScale;
-const fittedHeight=sourceSize.height*totalScale;
+ let totalScale=scale*(currentZoomPercent/100);
+ let fittedWidth=sourceSize.width*totalScale;
+ let fittedHeight=sourceSize.height*totalScale;
+ let t2xLay=null;
+ if (String(rtiDeviceCanvas.dataset.hkModel||'')==='t2x') {{
+  const ts0=hkTouchSourceSize();
+  const cropW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
+  const cropH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
+  const z=currentZoomPercent/100;
+  t2xLay=layoutT2xLikeMockup(rtiCanvasWidth, rtiCanvasHeight, Number(ts0.width||0), Number(ts0.height||0), cropW, cropH);
+  t2xLay.zoom=z;
+  fittedWidth=rtiCanvasWidth*z;
+  fittedHeight=rtiCanvasHeight*z;
+  const srcW=Number(ts0.width||0);
+  totalScale=(srcW>0)?((t2xLay.touch.w*z)/srcW):1;
+ }}
 const contentWidth=Math.max(rtiCanvasWidth,fittedWidth);
 const contentHeight=Math.max(rtiCanvasHeight,fittedHeight);
 const offsetLeft=(contentWidth-fittedWidth)/2;
@@ -5388,11 +5612,14 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    }}
    const button=el.querySelector('.test-btn');
     if (button) {{
-      const buttonFontPx=resolveButtonFontPx(el, totalScale);
+      const traced=el.classList.contains('hk-traced');
+      const buttonFontPx=traced ? Math.max(1, 12*textZoomFactor()) : resolveButtonFontPx(el, totalScale);
       button.style.fontSize=`${{buttonFontPx}}px`;
-      button.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*totalScale)}}px`;
+      if (!traced) {{
+       button.style.borderRadius=`${{Math.max(2, deviceButtonRadiusBase()*totalScale)}}px`;
+      }}
       const linkHit=el.querySelector('.page-link-hit');
-      if (linkHit) applyLinkSizing(linkHit, buttonFontPx, totalScale);
+      if (linkHit) applyLinkSizing(linkHit, buttonFontPx, traced ? 1 : totalScale);
     }}
   }});
  if (activePage) activePage.querySelectorAll('.hk-split-right').forEach(zone=>{{
@@ -5409,6 +5636,7 @@ const offsetTop=(contentHeight-fittedHeight)/2;
    }}
  }});
  applyHkTightClusterLayout(activePage);
+ if (t2xLay) applyT2xMockupPositions(activePage, t2xLay);
  refreshButtonVisualStates();
  syncHeader();
  if (LAYER_PANEL.enabled===false) {{
@@ -6818,10 +7046,11 @@ def build_device_render_bundle(
             twp = float(hk_split_layout["touch_width_pct"])
             hlp = float(hk_split_layout["hk_left_pct"])
             hwp = float(hk_split_layout["hk_width_pct"])
+            hk_model_class = " hk-model-t2x" if product_model_key == "t2x" else ""
             page_html_by_index[str(page_index)] = (
                 f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;bottom:0;'>"
                 f"<div class='hk-touch-stack'>{page_inner_main}</div></div>"
-                f"<div class='hk-split-right'{hk_owner_attr} data-hk-model=\"{product_model_key}\" "
+                f"<div class='hk-split-right{hk_model_class}'{hk_owner_attr} data-hk-model=\"{product_model_key}\" "
                 f"style='left:{hlp:.4f}%;width:{hwp:.4f}%;top:0;bottom:0;'>{strip_html}</div>"
             )
         else:
@@ -6849,8 +7078,11 @@ def build_device_render_bundle(
     if product_model_key is not None:
         from sentinel.generation.hard_keys import registry as _hk_registry
 
-        scoped_style, _ = _load_hard_key_template(product_model_key)
-        hard_key_style_css = scoped_style or ""
+        if product_model_key == "t2x":
+            hard_key_style_css = ""
+        else:
+            scoped_style, _ = _load_hard_key_template(product_model_key)
+            hard_key_style_css = scoped_style or ""
         model = _hk_registry.MODELS.get(product_model_key)
         if model is not None:
             hard_key_design_w, hard_key_design_h = model.design_size

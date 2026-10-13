@@ -1,1 +1,1 @@
-"""Hard-key remote registry for split-layout devices (T4x, ISR-2, ISR-4)."""
+"""Hard-key remote registry for split-layout devices (T2x, T4x, ISR-2, ISR-4)."""

@@ -13,7 +13,7 @@ class HardKeysRegistryTest(unittest.TestCase):
         from sentinel.generation.hard_keys import registry as hk
 
         models = set(hk.MODELS.keys())
-        self.assertEqual(models, {"t4x", "isr2", "isr4"})
+        self.assertEqual(models, {"t2x", "t4x", "isr2", "isr4"})
 
     def test_t4x_locked_slot_range_and_design(self) -> None:
         from sentinel.generation.hard_keys import registry as hk
@@ -59,6 +59,19 @@ class HardKeysRegistryTest(unittest.TestCase):
         self.assertIn("--dpad-ok-y:", body)
         self.assertNotRegex(body, r'class="row"')
 
+    def test_t2x_traced_crop_design_size(self) -> None:
+        from sentinel.generation.hard_keys import registry as hk
+        from sentinel.generation.hard_keys import t2x_trace
+
+        t2x = hk.MODELS["t2x"]
+        self.assertEqual(t2x.product_id, 70)
+        self.assertEqual(t2x.slot_range, (128, 179))
+        self.assertEqual(t2x.slot_count(), 52)
+        self.assertEqual(t2x.design_size, (338, 958))
+        self.assertEqual(t2x.design_size, t2x_trace.DESIGN_SIZE)
+        self.assertIsNone(t2x.slot_by_data_label)
+        self.assertTrue(t2x.template_html_path.exists())
+
     def test_t4x_only_uses_dom_order_not_data_labels(self) -> None:
         from sentinel.generation.hard_keys import registry as hk
 
@@ -67,6 +80,7 @@ class HardKeysRegistryTest(unittest.TestCase):
     def test_resolve_product_model_from_product_id(self) -> None:
         from sentinel.generation.hard_keys import registry as hk
 
+        self.assertEqual(hk.product_model_for_product_id(70), "t2x")
         self.assertEqual(hk.product_model_for_product_id(102), "t4x")
         self.assertEqual(hk.product_model_for_product_id(110), "isr2")
         self.assertEqual(hk.product_model_for_product_id(111), "isr4")

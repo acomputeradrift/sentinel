@@ -149,5 +149,5 @@ Reference: `remote_trace/mockup.html`.
 
 ## Open items (not yet decided)
 
-1. T2x is not in `src/sentinel/generation/hard_keys/registry.py` (only T4x / ISR-2 / ISR-4). `ProductId` (70) and slot map are known. Still needed: a renderer that draws the black frame, `#363739` fill, and traced shapes. The photo stays the trace source.
+1. Done in `src/`: `ProductId` 70 is `t2x` in `registry.py`. The strip is drawn from `t2x_trace.py` (crop 338×958, 3px black frame, `#363739` fill, traced shapes). Labels come from the hard-key layer on screen. The photo stays the trace source, outside the repo.
 2. Where the photo + trace data live in the repo (`Assets/Hard Keys/` vs `src/sentinel/ui/testing/hard_keys/`) once this moves out of the scratch folder.
