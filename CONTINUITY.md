@@ -41,6 +41,7 @@ Commissioning + technician field-testing for RTI projects. Ingest `.apex` → ex
 | API / data / WS contracts | `docs/api_contract_v1.md`, `docs/data_contracts.md`, `docs/contracts/ws_events.md` |
 | Extract/UI schema | `src/sentinel/contracts/apex_project_structure_v4.json`, `app_ui_structure.json` |
 | Security / runbook | `docs/directives/commissioning_security_model.md`, `runbook.md` |
+| Handheld remotes with hard keys (trace, slot map, black frame + `#363739` fill) | `docs/handheld_hard_key_remotes.md`, `hard_keys.md` |
 | Dated work lists (not this file) | `docs/todos/` |
 | Long brief / file map (optional) | `bootstrap.md`, `codebase_map.md` |
 
@@ -76,13 +77,14 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 ## Now
 
-- **Updated:** 2026-09-08
+- **Updated:** 2026-10-13
 - **Branch:** `main`
-- **Repo HEAD:** `22e2edd` (Mac = GitHub `main`)
+- **Repo HEAD:** this commit on `main` (parent `bfc490b`). Not deployed.
 - **Droplet HEAD:** `22e2edd` at `/opt/sentinel/app` — Type column + changelog path live, `/health` ok
+- **T2x mockup:** locked in `docs/handheld_hard_key_remotes.md`. Black frame, `#363739` fill, traced test buttons, no photo. Scratch file `../remote_trace/mockup.html`. Not in `src/` yet.
 - **Live DB:** wiped empty 2026-09-06. `uploads/` empty. `generated/` only `.staging`.
 - **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
-- **Work list:** `docs/todos/2026-09-08.md` (not this file)
+- **Work list:** `docs/todos/2026-10-13.md` (not this file)
 
 ---
 
