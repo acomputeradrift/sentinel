@@ -1408,6 +1408,19 @@ def _t2x_slot_buttons(
     return chosen
 
 
+def _t2x_shape_svg(slot: int, d: str, page_id: int | None) -> str:
+    """Fill and status ring live inside the wrap so they inherit the button variables."""
+    clip = f"hk-clip-{int(page_id or 0)}-{int(slot)}"
+    return (
+        f"<svg class='hk-key-svg' aria-hidden='true'>"
+        f"<defs><clipPath id='{clip}' clipPathUnits='userSpaceOnUse'><path d='{d}'/></clipPath></defs>"
+        f"<path class='hk-key-fill' d='{d}'/>"
+        f"<path class='hk-key-trim' d='{d}' clip-path='url(#{clip})'/>"
+        f"<path class='hk-key-edge' d='{d}' clip-path='url(#{clip})'/>"
+        f"</svg>"
+    )
+
+
 def _render_t2x_hit(
     btn: dict[str, Any],
     *,
@@ -1422,6 +1435,7 @@ def _render_t2x_hit(
     button_style: str,
     visible_label: str,
     wrap_class: str = "btn-wrap hk-btn-wrap hk-traced",
+    shape_d: str | None = None,
 ) -> str:
     """One traced target. Visible label is empty for joystick wedges."""
     identity_label = _button_identity_label(btn)
@@ -1430,12 +1444,14 @@ def _render_t2x_hit(
     link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
     title = f"{identity_label} · {int(slot)}" if identity_label else str(int(slot))
     style = f"{wrap_style};--btn-fill-color:var({_t2x_fill_var(category_key)})"
+    shape_html = _t2x_shape_svg(slot, shape_d, rendering_page_id) if shape_d else ""
     return (
         f"<div class='{wrap_class}' "
         f"data-hard-key-slot='{int(slot)}'"
         f" data-button-category='{escape(category_key, quote=True)}'"
         f" data-button-tag='{escape(tag_name, quote=True)}'"
         f" style='{style}'>"
+        f"{shape_html}"
         f"<button class='test-btn' type='button' data-meta='{meta_attr}' "
         f"title='{escape(title, quote=True)}' style='{button_style}'>{escape(visible_label)}</button>"
         f"{link_html}"
@@ -1460,7 +1476,6 @@ def _render_t2x_strip(
 
     slots = _t2x_slot_buttons(hard_key_layer, layer_hard_buttons, layer_empty_tag_buttons or [])
     cw, ch = t2x_trace.DESIGN_SIZE
-    svg_parts: list[str] = []
     label_parts: list[str] = []
     hit_parts: list[str] = []
     for shape in t2x_trace.SHAPES:
@@ -1469,9 +1484,6 @@ def _render_t2x_strip(
             continue
         category_key, btn = chosen
         identity = _button_identity_label(btn)
-        svg_parts.append(
-            f"<path data-hard-key-slot='{shape.slot}' style='fill:var({_t2x_fill_var(category_key)})' d='{shape.d}'/>"
-        )
         if shape.label_box is not None and identity:
             x, y, w, h = shape.label_box
             label_parts.append(
@@ -1492,6 +1504,7 @@ def _render_t2x_strip(
                 wrap_class="btn-wrap hk-btn-wrap hk-traced hk-traced-hit",
                 button_style=f"pointer-events:auto;clip-path:path(\"{shape.d}\")",
                 visible_label="",
+                shape_d=shape.d,
             )
         )
     rect_parts: list[str] = []
@@ -1522,10 +1535,8 @@ def _render_t2x_strip(
         f"<div class='frame hk-traced-frame'>"
         f"<div class='hk-traced-stage' data-crop-w='{cw}' data-crop-h='{ch}' "
         f"style='width:{cw}px;height:{ch}px'>"
-        f"<svg class='hk-traced-svg' width='{cw}' height='{ch}' aria-hidden='true'>"
-        f"{''.join(svg_parts)}</svg>"
-        f"{''.join(label_parts)}"
         f"{''.join(hit_parts)}"
+        f"{''.join(label_parts)}"
         f"{''.join(rect_parts)}"
         f"</div></div>"
     )
@@ -5473,8 +5484,10 @@ function syncHeader() {{
   if (!stage) return;
   const cropW=Number(stage.dataset.cropW||0);
   const s=cropW>0?(strip.w*z)/cropW:1;
+  const stageScale=s>0?s:1;
   stage.style.transformOrigin='0 0';
-  stage.style.transform=`scale(${{s}})`;
+  stage.style.transform=`scale(${{stageScale}})`;
+  stage.style.setProperty('--hk-stage-scale', String(stageScale));
   const labelPx=Math.max(1, 12*textZoomFactor());
   stage.querySelectorAll('.hk-traced-label').forEach((el)=>{{ el.style.fontSize=`${{labelPx}}px`; }});
  }}

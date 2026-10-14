@@ -130,19 +130,43 @@
   top: 0;
   transform-origin: 0 0;
   background: #363739;
+  --hk-stage-scale: 1;
 }
 
-.rti-device-canvas-hk .hk-traced-svg {
+/* Stage is scaled to fit. Divide by that scale so 1px and the 4px status ring stay screen pixels. */
+.rti-device-canvas-hk .hk-traced:not(.hk-traced-hit) .test-btn {
+  box-shadow:
+    inset 0 0 0 calc(1px / var(--hk-stage-scale, 1)) var(--sentinel-device-button-border-color),
+    inset 0 0 0 calc(var(--btn-state-trim-width) / var(--hk-stage-scale, 1)) var(--btn-state-trim-color) !important;
+}
+
+.rti-device-canvas-hk .hk-traced-hit .hk-key-svg {
   position: absolute;
   left: 0;
   top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
   pointer-events: none;
 }
 
-.rti-device-canvas-hk .hk-traced-svg path {
-  fill: var(--sentinel-fill-hard-button);
+.rti-device-canvas-hk .hk-traced-hit .hk-key-fill {
+  fill: var(--btn-fill-color);
+  stroke: none;
+}
+
+.rti-device-canvas-hk .hk-traced-hit .hk-key-trim {
+  fill: none;
+  stroke: var(--btn-state-trim-color);
+  stroke-width: calc(var(--btn-state-trim-width) * 2 / var(--hk-stage-scale, 1));
+  stroke-linejoin: round;
+}
+
+.rti-device-canvas-hk .hk-traced-hit .hk-key-edge {
+  fill: none;
   stroke: var(--sentinel-device-button-border-color);
-  stroke-width: 2;
+  stroke-width: calc(2px / var(--hk-stage-scale, 1));
+  stroke-linejoin: round;
 }
 
 .rti-device-canvas-hk .hk-traced-label {
@@ -166,7 +190,7 @@
 .rti-device-canvas-hk .hk-traced-hit .test-btn {
   border-radius: 0 !important;
   background: transparent !important;
-  box-shadow: inset 0 0 0 var(--btn-state-trim-width) var(--btn-state-trim-color) !important;
+  box-shadow: none !important;
 }
 
 /* Stretch splits to .device-page height (top/bottom beats fragile height:100% + flex). */

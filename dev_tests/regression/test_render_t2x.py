@@ -220,9 +220,23 @@ class T2xRenderTest(unittest.TestCase):
             html,
             r"data-hard-key-slot='136'[^>]*data-button-category='hardButtons'[^>]*--btn-fill-color:var\(--sentinel-fill-hard-button\)",
         )
-        self.assertIn("data-hard-key-slot='138' style='fill:var(--sentinel-fill-empty-tag)'", html)
-        self.assertIn("data-hard-key-slot='140' style='fill:var(--sentinel-fill-hard-button)'", html)
         self.assertIn('"categoryKey": "emptyTag"', html)
+        shape = re.search(
+            r"data-hard-key-slot='138'[\s\S]*?<svg class='hk-key-svg'[\s\S]*?"
+            r"<path class='hk-key-fill'[\s\S]*?<path class='hk-key-trim'",
+            html,
+        )
+        self.assertIsNotNone(shape)
+        self.assertIn("fill: var(--btn-fill-color)", html)
+        self.assertIn(
+            "calc(var(--btn-state-trim-width) * 2 / var(--hk-stage-scale, 1))",
+            html,
+        )
+        self.assertIn(
+            "calc(var(--btn-state-trim-width) / var(--hk-stage-scale, 1))",
+            html,
+        )
+        self.assertIn("stage.style.setProperty('--hk-stage-scale'", html)
         blank = re.search(
             r"data-hard-key-slot='130'[\s\S]*?<button class='test-btn'[^>]*>(.*?)</button>",
             html,
