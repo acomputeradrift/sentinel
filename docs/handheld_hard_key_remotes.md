@@ -127,15 +127,15 @@ Chrome comes from `src/sentinel/ui/testing/sentinel_device_theme.css` (`.btn-wra
 |---|---|
 | Fill | `--sentinel-fill-hard-button` (`#2c6fb7`) |
 | Border | 1px inset `--sentinel-device-button-border-color` (`#154665`) |
-| Label | 12px white (`--sentinel-hard-button-font-size`), overflow hidden |
+| Label | 12px white (`--sentinel-hard-button-font-size`), overflow hidden. Shape names sit above the shape fill |
 | State trim | Untested: width `0`, color transparent |
 | Shape | Traced rect (6px corners), wrap-around path, d-pad wedge, or round split |
 
 **Which layer.** Use the Hard Keys copy for the page on screen (`SharedLayers` where `ProductId` matches, `IsKeypadLayer = 1`, `Name = 'Hard Keys'`). The T2x mockup is Apple TV (RV): `SharedLayerId` 2058. Other copies in the same file differ. Source Select (2060) uses Exit, Play, Pause, Skip Back, Power On, and Prev where 2058 uses Back, Play/Pause, Replay, a blank tag, and Back.
 
-**Label.** Same rule as `_button_identity_label`: Apex `Text` if it is set, otherwise `ButtonTagName`. On these T2x hard keys `Text` is empty, so the label is `ButtonTagName`. Slot 171 has no tag on layer 2058, so that button is blank.
+**Label.** Same rule as `_button_identity_label`: Apex `Text` if it is set, otherwise `ButtonTagName`. On these T2x hard keys `Text` is empty, so the label is `ButtonTagName`. Slot 171 has no tag on layer 2058, so that button is blank. Volume, channel, d-pad, and OK names are a separate `.hk-traced-label` with `z-index: 3`, above the shape layer (`z-index: 2`), so the fill does not cover the words.
 
-**Too small to label.** Split a multi-target key inside its traced shape (T2x center knob: one circle, five slots, same wedge split as the d-pad — Up / Right / Down / Left plus a center Click). If the 12px label does not fit, leave the target unlabeled. A click still reports the identity.
+**Too small to label.** The joystick wedges (Up / Right / Down / Left plus center Click) have no label box. A click still puts the tag in the dialog title.
 
 **Click.** Log `Label · ButtonLeft` (example: `Back · 128`). The tooltip carries the same string.
 

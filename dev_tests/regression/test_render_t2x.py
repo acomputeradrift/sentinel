@@ -244,3 +244,7 @@ class T2xRenderTest(unittest.TestCase):
         self.assertIsNotNone(blank)
         assert blank is not None
         self.assertEqual(blank.group(1), "")
+        label_css = re.search(r"\.hk-traced-label\s*\{([^}]*)\}", html)
+        self.assertIsNotNone(label_css)
+        assert label_css is not None
+        self.assertIn("z-index: 3", label_css.group(1))

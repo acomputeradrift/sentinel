@@ -1184,11 +1184,13 @@ def _pick_select_source_macro_target(
 def _room_off_target_page_ids(
     room_off_id: int,
     current_room_id: int,
-    room_home_target_pages_by_room: dict[int, list[tuple[int, int]]],
+    activity_target_pages_by_room_and_device: dict[tuple[int, int], list[tuple[int, int]]],
+    effective_source_id: int | None,
 ) -> list[tuple[int, int]]:
-    if room_off_id == -1 and current_room_id > 0:
-        return room_home_target_pages_by_room.get(current_room_id, [])
-    return []
+    """Page link for Room Off: Current Room is that page's source activity, not activity order 0."""
+    if room_off_id != -1 or current_room_id <= 0 or effective_source_id is None or int(effective_source_id) <= 0:
+        return []
+    return activity_target_pages_by_room_and_device.get((int(current_room_id), int(effective_source_id)), [])
 
 
 def _list_item_height_from_twparams_blob(blob: Any) -> int | None:
@@ -1531,7 +1533,12 @@ def _resolve_button(
         for macro_id in candidate_macro_ids:
             for room_off_id in room_offs_by_macro.get(macro_id, []):
                 room_off_target_page_id = _pick_target_for_rti(
-                    _room_off_target_page_ids(room_off_id, page_room_id, room_home_target_pages_by_room),
+                    _room_off_target_page_ids(
+                        room_off_id,
+                        page_room_id,
+                        activity_target_pages_by_room_and_device,
+                        effective_source_id,
+                    ),
                     current_rti_address,
                 )
                 if room_off_target_page_id is not None:

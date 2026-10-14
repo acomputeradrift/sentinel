@@ -165,6 +165,83 @@ class MacroStepsInButtonResolutionTest(unittest.TestCase):
         self.assertEqual(user_button["resolvedPageLink"]["targetPageId"], 55)
         self.assertEqual(user_button["resolvedPageLink"]["resolutionPath"], "macroStep")
 
+    def test_room_off_uses_page_source_activity_not_first_checked(self):
+        button_row = {
+            "ButtonId": 103,
+            "ButtonTagId": 1252,
+            "Text": "",
+            "ButtonStyle": 0,
+            "VisibleOrientations": 3,
+            "TextSize": 12,
+            "ButtonTop": 0,
+            "ButtonLeft": 171,
+            "ButtonHeight": 0,
+            "ButtonWidth": 0,
+            "ButtonTopAlt": 0,
+            "ButtonLeftAlt": 171,
+            "ButtonHeightAlt": 0,
+            "ButtonWidthAlt": 0,
+            "GlobalMacroId": None,
+            "DeviceMacroId": None,
+            "PageLinkId": None,
+            "LinkPageId": None,
+            "ButtonOrder": 0,
+            "FrameNumber": 254,
+        }
+
+        user_button, _diag_button = _resolve_button(
+            _NoSqlCursor(),
+            button_row,
+            current_device_id=112,
+            tag_name_by_id={1252: "POWER OFF - Current ROOM"},
+            variables_by_tag={},
+            button_text_tag_ids=set(),
+            macros_by_tag={1252: [{"MacroId": 993, "RoomId": 0}]},
+            macro_non_empty_by_id={993: True},
+            macro_device_ids_by_macro={},
+            page_links_by_device_and_tag={},
+            page_links_by_tag={},
+            first_page_target_by_device_id={},
+            page_name_by_page_id={138: "Apple TV (RV)", 104: "Room Select (Global)"},
+            room_name_by_id={9: "RV"},
+            source_name_by_device_id={63: "Apple TV (RV)"},
+            macro_step_exact_page_by_macro={},
+            macro_step_targets_by_macro={},
+            room_event_targets_by_room={},
+            select_rooms_by_macro={},
+            room_offs_by_macro={993: [-1]},
+            select_sources_by_macro={},
+            activity_target_pages_by_room_and_device={(9, 63): [(138, 1), (108, 2)]},
+            room_home_target_pages_by_room={9: [(104, 2)]},
+            variable_command_rows_by_variable_id={},
+            macro_flag_summaries_by_macro_id={},
+            button_graphics_targets_by_button_id={},
+            use_explicit_button_bitmaps=False,
+            page_id=138,
+            page_source_device_id=63,
+            page_room_id=9,
+            current_rti_address=1,
+            global_room_fallback_id=None,
+            layer_id=3881,
+            shared_layer_id=2058,
+            layer_name_resolved="Hard Keys",
+            layer_room_id=None,
+            layer_source_id=63,
+            page_layer_room_id=None,
+            page_layer_source_id=None,
+            layer_order=0,
+            button_order=0,
+            frame_number=254,
+            host_viewport_button_id=None,
+            next_in_group_sequences={},
+        )
+
+        resolved = user_button["resolvedPageLink"]
+        self.assertEqual(resolved["resolutionPath"], "roomOffEvent")
+        self.assertEqual(resolved["targetPageId"], 138)
+        self.assertEqual(resolved["targetPageName"], "Apple TV (RV)")
+        self.assertNotEqual(resolved["targetPageId"], 104)
+
 
 if __name__ == "__main__":
     unittest.main()
