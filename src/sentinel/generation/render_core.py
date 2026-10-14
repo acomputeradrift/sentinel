@@ -1163,11 +1163,21 @@ def _load_hard_key_template(model_key: str) -> tuple[str, str]:
     return (style, body)
 
 
-def _hard_key_button_meta(btn: dict[str, Any], variable_label: str, app_ui: dict[str, Any]) -> str:
+def _hard_key_button_meta(
+    btn: dict[str, Any],
+    variable_label: str,
+    app_ui: dict[str, Any],
+    category_key: str | None = None,
+) -> str:
     identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
     identity_label = _button_identity_label(btn) if isinstance(btn, dict) else ""
-    label = "hardButtons"
-    category_key = _category_key_from_label(label)
+    if category_key == "emptyTag":
+        label = "Empty Tag"
+    elif category_key == "hardButtons":
+        label = "Hard Button"
+    else:
+        label = "hardButtons"
+        category_key = _category_key_from_label(label)
     meta: dict[str, Any] = {
         "category": label,
         "categoryKey": category_key,
@@ -1376,10 +1386,33 @@ def _t2x_fmt(value: float) -> str:
     return f"{rounded:.1f}"
 
 
+def _t2x_fill_var(category_key: str) -> str:
+    if category_key == "emptyTag":
+        return "--sentinel-fill-empty-tag"
+    return "--sentinel-fill-hard-button"
+
+
+def _t2x_slot_buttons(
+    hard_key_layer: dict[str, Any],
+    layer_hard_buttons: list[dict[str, Any]],
+    layer_empty_tag_buttons: list[dict[str, Any]],
+) -> dict[int, tuple[str, dict[str, Any]]]:
+    """Map ButtonLeft to (category, button). A hard button wins over an empty tag on the same slot."""
+    chosen: dict[int, tuple[str, dict[str, Any]]] = {}
+    for category_key, buttons in (
+        ("emptyTag", layer_empty_tag_buttons),
+        ("hardButtons", layer_hard_buttons),
+    ):
+        for slot_key, btn in _hard_key_buttons_by_slot(hard_key_layer, buttons).items():
+            chosen[slot_key] = (category_key, btn)
+    return chosen
+
+
 def _render_t2x_hit(
     btn: dict[str, Any],
     *,
     slot: int,
+    category_key: str,
     variable_label: str,
     app_ui: dict[str, Any],
     page_targets: dict[int, str],
@@ -1393,15 +1426,16 @@ def _render_t2x_hit(
     """One traced target. Visible label is empty for joystick wedges."""
     identity_label = _button_identity_label(btn)
     tag_name = _button_tag_name(btn)
-    category_key = _category_key_from_label("hardButtons")
-    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui)
+    meta_attr = _hard_key_button_meta(btn, variable_label, app_ui, category_key=category_key)
     link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
     title = f"{identity_label} · {int(slot)}" if identity_label else str(int(slot))
+    style = f"{wrap_style};--btn-fill-color:var({_t2x_fill_var(category_key)})"
     return (
-        f"<div class='{wrap_class}' style='{wrap_style}' "
+        f"<div class='{wrap_class}' "
         f"data-hard-key-slot='{int(slot)}'"
         f" data-button-category='{escape(category_key, quote=True)}'"
-        f" data-button-tag='{escape(tag_name, quote=True)}'>"
+        f" data-button-tag='{escape(tag_name, quote=True)}'"
+        f" style='{style}'>"
         f"<button class='test-btn' type='button' data-meta='{meta_attr}' "
         f"title='{escape(title, quote=True)}' style='{button_style}'>{escape(visible_label)}</button>"
         f"{link_html}"
@@ -1419,21 +1453,25 @@ def _render_t2x_strip(
     page_targets: dict[int, str],
     page_target_indexes: dict[int, int] | None,
     rendering_page_id: int | None = None,
+    layer_empty_tag_buttons: list[dict[str, Any]] | None = None,
 ) -> str:
     """Black frame, #363739 fill, traced shapes. Layout scale is applied at runtime."""
     from sentinel.generation.hard_keys import t2x_trace
 
-    slots = _hard_key_buttons_by_slot(hard_key_layer, layer_hard_buttons)
+    slots = _t2x_slot_buttons(hard_key_layer, layer_hard_buttons, layer_empty_tag_buttons or [])
     cw, ch = t2x_trace.DESIGN_SIZE
     svg_parts: list[str] = []
     label_parts: list[str] = []
     hit_parts: list[str] = []
     for shape in t2x_trace.SHAPES:
-        btn = slots.get(shape.slot)
-        if btn is None:
+        chosen = slots.get(shape.slot)
+        if chosen is None:
             continue
+        category_key, btn = chosen
         identity = _button_identity_label(btn)
-        svg_parts.append(f"<path d='{shape.d}'/>")
+        svg_parts.append(
+            f"<path data-hard-key-slot='{shape.slot}' style='fill:var({_t2x_fill_var(category_key)})' d='{shape.d}'/>"
+        )
         if shape.label_box is not None and identity:
             x, y, w, h = shape.label_box
             label_parts.append(
@@ -1444,6 +1482,7 @@ def _render_t2x_strip(
             _render_t2x_hit(
                 btn,
                 slot=shape.slot,
+                category_key=category_key,
                 variable_label=variable_label,
                 app_ui=app_ui,
                 page_targets=page_targets,
@@ -1457,14 +1496,16 @@ def _render_t2x_strip(
         )
     rect_parts: list[str] = []
     for rect in t2x_trace.RECTS:
-        btn = slots.get(rect.slot)
-        if btn is None:
+        chosen = slots.get(rect.slot)
+        if chosen is None:
             continue
+        category_key, btn = chosen
         identity = _button_identity_label(btn)
         rect_parts.append(
             _render_t2x_hit(
                 btn,
                 slot=rect.slot,
+                category_key=category_key,
                 variable_label=variable_label,
                 app_ui=app_ui,
                 page_targets=page_targets,
@@ -1500,6 +1541,7 @@ def _render_hard_key_strip(
     page_targets: dict[int, str],
     page_target_indexes: dict[int, int] | None,
     rendering_page_id: int | None = None,
+    layer_empty_tag_buttons: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build the right-zone HTML for one page using the registry template + layer rows."""
     if model_key == "t2x":
@@ -1511,6 +1553,7 @@ def _render_hard_key_strip(
             page_targets=page_targets,
             page_target_indexes=page_target_indexes,
             rendering_page_id=rendering_page_id,
+            layer_empty_tag_buttons=layer_empty_tag_buttons,
         )
     _, body = _load_hard_key_template(model_key)
     if not body:
@@ -2961,9 +3004,12 @@ def _page_payload(
             if not (hk_layer.get("slots") or hk_layer.get("gestures") or hk_layer.get("unmappedSlots")):
                 continue
             hard_buttons = []
+            empty_tag_buttons = []
             categories = layer.get("buttonCategories") if isinstance(layer.get("buttonCategories"), dict) else {}
             if isinstance(categories.get("hardButtons"), list):
                 hard_buttons = categories.get("hardButtons")
+            if model_key == "t2x" and isinstance(categories.get("emptyTag"), list):
+                empty_tag_buttons = categories.get("emptyTag")
             hard_key_strip_html = _render_hard_key_strip(
                 model_key=model_key,
                 hard_key_layer=hk_layer,
@@ -2973,6 +3019,7 @@ def _page_payload(
                 page_targets=page_targets,
                 page_target_indexes=page_target_indexes,
                 rendering_page_id=rendering_page_id,
+                layer_empty_tag_buttons=empty_tag_buttons,
             )
             if hard_key_strip_html:
                 hard_key_owner_layer_key = _layer_key(layer_index)

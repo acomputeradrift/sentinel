@@ -23,8 +23,20 @@ def _hard_button(name: str, slot_key: int, button_id: int) -> dict:
     }
 
 
-def _t2x_project(*, slot_lefts: list[int]) -> dict:
+def _t2x_project(
+    *,
+    slot_lefts: list[int],
+    empty_tag_lefts: list[int] | None = None,
+    blank_lefts: list[int] | None = None,
+) -> dict:
+    empty_tag_lefts = list(empty_tag_lefts or [])
+    blank = set(blank_lefts or [])
     hard_buttons = [_hard_button(f"HK_{left}", left, button_id=left) for left in slot_lefts]
+    empty_buttons = [
+        _hard_button("" if left in blank else f"HK_{left}", left, button_id=left)
+        for left in empty_tag_lefts
+    ]
+    slot_lefts = list(slot_lefts) + empty_tag_lefts
     return {
         "devices": [
             {
@@ -75,7 +87,7 @@ def _t2x_project(*, slot_lefts: list[int]) -> dict:
                                         "screenLabels": [],
                                         "screenButtons": [],
                                         "hardButtons": hard_buttons,
-                                        "emptyTag": [],
+                                        "emptyTag": empty_buttons,
                                         "uiItems": [],
                                     },
                                     "viewports": [],
@@ -186,3 +198,35 @@ class T2xRenderTest(unittest.TestCase):
         assert joystick is not None
         self.assertEqual(joystick.group(1), "")
         self.assertNotIn(">HK_167<", html)
+
+    def test_empty_tag_slots_are_drawn_in_empty_tag_red(self) -> None:
+        hard = [136, 140, 171]
+        empty = [n for n in range(128, 180) if n not in hard]
+        html = render_single_device_html(
+            project_data=_t2x_project(slot_lefts=hard, empty_tag_lefts=empty, blank_lefts=[130]),
+            app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
+            project_stem="t2x_empty_tag",
+        )
+        slots = [int(n) for n in re.findall(r"data-hard-key-slot='(\d+)'", html)]
+        self.assertEqual(sorted(set(slots)), list(range(128, 180)))
+        self.assertIn(">HK_146<", html)
+        self.assertNotIn(">HK_130<", html)
+        self.assertIn(">HK_138<", html)
+        self.assertRegex(
+            html,
+            r"data-hard-key-slot='146'[^>]*data-button-category='emptyTag'[^>]*--btn-fill-color:var\(--sentinel-fill-empty-tag\)",
+        )
+        self.assertRegex(
+            html,
+            r"data-hard-key-slot='136'[^>]*data-button-category='hardButtons'[^>]*--btn-fill-color:var\(--sentinel-fill-hard-button\)",
+        )
+        self.assertIn("data-hard-key-slot='138' style='fill:var(--sentinel-fill-empty-tag)'", html)
+        self.assertIn("data-hard-key-slot='140' style='fill:var(--sentinel-fill-hard-button)'", html)
+        self.assertIn('"categoryKey": "emptyTag"', html)
+        blank = re.search(
+            r"data-hard-key-slot='130'[\s\S]*?<button class='test-btn'[^>]*>(.*?)</button>",
+            html,
+        )
+        self.assertIsNotNone(blank)
+        assert blank is not None
+        self.assertEqual(blank.group(1), "")
