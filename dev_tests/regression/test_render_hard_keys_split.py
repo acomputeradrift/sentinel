@@ -26,15 +26,6 @@ def _identity(name: str) -> dict:
     return {"buttonIdentity": {"buttonTagName": name, "text": name, "buttonType": None}}
 
 
-def _isr2_slots_in_template_dom_order() -> tuple[int, ...]:
-    """ButtonLeft order when render walks template boxes (data-label map per box)."""
-    from sentinel.generation.hard_keys.registry import ISR2_SLOT_BY_DATA_LABEL, MODELS
-
-    tpl = MODELS["isr2"].template_html_path.read_text(encoding="utf-8")
-    labels = re.findall(r'data-label\s*=\s*"([^"]*)"', tpl, flags=re.IGNORECASE)
-    return tuple(ISR2_SLOT_BY_DATA_LABEL[lbl.strip()] for lbl in labels)
-
-
 def _hard_button(name: str, slot_key: int, button_id: int) -> dict:
     return {
         **_identity(name),
@@ -192,9 +183,12 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIsInstance(hkl, dict)
         self.assertEqual(hkl.get("touchSourceWidth"), 480)
         self.assertEqual(hkl.get("touchSourceHeight"), 854)
+        from sentinel.generation.hard_keys.registry import MODELS
+
+        design_w, design_h = MODELS["t4x"].design_size
         self.assertEqual(
             hkl.get("stripWidth"),
-            render_core._hard_key_strip_width_for_height(854, 608, 732),
+            render_core._hard_key_strip_width_for_height(854, design_w, design_h),
         )
         self.assertEqual(int(portrait.get("width") or 0), int(hkl.get("virtualWidth") or 0))
         self.assertGreater(int(hkl.get("virtualWidth") or 0), 480)
@@ -342,20 +336,20 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("./p1.html", html_on_p3)
         self.assertIn("data-target-page-index='0'", html_on_p3)
 
-    def test_isr2_injects_buttons_in_data_label_slot_order_not_sequential_order(self) -> None:
-        """ISR-2 DOM order is not 128..161 consecutive; strip uses registry label → ButtonLeft map."""
+    def test_isr2_traced_strip_covers_every_slot_once(self) -> None:
+        """ISR-2 strip is the traced crop, one target per ButtonLeft 128..161."""
         slot_lefts = list(range(128, 162))
         html = render_single_device_html(
             project_data=_project_data_with_hard_keys("isr2", slot_lefts),
             app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
             project_stem="render_test",
         )
+        self.assertIn("hk-traced-frame", html)
+        self.assertIn("hk-model-isr2 hk-traced-remote", html)
+        self.assertIn("data-hk-design-w='521'", html)
+        self.assertIn("data-hk-design-h='971'", html)
         all_slots = [int(x) for x in re.findall(r"data-hard-key-slot='(\d+)'", html)]
-        self.assertGreaterEqual(len(all_slots), 34)
-        # Document may emit the active page strip twice (e.g. orientation shells); first strip order is canonical.
-        slots_found = all_slots[:34]
-        expected = _isr2_slots_in_template_dom_order()
-        self.assertEqual(tuple(slots_found), expected)
+        self.assertEqual(sorted(set(all_slots)), list(range(128, 162)))
 
     def test_split_layout_emitted_for_isr4(self) -> None:
         slot_lefts = list(range(128, 150))
@@ -368,22 +362,20 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertIn("hk-split-right", html)
         self.assertIn("data-hk-model=\"isr4\"", html)
 
-    def test_isr4_injects_buttons_in_data_label_slot_order_not_sequential_order(self) -> None:
-        """ISR-4 DOM order is not 128..149 consecutive; strip uses registry label → ButtonLeft map."""
-        from sentinel.generation.hard_keys.registry import ISR4_SLOT_BY_DATA_LABEL
-
+    def test_isr4_traced_strip_covers_every_slot_once(self) -> None:
+        """ISR-4 strip is the traced crop, one target per ButtonLeft 128..149."""
         slot_lefts = list(range(128, 150))
         html = render_single_device_html(
             project_data=_project_data_with_hard_keys("isr4", slot_lefts),
             app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
             project_stem="render_test",
         )
+        self.assertIn("hk-traced-frame", html)
+        self.assertIn("hk-model-isr4 hk-traced-remote", html)
+        self.assertIn("data-hk-design-w='500'", html)
+        self.assertIn("data-hk-design-h='610'", html)
         all_slots = [int(x) for x in re.findall(r"data-hard-key-slot='(\d+)'", html)]
-        self.assertGreaterEqual(len(all_slots), 22)
-        # Document may emit the active page strip twice (e.g. orientation shells); first strip order is canonical.
-        slots_found = all_slots[:22]
-        expected = tuple(ISR4_SLOT_BY_DATA_LABEL.values())
-        self.assertEqual(tuple(slots_found), expected)
+        self.assertEqual(sorted(set(all_slots)), list(range(128, 150)))
 
     def test_single_screen_layout_unchanged_when_product_model_missing(self) -> None:
         html = render_single_device_html(
@@ -396,19 +388,21 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertNotIn("data-hk-model=", html)
         self.assertNotIn("data-sentinel-hard-key-template", html)
 
-    def test_hard_key_template_css_in_separate_style_for_shell_copy(self) -> None:
-        """Commissioning shell copies this block whole; see project_device_static_layout copyFilteredStyles."""
+    def test_t4x_traced_strip_uses_shared_frame_not_flexbox_template(self) -> None:
         slot_lefts = list(range(128, 148))
         html = render_single_device_html(
             project_data=_project_data_with_hard_keys("t4x", slot_lefts),
             app_ui={"header": {"titleTemplate": "{deviceName} - {pageName}"}},
             project_stem="render_test",
         )
-        self.assertIn('data-sentinel-hard-key-template="1"', html)
-        marker = html.find('data-sentinel-hard-key-template="1"')
-        self.assertGreaterEqual(marker, 0)
-        tail = html[marker : marker + 12000]
-        self.assertIn(".frame", tail)
+        self.assertIn("hk-traced-frame", html)
+        self.assertIn("hk-model-t4x hk-traced-remote", html)
+        self.assertIn("#363739", html)
+        self.assertIn("data-hk-design-w='551'", html)
+        self.assertIn("data-hk-design-h='679'", html)
+        self.assertNotIn('data-sentinel-hard-key-template="1"', html)
+        all_slots = [int(x) for x in re.findall(r"data-hard-key-slot='(\d+)'", html)]
+        self.assertEqual(sorted(set(all_slots)), list(range(128, 148)))
 
     def test_hard_key_buttons_carry_data_meta_for_target_wiring(self) -> None:
         slot_lefts = list(range(128, 148))

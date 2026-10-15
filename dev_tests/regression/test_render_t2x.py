@@ -175,7 +175,7 @@ class T2xRenderTest(unittest.TestCase):
             project_stem="t2x_render",
         )
         left = html.find("class='hk-split-left'")
-        right = html.find("class='hk-split-right hk-model-t2x'")
+        right = html.find("class='hk-split-right hk-model-t2x hk-traced-remote'")
         self.assertGreaterEqual(left, 0)
         self.assertGreater(right, left)
         self.assertIn("Power On", html[left:right])

@@ -106,14 +106,14 @@
   border-radius: 0 !important;
 }
 
-/* T2x traced strip: grey sits on the frame. A scaled child on the near-white surround leaves a white seam. */
-.rti-device-canvas-hk .device-page .hk-split-right.hk-model-t2x {
+/* Traced strip: grey sits on the frame. A scaled child on the near-white surround leaves a white seam. */
+.rti-device-canvas-hk .device-page .hk-split-right.hk-traced-remote {
   background: transparent !important;
   box-shadow: none !important;
   overflow: visible !important;
 }
 
-.rti-device-canvas-hk .device-page .hk-split-right.hk-model-t2x .hk-traced-frame {
+.rti-device-canvas-hk .device-page .hk-split-right.hk-traced-remote .hk-traced-frame {
   background: #363739 !important;
   border: var(--sentinel-device-frame-ring-width) solid var(--sentinel-device-frame-ring-color) !important;
   box-sizing: content-box !important;

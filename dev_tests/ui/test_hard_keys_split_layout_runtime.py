@@ -411,14 +411,14 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             )
             self.assertNotIn("error", result, msg=result.get("error", ""))
             self.assertEqual(result["hkModel"], "t4x", msg=f"data-hk-model should be 't4x', got {result['hkModel']!r}")
-            self.assertEqual(result["hkDesignW"], "608", msg=f"data-hk-design-w should be '608', got {result['hkDesignW']!r}")
-            self.assertEqual(result["hkDesignH"], "732", msg=f"data-hk-design-h should be '732', got {result['hkDesignH']!r}")
+            self.assertEqual(result["hkDesignW"], "551", msg=f"data-hk-design-w should be '551', got {result['hkDesignW']!r}")
+            self.assertEqual(result["hkDesignH"], "679", msg=f"data-hk-design-h should be '679', got {result['hkDesignH']!r}")
         finally:
             page.close()
             server.stop()
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def test_hard_key_template_boxes_are_not_stroked(self):
+    def test_traced_frame_is_filled_grey(self):
         page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
@@ -426,22 +426,19 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
 () => {
   const activePage = document.querySelector('.device-page.active');
   if (!activePage) return {error: 'no active page'};
-  const right = activePage.querySelector('.hk-split-right');
-  if (!right) return {error: 'no .hk-split-right'};
-  const box = right.querySelector('.box');
-  if (!box) return {error: 'no template .box'};
-  const cs = getComputedStyle(box);
+  const frame = activePage.querySelector('.hk-traced-frame');
+  if (!frame) return {error: 'no .hk-traced-frame'};
+  const cs = getComputedStyle(frame);
   return {
+    background: cs.backgroundColor,
     borderTopWidth: cs.borderTopWidth,
-    borderTopStyle: cs.borderTopStyle,
-    borderTopColor: cs.borderTopColor,
   };
 }
 """
             )
             self.assertNotIn("error", result, msg=result.get("error", ""))
-            self.assertEqual(result["borderTopWidth"], "0px")
-            self.assertEqual(result["borderTopStyle"], "none")
+            self.assertEqual(result["background"], "rgb(54, 55, 57)")
+            self.assertEqual(result["borderTopWidth"], "3px")
         finally:
             page.close()
             server.stop()
@@ -455,7 +452,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
 () => {
   const activePage = document.querySelector('.device-page.active');
   if (!activePage) return {error: 'no active page'};
-  const btn = activePage.querySelector('.hk-split-right .hk-btn-wrap .test-btn');
+  const btn = activePage.querySelector('.hk-split-right .hk-traced:not(.hk-traced-hit) .test-btn');
   if (!btn) return {error: 'no hard-key .test-btn'};
   const cs = getComputedStyle(btn);
   return {
@@ -474,7 +471,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def test_hk_outer_canvas_has_no_ring_touch_and_hard_key_columns_have_rings(self):
-        """Hard-key mode: no outer #rtiDeviceCanvas ring; touch column ring; strip uses tight cluster rim."""
+        """Hard-key mode: no outer #rtiDeviceCanvas ring; touch column ring; traced frame carries the strip ring."""
         page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
@@ -486,21 +483,19 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
   if (!touch) return {error: 'no .hk-touch-stack'};
   const right = document.querySelector('.hk-split-right');
   if (!right) return {error: 'no .hk-split-right'};
-  const rim = right.querySelector('.hk-cluster-rim');
-  if (!rim) return {error: 'no .hk-cluster-rim'};
+  const frame = right.querySelector('.hk-traced-frame');
+  if (!frame) return {error: 'no .hk-traced-frame'};
   const c = getComputedStyle(canvas);
   const t = getComputedStyle(touch);
   const r = getComputedStyle(right);
-  const rimCs = getComputedStyle(rim);
+  const frameCs = getComputedStyle(frame);
   return {
     canvasBorderW: c.borderTopWidth,
     canvasShadow: c.boxShadow,
     touchBorderW: t.borderTopWidth,
     touchShadow: t.boxShadow,
-    rightTight: right.classList.contains('hk-tight-cluster'),
-    rightBorderW: r.borderTopWidth,
     rightShadow: r.boxShadow,
-    rimBorderW: rimCs.borderTopWidth,
+    frameBorderW: frameCs.borderTopWidth,
   };
 }
 """
@@ -510,58 +505,43 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
             self.assertEqual(result["canvasShadow"], "none")
             self.assertEqual(result["touchBorderW"], "0px")
             self.assertNotEqual(result["touchShadow"], "none")
-            self.assertTrue(result["rightTight"])
             self.assertEqual(result["rightShadow"], "none")
-            self.assertEqual(result["rimBorderW"], "3px")
+            self.assertEqual(result["frameBorderW"], "3px")
         finally:
             page.close()
             server.stop()
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def test_hk_strip_tight_cluster_rim_matches_button_hull(self):
+    def test_traced_frame_wraps_the_stage(self):
         page, server, tmp_dir = self._render_and_serve()
         try:
             result = page.evaluate(
                 """
 () => {
-  const right = document.querySelector('.hk-split-right');
-  const frame = right?.querySelector('.frame');
-  const rim = right?.querySelector('.hk-cluster-rim');
-  let boxes = frame ? [...frame.querySelectorAll('.box')].filter((b) => b.querySelector('.hk-btn-wrap')) : [];
-  if (!boxes.length && frame) boxes = [...frame.querySelectorAll('.box')];
-  if (!right || !frame || !rim || !boxes.length) return {error: 'missing strip layout nodes'};
-  let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
-  for (const el of boxes) {
-    const r = el.getBoundingClientRect();
-    minL = Math.min(minL, r.left);
-    minT = Math.min(minT, r.top);
-    maxR = Math.max(maxR, r.right);
-    maxB = Math.max(maxB, r.bottom);
-  }
-  const rr = rim.getBoundingClientRect();
-  const pad = 4;
+  const frame = document.querySelector('.hk-traced-frame');
+  const stage = document.querySelector('.hk-traced-stage');
+  if (!frame || !stage) return {error: 'missing traced strip'};
+  const fr = frame.getBoundingClientRect();
+  const st = stage.getBoundingClientRect();
   const tol = 2.5;
-  const ringStroke = 3;
-  const expL = minL - pad - ringStroke;
-  const expT = minT - pad - ringStroke;
-  const expR = maxR + pad + ringStroke;
-  const expB = maxB + pad + ringStroke;
   return {
-    errL: Math.abs(rr.left - expL),
-    errT: Math.abs(rr.top - expT),
-    errR: Math.abs(rr.right - expR),
-    errB: Math.abs(rr.bottom - expB),
+    frameW: fr.width,
+    frameH: fr.height,
+    stageW: st.width,
+    stageH: st.height,
+    errW: Math.abs(fr.width - st.width),
+    errH: Math.abs(fr.height - st.height),
     tol,
   };
 }
 """
             )
             self.assertNotIn("error", result, msg=result.get("error", ""))
-            tol = result["tol"]
-            self.assertLessEqual(result["errL"], tol, msg=result)
-            self.assertLessEqual(result["errT"], tol, msg=result)
-            self.assertLessEqual(result["errR"], tol, msg=result)
-            self.assertLessEqual(result["errB"], tol, msg=result)
+            self.assertGreater(result["frameW"], 0)
+            self.assertGreater(result["frameH"], 0)
+            # Content-box frame: the 3px ring sits outside the stage on each edge.
+            self.assertAlmostEqual(result["frameW"] - result["stageW"], 6, delta=result["tol"])
+            self.assertAlmostEqual(result["frameH"] - result["stageH"], 6, delta=result["tol"])
         finally:
             page.close()
             server.stop()
@@ -624,8 +604,7 @@ class HardKeysSplitLayoutRuntimeTest(unittest.TestCase):
   let overflowCount = 0;
   const nodes = [
     activePage.querySelector('.hk-touch-stack'),
-    activePage.querySelector('.hk-split-right'),
-    activePage.querySelector('.hk-split-right .frame'),
+    activePage.querySelector('.hk-traced-stage'),
   ].filter(Boolean);
   nodes.forEach((el) => {
     const r = el.getBoundingClientRect();

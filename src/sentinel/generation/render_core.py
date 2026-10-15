@@ -1460,6 +1460,15 @@ def _render_t2x_hit(
     )
 
 
+_TRACED_HARD_KEY_MODELS = frozenset({"t2x", "t4x", "isr2", "isr4"})
+
+
+def _traced_hard_key_module(model_key: str):
+    import importlib
+
+    return importlib.import_module(f"sentinel.generation.hard_keys.{model_key}_trace")
+
+
 def _render_t2x_strip(
     *,
     hard_key_layer: dict[str, Any],
@@ -1470,15 +1479,17 @@ def _render_t2x_strip(
     page_target_indexes: dict[int, int] | None,
     rendering_page_id: int | None = None,
     layer_empty_tag_buttons: list[dict[str, Any]] | None = None,
+    trace: Any = None,
 ) -> str:
     """Black frame, #363739 fill, traced shapes. Layout scale is applied at runtime."""
-    from sentinel.generation.hard_keys import t2x_trace
+    if trace is None:
+        from sentinel.generation.hard_keys import t2x_trace as trace
 
     slots = _t2x_slot_buttons(hard_key_layer, layer_hard_buttons, layer_empty_tag_buttons or [])
-    cw, ch = t2x_trace.DESIGN_SIZE
+    cw, ch = trace.DESIGN_SIZE
     label_parts: list[str] = []
     hit_parts: list[str] = []
-    for shape in t2x_trace.SHAPES:
+    for shape in trace.SHAPES:
         chosen = slots.get(shape.slot)
         if chosen is None:
             continue
@@ -1508,7 +1519,7 @@ def _render_t2x_strip(
             )
         )
     rect_parts: list[str] = []
-    for rect in t2x_trace.RECTS:
+    for rect in trace.RECTS:
         chosen = slots.get(rect.slot)
         if chosen is None:
             continue
@@ -1555,7 +1566,7 @@ def _render_hard_key_strip(
     layer_empty_tag_buttons: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build the right-zone HTML for one page using the registry template + layer rows."""
-    if model_key == "t2x":
+    if model_key in _TRACED_HARD_KEY_MODELS:
         return _render_t2x_strip(
             hard_key_layer=hard_key_layer,
             layer_hard_buttons=layer_hard_buttons,
@@ -1565,6 +1576,7 @@ def _render_hard_key_strip(
             page_target_indexes=page_target_indexes,
             rendering_page_id=rendering_page_id,
             layer_empty_tag_buttons=layer_empty_tag_buttons,
+            trace=_traced_hard_key_module(model_key),
         )
     _, body = _load_hard_key_template(model_key)
     if not body:
@@ -3019,7 +3031,7 @@ def _page_payload(
             categories = layer.get("buttonCategories") if isinstance(layer.get("buttonCategories"), dict) else {}
             if isinstance(categories.get("hardButtons"), list):
                 hard_buttons = categories.get("hardButtons")
-            if model_key == "t2x" and isinstance(categories.get("emptyTag"), list):
+            if model_key in _TRACED_HARD_KEY_MODELS and isinstance(categories.get("emptyTag"), list):
                 empty_tag_buttons = categories.get("emptyTag")
             hard_key_strip_html = _render_hard_key_strip(
                 model_key=model_key,
@@ -5551,7 +5563,8 @@ const heightScale=fitHeight/sourceSize.height;
  let fittedWidth=sourceSize.width*totalScale;
  let fittedHeight=sourceSize.height*totalScale;
  let t2xLay=null;
- if (String(rtiDeviceCanvas.dataset.hkModel||'')==='t2x') {{
+ const hkModel=String(rtiDeviceCanvas.dataset.hkModel||'');
+ if (hkModel==='t2x'||hkModel==='t4x'||hkModel==='isr2'||hkModel==='isr4') {{
   const ts0=hkTouchSourceSize();
   const cropW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
   const cropH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
@@ -7106,7 +7119,11 @@ def build_device_render_bundle(
             twp = float(hk_split_layout["touch_width_pct"])
             hlp = float(hk_split_layout["hk_left_pct"])
             hwp = float(hk_split_layout["hk_width_pct"])
-            hk_model_class = " hk-model-t2x" if product_model_key == "t2x" else ""
+            hk_model_class = (
+                f" hk-model-{product_model_key} hk-traced-remote"
+                if product_model_key in _TRACED_HARD_KEY_MODELS
+                else ""
+            )
             page_html_by_index[str(page_index)] = (
                 f"<div class='hk-split-left' style='left:{tlp:.4f}%;width:{twp:.4f}%;top:0;bottom:0;'>"
                 f"<div class='hk-touch-stack'>{page_inner_main}</div></div>"
@@ -7138,7 +7155,7 @@ def build_device_render_bundle(
     if product_model_key is not None:
         from sentinel.generation.hard_keys import registry as _hk_registry
 
-        if product_model_key == "t2x":
+        if product_model_key in _TRACED_HARD_KEY_MODELS:
             hard_key_style_css = ""
         else:
             scoped_style, _ = _load_hard_key_template(product_model_key)

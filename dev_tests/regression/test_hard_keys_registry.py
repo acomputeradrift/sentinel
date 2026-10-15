@@ -22,7 +22,10 @@ class HardKeysRegistryTest(unittest.TestCase):
         self.assertEqual(t4x.product_id, 102)
         self.assertEqual(t4x.slot_range, (128, 147))
         self.assertEqual(len(t4x.slot_dom_order), 20)
-        self.assertEqual(t4x.design_size, (608, 732))
+        from sentinel.generation.hard_keys import t4x_trace
+
+        self.assertEqual(t4x.design_size, (551, 679))
+        self.assertEqual(t4x.design_size, t4x_trace.DESIGN_SIZE)
         self.assertTrue(t4x.template_html_path.exists(), f"missing template: {t4x.template_html_path}")
 
     def test_isr4_locked_slot_range_and_design(self) -> None:
@@ -32,7 +35,10 @@ class HardKeysRegistryTest(unittest.TestCase):
         self.assertEqual(isr4.product_id, 111)
         self.assertEqual(isr4.slot_range, (128, 149))
         self.assertEqual(len(isr4.slot_dom_order), 22)
-        self.assertEqual(isr4.design_size, (602, 734))
+        from sentinel.generation.hard_keys import isr4_trace
+
+        self.assertEqual(isr4.design_size, (500, 610))
+        self.assertEqual(isr4.design_size, isr4_trace.DESIGN_SIZE)
         self.assertTrue(isr4.template_html_path.exists())
         self.assertIsNotNone(isr4.slot_by_data_label)
         lbl = isr4.slot_by_data_label or {}
@@ -47,7 +53,10 @@ class HardKeysRegistryTest(unittest.TestCase):
         self.assertEqual(isr2.product_id, 110)
         self.assertEqual(isr2.slot_range, (128, 161))
         self.assertEqual(len(isr2.slot_dom_order), 34)
-        self.assertEqual(isr2.design_size, (468, 862))
+        from sentinel.generation.hard_keys import isr2_trace
+
+        self.assertEqual(isr2.design_size, (521, 971))
+        self.assertEqual(isr2.design_size, isr2_trace.DESIGN_SIZE)
         self.assertTrue(isr2.template_html_path.exists())
         self.assertIsNotNone(isr2.slot_by_data_label)
         lbl = isr2.slot_by_data_label or {}

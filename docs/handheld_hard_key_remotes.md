@@ -1,6 +1,6 @@
 # Handheld Remotes with Hard Keys — Photo Overlay Standard
 
-Status: approved method (2026-10-13). First remote: **T2x**.
+Status: approved method (2026-10-13). Traced strips in `src/`: **T2x**, **ISR-2**, **ISR-4**, **T4x**.
 
 Standard way to turn a photo of an RTI handheld remote into a clickable hard-key overlay, and how that overlay sits beside the touchscreen in the testing screen. Use this for every new remote photo.
 
@@ -48,9 +48,11 @@ ISR-2 photo `remote_trace/isr2.png` (534×998). Darker fill on this file is lumi
 - **Cluster.** D-pad, channel, volume, Back, and Mute are mirrored both ways, then placed together. Center (264.2, 257.5). White ring outer radius 131.2. D-pad wedges stop at the inner edge, radius 116. OK radius 39. Pill half-height 40.5, so channel + stops at y=217 and channel −, its flip, stops at y=298.
 - **Plus, Minus, Vol +, Vol −.** Plus traces the black face: bezel arc to the center line, straight drop onto the ring, ring down to the pill, straight edge to the side. Minus is Plus flipped through the cluster center. Vol + is the left-right mirror of Plus. Vol − is the mirror of Minus. No corner radius.
 - **Back and Mute.** Rounded rectangle on the dark interior of the white pill, not the white stroke. Back is (54, 236.5, 74×42), corner radius 11. Mute is the mirror across the cluster center.
-- **D-pad.** Wedges use the inside of the white ring at the cluster center (outer radius 116, OK radius 39). Jamie locked this treatment on ISR-2. The same inset did not fix T4x or ISR-4. Do not treat those two as done.
+- **D-pad.** Wedges use the inside of the white ring at the cluster center (outer radius 116, OK radius 39). Jamie locked this treatment on ISR-2. ISR-4 uses the same cluster. T4x in `src/` uses the v2 scratch trace (`t4x.html`), not this darker-fill outline.
 
-Serve the scratch folder with `python3 -m http.server 8765` (port 8765 may already be in use). ISR-2 outlines are locked. Do not edit `src/` until a separate strip scope is approved.
+ISR-4 photo `remote_trace/isr4.png` (514×638). Locked scratch trace: `remote_trace/isr4.html` v5 (2026-10-14). These buttons are the ISR-2 outlines with the numeric keypad left off (1–9, Dash, 0, Backspace). Scale the locked ISR-2 paths by 125.7/131.2 about the ISR-2 cluster center (264.2, 257.5) onto (255, 248). That puts the white ring at outer radius 125.7. D-pad wedges and OK use the ISR-2 radii through that same scale. Order: Home, More, Plus, Vol +, Back, Mute, Minus, Vol −, Up, Right, Down, Left, OK, Skip back, Play, Skip fwd, Replay, Pause, Info, Power, Menu, Exit.
+
+Serve the scratch folder with `python3 -m http.server 8765` (port 8765 may already be in use). ISR-2 and ISR-4 outlines are locked. Their strips, and the T4x v2 trace, are in `src/` (`isr2_trace.py`, `isr4_trace.py`, `t4x_trace.py`).
 
 ---
 
@@ -77,8 +79,10 @@ Reference mockup: `remote_trace/mockup.html` (toggles for usable-space guides an
 
 | Remote | Photo | Buttons traced | Status |
 |---|---|---|---|
-| T2x | `remote_trace/remote.png` (trace only) | 48 (incl. 4 wrap-around keys, 4-way d-pad + OK; joystick = 5 targets → 52 slots) | Locked 2026-10-13: slot map, Apple TV (RV) labels, black frame, `#363739` fill, no photo in the strip. |
-| ISR-2 | `remote_trace/isr2.png` | 34 | Locked 2026-10-14: outlines in `remote_trace/isr2.html` v7. Slot map and `src/` strip not started. |
+| T2x | `remote_trace/remote.png` (trace only) | 48 (incl. 4 wrap-around keys, 4-way d-pad + OK; joystick = 5 targets → 52 slots) | Locked 2026-10-13: slot map, Apple TV (RV) labels, black frame, `#363739` fill, no photo in the strip. In `src/` as `t2x_trace.py`. |
+| ISR-2 | `remote_trace/isr2.png` | 34 | Locked outlines `remote_trace/isr2.html` v7. Strip in `src/` as `isr2_trace.py` (crop 521×971). Slots are the approved `ISR2_SLOT_BY_DATA_LABEL` map. |
+| ISR-4 | `remote_trace/isr4.png` | 22 | Locked outlines `remote_trace/isr4.html` v5. Strip in `src/` as `isr4_trace.py` (crop 500×610). Slots are the approved `ISR4_SLOT_BY_DATA_LABEL` map. |
+| T4x | `remote_trace/t4x.png` | 20 | Scratch trace `remote_trace/t4x.html` v2. Strip in `src/` as `t4x_trace.py` (crop 551×679). Slots follow `_T4X_SLOT_DOM_ORDER`. |
 
 ### T2x trace (source-image px, photo 1024×1005)
 
@@ -180,4 +184,4 @@ Reference: `remote_trace/mockup.html`.
 
 1. Done in `src/`: `ProductId` 70 is `t2x` in `registry.py`. The strip is drawn from `t2x_trace.py` (crop 338×958, 3px black frame, `#363739` fill, traced shapes). Labels come from the hard-key layer on screen. The photo stays the trace source, outside the repo.
 2. Where the photo + trace data live in the repo (`Assets/Hard Keys/` vs `src/sentinel/ui/testing/hard_keys/`) once this moves out of the scratch folder.
-3. ISR-2 outlines are locked in `remote_trace/isr2.html` v7. Next is the slot map, then the same darker-fill method for ISR-4, then T4x. Do not edit `src/` until that scope is approved. Do not start from the rectangle templates.
+3. Done in `src/`: ISR-2, ISR-4, and T4x use the same traced strip as T2x. Crops: ISR-2 521×971, ISR-4 500×610, T4x 551×679. Slot numbers are the approved registry maps. T4x geometry is `t4x.html` v2, not a darker-fill outline.

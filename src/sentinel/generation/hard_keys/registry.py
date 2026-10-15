@@ -3,9 +3,12 @@
 Locked rules from `hard_keys.md` (Phase 0 lock-in):
 
 * `productModel` is resolved exclusively from `RTIDeviceData.ProductId`.
-* T4x = ProductId 102 / slot range 128..147 (20 slots).
-* ISR-2 = ProductId 110 / slot range 128..161 (34 slots).
-* ISR-4 = ProductId 111 / slot range 128..149 (22 slots).
+* T4x = ProductId 102 / slot range 128..147 (20 slots). Geometry is the traced
+  crop in ``t4x_trace.py``.
+* ISR-2 = ProductId 110 / slot range 128..161 (34 slots). Geometry is the traced
+  crop in ``isr2_trace.py``.
+* ISR-4 = ProductId 111 / slot range 128..149 (22 slots). Geometry is the traced
+  crop in ``isr4_trace.py``.
 * T2x = ProductId 70 / slot range 128..179 (52 slots). Geometry is the traced
   crop in ``t2x_trace.py`` (not a flexbox ``.box`` template).
 * Physical hard-key rows live at `FrameNumber = 254` with `ButtonLeft >= 128`; rows at
@@ -38,7 +41,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from sentinel.generation.hard_keys.isr2_trace import DESIGN_SIZE as ISR2_DESIGN_SIZE
+from sentinel.generation.hard_keys.isr4_trace import DESIGN_SIZE as ISR4_DESIGN_SIZE
 from sentinel.generation.hard_keys.t2x_trace import DESIGN_SIZE as T2X_DESIGN_SIZE
+from sentinel.generation.hard_keys.t4x_trace import DESIGN_SIZE as T4X_DESIGN_SIZE
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -147,7 +153,7 @@ MODELS: dict[str, HardKeyModel] = {
         product_id=102,
         slot_range=(128, 147),
         slot_dom_order=_T4X_SLOT_DOM_ORDER,
-        design_size=(608, 732),
+        design_size=T4X_DESIGN_SIZE,
         template_html_path=TEMPLATE_DIR / "t4x_hard_keys.html",
     ),
     "isr2": HardKeyModel(
@@ -155,7 +161,7 @@ MODELS: dict[str, HardKeyModel] = {
         product_id=110,
         slot_range=(128, 161),
         slot_dom_order=_sequential_range(128, 161),
-        design_size=(468, 862),
+        design_size=ISR2_DESIGN_SIZE,
         template_html_path=TEMPLATE_DIR / "isr2_hard_keys.html",
         slot_by_data_label=ISR2_SLOT_BY_DATA_LABEL,
     ),
@@ -164,7 +170,7 @@ MODELS: dict[str, HardKeyModel] = {
         product_id=111,
         slot_range=(128, 149),
         slot_dom_order=_sequential_range(128, 149),
-        design_size=(602, 734),
+        design_size=ISR4_DESIGN_SIZE,
         template_html_path=TEMPLATE_DIR / "isr4_hard_keys.html",
         slot_by_data_label=ISR4_SLOT_BY_DATA_LABEL,
     ),
