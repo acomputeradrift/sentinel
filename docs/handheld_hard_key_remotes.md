@@ -24,6 +24,34 @@ Input: one photo/screenshot of the remote's hard keys.
 
 Reference implementation (T2x): `remote_trace/index.html` (scratch folder next to the repo).
 
+### Button fill vs casing (Jamie, 2026-10-14)
+
+Do this before drawing any outline. One remote at a time. Worked example is **ISR-2** (outlines locked 2026-10-14).
+
+On the photo, separate three things:
+
+| What you see | What it is |
+|---|---|
+| Darker grey | The button. Trace this shape, including its curves. |
+| Lighter grey | The casing. Not a button. |
+| White or blue, other than icons | The surround of the d-pad, and of Back and Mute on ISR-2 and ISR-4. Not the button. Leave it clear. |
+
+**OK is the exception.** The d-pad OK disc is not the darker button fill. Trace it as its own circle.
+
+Measure the darker face first, then replace the jagged pixel edge with the real geometry: straight lines and circular arcs. Do not leave the raw trace as the outline, and do not substitute a flat rectangle when the face is sloped or curved.
+
+ISR-2 photo `remote_trace/isr2.png` (534×998). Darker fill on this file is luminance under 40. Casing sits around 52–64. White surround is about 200 and up. Locked scratch trace: `remote_trace/isr2.html` v7.
+
+- **Keypad and transport.** Left column mirrors the right across x=264.5. Each side key is a rounded trapezoid: vertical sides, top and bottom parallel, sloping down toward the center by 1/12, corner radius 12, height 57. The middle column is a straight rounded rectangle, not a mirror of the sides. Row tops at the left edge: 408, 486, 564, then a gap, 666, 743, 821, 899.
+- **Home, More, channel, and volume have no corner radius.** Same rule as the T2x wrap keys: a corner where two edges meet is square. Curves are only the measured edges (the bezel arc and the outside of this ring).
+- **Home and More.** The black panel above the grey bezel, split at x=264.5. Top and side edges are straight. Bottom edge is the bezel arc (circle center (264.5, 1743.7), radius 1643.6).
+- **Cluster.** D-pad, channel, volume, Back, and Mute are mirrored both ways, then placed together. Center (264.2, 257.5). White ring outer radius 131.2. D-pad wedges stop at the inner edge, radius 116. OK radius 39. Pill half-height 40.5, so channel + stops at y=217 and channel −, its flip, stops at y=298.
+- **Plus, Minus, Vol +, Vol −.** Plus traces the black face: bezel arc to the center line, straight drop onto the ring, ring down to the pill, straight edge to the side. Minus is Plus flipped through the cluster center. Vol + is the left-right mirror of Plus. Vol − is the mirror of Minus. No corner radius.
+- **Back and Mute.** Rounded rectangle on the dark interior of the white pill, not the white stroke. Back is (54, 236.5, 74×42), corner radius 11. Mute is the mirror across the cluster center.
+- **D-pad.** Wedges use the inside of the white ring at the cluster center (outer radius 116, OK radius 39). Jamie locked this treatment on ISR-2. The same inset did not fix T4x or ISR-4. Do not treat those two as done.
+
+Serve the scratch folder with `python3 -m http.server 8765` (port 8765 may already be in use). ISR-2 outlines are locked. Do not edit `src/` until a separate strip scope is approved.
+
 ---
 
 ## 2. Place the remote beside the touchscreen (usable-space contract)
@@ -50,6 +78,7 @@ Reference mockup: `remote_trace/mockup.html` (toggles for usable-space guides an
 | Remote | Photo | Buttons traced | Status |
 |---|---|---|---|
 | T2x | `remote_trace/remote.png` (trace only) | 48 (incl. 4 wrap-around keys, 4-way d-pad + OK; joystick = 5 targets → 52 slots) | Locked 2026-10-13: slot map, Apple TV (RV) labels, black frame, `#363739` fill, no photo in the strip. |
+| ISR-2 | `remote_trace/isr2.png` | 34 | Locked 2026-10-14: outlines in `remote_trace/isr2.html` v7. Slot map and `src/` strip not started. |
 
 ### T2x trace (source-image px, photo 1024×1005)
 
@@ -151,3 +180,4 @@ Reference: `remote_trace/mockup.html`.
 
 1. Done in `src/`: `ProductId` 70 is `t2x` in `registry.py`. The strip is drawn from `t2x_trace.py` (crop 338×958, 3px black frame, `#363739` fill, traced shapes). Labels come from the hard-key layer on screen. The photo stays the trace source, outside the repo.
 2. Where the photo + trace data live in the repo (`Assets/Hard Keys/` vs `src/sentinel/ui/testing/hard_keys/`) once this moves out of the scratch folder.
+3. ISR-2 outlines are locked in `remote_trace/isr2.html` v7. Next is the slot map, then the same darker-fill method for ISR-4, then T4x. Do not edit `src/` until that scope is approved. Do not start from the rectangle templates.
