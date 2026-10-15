@@ -79,8 +79,8 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 - **Updated:** 2026-10-14
 - **Branch:** `main`
-- **Repo HEAD:** `c9a6d6d` on `main`.
-- **Droplet HEAD:** `c9a6d6d` at `/opt/sentinel/app` — T2x labels and Room Off activity link, `/health` ok
+- **Repo HEAD:** `f1eaa3d` on `main`. ISR-2 outline lock is docs only.
+- **Droplet HEAD:** `c9a6d6d` at `/opt/sentinel/app` — T2x labels and Room Off activity link, `/health` ok. Not deployed past this.
 - **T2x:** ProductId 70 renders the traced strip beside the touchscreen (`t2x_trace.py`, crop 338×958, black frame, `#363739`). Empty-tag slots are `#ef4444`. Fill and the status ring use the touchscreen button variables at 4 screen pixels. Shape labels sit above the fill. Room Off uses the page source’s activity page link, not activity order 0. Mockup stays `../remote_trace/mockup.html`.
 - **ISR-2:** Outlines locked 2026-10-14 in scratch `../remote_trace/isr2.html` v7. Not in `src/`. Method: `docs/handheld_hard_key_remotes.md`.
 - **Live file:** `1790 High Rd (Simple v31.1).apex` in `uploads/`.
