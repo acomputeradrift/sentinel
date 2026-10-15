@@ -522,6 +522,54 @@ def _macro_ids_resolve_for_effective_source(
     return False
 
 
+def _winning_tag_macro_id(
+    macro_rows: list[Any] | None,
+    *,
+    effective_room_id: int,
+    effective_source_id: int | None,
+) -> int | None:
+    """Pick one tag-macro id: Room, then Source, then Global.
+
+    The row's RoomId and DeviceId decide. The command step's DeviceId is not
+    an input. (RoomId > 0, DeviceId >= 0) is Source when DeviceId is the
+    effective source and RoomId is that room or 0. RoomId 0 with DeviceId -1
+    is Global, including when the effective room is 0, so a matching source
+    row still beats it.
+    """
+    room_wanted = int(effective_room_id)
+    source_wanted = None if effective_source_id is None else int(effective_source_id)
+    room_winner: int | None = None
+    source_winner: int | None = None
+    global_winner: int | None = None
+    for row in macro_rows or []:
+        macro_id = int(_row_value(row, "MacroId", 0) or 0)
+        if macro_id <= 0:
+            continue
+        room_id = int(_row_value(row, "RoomId", 0) or 0)
+        device_raw = _row_value(row, "DeviceId", -1)
+        device_id = -1 if device_raw is None else int(device_raw)
+        if device_id == -1 and room_id > 0 and room_id == room_wanted:
+            if room_winner is None:
+                room_winner = macro_id
+            continue
+        if (
+            source_wanted is not None
+            and device_id >= 0
+            and device_id == source_wanted
+            and room_id in {0, room_wanted}
+        ):
+            if source_winner is None:
+                source_winner = macro_id
+            continue
+        if room_id == 0 and device_id == -1 and global_winner is None:
+            global_winner = macro_id
+    if room_winner is not None:
+        return room_winner
+    if source_winner is not None:
+        return source_winner
+    return global_winner
+
+
 def _resolve_driver_action(
     cur: sqlite3.Cursor,
     macro_id: int,
@@ -1424,11 +1472,14 @@ def _resolve_button(
         macro_device_ids_by_macro=macro_device_ids_by_macro,
         effective_source_id=effective_source_id,
     )
-    has_macro_steps_target = _macro_ids_resolve_for_effective_source(
-        macro_ids=candidate_macro_ids,
-        macro_non_empty_by_id=macro_non_empty_by_id,
-        macro_device_ids_by_macro=macro_device_ids_by_macro,
+    winning_tag_macro_id = _winning_tag_macro_id(
+        all_tag_macro_rows,
+        effective_room_id=int(effective_room_id),
         effective_source_id=effective_source_id,
+    )
+    has_macro_steps_target = bool(
+        winning_tag_macro_id is not None
+        and macro_non_empty_by_id.get(int(winning_tag_macro_id), False)
     )
     resolved_macro_summaries: list[str] = []
     for macro_row in tag_macro_rows:
@@ -1710,7 +1761,7 @@ def _resolve_button(
             "macro": {
                 "scope": "Global",
                 "scopeType": "Global | Room | Source | Controller",
-                "globalMacroId": tag_macro_rows[0]["MacroId"] if tag_macro_rows else None,
+                "globalMacroId": (int(winning_tag_macro_id) if winning_tag_macro_id is not None else None),
                 "deviceMacroId": None,
                 "resolvedCommand": " | ".join(resolved_macro_summaries) if resolved_macro_summaries else None,
                 "isEmpty": not has_macro_steps_target if tag_macro_rows else False,

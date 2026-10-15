@@ -166,7 +166,11 @@ Chrome comes from `src/sentinel/ui/testing/sentinel_device_theme.css` (`.btn-wra
 
 **Which layer.** Use the Hard Keys copy for the page on screen (`SharedLayers` where `ProductId` matches, `IsKeypadLayer = 1`, `Name = 'Hard Keys'`). The T2x mockup is Apple TV (RV): `SharedLayerId` 2058. Other copies in the same file differ. Source Select (2060) uses Exit, Play, Pause, Skip Back, Power On, and Prev where 2058 uses Back, Play/Pause, Replay, a blank tag, and Back.
 
-**Tag scope.** A hard-key tag follows the page source. The hard-key layer `SourceId` matches that page’s source. Variable rows on the tag count only when their `RoomId` and `DeviceId` fit that scope (Global on every page, a source or controller row only on its own source). A Sonos variable on Play does not paint the Switch or Xbox page.
+**Tag scope.** The hard-key layer `SourceId` matches the page source. That source is the effective source for the tag.
+
+Variable rows count only when their `RoomId` and `DeviceId` fit that source. Global counts on every page. A source row counts only on its own source. A Sonos variable on Play does not paint the Switch or Xbox page.
+
+Tag macros use one winner, `_winning_tag_macro_id`: Room, then Source, then Global. A Room row is `RoomId` of that room and `DeviceId` -1, and it runs on every source in the room. A Source row is `DeviceId` equal to the effective source, with `RoomId` of that room or 0. Global is `RoomId` 0 and `DeviceId` -1, and it runs only when no Room or Source row applies. The command step’s device is the driver the macro addresses, not the scope. Controller level is not selected. `(RoomId > 0, DeviceId >= 0)` is Source, not Controller. Redirected volume and mute still add System Macro from `audio_scope`; a winning tag macro can also add Macro Step.
 
 **Label.** Same rule as `_button_identity_label`: Apex `Text` if it is set, otherwise `ButtonTagName`. On these T2x hard keys `Text` is empty, so the label is `ButtonTagName`. Slot 171 has no tag on layer 2058, so that button is blank. Volume, channel, d-pad, and OK names are a separate `.hk-traced-label` with `z-index: 3`, above the shape layer (`z-index: 2`), so the fill does not cover the words.
 
