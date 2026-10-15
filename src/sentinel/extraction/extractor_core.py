@@ -229,6 +229,29 @@ def _scope(room_id: int | None, device_id: int | None) -> str:
     return "Controller"
 
 
+def _variable_row_fits_effective_scope(
+    row: Any,
+    effective_room_id: int,
+    effective_source_id: int | None,
+) -> bool:
+    """Keep a variable row only when its scope fits the page's effective room and source."""
+    room_raw = _row_value(row, "RoomId", 0)
+    device_raw = _row_value(row, "DeviceId", -1)
+    room_id = int(room_raw or 0)
+    device_id = -1 if device_raw is None else int(device_raw)
+    scope = _scope(room_id, device_id)
+    if scope == "Global":
+        return True
+    if scope == "Room":
+        return room_id == int(effective_room_id)
+    if effective_source_id is None:
+        return False
+    source_id = int(effective_source_id)
+    if scope == "Source":
+        return device_id == source_id
+    return room_id == int(effective_room_id) and device_id == source_id
+
+
 def _has_non_empty_macro(cur: sqlite3.Cursor, macro_id: int) -> bool:
     cur.execute("select Type from MacroSteps where MacroId = ?", (macro_id,))
     rows = [r[0] for r in cur.fetchall()]
@@ -1241,6 +1264,7 @@ def _load_scrolling_list_item_heights(cur: sqlite3.Cursor) -> dict[tuple[int, in
 
 
 _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES = frozenset({2})
+_PAGE_LINK_PREVIOUS_IN_GROUP_LINK_TYPES = frozenset({3, 254})
 
 
 def _build_next_in_group_sequences(
@@ -1334,7 +1358,21 @@ def _resolve_button(
         bitmap_enabled = raw_bitmap_enabled
         icon_enabled = raw_icon_enabled
 
+    effective_room_id = (
+        int(layer_room_id) if layer_room_id is not None else (int(page_layer_room_id) if page_layer_room_id is not None else int(page_room_id))
+    )
+    effective_source_id = (
+        int(layer_source_id)
+        if layer_source_id is not None
+        else (int(page_layer_source_id) if page_layer_source_id is not None else (int(page_source_device_id) if page_source_device_id is not None else None))
+    )
+
     variables_rows = variables_by_tag.get(tag_id, []) if tag_id > 0 else []
+    variables_rows = [
+        row
+        for row in variables_rows
+        if _variable_row_fits_effective_scope(row, effective_room_id, effective_source_id)
+    ]
     object_tokens = [str(v["ObjectData"] or "") for v in variables_rows]
     button_text_tokens = [str(v["ButtonText"] or "") for v in variables_rows]
     variable_ids = [int(v["VariableId"]) for v in variables_rows if v["VariableId"] is not None]
@@ -1371,15 +1409,6 @@ def _resolve_button(
             macro_id = int(button_row[field])
             if macro_id > 0 and macro_id not in explicit_macro_ids:
                 explicit_macro_ids.append(macro_id)
-
-    effective_room_id = (
-        int(layer_room_id) if layer_room_id is not None else (int(page_layer_room_id) if page_layer_room_id is not None else int(page_room_id))
-    )
-    effective_source_id = (
-        int(layer_source_id)
-        if layer_source_id is not None
-        else (int(page_layer_source_id) if page_layer_source_id is not None else (int(page_source_device_id) if page_source_device_id is not None else None))
-    )
 
     all_tag_macro_rows = macros_by_tag.get(tag_id, []) if tag_id > 0 else []
     scoped_tag_macro_rows = [m for m in all_tag_macro_rows if int(m["RoomId"] or 0) in {0, page_room_id}]
@@ -1433,7 +1462,10 @@ def _resolve_button(
             if page_link_row_link_type == 1 and pid_raw is not None:
                 first_page_target = first_page_target_by_device_id.get(current_device_id)
                 target_page_id = first_page_target[0] if first_page_target is not None else None
-            elif page_link_row_link_type in _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES:
+            elif (
+                page_link_row_link_type in _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES
+                or page_link_row_link_type in _PAGE_LINK_PREVIOUS_IN_GROUP_LINK_TYPES
+            ):
                 target_page_id = None
             elif pid_raw is not None:
                 target_page_id = int(pid_raw)
@@ -1449,13 +1481,15 @@ def _resolve_button(
 
     if resolved_page_link is None and page_link_row is not None:
         lt_ng = int(page_link_row_link_type) if page_link_row_link_type is not None else -999
-        if lt_ng in _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES:
+        if lt_ng in _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES or lt_ng in _PAGE_LINK_PREVIOUS_IN_GROUP_LINK_TYPES:
             src_gid = int(page_source_device_id) if page_source_device_id is not None else 0
             seq_key = (int(current_rti_address), src_gid, int(page_room_id or 0))
             seq = list(next_in_group_sequences.get(seq_key) or [])
             if len(seq) >= 2 and int(page_id) in seq:
                 resolved_page_link = {
-                    "resolutionPath": "nextInGroup",
+                    "resolutionPath": (
+                        "nextInGroup" if lt_ng in _PAGE_LINK_NEXT_IN_GROUP_LINK_TYPES else "previousInGroup"
+                    ),
                     "groupPageIds": [int(x) for x in seq],
                     "anchorPageId": int(page_id),
                     "targetPageName": None,

@@ -415,6 +415,90 @@ class HardKeysSplitRenderTest(unittest.TestCase):
         self.assertRegex(html, r"data-hard-key-slot=['\"]128['\"]")
         self.assertRegex(html, r"data-hard-key-slot=['\"]147['\"]")
 
+    def test_isr2_shape_page_links_sit_on_each_label_box(self) -> None:
+        """Traced shape page links use the key label box, not the full-stage hit."""
+        linked_slots = (128, 129, 147)
+        project_data = _project_data_with_hard_keys("isr2", list(linked_slots))
+        device = project_data["devices"][0]
+        device["userFacing"]["pages"].append({"pageName": "Page 2", "layers": []})
+        device["diagnostics"]["pages"].append(
+            {
+                "pageId": 2,
+                "pageName": "Page 2",
+                "pageOrder": 1,
+                "pageNumber": 2,
+                "uiItems": [],
+                "buttons": [],
+                "viewports": [],
+            }
+        )
+        hard_buttons = device["userFacing"]["pages"][0]["layers"][0]["buttonCategories"]["hardButtons"]
+        for btn in hard_buttons:
+            btn["testTargets"] = {
+                "text": False,
+                "macros": False,
+                "macroSteps": False,
+                "variables": {},
+                "pageLink": True,
+            }
+            btn["resolvedPageLink"] = {"targetPageId": 2, "resolvedRoomId": None}
+        app_ui = {
+            "header": {"titleTemplate": "{deviceName} - {pageName}"},
+            "appNavigation": {
+                "pageLinks": {
+                    "enabled": True,
+                    "hoverActivationArea": {"width": 28},
+                    "iconPaddingRight": 8,
+                    "iconSize": 16,
+                }
+            },
+        }
+        html = render_single_device_html(
+            project_data=project_data,
+            app_ui=app_ui,
+            project_stem="render_test",
+        )
+        body = html.split("<body", 1)[1].split("</body>", 1)[0]
+        # PAGE_HTML_BY_INDEX repeats page 0 inside the script. Count the rendered anchors.
+        markup = body.split("<script>", 1)[0]
+        self.assertEqual(markup.count("class='page-link-hit'"), 3)
+        link_boxes = re.findall(
+            r"<div class='hk-traced-link' style='([^']*)'>(.*?)</div>",
+            markup,
+            flags=re.DOTALL,
+        )
+        self.assertEqual(len(link_boxes), 3)
+        from sentinel.generation.hard_keys.isr2_trace import SHAPES
+
+        shapes = {shape.slot: shape for shape in SHAPES}
+        expected_styles: set[str] = set()
+        for slot in linked_slots:
+            box = shapes[slot].label_box
+            self.assertIsNotNone(box)
+            assert box is not None
+            x, y, w, h = box
+            expected_styles.add(
+                "position:absolute;"
+                f"left:{render_core._t2x_fmt(x)}px;"
+                f"top:{render_core._t2x_fmt(y)}px;"
+                f"width:{render_core._t2x_fmt(w)}px;"
+                f"height:{render_core._t2x_fmt(h)}px;"
+                "z-index:4;pointer-events:none"
+            )
+        self.assertEqual({style for style, _inner in link_boxes}, expected_styles)
+        for _style, inner in link_boxes:
+            self.assertEqual(inner.count("class='page-link-hit'"), 1)
+        hits = re.findall(
+            r"<div class='btn-wrap hk-btn-wrap hk-traced hk-traced-hit'"
+            r"[^>]*style='[^']*width:521px;height:971px[^']*'[^>]*>"
+            r".*?<div class='btn-pass-total' aria-hidden='true'></div></div>",
+            markup,
+            flags=re.DOTALL,
+        )
+        self.assertEqual(len(hits), 3)
+        for hit in hits:
+            self.assertNotIn("class='page-link-hit'", hit)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -93,3 +93,34 @@ class Isr2TraceGeometryTest(unittest.TestCase):
         ok = next(shape for shape in isr2_trace.SHAPES if shape.slot == 135)
         self.assertIsNotNone(ok.label_box)
         self.assertTrue(all(shape.label_box is not None for shape in isr2_trace.SHAPES))
+
+    def test_wrap_label_boxes_stay_outside_the_dpad(self) -> None:
+        from sentinel.generation.hard_keys import isr2_trace
+
+        center_x = isr2_trace._DPAD_CX - isr2_trace.CROP_X
+        radius = isr2_trace._PAD
+        by_slot = {shape.slot: shape for shape in isr2_trace.SHAPES}
+
+        for slot in (130, 138):
+            box = by_slot[slot].label_box
+            self.assertIsNotNone(box)
+            assert box is not None
+            right = box[0] + box[2]
+            self.assertLessEqual(right, center_x - radius)
+
+        for slot in (132, 140):
+            box = by_slot[slot].label_box
+            self.assertIsNotNone(box)
+            assert box is not None
+            self.assertGreaterEqual(box[0], center_x + radius)
+
+        for slot in (141, 142):
+            shape = by_slot[slot]
+            xs = [x for x, _y in _path_points(shape.d)]
+            ys = [y for _x, y in _path_points(shape.d)]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            self.assertEqual(
+                shape.label_box,
+                (min_x, min_y, max_x - min_x, max_y - min_y),
+            )

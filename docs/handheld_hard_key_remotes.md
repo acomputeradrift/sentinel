@@ -166,6 +166,8 @@ Chrome comes from `src/sentinel/ui/testing/sentinel_device_theme.css` (`.btn-wra
 
 **Which layer.** Use the Hard Keys copy for the page on screen (`SharedLayers` where `ProductId` matches, `IsKeypadLayer = 1`, `Name = 'Hard Keys'`). The T2x mockup is Apple TV (RV): `SharedLayerId` 2058. Other copies in the same file differ. Source Select (2060) uses Exit, Play, Pause, Skip Back, Power On, and Prev where 2058 uses Back, Play/Pause, Replay, a blank tag, and Back.
 
+**Tag scope.** A hard-key tag follows the page source. The hard-key layer `SourceId` matches that page’s source. Variable rows on the tag count only when their `RoomId` and `DeviceId` fit that scope (Global on every page, a source or controller row only on its own source). A Sonos variable on Play does not paint the Switch or Xbox page.
+
 **Label.** Same rule as `_button_identity_label`: Apex `Text` if it is set, otherwise `ButtonTagName`. On these T2x hard keys `Text` is empty, so the label is `ButtonTagName`. Slot 171 has no tag on layer 2058, so that button is blank. Volume, channel, d-pad, and OK names are a separate `.hk-traced-label` with `z-index: 3`, above the shape layer (`z-index: 2`), so the fill does not cover the words.
 
 **Too small to label.** The joystick wedges (Up / Right / Down / Left plus center Click) have no label box. A click still puts the tag in the dialog title.

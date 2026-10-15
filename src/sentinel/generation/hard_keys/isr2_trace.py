@@ -252,6 +252,12 @@ def _shapes() -> tuple[Shape, ...]:
             box = (cx - _OK_R, cy - _OK_R, _OK_R * 2, _OK_R * 2)
         else:
             box = _aabb(translated)
+            x, y, w, h = box
+            half = w / 2
+            if name in ("Plus", "Minus"):
+                box = (x, y, half, h)
+            elif name in ("Vol +", "Vol -"):
+                box = (x + half, y, half, h)
         out.append(Shape(slot=_SLOTS[name], d=translated, label_box=box))
     return tuple(out)
 

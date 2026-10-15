@@ -138,7 +138,8 @@ def _page_link_target_id(btn: dict[str, Any], *, rendering_page_id: int | None =
     resolved = btn.get("resolvedPageLink")
     if not isinstance(resolved, dict):
         return None
-    if resolved.get("resolutionPath") == "nextInGroup":
+    path = resolved.get("resolutionPath")
+    if path == "nextInGroup" or path == "previousInGroup":
         ids = resolved.get("groupPageIds")
         if not isinstance(ids, list) or len(ids) < 2:
             return None
@@ -147,7 +148,8 @@ def _page_link_target_id(btn: dict[str, Any], *, rendering_page_id: int | None =
         if cur not in gids:
             return None
         i = gids.index(cur)
-        return int(gids[(i + 1) % len(gids)])
+        step = -1 if path == "previousInGroup" else 1
+        return int(gids[(i + step) % len(gids)])
     raw = resolved.get("targetPageId")
     return int(raw) if raw is not None else None
 
@@ -1436,12 +1438,17 @@ def _render_t2x_hit(
     visible_label: str,
     wrap_class: str = "btn-wrap hk-btn-wrap hk-traced",
     shape_d: str | None = None,
+    include_page_link: bool = True,
 ) -> str:
     """One traced target. Visible label is empty for joystick wedges."""
     identity_label = _button_identity_label(btn)
     tag_name = _button_tag_name(btn)
     meta_attr = _hard_key_button_meta(btn, variable_label, app_ui, category_key=category_key)
-    link_html = _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
+    link_html = (
+        _page_link_markup(btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id)
+        if include_page_link
+        else ""
+    )
     title = f"{identity_label} · {int(slot)}" if identity_label else str(int(slot))
     style = f"{wrap_style};--btn-fill-color:var({_t2x_fill_var(category_key)})"
     shape_html = _t2x_shape_svg(slot, shape_d, rendering_page_id) if shape_d else ""
@@ -1489,14 +1496,16 @@ def _render_t2x_strip(
     cw, ch = trace.DESIGN_SIZE
     label_parts: list[str] = []
     hit_parts: list[str] = []
+    link_parts: list[str] = []
     for shape in trace.SHAPES:
         chosen = slots.get(shape.slot)
         if chosen is None:
             continue
         category_key, btn = chosen
         identity = _button_identity_label(btn)
-        if shape.label_box is not None and identity:
-            x, y, w, h = shape.label_box
+        label_box = shape.label_box
+        if label_box is not None and identity:
+            x, y, w, h = label_box
             label_parts.append(
                 f"<div class='hk-traced-label' style='left:{_t2x_fmt(x)}px;top:{_t2x_fmt(y)}px;"
                 f"width:{_t2x_fmt(w)}px;height:{_t2x_fmt(h)}px'>{escape(identity)}</div>"
@@ -1516,8 +1525,20 @@ def _render_t2x_strip(
                 button_style=f"pointer-events:auto;clip-path:path(\"{shape.d}\")",
                 visible_label="",
                 shape_d=shape.d,
+                include_page_link=label_box is None,
             )
         )
+        if label_box is not None:
+            link_html = _page_link_markup(
+                btn, app_ui, page_targets, page_target_indexes, rendering_page_id=rendering_page_id
+            )
+            if link_html:
+                x, y, w, h = label_box
+                link_parts.append(
+                    f"<div class='hk-traced-link' style='position:absolute;left:{_t2x_fmt(x)}px;top:{_t2x_fmt(y)}px;"
+                    f"width:{_t2x_fmt(w)}px;height:{_t2x_fmt(h)}px;z-index:4;pointer-events:none'>"
+                    f"{link_html}</div>"
+                )
     rect_parts: list[str] = []
     for rect in trace.RECTS:
         chosen = slots.get(rect.slot)
@@ -1548,6 +1569,7 @@ def _render_t2x_strip(
         f"style='width:{cw}px;height:{ch}px'>"
         f"{''.join(hit_parts)}"
         f"{''.join(label_parts)}"
+        f"{''.join(link_parts)}"
         f"{''.join(rect_parts)}"
         f"</div></div>"
     )
@@ -5695,6 +5717,9 @@ const offsetTop=(contentHeight-fittedHeight)/2;
       if (linkHit) applyLinkSizing(linkHit, buttonFontPx, traced ? 1 : totalScale);
     }}
   }});
+ if (activePage) activePage.querySelectorAll('.hk-traced-link .page-link-hit').forEach(linkHit=>{{
+   applyLinkSizing(linkHit, Math.max(1, 12*textZoomFactor()), 1);
+ }});
  if (activePage) activePage.querySelectorAll('.hk-split-right').forEach(zone=>{{
    const designW=Number(rtiDeviceCanvas.dataset.hkDesignW||0);
    const designH=Number(rtiDeviceCanvas.dataset.hkDesignH||0);
