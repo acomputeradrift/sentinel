@@ -79,8 +79,8 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 - **Updated:** 2026-10-15
 - **Branch:** `main`
-- **Repo HEAD:** `055b7eb` on `main`. ISR-2, ISR-4, and T4x traced strips.
-- **Droplet HEAD:** `055b7eb` at `/opt/sentinel/app` — ISR-2, ISR-4, and T4x traced strips, `/health` ok
+- **Repo HEAD:** `b5bd095` on `main`. Hard-key variables follow the page source. Page-link icons sit on each key. ISR-2 channel and volume labels use the outer half of the wrap.
+- **Droplet HEAD:** `b5bd095` at `/opt/sentinel/app` — hard-key page scope, page links, and wrap labels, `/health` ok
 - **T2x:** ProductId 70 renders the traced strip beside the touchscreen (`t2x_trace.py`, crop 338×958, black frame, `#363739`). Empty-tag slots are `#ef4444`. Fill and the status ring use the touchscreen button variables at 4 screen pixels. Shape labels sit above the fill. Room Off uses the page source’s activity page link, not activity order 0. Mockup stays `../remote_trace/mockup.html`.
 - **ISR-2 / ISR-4 / T4x:** Same traced strip as T2x. ISR-2 crop 521×971 (`isr2_trace.py`, outlines `../remote_trace/isr2.html` v7). ISR-4 crop 500×610 (`isr4_trace.py`, `isr4.html` v5). T4x crop 551×679 (`t4x_trace.py`, `t4x.html` v2). Hard-key variable rows follow the page source. Method: `docs/handheld_hard_key_remotes.md`.
 - **Live file:** `1790 High Rd (Simple v31.1).apex` in `uploads/`.
