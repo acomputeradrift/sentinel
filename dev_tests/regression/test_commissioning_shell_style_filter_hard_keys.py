@@ -5,6 +5,7 @@ The filtered pass keeps device-page / split / popup rules whose selectors match 
 """
 from __future__ import annotations
 
+import re
 import unittest
 
 # Mirrors project_device_static_layout.html copyFilteredStyles → allowSelector (keep in sync).
@@ -194,6 +195,89 @@ class CommissioningShellHardKeyStyleFilterTest(unittest.TestCase):
         self.assertIn("z-index: 205", css)
         self.assertIn("#9fb4c6", css)
         self.assertIn("#2d5f81", css)
+
+
+_CSS_RULE_RE = re.compile(r"([^{}]+)\{([^{}]*)\}", re.DOTALL)
+
+
+def _css_rules(css: str) -> list[tuple[str, str]]:
+    stripped = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    return [(selector.strip(), body) for selector, body in _CSS_RULE_RE.findall(stripped)]
+
+
+def _sets_overflow(body: str, value: str) -> bool:
+    return re.search(rf"overflow\s*:\s*{re.escape(value)}\b", body) is not None
+
+
+class HardKeyScrollportOverflowTest(unittest.TestCase):
+    def test_shell_hard_key_rule_keeps_usable_canvas_scrollable(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        css = (
+            root / "src/sentinel/ui/commissioning/project_device_static_layout.css"
+        ).read_text(encoding="utf-8")
+        rules = _css_rules(css)
+        for selector, body in rules:
+            if "rtiUsableCanvas" in selector:
+                self.assertFalse(
+                    _sets_overflow(body, "visible"),
+                    msg=f"hard-key shell must not set the scrollport to overflow: visible ({selector})",
+                )
+            if "rti-device-canvas-hk" in selector and "deviceLayoutStage" in selector:
+                self.assertFalse(
+                    _sets_overflow(body, "visible"),
+                    msg=f"hard-key shell must not force the stage to overflow: visible ({selector})",
+                )
+        usable = next(body for selector, body in rules if selector == ".rtiUsableCanvas")
+        self.assertTrue(_sets_overflow(usable, "auto"))
+        stage = next(body for selector, body in rules if selector == ".deviceLayoutStage")
+        self.assertTrue(_sets_overflow(stage, "hidden"))
+        device = next(body for selector, body in rules if selector == ".rtiDeviceContent.rti-device-canvas-hk")
+        self.assertTrue(_sets_overflow(device, "visible"))
+
+    def test_theme_keeps_hard_key_ring_overflow_visible(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2]
+        theme = (root / "src/sentinel/ui/commissioning/sentinel_device_theme.css").read_text(encoding="utf-8")
+        rules = _css_rules(theme)
+        ring_selectors = (
+            ".rti-device-canvas.rti-device-canvas-hk",
+            ".rtiDeviceContent.rti-device-canvas-hk",
+            ".rti-device-canvas-hk .hk-touch-stack",
+            ".rti-device-canvas-hk .device-page .hk-split-right.hk-tight-cluster",
+            ".rti-device-canvas-hk .device-page .hk-split-right.hk-traced-remote",
+            ".rti-device-canvas-hk .device-page.active",
+        )
+        for fragment in ring_selectors:
+            bodies = [body for selector, body in rules if fragment in selector and _sets_overflow(body, "visible")]
+            self.assertTrue(bodies, msg=f"ring rule must stay overflow: visible ({fragment})")
+
+    def test_source_runtime_hard_key_scrollport_stays_auto(self) -> None:
+        from pathlib import Path
+
+        text = (
+            Path(__file__).resolve().parents[2] / "src/sentinel/generation/render_core.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn(".app-canvas:has(.rti-device-canvas-hk){{overflow:visible !important;}}", text)
+        self.assertNotIn(
+            ".app-canvas:has(.rti-device-canvas-hk) .rti-canvas{{overflow:visible !important;}}",
+            text,
+        )
+        self.assertIn(".rti-canvas{{position:absolute;box-sizing:border-box;z-index:1;overflow:auto;", text)
+        self.assertIn(
+            ".rti-device-canvas.rti-device-canvas-hk{{position:absolute;border:0;overflow:visible;",
+            text,
+        )
+        self.assertIn(
+            ".rti-device-canvas-hk .device-page.active{{display:block;padding:0;height:100%;min-height:0;max-height:100%;overflow:visible;",
+            text,
+        )
+        self.assertIn(
+            ".rti-device-canvas-hk .device-page .hk-split-left{{position:absolute;top:0;bottom:0;height:auto;display:flex;align-items:center;justify-content:center;overflow:visible;",
+            text,
+        )
 
 
 if __name__ == "__main__":

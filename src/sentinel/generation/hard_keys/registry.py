@@ -11,6 +11,9 @@ Locked rules from `hard_keys.md` (Phase 0 lock-in):
   crop in ``isr4_trace.py``.
 * T2x = ProductId 70 / slot range 128..179 (52 slots). Geometry is the traced
   crop in ``t2x_trace.py`` (not a flexbox ``.box`` template).
+* T2i = ProductId 75 is the same model as T2x (key ``"t2x"``). The T2x
+  ``HardKeyModel.product_id`` stays 70. Frame 254 ButtonLeft 128..179 (52 slots)
+  and ignored gesture frame 252 ButtonLeft 0..2 are the T2x ones.
 * Physical hard-key rows live at `FrameNumber = 254` with `ButtonLeft >= 128`; rows at
   `FrameNumber = 252` (gestures: Rotate Clockwise, Rotate Counterclockwise, Shake) are
   recorded but not rendered on the hard-key strip.
@@ -186,6 +189,8 @@ MODELS: dict[str, HardKeyModel] = {
 
 
 _PRODUCT_MODEL_BY_PRODUCT_ID: dict[int, str] = {m.product_id: m.key for m in MODELS.values()}
+# T2i shares the T2x model. HardKeyModel.product_id for "t2x" stays 70.
+_PRODUCT_MODEL_BY_PRODUCT_ID[75] = "t2x"
 
 
 def product_model_for_product_id(product_id: Optional[int]) -> Optional[str]:

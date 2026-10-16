@@ -35,7 +35,8 @@ _BUTTON_LABELS: tuple[str, ...] = (
     "Variable - Command",
     "Variable - Image",
     "Variable - List",
-    "Bitmap",
+    "Bitmap - Normal",
+    "Bitmap - Active",
     "Icon",
     "RTSP Video",
     "Page Link",
@@ -47,7 +48,7 @@ _EVENT_LABELS: tuple[str, ...] = (
     "Macro Step",
 )
 
-_GRAPHICS_LABELS = frozenset({"Bitmap", "Icon", "Variable - Image", "RTSP Video"})
+_GRAPHICS_LABELS = frozenset({"Bitmap - Normal", "Bitmap - Active", "Icon", "Variable - Image", "RTSP Video"})
 
 
 def _type_id(*, family: str, label: str) -> str:
@@ -78,7 +79,8 @@ CATALOG: tuple[TestingType, ...] = tuple(
 CATALOG_BY_ID: dict[str, TestingType] = {row.id: row for row in CATALOG}
 KNOWN_TYPE_IDS: frozenset[str] = frozenset(CATALOG_BY_ID)
 GRAPHICS_TYPE_IDS: tuple[str, ...] = (
-    "button:Bitmap",
+    "button:Bitmap - Normal",
+    "button:Bitmap - Active",
     "button:Icon",
     "button:Variable - Image",
     "button:RTSP Video",
@@ -99,7 +101,8 @@ _EXCLUDED_PLURAL_DISPLAY: dict[str, str] = {
     "Macro Step": "Macro Steps",
     "Event Trigger": "Event Triggers",
     "Page Link": "Page Links",
-    "Bitmap": "Bitmaps",
+    "Bitmap - Normal": "Bitmaps - Normal",
+    "Bitmap - Active": "Bitmaps - Active",
     "Icon": "Icons",
     "RTSP Video": "RTSP Videos",
 }
@@ -121,8 +124,10 @@ def canonicalize_label(label: str) -> str:
         return "Page Link"
     if lower in _TEXT_ALIASES:
         return "Text"
-    if lower == "bitmap":
-        return "Bitmap"
+    if lower == "bitmap - normal":
+        return "Bitmap - Normal"
+    if lower == "bitmap - active":
+        return "Bitmap - Active"
     if lower == "icon":
         return "Icon"
     if lower in {"rtsp video", "rtsp videos"}:

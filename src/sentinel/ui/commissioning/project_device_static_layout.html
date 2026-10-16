@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Project Device Static Layout</title>
+  <link rel="icon" href="/commissioning/sentinel-logo.png" type="image/png">
   <link rel="stylesheet" href="./project_device_static_layout.css">
 </head>
 <body>
@@ -487,6 +488,28 @@
         });
       }
 
+      function applyDocumentTitle(sourceDoc) {
+        const titleEl = sourceDoc.querySelector("title");
+        const fromTitle = titleEl ? String(titleEl.textContent || "").trim() : "";
+        if (fromTitle) {
+          document.title = fromTitle;
+          return;
+        }
+        const projectMeta = sourceDoc.querySelector('meta[name="sentinel-project-name"]');
+        const projectName = projectMeta ? String(projectMeta.getAttribute("content") || "").trim() : "";
+        const header = sourceDoc.querySelector(".header");
+        const headerText = header ? String(header.textContent || "").trim() : "";
+        const splitAt = headerText.indexOf(":");
+        const deviceName = splitAt >= 0 ? headerText.slice(0, splitAt).trim() : headerText;
+        if (projectName && deviceName) {
+          document.title = projectName + ": " + deviceName;
+        } else if (deviceName) {
+          document.title = deviceName;
+        } else if (projectName) {
+          document.title = projectName;
+        }
+      }
+
       function copyCommissioningMeta(sourceDoc) {
         const names = ["sentinel-client-name", "sentinel-project-name"];
         names.forEach(function (name) {
@@ -754,6 +777,7 @@
           copyFilteredStyles(sourceDoc);
           copyAllowedHeadLinks(sourceDoc);
           copyCommissioningMeta(sourceDoc);
+          applyDocumentTitle(sourceDoc);
           mountTopControls(sourceDoc);
           mountOrientation(sourceDoc);
           mountZoom(sourceDoc);

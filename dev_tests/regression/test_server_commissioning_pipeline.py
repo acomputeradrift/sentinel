@@ -378,6 +378,57 @@ class CommissioningPipelineTest(unittest.TestCase):
             rendered = " ".join(str(call.args[0]) for call in log_info.call_args_list if call.args)
             self.assertIn("REGEN_BASELINE", rendered)
 
+    def test_regenerate_call_sites_pass_database_client_and_project_names(self):
+        TestClient = _require_fastapi()
+
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["SENTINEL_GENERATED_ROOT"] = str(Path(td) / "generated")
+            os.environ["SENTINEL_UPLOAD_ROOT"] = str(Path(td) / "uploads")
+
+            from sentinel.server.app.main import create_app
+            from sentinel.server.api import commissioning as commissioning_api
+
+            app = create_app()
+            client = TestClient(app)
+
+            created_client = client.post("/api/v1/commissioning/clients", json={"name": "Haven and Wire"}).json()
+            created_project = client.post(
+                f"/api/v1/commissioning/clients/{created_client['clientId']}/projects",
+                json={"name": "Jazz Room"},
+            ).json()
+            project_id = created_project["projectId"]
+
+            apex_path = Path(td) / "sample.apex"
+            _write_test_apex(apex_path)
+
+            seen: list[dict[str, str]] = []
+
+            def _fake_regenerate(*, projectId: str, apex_path: Path, phase_hook=None, client_name: str = "", project_name: str = "", **_kwargs):
+                seen.append({"client_name": client_name, "project_name": project_name})
+                if callable(phase_hook):
+                    phase_hook("extracting", 100)
+                    phase_hook("generating", 100)
+                return {"projectId": projectId, "outDir": str(Path(td) / "generated" / projectId), "projectData": "x.json"}
+
+            with mock.patch.object(commissioning_api.pipeline, "regenerate_project", side_effect=_fake_regenerate):
+                with apex_path.open("rb") as handle:
+                    uploaded = client.post(
+                        f"/api/v1/commissioning/projects/{project_id}/upload-and-regenerate",
+                        files={"apex": ("sample.apex", handle, "application/octet-stream")},
+                    )
+                self.assertEqual(uploaded.status_code, 200)
+                upload_id = uploaded.json()["uploadId"]
+                regenerated = client.post(
+                    f"/api/v1/commissioning/projects/{project_id}/regenerate",
+                    json={"uploadId": upload_id},
+                )
+                self.assertEqual(regenerated.status_code, 200)
+
+            self.assertEqual(len(seen), 2)
+            for row in seen:
+                self.assertEqual(row["client_name"], "Haven and Wire")
+                self.assertEqual(row["project_name"], "Jazz Room")
+
     def test_successful_regenerate_prunes_upload_disk_and_retains_one_db_row(self):
         """After extract+generate, uploads dir holds one .apex and DB keeps only that upload."""
         TestClient = _require_fastapi()

@@ -47,6 +47,28 @@ body {
 
 .topbar-brand h1 {
   margin: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.topbar-wordmark {
+  display: block;
+  height: 48px;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.topbar-brand-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .topbar-actions {

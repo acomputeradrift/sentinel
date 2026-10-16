@@ -77,15 +77,16 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 
 ## Now
 
-- **Updated:** 2026-10-15
+- **Updated:** 2026-10-16
 - **Branch:** `main`
-- **Repo HEAD:** `298a627` on `main`. Tag macros: Room, then Source, then Global (`_winning_tag_macro_id`). A room macro counts on every source in that room. The step device is the driver. Hard-key variables still follow the page source. A winning macro makes a touch button a screen button (`#2c6fb7`).
+- **Repo HEAD:** on `main` for this release. Tag macros: Room, then Source, then Global (`_winning_tag_macro_id`). A room macro counts on every source in that room. The step device is the driver. Hard-key variables still follow the page source. A winning macro makes a touch button a screen button (`#2c6fb7`).
 - **Droplet HEAD:** `298a627` at `/opt/sentinel/app` — room-macro screen buttons and matching theme CSS, `/health` ok
-- **T2x:** ProductId 70 renders the traced strip beside the touchscreen (`t2x_trace.py`, crop 338×958, black frame, `#363739`). Empty-tag slots are `#ef4444`. Fill and the status ring use the touchscreen button variables at 4 screen pixels. Shape labels sit above the fill. Room Off uses the page source’s activity page link, not activity order 0. Mockup stays `../remote_trace/mockup.html`.
+- **T2x / T2i:** ProductId 70 (T2x) and ProductId 75 (T2i) render the traced strip beside the touchscreen (`t2x_trace.py`, crop 338×958, black frame, `#363739`). The T2x model id stays 70. Empty-tag slots are `#ef4444`. Fill and the status ring use the touchscreen button variables at 4 screen pixels. Shape labels sit above the fill. Room Off uses the page source’s activity page link, not activity order 0. Mockup stays `../remote_trace/mockup.html`.
+- **Graphics targets:** Up is `Bitmap - Normal`, Down is `Bitmap - Active`. Icon, Variable - Image, and RTSP Video stay. Button fill stays the category color.
 - **ISR-2 / ISR-4 / T4x:** Same traced strip as T2x. ISR-2 crop 521×971 (`isr2_trace.py`, outlines `../remote_trace/isr2.html` v7). ISR-4 crop 500×610 (`isr4_trace.py`, `isr4.html` v5). T4x crop 551×679 (`t4x_trace.py`, `t4x.html` v2). Hard-key variable rows follow the page source. Method: `docs/handheld_hard_key_remotes.md`.
 - **Live file:** `1790 High Rd (Simple v31.1).apex` in `uploads/`.
 - **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
-- **Work list:** `docs/todos/2026-10-15.md` (not this file)
+- **Work list:** `docs/todos/2026-10-16.md` (not this file)
 
 ---
 

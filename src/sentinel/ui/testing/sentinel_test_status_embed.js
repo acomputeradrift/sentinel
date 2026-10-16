@@ -62,7 +62,8 @@
     "Macro Step": "Macro Steps",
     "Event Trigger": "Event Triggers",
     "Page Link": "Page Links",
-    Bitmap: "Bitmaps",
+    "Bitmap - Normal": "Bitmaps - Normal",
+    "Bitmap - Active": "Bitmaps - Active",
     Icon: "Icons",
   };
 
@@ -77,7 +78,8 @@
     if (TRIGGER_ALIASES[lower]) return "Event Trigger";
     if (PAGE_LINK_ALIASES[lower]) return "Page Link";
     if (lower === "text" || lower === "texts") return "Text";
-    if (lower === "bitmap") return "Bitmap";
+    if (lower === "bitmap - normal") return "Bitmap - Normal";
+    if (lower === "bitmap - active") return "Bitmap - Active";
     if (lower === "icon") return "Icon";
     if (lower === "rtsp video" || lower === "rtsp videos") return "RTSP Video";
     if (lower.indexOf("variable - ") === 0) {

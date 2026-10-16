@@ -73,20 +73,28 @@ class ProgressResolvedTargetsTest(unittest.TestCase):
             self.assertEqual(out["counts"]["totalTargets"], 1)
             self.assertEqual(out["counts"]["pass"], 1)
 
-    def test_button_target_labels_include_graphics_bitmap_and_icon(self):
-        btn = {
-            "testTargets": {
-                "text": False,
-                "macros": False,
-                "macroSteps": False,
-                "variables": {},
-                "graphics": {"bitmap": True, "icon": True},
-                "pageLink": False,
-            }
-        }
-        labels = progress._button_target_labels(btn)
-        self.assertIn("Bitmap", labels)
-        self.assertIn("Icon", labels)
+    def test_button_target_labels_split_bitmap_normal_and_active(self):
+        def labels_for(graphics: dict) -> list[str]:
+            return progress._button_target_labels(
+                {
+                    "testTargets": {
+                        "text": False,
+                        "macros": False,
+                        "macroSteps": False,
+                        "variables": {},
+                        "graphics": graphics,
+                        "pageLink": False,
+                    }
+                }
+            )
+
+        self.assertEqual(labels_for({"bitmapNormal": True, "icon": True}), ["Bitmap - Normal", "Icon"])
+        self.assertEqual(labels_for({"bitmapActive": True}), ["Bitmap - Active"])
+        self.assertEqual(
+            labels_for({"bitmapNormal": True, "bitmapActive": True, "icon": True}),
+            ["Bitmap - Normal", "Bitmap - Active", "Icon"],
+        )
+        self.assertNotIn("Bitmap", labels_for({"bitmap": True, "bitmapNormal": True, "bitmapActive": True}))
 
     def test_button_target_labels_include_graphics_rtsp_video(self):
         btn = {
@@ -141,7 +149,7 @@ class ProgressResolvedTargetsTest(unittest.TestCase):
                                                         "macros": False,
                                                         "macroSteps": False,
                                                         "variables": {},
-                                                        "graphics": {"bitmap": True, "icon": False},
+                                                        "graphics": {"bitmapNormal": True, "bitmapActive": False, "icon": False},
                                                         "pageLink": False,
                                                     },
                                                     "apexScopeSource": {"button": {"buttonId": 41392}},
@@ -160,7 +168,9 @@ class ProgressResolvedTargetsTest(unittest.TestCase):
         rows = progress._derive_device_targets(project_data)
         self.assertEqual(len(rows), 1)
         expected = set(rows[0].get("expected") or set())
-        self.assertIn("btn:89:353:41392:Bitmap", expected)
+        self.assertIn("btn:89:353:41392:Bitmap - Normal", expected)
+        self.assertNotIn("btn:89:353:41392:Bitmap", expected)
+        self.assertFalse(any(key.endswith(":Bitmap - Active") for key in expected))
 
     def test_commissioning_progress_reuses_derived_targets_when_project_data_unchanged(self):
         with tempfile.TemporaryDirectory() as td:

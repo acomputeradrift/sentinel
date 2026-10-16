@@ -448,8 +448,8 @@ Named technicians live under the commissioning operator (the company stub user u
   - each row is a `FailItem`
 - `GET /api/v1/commissioning/projects/{projectId}/testing-types` -> catalog of extracted target types with `enabled` (default all true) and `disabledTypes[]`
 - `PUT /api/v1/commissioning/projects/{projectId}/testing-types`
-  - req: `{ "disabledTypes": ["button:Bitmap"] }` (unknown ids ignored)
-  - also accepts `{ "types": [{ "id": "button:Bitmap", "enabled": false }] }`
+  - req: `{ "disabledTypes": ["button:Bitmap - Normal"] }` (unknown ids ignored)
+  - also accepts `{ "types": [{ "id": "button:Bitmap - Normal", "enabled": false }] }`
   - resp: same shape as GET
   - Off-behavior is `exclude` (not auto-pass). Controls remain drawn on generated technician pages.
 

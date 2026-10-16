@@ -90,6 +90,7 @@ class HardKeysRegistryTest(unittest.TestCase):
         from sentinel.generation.hard_keys import registry as hk
 
         self.assertEqual(hk.product_model_for_product_id(70), "t2x")
+        self.assertEqual(hk.product_model_for_product_id(75), "t2x")
         self.assertEqual(hk.product_model_for_product_id(102), "t4x")
         self.assertEqual(hk.product_model_for_product_id(110), "isr2")
         self.assertEqual(hk.product_model_for_product_id(111), "isr4")

@@ -289,8 +289,10 @@ def _button_target_labels(btn: dict[str, Any]) -> list[str]:
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(f"Variable - {name}")
-    if graphics_t.get("bitmap"):
-        out.append("Bitmap")
+    if graphics_t.get("bitmapNormal"):
+        out.append("Bitmap - Normal")
+    if graphics_t.get("bitmapActive"):
+        out.append("Bitmap - Active")
     if graphics_t.get("icon"):
         out.append("Icon")
     if graphics_t.get("rtspVideo"):

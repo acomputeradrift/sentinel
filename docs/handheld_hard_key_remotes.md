@@ -1,6 +1,6 @@
 # Handheld Remotes with Hard Keys — Photo Overlay Standard
 
-Status: approved method (2026-10-13). Traced strips in `src/`: **T2x**, **ISR-2**, **ISR-4**, **T4x**.
+Status: approved method (2026-10-13). Traced strips in `src/`: **T2x**, **ISR-2**, **ISR-4**, **T4x**. **T2i** (ProductId 75) uses the T2x strip.
 
 Standard way to turn a photo of an RTI handheld remote into a clickable hard-key overlay, and how that overlay sits beside the touchscreen in the testing screen. Use this for every new remote photo.
 
@@ -79,7 +79,8 @@ Reference mockup: `remote_trace/mockup.html` (toggles for usable-space guides an
 
 | Remote | Photo | Buttons traced | Status |
 |---|---|---|---|
-| T2x | `remote_trace/remote.png` (trace only) | 48 (incl. 4 wrap-around keys, 4-way d-pad + OK; joystick = 5 targets → 52 slots) | Locked 2026-10-13: slot map, Apple TV (RV) labels, black frame, `#363739` fill, no photo in the strip. In `src/` as `t2x_trace.py`. |
+| T2x | `remote_trace/remote.png` (trace only) | 48 (incl. 4 wrap-around keys, 4-way d-pad + OK; joystick = 5 targets → 52 slots) | Locked 2026-10-13: slot map, Apple TV (RV) labels, black frame, `#363739` fill, no photo in the strip. In `src/` as `t2x_trace.py`. ProductId 70. |
+| T2i | same trace as T2x | same 52 slots, ButtonLeft 128..179 | ProductId 75. Same model as T2x (`product_model_for_product_id` returns `t2x`). No separate trace file. The T2x `HardKeyModel.product_id` stays 70. |
 | ISR-2 | `remote_trace/isr2.png` | 34 | Locked outlines `remote_trace/isr2.html` v7. Strip in `src/` as `isr2_trace.py` (crop 521×971). Slots are the approved `ISR2_SLOT_BY_DATA_LABEL` map. |
 | ISR-4 | `remote_trace/isr4.png` | 22 | Locked outlines `remote_trace/isr4.html` v5. Strip in `src/` as `isr4_trace.py` (crop 500×610). Slots are the approved `ISR4_SLOT_BY_DATA_LABEL` map. |
 | T4x | `remote_trace/t4x.png` | 20 | Scratch trace `remote_trace/t4x.html` v2. Strip in `src/` as `t4x_trace.py` (crop 551×679). Slots follow `_T4X_SLOT_DOM_ORDER`. |
@@ -188,6 +189,6 @@ Reference: `remote_trace/mockup.html`.
 
 ## Open items (not yet decided)
 
-1. Done in `src/`: `ProductId` 70 is `t2x` in `registry.py`. The strip is drawn from `t2x_trace.py` (crop 338×958, 3px black frame, `#363739` fill, traced shapes). Labels come from the hard-key layer on screen. The photo stays the trace source, outside the repo.
+1. Done in `src/`: `ProductId` 70 is `t2x` in `registry.py`. `ProductId` 75 (T2i) resolves to that same `t2x` model. The strip is drawn from `t2x_trace.py` (crop 338×958, 3px black frame, `#363739` fill, traced shapes). Labels come from the hard-key layer on screen. The photo stays the trace source, outside the repo.
 2. Where the photo + trace data live in the repo (`Assets/Hard Keys/` vs `src/sentinel/ui/testing/hard_keys/`) once this moves out of the scratch folder.
 3. Done in `src/`: ISR-2, ISR-4, and T4x use the same traced strip as T2x. Crops: ISR-2 521×971, ISR-4 500×610, T4x 551×679. Slot numbers are the approved registry maps. T4x geometry is `t4x.html` v2, not a darker-fill outline.

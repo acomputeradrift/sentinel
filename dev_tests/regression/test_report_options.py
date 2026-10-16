@@ -209,7 +209,7 @@ def _sample_source(**overrides):
         "testingTypes": {
             "types": [
                 {"id": "button:Text", "label": "Text", "enabled": True},
-                {"id": "button:Bitmap", "label": "Bitmap", "enabled": False},
+                {"id": "button:Bitmap - Normal", "label": "Bitmap - Normal", "enabled": False},
             ]
         },
         "technicianNames": ["Alex", "Sam"],

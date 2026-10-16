@@ -214,7 +214,8 @@
                           "List": false
                         },
                         "graphics": {
-                          "bitmap": false,
+                          "bitmapNormal": false,
+                          "bitmapActive": false,
                           "icon": false,
                           "rtspVideo": false
                         },
@@ -353,7 +354,8 @@
                                       "List": false
                                     },
                                     "graphics": {
-                                      "bitmap": false,
+                                      "bitmapNormal": false,
+                                      "bitmapActive": false,
                                       "icon": false,
                                       "rtspVideo": false
                                     },

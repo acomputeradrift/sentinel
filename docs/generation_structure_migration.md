@@ -50,9 +50,11 @@ Use a shared runtime shell (code-owned) plus project payload files (project-owne
    - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.buttonUI.stack.frameNumber`
 5. Diagnostics button records must retain matching source stack metadata (`layerId`, `sharedLayerId`, `layerOrder`, `buttonOrder`, `frameNumber`) so rendering and troubleshooting can trace true RTI draw order.
 6. User-facing button test targets must preserve graphics asset checks separately from variable-derived image state:
-   - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.testTargets.graphics.bitmap`
+   - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.testTargets.graphics.bitmapNormal`
+   - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.testTargets.graphics.bitmapActive`
    - `userFacing.pages[*].(layers[*].buttonCategories|buttonCategories).*.testTargets.graphics.icon`
-   - `graphics.bitmap` is `true` when `UpBitmapId != -1` or `DownBitmapId != -1`
+   - `graphics.bitmapNormal` is `true` when `UpBitmapId` is set (not `-1` and not null)
+   - `graphics.bitmapActive` is `true` when `DownBitmapId` is set (not `-1` and not null)
    - `graphics.icon` is `true` when `IconBitmapId != -1`
 
 ## Backward-Compatible Migration Plan (No-Risk First)

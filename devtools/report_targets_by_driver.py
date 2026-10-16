@@ -39,7 +39,7 @@ def _label_to_ui_category(label: str) -> str | None:
         return "macroSteps"
     if str(label).startswith("Variable - "):
         return "variables"
-    if label in ("Bitmap", "Icon"):
+    if label in ("Bitmap - Normal", "Bitmap - Active", "Icon"):
         return "graphics"
     if label == "PageLink":
         return "pageLink"

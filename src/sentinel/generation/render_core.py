@@ -23,6 +23,21 @@ def _commissioning_meta_tags(*, client_name: str = "", project_name: str = "") -
     return "".join(parts)
 
 
+def format_colon_title(left: str, right: str) -> str:
+    left_text = str(left or "").strip()
+    right_text = str(right or "").strip()
+    if left_text and right_text:
+        return f"{left_text}: {right_text}"
+    return left_text or right_text
+
+
+def format_project_home_link_label(project_name: str) -> str:
+    project = str(project_name or "").strip()
+    if not project:
+        return "Project Home"
+    return f"{project} Home"
+
+
 def format_page_header_title(
     template: str,
     *,
@@ -117,11 +132,20 @@ def _graphics_targets(btn: dict[str, Any]) -> dict[str, Any]:
     return graphics if isinstance(graphics, dict) else {}
 
 
+def _has_graphics(graphics: dict[str, Any]) -> bool:
+    return bool(
+        graphics.get("bitmapNormal")
+        or graphics.get("bitmapActive")
+        or graphics.get("icon")
+        or graphics.get("rtspVideo")
+    )
+
+
 def _button_identity_label(btn: dict[str, Any]) -> str:
     identity = btn.get("buttonIdentity", {}) if isinstance(btn, dict) else {}
     value = _btn_text(identity if isinstance(identity, dict) else {})
     graphics = _graphics_targets(btn)
-    has_graphics = bool(graphics.get("bitmap")) or bool(graphics.get("icon")) or bool(graphics.get("rtspVideo"))
+    has_graphics = _has_graphics(graphics)
     if value and value.strip().lower() not in _RTSP_IDENTITY_PLACEHOLDERS:
         return value
     return "Graphics" if has_graphics else ""
@@ -277,8 +301,10 @@ def _targets(btn: dict[str, Any], variable_label_template: str) -> list[str]:
     for name in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"):
         if vars_t.get(name):
             out.append(variable_label_template.replace("{variableType}", name))
-    if graphics_t.get("bitmap"):
-        out.append("Bitmap")
+    if graphics_t.get("bitmapNormal"):
+        out.append("Bitmap - Normal")
+    if graphics_t.get("bitmapActive"):
+        out.append("Bitmap - Active")
     if graphics_t.get("icon"):
         out.append("Icon")
     if graphics_t.get("rtspVideo"):
@@ -309,7 +335,7 @@ def _is_ui_only_button(btn: dict[str, Any]) -> bool:
     vars_t = t.get("variables", {})
     graphics_t = t.get("graphics", {})
     has_any_var = any(bool(vars_t.get(k)) for k in ("Text", "Reversed", "Inactive", "Visible", "Value", "State", "Command", "Image", "List"))
-    has_any_graphics = bool(graphics_t.get("bitmap")) or bool(graphics_t.get("icon")) or bool(graphics_t.get("rtspVideo"))
+    has_any_graphics = _has_graphics(graphics_t if isinstance(graphics_t, dict) else {})
     return (
         not str(identity.get("buttonTagName") or "").strip()
         and not str(identity.get("text") or "").strip()
@@ -2064,7 +2090,7 @@ def _synthetic_room_list_row_button(
                 "Image": False,
                 "List": False,
             },
-            "graphics": {"bitmap": False, "icon": False},
+            "graphics": {"bitmapNormal": False, "bitmapActive": False, "icon": False},
             "pageLink": {"enabled": page_link_on},
         },
         "resolvedPageLink": resolved if page_link_on else None,
@@ -2524,7 +2550,7 @@ def _synthetic_source_list_row_button(
                 "Image": False,
                 "List": False,
             },
-            "graphics": {"bitmap": False, "icon": False},
+            "graphics": {"bitmapNormal": False, "bitmapActive": False, "icon": False},
             "pageLink": {"enabled": page_link_on},
         },
         "resolvedPageLink": resolved if page_link_on else None,
@@ -3106,6 +3132,8 @@ def _render_document(
     device_profile_class: str = "",
     client_name: str = "",
     project_name: str = "",
+    document_title: str = "",
+    home_label: str = "Project Home",
 ) -> str:
     link_cfg = app_ui.get("appNavigation", {}).get("pageLinks", {})
     link_hover_enabled = bool(link_cfg.get("enabled") and link_cfg.get("showLinkAffordanceOnHover"))
@@ -3128,8 +3156,15 @@ def _render_document(
     )
     device_theme_css = _sentinel_device_theme_css()
     commissioning_meta = _commissioning_meta_tags(client_name=client_name, project_name=project_name)
+    document_title = escape(str(document_title or header))
+    visible_header = escape(header)
+    home_button = (
+        f"<a class='project-home-link' href='{home_href}'>{escape(home_label)}</a>"
+        if home_href
+        else "<div></div>"
+    )
     return f"""<!doctype html>
-<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{commissioning_meta}<title>{header}</title>
+<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"icon\" href=\"/commissioning/sentinel-logo.png\" type=\"image/png\">{commissioning_meta}<title>{document_title}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
 {device_theme_css}
@@ -3156,8 +3191,6 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
 .rti-canvas:not(.scroll-hover)::-webkit-scrollbar-track{{background:transparent;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar{{width:10px;height:10px;}}
 .rti-canvas.scroll-hover:hover::-webkit-scrollbar-thumb{{background:#a9bccd;border-radius:999px;}}
-.app-canvas:has(.rti-device-canvas-hk){{overflow:visible !important;}}
-.app-canvas:has(.rti-device-canvas-hk) .rti-canvas{{overflow:visible !important;}}
 .rti-content{{position:relative;min-width:100%;min-height:100%;}}
 .rti-device-canvas:not(.rti-device-canvas-hk){{position:absolute;border:0;overflow:hidden;box-sizing:border-box;z-index:2;}}
 .rti-device-canvas.rti-device-canvas-hk{{position:absolute;border:0;overflow:visible;box-sizing:border-box;z-index:2;}}
@@ -3273,7 +3306,7 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:#eef3f7;color:#183247;ov
  .hk-btn-wrap{{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;align-items:stretch;justify-content:stretch;}}
 </style>{_hard_key_template_style_tag}</head>
 <body><div class='app-canvas' id='appCanvas'>
-<div class='app-ui-controls top-controls' id='topControls'>{f"<a class='project-home-link' href='{home_href}'>Project Home</a>" if home_href else "<div></div>"}<div class='header'>{header}</div><div></div><div class='selected-room-indicator' id='selectedRoomIndicator'>Selected Room: <span class='value' id='selectedRoomValue'>All Rooms</span></div></div>
+<div class='app-ui-controls top-controls' id='topControls'>{home_button}<div class='header'>{visible_header}</div><div></div><div class='selected-room-indicator' id='selectedRoomIndicator'>Selected Room: <span class='value' id='selectedRoomValue'>All Rooms</span></div></div>
 {f"<div class='app-ui-controls orientation-controls' id='orientationControls'><div class='orientation-toggle' id='orientationToggle'><button class='orientation-btn' type='button' data-orientation='portrait'>Portrait</button><button class='orientation-btn' type='button' data-orientation='landscape'>Landscape</button></div></div>" if show_orientation_toggle else ""}
 <div class='app-ui-controls layer-controls' id='layerControls'><div class='layer-panel' id='layerPanel' hidden><div class='layer-panel-title'>{escape(str(layer_panel_cfg.get("title", "Layers")))}</div><div class='layer-list' id='layerList'></div></div></div>
 <div class='app-ui-controls bottom-controls' id='bottomControls'></div>
@@ -5267,19 +5300,9 @@ function syncHeader() {{
  const headerRoot=document.getElementById('topControls');
  const headerEl=headerRoot ? headerRoot.querySelector('.header') : null;
  if (!headerEl) return;
- const titles=readCommissioningTitles();
- const deviceName=PAGE_STATE[0]?.deviceName || '';
- const pageName=activePageState().pageName || '';
- const titleTemplate=APP_UI.header?.titleTemplate||'{{deviceName}} - {{pageName}}';
- if (titles.clientName || titles.projectName) {{
-  headerEl.textContent=titleTemplate
-   .replace('{{clientName}}', titles.clientName)
-   .replace('{{projectName}}', titles.projectName)
-   .replace('{{deviceName}}', deviceName)
-   .replace('{{pageName}}', pageName);
- }} else {{
-  headerEl.textContent=`${{deviceName}} - ${{pageName}}`.trim();
- }}
+ const deviceName=String(PAGE_STATE[0]?.deviceName || '').trim();
+ const pageName=String(activePageState().pageName || '').trim();
+ headerEl.textContent=deviceName && pageName ? `${{deviceName}}: ${{pageName}}` : (deviceName || pageName);
  syncSelectedRoomIndicator();
 }}
  function syncViewportControls() {{}}
@@ -6171,6 +6194,15 @@ def _count_label(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
 
+def _original_stored_filename(name: str) -> str:
+    """Drop save_upload's `{uploadId}__` prefix. Names without `__` stay as-is."""
+    text = str(name or "")
+    marker = "__"
+    if marker not in text:
+        return text
+    return text.split(marker, 1)[1]
+
+
 def render_project_home_html(
     project_data: dict[str, Any],
     app_ui: dict[str, Any],
@@ -6182,11 +6214,14 @@ def render_project_home_html(
     source = project_data.get("source", {})
     source_file = str(source.get("file") or project_stem)
     source_basename = Path(source_file).name if source_file else project_stem
+    current_file_name = _original_stored_filename(source_basename)
     client_display = str(client_name or "").strip()
-    project_display = str(project_name or "").strip()
+    project_name_text = str(project_name or "").strip()
+    project_display = project_name_text
     if not project_display:
-        project_display = Path(source_file).stem if source_file else project_stem
-    page_title = project_display
+        raw_stem = Path(source_file).stem if source_file else project_stem
+        project_display = _original_stored_filename(raw_stem)
+    page_title = format_colon_title(client_display, project_name_text) or project_display
     system_events = _event_section_items(project_data, "system")
     driver_events = _event_section_items(project_data, "driver")
     devices = project_data.get("devices", [])
@@ -6240,7 +6275,7 @@ def render_project_home_html(
     _group_embed = _sentinel_group_pass_embed_js()
     commissioning_meta = _commissioning_meta_tags(client_name=client_display, project_name=project_display)
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">{commissioning_meta}<title>{escape(page_title)}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/commissioning/sentinel-logo.png" type="image/png">{commissioning_meta}<title>{escape(page_title)}</title>
 <style>
 html,body{{margin:0;min-height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#eef3f7 0%,#dce7ef 100%);color:#183247;}}
@@ -6305,9 +6340,8 @@ body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#
 <main class='home-shell'>
 <section class='home-header'>
 <div class='home-kicker'>Project Home</div>
-<h1 class='home-title home-client-name'>{escape(client_display)}</h1>
 <h1 class='home-title home-project-name'>{escape(project_display)}</h1>
-<div class='home-source'>Current File: {escape(source_basename)}</div>
+<div class='home-source'>Current File: {escape(current_file_name)}</div>
 </section>
 <section class='home-section'>
 <button class='section-toggle' type='button' data-target='system-events' aria-expanded='false' onclick='toggleSection(this)'><span class='section-toggle-main'><span class='section-toggle-label'>{system_title}</span><span class='section-chevron' aria-hidden='true'><svg viewBox='0 0 16 16'><path d='M3.5 6.25 8 10.75 12.5 6.25'/></svg></span></span><span class='section-pct' id='home-pct-system'>0%</span></button>
@@ -7071,15 +7105,11 @@ def build_device_render_bundle(
         if ("iphone" in profile_name or "ipad" in profile_name)
         else "sentinel-device-profile-other"
     )
-    title = app_ui.get("header", {}).get("titleTemplate", "{deviceName} - {pageName}")
     first_page_name = str(pages[0].get("pageName", "")) if pages else ""
-    header = format_page_header_title(
-        title,
-        client_name=client_name,
-        project_name=project_name,
-        device_name=str(uf.get("displayName", "") or ""),
-        page_name=first_page_name,
-    )
+    project_name_text = str(project_name or "").strip()
+    header = format_colon_title(device_display_name, first_page_name)
+    document_title = format_colon_title(project_name_text, device_display_name) or device_display_name
+    home_label = format_project_home_link_label(project_name_text)
     diag_pages = device.get("diagnostics", {}).get("pages", [])
 
     product_model_key = _hard_key_model_key(device)
@@ -7214,6 +7244,8 @@ def build_device_render_bundle(
         device_profile_class=device_profile_class,
         client_name=client_name,
         project_name=project_name,
+        document_title=document_title,
+        home_label=home_label,
     )
     payload_doc_pages: list[dict[str, Any]] = []
     for page_index, payload in enumerate(page_payloads):

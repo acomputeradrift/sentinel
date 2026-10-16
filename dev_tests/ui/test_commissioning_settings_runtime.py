@@ -116,7 +116,7 @@ class CommissioningSettingsRuntimeTest(unittest.TestCase):
 
                 page.get_by_role("button", name="Settings").click()
                 expect(page.locator("#panel-settings")).to_be_visible()
-                bitmap = page.get_by_test_id("settings-type-button-Bitmap")
+                bitmap = page.get_by_test_id("settings-type-button-Bitmap---Normal")
                 expect(bitmap).to_be_checked()
                 expect(page.get_by_test_id("settings-type-event-Event-Trigger")).to_be_checked()
                 bitmap.uncheck()
@@ -127,9 +127,10 @@ class CommissioningSettingsRuntimeTest(unittest.TestCase):
                     timeout=10.0,
                 ) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
-                self.assertIn("button:Bitmap", body.get("disabledTypes") or [])
+                self.assertIn("button:Bitmap - Normal", body.get("disabledTypes") or [])
                 enabled = {row["id"]: row["enabled"] for row in body.get("types") or []}
-                self.assertFalse(enabled.get("button:Bitmap"))
+                self.assertFalse(enabled.get("button:Bitmap - Normal"))
+                self.assertNotIn("button:Bitmap", enabled)
                 self.assertTrue(enabled.get("button:Text"))
             finally:
                 context.close()

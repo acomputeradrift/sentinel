@@ -625,7 +625,7 @@ class TestingResultPostingTest(unittest.TestCase):
                                                         "macros": False,
                                                         "macroSteps": False,
                                                         "variables": {},
-                                                        "graphics": {"bitmap": True, "icon": False},
+                                                        "graphics": {"bitmapNormal": True, "bitmapActive": False, "icon": False},
                                                         "pageLink": False,
                                                     },
                                                     "resolvedPageLink": {"targetPageId": None},
@@ -669,7 +669,7 @@ class TestingResultPostingTest(unittest.TestCase):
             page.click("#rows .row .actions button")  # first "Pass"
             self._wait_for_ws_outbox(page, min_posts=1)
             sent = self._ws_payload(page)
-            self.assertEqual(sent["target"]["targetName"], "Bitmap")
+            self.assertEqual(sent["target"]["targetName"], "Bitmap - Normal")
             self.assertEqual(sent["target"]["refs"].get("buttonName"), "Graphics")
         finally:
             server.stop()
@@ -2266,7 +2266,7 @@ class TestingResultPostingTest(unittest.TestCase):
                                                         "macros": True,
                                                         "macroSteps": True,
                                                         "variables": many_vars,
-                                                        "graphics": {"bitmap": True, "icon": True},
+                                                        "graphics": {"bitmapNormal": True, "bitmapActive": False, "icon": True},
                                                         "pageLink": {"enabled": True, "targetPageId": 514},
                                                     },
                                                     "resolvedPageLink": {"targetPageId": 514},
@@ -2596,7 +2596,7 @@ class TestingResultPostingTest(unittest.TestCase):
                                                                                 "macros": False,
                                                                                 "macroSteps": True,
                                                                                 "variables": {},
-                                                                                "graphics": {"bitmap": True, "icon": True},
+                                                                                "graphics": {"bitmapNormal": True, "bitmapActive": False, "icon": True},
                                                                             },
                                                                         }
                                                                     ],

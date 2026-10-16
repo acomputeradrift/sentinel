@@ -42,7 +42,7 @@ def _ui_item_button(*, bitmap: bool = False) -> dict:
                 "Image": False,
                 "List": False,
             },
-            "graphics": {"bitmap": bitmap, "icon": False, "rtspVideo": False},
+            "graphics": {"bitmapNormal": bitmap, "bitmapActive": False, "icon": False, "rtspVideo": False},
             "pageLink": False,
         },
     }
@@ -325,7 +325,8 @@ class UiItemsCategoryFlowTest(unittest.TestCase):
         rows = progress._derive_device_targets(project_data)
         self.assertEqual(len(rows), 1)
         expected = set(rows[0].get("expected") or set())
-        self.assertIn("btn:89:353:41392:Bitmap", expected)
+        self.assertIn("btn:89:353:41392:Bitmap - Normal", expected)
+        self.assertNotIn("btn:89:353:41392:Bitmap", expected)
         self.assertFalse(any(key.endswith(":UI Item") or ":41391:" in key for key in expected))
 
 

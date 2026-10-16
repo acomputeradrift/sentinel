@@ -135,6 +135,19 @@ def _require_project_for_user(repo: Repository, *, user_id: str, project_id: str
     return repo.get_project(projectId=project_id)
 
 
+def _database_display_names(repo: Repository, project) -> tuple[str, str]:
+    if project is None:
+        return "", ""
+    project_name = str(getattr(project, "name", "") or "").strip()
+    client_id = str(getattr(project, "clientId", "") or "").strip()
+    client_name = ""
+    if client_id:
+        client = repo.get_client(clientId=client_id)
+        if client is not None:
+            client_name = str(getattr(client, "name", "") or "").strip()
+    return client_name, project_name
+
+
 def _technician_payload(tech) -> dict:
     created = tech.createdAtUtc
     created_str = created.isoformat() if hasattr(created, "isoformat") else str(created)
@@ -419,7 +432,8 @@ async def upload_apex(request: Request, projectId: str, apex: UploadFile) -> dic
 @router.post("/projects/{projectId}/upload-and-regenerate")
 async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFile) -> dict:
     repo = _repo(request)
-    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    project = _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    client_name, project_name = _database_display_names(repo, project)
     if not apex.filename:
         raise http_error(400, code="VALIDATION_ERROR", message="Apex filename is required.")
     content = await apex.read()
@@ -444,6 +458,8 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
                 uploadId=upload_id,
                 originalFilename=apex.filename,
             ),
+            client_name=client_name,
+            project_name=project_name,
             previous_filename=previous_filename,
             current_filename=apex.filename,
         )
@@ -505,7 +521,8 @@ async def upload_and_regenerate(request: Request, projectId: str, apex: UploadFi
 @router.post("/projects/{projectId}/regenerate")
 async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
     repo = _repo(request)
-    _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    project = _require_project_for_user(repo, user_id=_commissioning_user_id(request), project_id=projectId)
+    client_name, project_name = _database_display_names(repo, project)
     upload_id = payload.get("uploadId")
     if upload_id is None:
         raise http_error(400, code="VALIDATION_ERROR", message="uploadId is required for MVP regenerate.")
@@ -530,6 +547,8 @@ async def regenerate(request: Request, projectId: str, payload: dict) -> dict:
                 uploadId=str(upload_id),
                 originalFilename=original_filename,
             ),
+            client_name=client_name,
+            project_name=project_name,
             previous_filename=previous_filename,
             current_filename=original_filename,
         )

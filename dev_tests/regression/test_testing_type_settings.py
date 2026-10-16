@@ -45,7 +45,12 @@ class TestingTypesCatalogTest(unittest.TestCase):
                         "Image": True,
                         "List": True,
                     },
-                    "graphics": {"bitmap": True, "icon": True, "rtspVideo": True},
+                    "graphics": {
+                        "bitmapNormal": True,
+                        "bitmapActive": True,
+                        "icon": True,
+                        "rtspVideo": True,
+                    },
                     "pageLink": True,
                 }
             }
@@ -65,7 +70,8 @@ class TestingTypesCatalogTest(unittest.TestCase):
                 "Variable - Command",
                 "Variable - Image",
                 "Variable - List",
-                "Bitmap",
+                "Bitmap - Normal",
+                "Bitmap - Active",
                 "Icon",
                 "RTSP Video",
                 "Page Link",
@@ -82,8 +88,12 @@ class TestingTypesCatalogTest(unittest.TestCase):
 
     def test_canonicalize_key_suffixes_used_in_resolved_targets(self):
         self.assertEqual(
-            testing_types.type_id_for_target_key("btn:89:353:41392:Bitmap"),
-            "button:Bitmap",
+            testing_types.type_id_for_target_key("btn:89:353:41392:Bitmap - Normal"),
+            "button:Bitmap - Normal",
+        )
+        self.assertEqual(
+            testing_types.type_id_for_target_key("btn:89:353:41392:Bitmap - Active"),
+            "button:Bitmap - Active",
         )
         self.assertEqual(
             testing_types.type_id_for_target_key("btn:81:513:48551:Var.Reversed"),
@@ -103,7 +113,7 @@ class TestingTypesCatalogTest(unittest.TestCase):
         )
 
     def test_unknown_type_stays_enabled(self):
-        self.assertTrue(testing_types.is_target_key_enabled("event:1:Command", ["button:Bitmap"]))
+        self.assertTrue(testing_types.is_target_key_enabled("event:1:Command", ["button:Bitmap - Normal"]))
 
     def test_default_payload_all_on(self):
         payload = testing_types.settings_payload(project_id="p1", disabled_types=[])
@@ -112,7 +122,13 @@ class TestingTypesCatalogTest(unittest.TestCase):
         self.assertTrue(all(row["enabled"] for row in payload["types"]))
         self.assertEqual(
             payload["graphicsTypeIds"],
-            ["button:Bitmap", "button:Icon", "button:Variable - Image", "button:RTSP Video"],
+            [
+                "button:Bitmap - Normal",
+                "button:Bitmap - Active",
+                "button:Icon",
+                "button:Variable - Image",
+                "button:RTSP Video",
+            ],
         )
 
     def test_excluded_from_testing_message_uses_settings_plurals(self):
@@ -125,8 +141,12 @@ class TestingTypesCatalogTest(unittest.TestCase):
             "Text Labels are not included in testing",
         )
         self.assertEqual(
-            testing_types.excluded_from_testing_message("Bitmap"),
-            "Bitmaps are not included in testing",
+            testing_types.excluded_from_testing_message("Bitmap - Normal"),
+            "Bitmaps - Normal are not included in testing",
+        )
+        self.assertEqual(
+            testing_types.excluded_from_testing_message("Bitmap - Active"),
+            "Bitmaps - Active are not included in testing",
         )
         self.assertEqual(
             testing_types.excluded_from_testing_message("System Macro"),
@@ -215,7 +235,7 @@ class TestingTypeSettingsApiTest(unittest.TestCase):
                                                         "macros": False,
                                                         "macroSteps": False,
                                                         "variables": {},
-                                                        "graphics": {"bitmap": True, "icon": False},
+                                                        "graphics": {"bitmapNormal": True, "bitmapActive": False, "icon": False},
                                                         "pageLink": False,
                                                     },
                                                 }
@@ -268,11 +288,11 @@ class TestingTypeSettingsApiTest(unittest.TestCase):
             json={"label": "Alex"},
         ).json()
         token = tech["techUrl"].split("/testing/")[1]
-        bitmap_key = "btn:89:353:41392:Bitmap"
+        bitmap_key = "btn:89:353:41392:Bitmap - Normal"
         client.post(
             f"/api/v1/testing/{token}/results",
             json={
-                "target": {"targetKey": bitmap_key, "kind": "BUTTON", "targetName": "Bitmap", "refs": {}},
+                "target": {"targetKey": bitmap_key, "kind": "BUTTON", "targetName": "Bitmap - Normal", "refs": {}},
                 "outcome": "PASS",
             },
         )
@@ -283,11 +303,11 @@ class TestingTypeSettingsApiTest(unittest.TestCase):
 
         put = client.put(
             f"/api/v1/commissioning/projects/{project_id}/testing-types",
-            json={"disabledTypes": ["button:Bitmap", "button:Icon", "button:Variable - Image"]},
+            json={"disabledTypes": ["button:Bitmap - Normal", "button:Icon", "button:Variable - Image"]},
         )
         self.assertEqual(put.status_code, 200, put.text)
         self.assertEqual(put.json().get("offBehavior"), "exclude")
-        self.assertIn("button:Bitmap", put.json().get("disabledTypes") or [])
+        self.assertIn("button:Bitmap - Normal", put.json().get("disabledTypes") or [])
 
         after = client.get(f"/api/v1/commissioning/projects/{project_id}/progress").json()
         self.assertEqual(after["counts"]["totalTargets"], 3)
@@ -299,7 +319,7 @@ class TestingTypeSettingsApiTest(unittest.TestCase):
 
         snap = client.get(f"/api/v1/commissioning/projects/{project_id}/rollups").json()
         by_name = (snap.get("currentFailures") or {}).get("byTargetName") or {}
-        self.assertNotIn("Bitmap", by_name)
+        self.assertNotIn("Bitmap - Normal", by_name)
 
     def test_disable_event_macro_independent_of_button_macro(self):
         client, project_id = self._app_with_targets()
@@ -328,7 +348,7 @@ class TestingTypeSettingsApiTest(unittest.TestCase):
                 _ = json.loads(cws.receive_text())
                 put = client.put(
                     f"/api/v1/commissioning/projects/{project_id}/testing-types",
-                    json={"disabledTypes": ["button:Bitmap"]},
+                    json={"disabledTypes": ["button:Bitmap - Normal"]},
                 )
                 self.assertEqual(put.status_code, 200, put.text)
                 found_settings = False
@@ -338,7 +358,7 @@ class TestingTypeSettingsApiTest(unittest.TestCase):
                     if msg.get("type") == "testing_type_settings":
                         found_settings = True
                         self.assertEqual(msg.get("offBehavior"), "exclude")
-                        self.assertIn("button:Bitmap", msg.get("disabledTypes") or [])
+                        self.assertIn("button:Bitmap - Normal", msg.get("disabledTypes") or [])
                     if msg.get("type") == "commissioning_rollups":
                         found_rollups = True
                         self.assertEqual((msg.get("progress") or {}).get("counts", {}).get("totalTargets"), 3)
@@ -366,6 +386,10 @@ class TestingTypeEmbedTest(unittest.TestCase):
         html = (root / "src" / "sentinel" / "ui" / "commissioning" / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="tab-settings"', html)
         self.assertIn("settings_tab.js", html)
+        settings_js = (root / "src" / "sentinel" / "ui" / "commissioning" / "settings_tab.js").read_text(encoding="utf-8")
+        self.assertIn('id === "button:Bitmap - Normal"', settings_js)
+        self.assertIn('id === "button:Bitmap - Active"', settings_js)
+        self.assertNotIn('id === "button:Bitmap"', settings_js)
 
     def test_technician_dialogue_shows_excluded_type_message(self):
         root = Path(__file__).resolve().parents[2]
@@ -382,7 +406,8 @@ class TestingTypeEmbedTest(unittest.TestCase):
             "Macro Steps",
             "Event Triggers",
             "Page Links",
-            "Bitmaps",
+            "Bitmaps - Normal",
+            "Bitmaps - Active",
             "Icons",
         ):
             self.assertIn(display, status_js)
@@ -402,18 +427,19 @@ class TestingTypeEmbedTest(unittest.TestCase):
             "const globalThis={};"
             "eval(src);"
             "const api=globalThis.__sentinelTestStatus;"
-            "api.setDisabledTypeIds(['button:Text']);"
-            "const mixed=api.dialogueRowsHtml({kind:'BUTTON',targets:['Text','Bitmap']},s=>String(s));"
-            "const only=api.dialogueRowsHtml({kind:'BUTTON',targets:['Text']},s=>String(s));"
+            "api.setDisabledTypeIds(['button:Text','button:Bitmap - Normal']);"
+            "const mixed=api.dialogueRowsHtml({kind:'BUTTON',targets:['Text','Bitmap - Normal','Icon']},s=>String(s));"
+            "const only=api.dialogueRowsHtml({kind:'BUTTON',targets:['Bitmap - Normal']},s=>String(s));"
             "process.stdout.write(JSON.stringify({mixed:mixed,only:only}));"
         )
         proc = subprocess.run([node, "-e", script], capture_output=True, text=True, check=False)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         body = json.loads(proc.stdout)
         self.assertIn("Text Labels are not included in testing", body["mixed"])
-        self.assertIn(">Bitmap<", body["mixed"])
+        self.assertIn("Bitmaps - Normal are not included in testing", body["mixed"])
+        self.assertIn(">Icon<", body["mixed"])
         self.assertIn("Pass", body["mixed"])
-        self.assertIn("Text Labels are not included in testing", body["only"])
+        self.assertIn("Bitmaps - Normal are not included in testing", body["only"])
         self.assertNotIn("Pass", body["only"])
         self.assertNotIn("Fail", body["only"])
 

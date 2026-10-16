@@ -1395,15 +1395,18 @@ def _resolve_button(
     up_bitmap_id = int(button_row["UpBitmapId"]) if "UpBitmapId" in button_row.keys() and button_row["UpBitmapId"] is not None else -1
     down_bitmap_id = int(button_row["DownBitmapId"]) if "DownBitmapId" in button_row.keys() and button_row["DownBitmapId"] is not None else -1
     icon_bitmap_id = int(button_row["IconBitmapId"]) if "IconBitmapId" in button_row.keys() and button_row["IconBitmapId"] is not None else -1
-    raw_bitmap_enabled = bool(up_bitmap_id != -1 or down_bitmap_id != -1)
+    raw_bitmap_normal = bool(up_bitmap_id != -1)
+    raw_bitmap_active = bool(down_bitmap_id != -1)
     raw_icon_enabled = bool(icon_bitmap_id != -1)
     # Temporary gating rule: slider/toggle/level-indicator controls do not emit graphics test targets.
     # For all other controls, rely on raw RTIDeviceButtonData bitmap/icon ids.
     if button_type in {"Slider", "Toggle", "LevelIndicatorBar"}:
-        bitmap_enabled = False
+        bitmap_normal_enabled = False
+        bitmap_active_enabled = False
         icon_enabled = False
     else:
-        bitmap_enabled = raw_bitmap_enabled
+        bitmap_normal_enabled = raw_bitmap_normal
+        bitmap_active_enabled = raw_bitmap_active
         icon_enabled = raw_icon_enabled
 
     effective_room_id = (
@@ -1675,7 +1678,8 @@ def _resolve_button(
         or command_enabled
         or image_enabled
         or list_enabled
-        or bitmap_enabled
+        or bitmap_normal_enabled
+        or bitmap_active_enabled
         or icon_enabled
         or resolved_page_link is not None
         or audio_scope is not None
@@ -1707,7 +1711,8 @@ def _resolve_button(
                 "List": list_enabled,
             },
             "graphics": {
-                "bitmap": bitmap_enabled,
+                "bitmapNormal": bitmap_normal_enabled,
+                "bitmapActive": bitmap_active_enabled,
                 "icon": icon_enabled,
                 "rtspVideo": is_rtsp_video,
             },
@@ -1811,6 +1816,18 @@ def _resolve_button(
         or list_enabled
     )
     return user_button, diag_button
+
+
+def _has_graphics_test_target(button: dict[str, Any]) -> bool:
+    graphics = (button.get("testTargets") or {}).get("graphics") if isinstance(button, dict) else None
+    if not isinstance(graphics, dict):
+        return False
+    return bool(
+        graphics.get("bitmapNormal")
+        or graphics.get("bitmapActive")
+        or graphics.get("icon")
+        or graphics.get("rtspVideo")
+    )
 
 
 def _has_any_variable_target(button: dict[str, Any]) -> bool:
@@ -2551,9 +2568,7 @@ def extract_project_data(ctx: ExtractContext, progress_hook: Any = None) -> dict
                             or user_button["testTargets"].get("macros")
                             or user_button["testTargets"].get("macroSteps")
                             or _has_any_variable_target(user_button)
-                            or bool((user_button["testTargets"].get("graphics") or {}).get("bitmap"))
-                            or bool((user_button["testTargets"].get("graphics") or {}).get("icon"))
-                            or bool((user_button["testTargets"].get("graphics") or {}).get("rtspVideo"))
+                            or _has_graphics_test_target(user_button)
                             or isinstance((user_button.get("apexScopeSource") or {}).get("audioScope"), dict)
                         ),
                     )
@@ -2758,9 +2773,7 @@ def _resolve_viewport_frames(
                     or user_button["testTargets"].get("macros")
                     or user_button["testTargets"].get("macroSteps")
                     or _has_any_variable_target(user_button)
-                    or bool((user_button["testTargets"].get("graphics") or {}).get("bitmap"))
-                    or bool((user_button["testTargets"].get("graphics") or {}).get("icon"))
-                    or bool((user_button["testTargets"].get("graphics") or {}).get("rtspVideo"))
+                    or _has_graphics_test_target(user_button)
                     or isinstance((user_button.get("apexScopeSource") or {}).get("audioScope"), dict)
                 ),
             )
