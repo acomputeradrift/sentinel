@@ -135,6 +135,12 @@ def _require_project_for_user(repo: Repository, *, user_id: str, project_id: str
     return repo.get_project(projectId=project_id)
 
 
+def _key_code(exc: BaseException) -> str:
+    if isinstance(exc, KeyError) and exc.args:
+        return str(exc.args[0])
+    return ""
+
+
 def _database_display_names(repo: Repository, project) -> tuple[str, str]:
     if project is None:
         return "", ""
@@ -334,6 +340,83 @@ def create_project(request: Request, clientId: str, payload: dict) -> dict:
         "createdAtUtc": p.createdAtUtc,
         "activeTechLinkIds": [],
     }
+
+
+@router.patch("/clients/{clientId}")
+def rename_client(request: Request, clientId: str, payload: dict) -> dict:
+    name = str((payload or {}).get("name") or "").strip()
+    if not name:
+        raise http_error(400, code="VALIDATION_ERROR", message="Client name is required.")
+    try:
+        c = _repo(request).rename_client(userId=_commissioning_user_id(request), clientId=clientId, name=name)
+    except KeyError as e:
+        if _key_code(e) == "CLIENT_EXISTS":
+            raise http_error(409, code="CLIENT_EXISTS", message="Client name already exists.")
+        raise http_error(404, code="CLIENT_NOT_FOUND", message="Client not found.")
+    return {"clientId": c.clientId, "name": c.name, "createdAtUtc": c.createdAtUtc}
+
+
+@router.patch("/projects/{projectId}")
+def rename_project(request: Request, projectId: str, payload: dict) -> dict:
+    name = str((payload or {}).get("name") or "").strip()
+    if not name:
+        raise http_error(400, code="VALIDATION_ERROR", message="Project name is required.")
+    try:
+        p = _repo(request).rename_project(userId=_commissioning_user_id(request), projectId=projectId, name=name)
+    except KeyError:
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    return {
+        "projectId": p.projectId,
+        "clientId": p.clientId,
+        "name": p.name,
+        "status": p.status,
+        "createdAtUtc": p.createdAtUtc,
+    }
+
+
+@router.delete("/clients/{clientId}")
+def delete_client(request: Request, clientId: str, payload: dict) -> dict:
+    confirm = str((payload or {}).get("confirmName") or "").strip()
+    if not confirm:
+        raise http_error(400, code="VALIDATION_ERROR", message="Type the client name to confirm.")
+    try:
+        _repo(request).delete_client(
+            userId=_commissioning_user_id(request),
+            clientId=clientId,
+            confirmName=confirm,
+        )
+    except KeyError as e:
+        code = _key_code(e)
+        if code == "CONFIRM_NAME_MISMATCH":
+            raise http_error(400, code="VALIDATION_ERROR", message="Client name does not match.")
+        if code == "CLIENT_HAS_PROJECTS":
+            raise http_error(
+                409,
+                code="CLIENT_HAS_PROJECTS",
+                message="This client still has projects. Delete the projects first.",
+            )
+        raise http_error(404, code="CLIENT_NOT_FOUND", message="Client not found.")
+    return {"clientId": clientId, "deleted": True}
+
+
+@router.delete("/projects/{projectId}")
+def delete_project(request: Request, projectId: str, payload: dict) -> dict:
+    confirm = str((payload or {}).get("confirmName") or "").strip()
+    if not confirm:
+        raise http_error(400, code="VALIDATION_ERROR", message="Type the project name to confirm.")
+    try:
+        _repo(request).delete_project(
+            userId=_commissioning_user_id(request),
+            projectId=projectId,
+            confirmName=confirm,
+        )
+    except KeyError as e:
+        if _key_code(e) == "CONFIRM_NAME_MISMATCH":
+            raise http_error(400, code="VALIDATION_ERROR", message="Project name does not match.")
+        raise http_error(404, code="PROJECT_NOT_FOUND", message="Project not found.")
+    pipeline.retire_project_generated(projectId=projectId)
+    pipeline.retire_project_uploads(projectId=projectId)
+    return {"projectId": projectId, "deleted": True}
 
 
 @router.get("/tech-links")

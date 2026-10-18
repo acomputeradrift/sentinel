@@ -47,6 +47,7 @@ function formatUtc(ts) {
 
 const state = {
   allTechLinks: [],
+  clients: [],
 };
 
 function groupLinksByUser(links) {
@@ -142,11 +143,175 @@ async function revokeAnyLink(link) {
   await loadAllTechLinks();
 }
 
+function appendManagedRow(parent, options) {
+  const block = document.createElement("div");
+  if (options.blockClass) block.className = options.blockClass;
+  const row = document.createElement("div");
+  row.className = "row";
+  const field = document.createElement("label");
+  field.className = "field grow";
+  const span = document.createElement("span");
+  span.textContent = options.label;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = options.name || "";
+  field.appendChild(span);
+  field.appendChild(input);
+  const save = document.createElement("button");
+  save.type = "button";
+  save.textContent = "Save";
+  save.addEventListener("click", () => {
+    void options.onSave(input.value);
+  });
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "danger";
+  remove.textContent = "Delete";
+  const confirm = document.createElement("div");
+  confirm.className = "confirm-row";
+  confirm.hidden = true;
+  const confirmField = document.createElement("label");
+  confirmField.className = "field grow";
+  const confirmSpan = document.createElement("span");
+  confirmSpan.textContent = options.confirmLabel;
+  const confirmInput = document.createElement("input");
+  confirmInput.type = "text";
+  confirmInput.value = "";
+  confirmInput.setAttribute("autocomplete", "off");
+  confirmField.appendChild(confirmSpan);
+  confirmField.appendChild(confirmInput);
+  const confirmButton = document.createElement("button");
+  confirmButton.type = "button";
+  confirmButton.className = "danger";
+  confirmButton.textContent = "Confirm delete";
+  confirmButton.addEventListener("click", () => {
+    void options.onDelete(confirmInput.value);
+  });
+  confirm.appendChild(confirmField);
+  confirm.appendChild(confirmButton);
+  remove.addEventListener("click", () => {
+    confirm.hidden = false;
+    confirmInput.focus();
+  });
+  row.appendChild(field);
+  row.appendChild(save);
+  row.appendChild(remove);
+  block.appendChild(row);
+  block.appendChild(confirm);
+  parent.appendChild(block);
+}
+
+async function runManagedAction(action) {
+  try {
+    setStatus($("clientsProjectsStatus"), "");
+    await action();
+  } catch (e) {
+    setStatus($("clientsProjectsStatus"), String(e?.message || e));
+  }
+}
+
+function renderClientsAndProjects() {
+  const host = $("clientsProjectsList");
+  const empty = $("clientsProjectsEmpty");
+  host.innerHTML = "";
+  const clients = state.clients;
+  empty.style.display = clients.length ? "none" : "";
+  for (const client of clients) {
+    const section = document.createElement("section");
+    section.className = "client-block";
+    appendManagedRow(section, {
+      label: "Client",
+      name: client.name || "",
+      confirmLabel: "Type the client name to delete",
+      onSave: (name) =>
+        runManagedAction(() => saveClientName(client.clientId, name)),
+      onDelete: (confirmName) =>
+        runManagedAction(() => deleteClientByName(client.clientId, confirmName)),
+    });
+    const projects = document.createElement("div");
+    projects.className = "project-block";
+    for (const project of client.projects || []) {
+      appendManagedRow(projects, {
+        label: "Project",
+        name: project.name || "",
+        confirmLabel: "Type the project name to delete",
+        onSave: (name) =>
+          runManagedAction(() => saveProjectName(project.projectId, name)),
+        onDelete: (confirmName) =>
+          runManagedAction(() => deleteProjectByName(project.projectId, confirmName)),
+      });
+    }
+    section.appendChild(projects);
+    host.appendChild(section);
+  }
+}
+
+async function loadClientsAndProjects() {
+  const rows = await jsonFetch(api("/commissioning/clients"));
+  const clients = Array.isArray(rows) ? rows : [];
+  const detailed = [];
+  for (const client of clients) {
+    const projects = await jsonFetch(
+      api(`/commissioning/clients/${encodeURIComponent(client.clientId)}/projects`)
+    );
+    detailed.push({
+      clientId: client.clientId,
+      name: client.name || "",
+      projects: Array.isArray(projects) ? projects : [],
+    });
+  }
+  state.clients = detailed;
+  renderClientsAndProjects();
+}
+
+async function saveClientName(clientId, name) {
+  await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  await loadClientsAndProjects();
+}
+
+async function saveProjectName(projectId, name) {
+  await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  await loadClientsAndProjects();
+}
+
+async function deleteClientByName(clientId, confirmName) {
+  await jsonFetch(api(`/commissioning/clients/${encodeURIComponent(clientId)}`), {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmName }),
+  });
+  await loadClientsAndProjects();
+  await loadAllTechLinks();
+}
+
+async function deleteProjectByName(projectId, confirmName) {
+  await jsonFetch(api(`/commissioning/projects/${encodeURIComponent(projectId)}`), {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmName }),
+  });
+  await loadClientsAndProjects();
+  await loadAllTechLinks();
+}
+
 async function run() {
   try {
     await loadAllTechLinks();
   } catch (e) {
     setStatus($("allTechLinkStatus"), String(e?.message || e));
+  }
+  try {
+    await loadClientsAndProjects();
+  } catch (e) {
+    setStatus($("clientsProjectsStatus"), String(e?.message || e));
   }
 }
 

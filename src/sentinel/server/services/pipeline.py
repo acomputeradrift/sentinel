@@ -167,6 +167,29 @@ def retire_project_generated(*, projectId: str) -> bool:
         return False
 
 
+def retire_project_uploads(*, projectId: str) -> bool:
+    """
+    Delete uploads/{projectId}/ for one deleted project.
+    """
+    wanted = str(projectId or "").strip()
+    if not wanted or wanted in {".", ".."}:
+        return False
+    upload_dir = _project_upload_dir(projectId=wanted)
+    root = _upload_root()
+    try:
+        upload_dir.relative_to(root)
+    except ValueError:
+        return False
+    if upload_dir == root or not upload_dir.exists() or not upload_dir.is_dir():
+        return False
+    try:
+        shutil.rmtree(upload_dir)
+        return True
+    except OSError as exc:
+        _log.warning("[pipeline] retire-uploads: failed to remove %s err=%s", upload_dir, exc)
+        return False
+
+
 def _call_phase_hook(phase_hook, phase: str, percent: float) -> None:
     if not callable(phase_hook):
         return

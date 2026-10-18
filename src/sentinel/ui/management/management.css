@@ -246,3 +246,27 @@ button.danger {
   gap: 8px;
   font-size: 13px;
 }
+
+.client-block {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e4ecf3;
+}
+
+.client-block:first-child {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.project-block {
+  margin-left: 16px;
+}
+
+.confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 8px;
+}

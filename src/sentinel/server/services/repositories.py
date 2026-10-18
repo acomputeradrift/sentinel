@@ -187,6 +187,14 @@ class Repository(Protocol):
 
     def list_projects_for_client(self, *, userId: str, clientId: str) -> list[Project]: ...
 
+    def rename_client(self, *, userId: str, clientId: str, name: str) -> Client: ...
+
+    def rename_project(self, *, userId: str, projectId: str, name: str) -> Project: ...
+
+    def delete_client(self, *, userId: str, clientId: str, confirmName: str) -> None: ...
+
+    def delete_project(self, *, userId: str, projectId: str, confirmName: str) -> None: ...
+
     def get_project(self, *, projectId: str) -> Project | None: ...
 
     def set_project_status(self, *, projectId: str, status: str) -> None: ...
@@ -365,6 +373,92 @@ class InMemoryRepository:
             if client is None or str(client.userId) != str(userId):
                 raise KeyError("CLIENT_NOT_FOUND")
             return [hydrate_project_ready_status(p) or p for p in self._projects.values() if p.clientId == clientId]
+
+    def rename_client(self, *, userId: str, clientId: str, name: str) -> Client:
+        cleaned = str(name or "").strip()
+        with self._lock:
+            client = self._clients.get(clientId)
+            if client is None or str(client.userId) != str(userId):
+                raise KeyError("CLIENT_NOT_FOUND")
+            wanted = cleaned.casefold()
+            for existing in self._clients.values():
+                if existing.clientId == clientId:
+                    continue
+                if str(existing.userId) == str(userId) and str(existing.name).strip().casefold() == wanted:
+                    raise KeyError("CLIENT_EXISTS")
+            updated = Client(
+                clientId=client.clientId,
+                userId=client.userId,
+                name=cleaned,
+                createdAtUtc=client.createdAtUtc,
+            )
+            self._clients[clientId] = updated
+            return updated
+
+    def rename_project(self, *, userId: str, projectId: str, name: str) -> Project:
+        cleaned = str(name or "").strip()
+        with self._lock:
+            project = self._project_for_user_locked(userId=userId, projectId=projectId)
+            project.name = cleaned
+            return project
+
+    def delete_client(self, *, userId: str, clientId: str, confirmName: str) -> None:
+        with self._lock:
+            client = self._clients.get(clientId)
+            if client is None or str(client.userId) != str(userId):
+                raise KeyError("CLIENT_NOT_FOUND")
+            if str(client.name or "").strip() != str(confirmName or "").strip():
+                raise KeyError("CONFIRM_NAME_MISMATCH")
+            if any(project.clientId == clientId for project in self._projects.values()):
+                raise KeyError("CLIENT_HAS_PROJECTS")
+            self._clients.pop(clientId, None)
+
+    def delete_project(self, *, userId: str, projectId: str, confirmName: str) -> None:
+        with self._lock:
+            project = self._project_for_user_locked(userId=userId, projectId=projectId)
+            if str(project.name or "").strip() != str(confirmName or "").strip():
+                raise KeyError("CONFIRM_NAME_MISMATCH")
+            self._purge_project_locked(projectId)
+
+    def _project_for_user_locked(self, *, userId: str, projectId: str) -> Project:
+        project = self._projects.get(projectId)
+        if project is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        client = self._clients.get(project.clientId)
+        if client is None or str(client.userId) != str(userId):
+            raise KeyError("PROJECT_NOT_FOUND")
+        return project
+
+    def _purge_project_locked(self, project_id: str) -> None:
+        link_ids = [link_id for link_id, link in self._tech_links.items() if link.projectId == project_id]
+        for link_id in link_ids:
+            old = self._active_token_by_link.pop(link_id, None)
+            if old is not None:
+                self._active_tokens.pop(old, None)
+            self._tech_links.pop(link_id, None)
+        stale_tokens = [token for token, active in self._active_tokens.items() if active.projectId == project_id]
+        for token in stale_tokens:
+            active = self._active_tokens.pop(token, None)
+            if active is not None:
+                self._active_token_by_link.pop(active.techLinkId, None)
+        upload_ids = [upload_id for upload_id, rec in self._uploads.items() if rec.projectId == project_id]
+        for upload_id in upload_ids:
+            self._uploads.pop(upload_id, None)
+        self._active_upload_by_project.pop(project_id, None)
+        for store in (
+            self._results_by_project_target,
+            self._fail_tags_by_project_target,
+            self._fail_tag_times_by_project_target,
+            self._layer_locks_by_project_scope_layer,
+            self._first_outcome_by_project_target,
+        ):
+            for key in [key for key in store if key[0] == project_id]:
+                store.pop(key, None)
+        self._testing_type_disabled_by_project.pop(project_id, None)
+        self._test_passes_by_project.pop(project_id, None)
+        self._fail_tag_history = [row for row in self._fail_tag_history if row.get("projectId") != project_id]
+        self._changelog_history_by_project.pop(project_id, None)
+        self._projects.pop(project_id, None)
 
     def get_project(self, *, projectId: str) -> Project | None:
         with self._lock:
@@ -1032,6 +1126,42 @@ class PostgresRepository:
             if project is not None:
                 out.append(project)
         return out
+
+    def rename_client(self, *, userId: str, clientId: str, name: str) -> Client:
+        try:
+            self._q.rename_client(self._database_url, user_id=userId, client_id=clientId, name=name)
+        except self._q.DuplicateClientNameError as e:
+            raise KeyError("CLIENT_EXISTS") from e
+        client = self.get_client(clientId=clientId)
+        if client is None or str(client.userId) != str(userId):
+            raise KeyError("CLIENT_NOT_FOUND")
+        return client
+
+    def rename_project(self, *, userId: str, projectId: str, name: str) -> Project:
+        self._q.rename_project(self._database_url, user_id=userId, project_id=projectId, name=name)
+        project = self.get_project(projectId=projectId)
+        if project is None:
+            raise KeyError("PROJECT_NOT_FOUND")
+        owner = self.get_client(clientId=project.clientId)
+        if owner is None or str(owner.userId) != str(userId):
+            raise KeyError("PROJECT_NOT_FOUND")
+        return project
+
+    def delete_client(self, *, userId: str, clientId: str, confirmName: str) -> None:
+        self._q.delete_client(
+            self._database_url,
+            user_id=userId,
+            client_id=clientId,
+            confirm_name=confirmName,
+        )
+
+    def delete_project(self, *, userId: str, projectId: str, confirmName: str) -> None:
+        self._q.delete_project(
+            self._database_url,
+            user_id=userId,
+            project_id=projectId,
+            confirm_name=confirmName,
+        )
 
     def set_project_status(self, *, projectId: str, status: str) -> None:
         self._q.set_project_status(self._database_url, project_id=projectId, status=status)

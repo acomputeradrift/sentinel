@@ -199,6 +199,132 @@ def list_projects_for_client(database_url: str, *, client_id: str) -> list[dict[
         con.close()
 
 
+def _exact_name(stored: Any, typed: Any) -> bool:
+    return str(stored or "").strip() == str(typed or "").strip()
+
+
+def rename_client(database_url: str, *, user_id: str, client_id: str, name: str) -> None:
+    cleaned = str(name or "").strip()
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select name from clients where client_id=%s and user_id=%s",
+            (client_id, user_id),
+        )
+        if row is None:
+            raise KeyError("CLIENT_NOT_FOUND")
+        cur = con.cursor()
+        try:
+            cur.execute(
+                "update clients set name=%s where client_id=%s and user_id=%s",
+                (cleaned, client_id, user_id),
+            )
+        except Exception as e:
+            msg = str(e)
+            if "clients_user_id_name_uq" in msg or "clients_name_uq" in msg:
+                con.rollback()
+                raise DuplicateClientNameError(cleaned) from e
+            raise
+        con.commit()
+    finally:
+        con.close()
+
+
+def rename_project(database_url: str, *, user_id: str, project_id: str, name: str) -> None:
+    cleaned = str(name or "").strip()
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select c.user_id as \"userId\" from projects p "
+            "join clients c on c.client_id=p.client_id where p.project_id=%s",
+            (project_id,),
+        )
+        if row is None or str(row.get("userId")) != str(user_id):
+            raise KeyError("PROJECT_NOT_FOUND")
+        cur = con.cursor()
+        cur.execute("update projects set name=%s where project_id=%s", (cleaned, project_id))
+        con.commit()
+    finally:
+        con.close()
+
+
+def delete_client(database_url: str, *, user_id: str, client_id: str, confirm_name: str) -> None:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select name from clients where client_id=%s and user_id=%s for update",
+            (client_id, user_id),
+        )
+        if row is None:
+            con.rollback()
+            raise KeyError("CLIENT_NOT_FOUND")
+        if not _exact_name(row.get("name"), confirm_name):
+            con.rollback()
+            raise KeyError("CONFIRM_NAME_MISMATCH")
+        has_project = db.fetch_one(
+            con,
+            "select project_id as \"projectId\" from projects where client_id=%s limit 1",
+            (client_id,),
+        )
+        if has_project is not None:
+            con.rollback()
+            raise KeyError("CLIENT_HAS_PROJECTS")
+        cur = con.cursor()
+        cur.execute(
+            "delete from clients where client_id=%s and user_id=%s",
+            (client_id, user_id),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+# Child rows reference projects without ON DELETE CASCADE. Clear them in FK order.
+_PROJECT_DELETE_SQL = (
+    "update projects set active_upload_id=null where project_id=%s",
+    "update test_results set recorded_by_tech_link_id=null "
+    "where recorded_by_tech_link_id in (select tech_link_id from tech_links where project_id=%s)",
+    "delete from tech_link_tokens where tech_link_id in (select tech_link_id from tech_links where project_id=%s)",
+    "delete from tech_links where project_id=%s",
+    "delete from target_first_test_outcomes where project_id=%s",
+    "delete from test_results where project_id=%s",
+    "delete from generation_runs where project_id=%s",
+    "delete from fail_tag_history where project_id=%s",
+    "delete from project_test_passes where project_id=%s",
+    "delete from fail_tags where project_id=%s",
+    "delete from layer_lock_states where project_id=%s",
+    "delete from project_testing_type_settings where project_id=%s",
+    "delete from uploads where project_id=%s",
+    "delete from projects where project_id=%s",
+)
+
+
+def delete_project(database_url: str, *, user_id: str, project_id: str, confirm_name: str) -> None:
+    con = db.connect(database_url)
+    try:
+        row = db.fetch_one(
+            con,
+            "select p.name as \"name\", c.user_id as \"userId\" from projects p "
+            "join clients c on c.client_id=p.client_id where p.project_id=%s",
+            (project_id,),
+        )
+        if row is None or str(row.get("userId")) != str(user_id):
+            con.rollback()
+            raise KeyError("PROJECT_NOT_FOUND")
+        if not _exact_name(row.get("name"), confirm_name):
+            con.rollback()
+            raise KeyError("CONFIRM_NAME_MISMATCH")
+        cur = con.cursor()
+        for sql in _PROJECT_DELETE_SQL:
+            cur.execute(sql, (project_id,))
+        con.commit()
+    finally:
+        con.close()
+
+
 def list_all_project_ids(database_url: str) -> list[str]:
     con = db.connect(database_url)
     try:

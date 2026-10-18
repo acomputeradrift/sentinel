@@ -85,7 +85,7 @@ Cloud/Grokbot VMs cannot see Jamie’s Mac `~/.ssh`. Local Mac agents can `ssh s
 - **Graphics targets:** Up is `Bitmap - Normal`, Down is `Bitmap - Active`. Icon, Variable - Image, and RTSP Video stay. Button fill stays the category color.
 - **ISR-2 / ISR-4 / T4x:** Same traced strip as T2x. ISR-2 crop 521×971 (`isr2_trace.py`, outlines `../remote_trace/isr2.html` v7). ISR-4 crop 500×610 (`isr4_trace.py`, `isr4.html` v5). T4x crop 551×679 (`t4x_trace.py`, `t4x.html` v2). Hard-key variable rows follow the page source. Method: `docs/handheld_hard_key_remotes.md`.
 - **Generated pages:** A deploy does not rebuild them. Upload that project again. Jazz Room on disk is still the 2026-10-15 generation. `1790 High Rd (Simple v32.2).apex` was uploaded 2026-10-16 and already has the new titles. The tab icon is the square shield `sentinel-logo-tab.png`.
-- **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`
+- **Live:** `http://24.199.106.213/commissioning/` · `http://24.199.106.213/management/` · health `http://24.199.106.213/health`. Management can rename a client or project, and delete one after the user types that name. A client that still has projects is refused.
 - **Work list:** `docs/todos/2026-10-18.md` (not this file)
 
 ---
