@@ -3164,7 +3164,7 @@ def _render_document(
         else "<div></div>"
     )
     return f"""<!doctype html>
-<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"icon\" href=\"/commissioning/sentinel-logo.png\" type=\"image/png\">{commissioning_meta}<title>{document_title}</title>
+<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><link rel=\"icon\" href=\"/commissioning/sentinel-logo-tab.png\" type=\"image/png\">{commissioning_meta}<title>{document_title}</title>
 <link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=link_2,lock,lock_open_right\">
 <style>
 {device_theme_css}
@@ -6275,7 +6275,7 @@ def render_project_home_html(
     _group_embed = _sentinel_group_pass_embed_js()
     commissioning_meta = _commissioning_meta_tags(client_name=client_display, project_name=project_display)
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/commissioning/sentinel-logo.png" type="image/png">{commissioning_meta}<title>{escape(page_title)}</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="/commissioning/sentinel-logo-tab.png" type="image/png">{commissioning_meta}<title>{escape(page_title)}</title>
 <style>
 html,body{{margin:0;min-height:100%;}}
 body{{font-family:Segoe UI,Tahoma,sans-serif;background:linear-gradient(180deg,#eef3f7 0%,#dce7ef 100%);color:#183247;}}

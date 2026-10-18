@@ -4,6 +4,8 @@ Status: approved method (2026-10-13). Traced strips in `src/`: **T2x**, **ISR-2*
 
 Standard way to turn a photo of an RTI handheld remote into a clickable hard-key overlay, and how that overlay sits beside the touchscreen in the testing screen. Use this for every new remote photo.
 
+A code deploy does not redraw a remote already generated. The strip on screen is the last upload of that project. Upload that project again to rebuild it.
+
 Related: `hard_keys.md` (Apex hard-key extraction, `ButtonLeft` slots, T4x / ISR-2 / ISR-4 HTML templates).
 
 ---

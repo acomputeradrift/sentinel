@@ -18,7 +18,7 @@ from sentinel.generation.render_core import (  # noqa: E402
 )
 
 ICON_LINK = re.compile(
-    r'<link rel="icon" href="/commissioning/sentinel-logo\.png" type="image/png"\s*/?>'
+    r'<link rel="icon" href="/commissioning/sentinel-logo-tab\.png" type="image/png"\s*/?>'
 )
 WORDMARK = "sentinel-logo-wordmark.png"
 UI = ROOT / "src" / "sentinel" / "ui"
@@ -87,6 +87,16 @@ def _minimal_project_data() -> dict:
     }
 
 
+def _png_size(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()
+    self_check = data[:8] == b"\x89PNG\r\n\x1a\n"
+    if not self_check or data[12:16] != b"IHDR":
+        raise AssertionError(f"{path.name} is not a PNG")
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    return width, height
+
+
 def _topbar(html: str) -> str:
     match = re.search(r'<header class="topbar">.*?</header>', html, flags=re.S)
     if match is None:
@@ -125,6 +135,8 @@ class SentinelLogoTests(unittest.TestCase):
         }
         for name, html in documents.items():
             self.assertRegex(html, ICON_LINK, msg=name)
+        tab_icon = UI / "commissioning" / "sentinel-logo-tab.png"
+        self.assertEqual(_png_size(tab_icon), (687, 687))
 
     def test_wordmark_is_only_in_console_and_management_topbars(self) -> None:
         console = CONSOLE_HTML.read_text(encoding="utf-8")
